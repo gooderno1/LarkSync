@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.10-dev.1 (2026-01-27)
+- 目标：完成 Task 3.2 Markdown → Docx 全量覆盖上传与 429 指数退避。
+- 结果：新增 DocxService（convert + blocks list/create/batch_delete 全量替换）；FeishuClient 支持 429/1061045 指数退避；新增 docx service 单测。
+- 测试：`python -m pytest`（apps/backend）；`npm audit --omit=dev`（apps/frontend）。
+- 问题：Markdown 内本地图片路径尚未做上传转 token；如需图片上行请提供期望的上传接口样例。
+
 ## v0.1.9-dev.1 (2026-01-27)
 - 目标：完成 Task 3.1 本地文件系统监听、去抖与 WebSocket 推送。
 - 结果：新增 WatcherService/WatcherManager 与 EventHub；提供 `/watcher/*` 与 `/ws/events`；前端监听控制与事件面板。

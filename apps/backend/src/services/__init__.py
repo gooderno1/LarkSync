@@ -1,5 +1,6 @@
 from .auth_service import AuthService, AuthError
 from .drive_service import DriveNode, DriveService
+from .docx_service import DocxService, DocxServiceError
 from .event_hub import EventHub
 from .file_downloader import FileDownloader
 from .file_writer import FileWriter
@@ -14,6 +15,8 @@ __all__ = [
     "AuthError",
     "DriveNode",
     "DriveService",
+    "DocxService",
+    "DocxServiceError",
     "EventHub",
     "FileDownloader",
     "FileWriter",
