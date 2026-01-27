@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.12-dev.1 (2026-01-27)
+- 目标：完成 Task 4.1 冲突处理 UI 与后端冲突标记基础。
+- 结果：新增 ConflictService 与 /conflicts 接口；前端冲突中心展示与“使用本地/云端”操作；补充单测。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。冲突数据目前为内存存储，后续可接入数据库持久化。
+
 ## v0.1.11-dev.1 (2026-01-27)
 - 目标：完成 Task 3.3 通用文件上传（非 MD）与上传后状态记录。
 - 结果：新增 FileUploader（upload_all + 分片上传）与 file_hash 计算；上传完成写入 SyncMapping。

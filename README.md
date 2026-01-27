@@ -17,6 +17,7 @@
 - 本地监听：Watchdog 防抖监听 + WebSocket 实时事件推送
 - Markdown 转 Docx：调用 Docx Block 接口执行全量覆盖（含 429 指数退避重试）
 - 通用文件上传：支持 upload_all / 分片上传，并在本地状态库记录 file_hash 与云端 token
+- 冲突中心：后端冲突标记与前端对比视图，支持“使用本地/云端”决策
 
 ## 本地开发
 ### 依赖安装

@@ -30,6 +30,21 @@ type WatchEvent = {
   timestamp: number;
 };
 
+type ConflictItem = {
+  id: string;
+  local_path: string;
+  cloud_token: string;
+  local_hash: string;
+  db_hash: string;
+  cloud_version: number;
+  db_version: number;
+  local_preview?: string | null;
+  cloud_preview?: string | null;
+  created_at: number;
+  resolved: boolean;
+  resolved_action?: string | null;
+};
+
 function TreeNode({ node }: { node: DriveNode }) {
   const [open, setOpen] = useState(true);
   const isFolder = node.type === "folder";
@@ -79,6 +94,9 @@ export default function App() {
   const [wsStatus, setWsStatus] = useState<"connecting" | "open" | "closed">(
     "connecting"
   );
+  const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
+  const [conflictLoading, setConflictLoading] = useState(false);
+  const [conflictError, setConflictError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -116,6 +134,7 @@ export default function App() {
         setWatcherRunning(false);
       });
   }, []);
+
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -161,6 +180,49 @@ export default function App() {
         setTreeLoading(false);
       });
   };
+
+  const loadConflicts = () => {
+    setConflictLoading(true);
+    setConflictError(null);
+    fetch("/conflicts")
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "获取冲突失败");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setConflicts(Array.isArray(data) ? data : []);
+      })
+      .catch((err: Error) => {
+        setConflictError(err.message);
+      })
+      .finally(() => {
+        setConflictLoading(false);
+      });
+  };
+
+  const resolveConflict = (id: string, action: "use_local" | "use_cloud") => {
+    fetch(`/conflicts/${id}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action })
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "处理冲突失败");
+        }
+        return res.json();
+      })
+      .then(() => loadConflicts())
+      .catch((err: Error) => setConflictError(err.message));
+  };
+
+  useEffect(() => {
+    loadConflicts();
+  }, []);
 
   const startWatcher = () => {
     if (!watchPath.trim()) {
@@ -341,6 +403,100 @@ export default function App() {
                   </li>
                 ))}
               </ul>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-12 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold">冲突中心</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                当云端与本地同时被修改时，将在此处展示冲突详情。
+              </p>
+            </div>
+            <button
+              className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={conflictLoading}
+              onClick={loadConflicts}
+              type="button"
+            >
+              {conflictLoading ? "加载中..." : "刷新冲突"}
+            </button>
+          </div>
+          <div className="mt-6 space-y-4">
+            {conflictError ? (
+              <p className="text-sm text-rose-300">加载失败：{conflictError}</p>
+            ) : conflicts.length === 0 ? (
+              <p className="text-sm text-slate-500">暂无冲突记录。</p>
+            ) : (
+              conflicts.map((conflict) => (
+                <div
+                  key={conflict.id}
+                  className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                        本地路径
+                      </p>
+                      <p className="text-sm text-slate-100">{conflict.local_path}</p>
+                      <p className="text-xs text-slate-500">
+                        云端 Token：{conflict.cloud_token}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        哈希：{conflict.local_hash.slice(0, 8)} /{" "}
+                        {conflict.db_hash.slice(0, 8)}
+                      </p>
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      云端版本 {conflict.cloud_version} ｜ DB 版本{" "}
+                      {conflict.db_version}
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold text-slate-200">
+                        本地版本
+                      </p>
+                      <pre className="max-h-48 overflow-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+                        {conflict.local_preview || "暂无本地预览。"}
+                      </pre>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold text-slate-200">
+                        云端版本
+                      </p>
+                      <pre className="max-h-48 overflow-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+                        {conflict.cloud_preview || "暂无云端预览。"}
+                      </pre>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={conflict.resolved}
+                      onClick={() => resolveConflict(conflict.id, "use_local")}
+                      type="button"
+                    >
+                      使用本地
+                    </button>
+                    <button
+                      className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={conflict.resolved}
+                      onClick={() => resolveConflict(conflict.id, "use_cloud")}
+                      type="button"
+                    >
+                      使用云端
+                    </button>
+                    {conflict.resolved ? (
+                      <span className="self-center text-xs uppercase tracking-[0.2em] text-slate-500">
+                        已处理：{conflict.resolved_action}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </section>

@@ -3,7 +3,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import auth_router, drive_router, events_router, watcher_router
+from src.api import auth_router, conflicts_router, drive_router, events_router, watcher_router
 from src.api.watcher import watcher_manager
 
 app = FastAPI(title="LarkSync API")
@@ -17,6 +17,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(conflicts_router)
 app.include_router(drive_router)
 app.include_router(watcher_router)
 app.include_router(events_router)
