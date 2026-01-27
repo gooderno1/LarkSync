@@ -8,6 +8,7 @@
 - 预留同步核心模块与数据层目录结构（core / services / db）
 - 配置中心：支持 `data/config.json` 与环境变量覆盖（含 `sync_mode`）
 - SQLite 同步状态模型：`SyncMapping`
+- 发布脚本：`scripts/release.py` 自动更新版本、CHANGELOG 并提交推送
 
 ## 本地开发
 ### 依赖安装

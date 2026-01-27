@@ -33,6 +33,7 @@
   - 开发前：`git status` 检查工作区；如存在远端，先 `git pull --rebase` 保持同步。
   - 开发后：`git add . && git commit -m "feat(module): description"`。
   - 若配置了远端：`git push`，确保本地与远端同步。
+- 版本归档：每个版本完成后，必须更新 `DEVELOPMENT_LOG.md` 记录开发结果与问题。
 
 ## 3. 核心同步逻辑要点
 - 云端为单一事实来源（SSOT），本地通过 SQLite 状态库判断变更方向。
