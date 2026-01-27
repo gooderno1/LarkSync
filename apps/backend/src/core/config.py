@@ -34,9 +34,26 @@ def _default_database_url() -> str:
     return _database_url_from_path(_repo_root() / "data" / "larksync.db")
 
 
+def _default_scopes() -> list[str]:
+    return [
+        "drive:drive",
+        "docs:doc",
+        "drive:meta",
+        "contact:contact.base:readonly",
+    ]
+
+
 class AppConfig(BaseModel):
     database_url: str = Field(default_factory=_default_database_url)
     sync_mode: SyncMode = SyncMode.bidirectional
+
+    auth_authorize_url: str = ""
+    auth_token_url: str = ""
+    auth_client_id: str = ""
+    auth_client_secret: str = ""
+    auth_redirect_uri: str = ""
+    auth_scopes: list[str] = Field(default_factory=_default_scopes)
+    token_store: str = "keyring"
 
 
 class ConfigManager:
@@ -74,6 +91,24 @@ class ConfigManager:
         env_sync_mode = os.getenv("LARKSYNC_SYNC_MODE")
         if env_sync_mode:
             data["sync_mode"] = env_sync_mode
+
+        env_scopes = os.getenv("LARKSYNC_AUTH_SCOPES")
+        if env_scopes:
+            data["auth_scopes"] = [
+                scope.strip() for scope in env_scopes.split(",") if scope.strip()
+            ]
+
+        for key, env_name in {
+            "auth_authorize_url": "LARKSYNC_AUTH_AUTHORIZE_URL",
+            "auth_token_url": "LARKSYNC_AUTH_TOKEN_URL",
+            "auth_client_id": "LARKSYNC_AUTH_CLIENT_ID",
+            "auth_client_secret": "LARKSYNC_AUTH_CLIENT_SECRET",
+            "auth_redirect_uri": "LARKSYNC_AUTH_REDIRECT_URI",
+            "token_store": "LARKSYNC_TOKEN_STORE",
+        }.items():
+            env_value = os.getenv(env_name)
+            if env_value:
+                data[key] = env_value
 
         return AppConfig.model_validate(data)
 

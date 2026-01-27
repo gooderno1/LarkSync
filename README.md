@@ -9,6 +9,7 @@
 - 配置中心：支持 `data/config.json` 与环境变量覆盖（含 `sync_mode`）
 - SQLite 同步状态模型：`SyncMapping`
 - 发布脚本：`scripts/release.py` 自动更新版本、CHANGELOG 并提交推送
+- OAuth 登录：后端提供 `/auth/login`、`/auth/callback`、`/auth/status`、`/auth/logout`
 
 ## 本地开发
 ### 依赖安装
@@ -27,3 +28,8 @@
 - 默认读取 `data/config.json`，可通过环境变量覆盖：
   - `LARKSYNC_SYNC_MODE`：`bidirectional` / `download_only` / `upload_only`
   - `LARKSYNC_DATABASE_URL` 或 `LARKSYNC_DB_PATH`
+  - `LARKSYNC_AUTH_AUTHORIZE_URL` / `LARKSYNC_AUTH_TOKEN_URL`
+  - `LARKSYNC_AUTH_CLIENT_ID` / `LARKSYNC_AUTH_CLIENT_SECRET`
+  - `LARKSYNC_AUTH_REDIRECT_URI`
+  - `LARKSYNC_AUTH_SCOPES`（逗号分隔）
+  - `LARKSYNC_TOKEN_STORE`（`keyring` / `memory`）
