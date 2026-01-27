@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.6-dev.1 (2026-01-27)
+- 目标：完成 Task 2.3 转码引擎基础能力（标题/加粗/表格/图片）。
+- 结果：新增 DocxTranscoder/DocxParser，支持 H1/H2/Bold/Table/Image 转 Markdown；图片下载器与 assets 落盘；新增转码单测。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。若真实 Block JSON 字段与文档结构不一致，请提供样例。
+
 ## v0.1.5-dev.1 (2026-01-27)
 - 目标：完成 Task 2.2 递归目录爬虫与前端目录树展示。
 - 结果：新增 DriveService 与 `/drive/tree`；支持分页与递归；前端树形展示与刷新按钮；补充 Vite 代理。

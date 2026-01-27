@@ -11,6 +11,7 @@
 - 发布脚本：`scripts/release.py` 自动更新版本、CHANGELOG 并提交推送
 - OAuth 登录：后端提供 `/auth/login`、`/auth/callback`、`/auth/status`、`/auth/logout`
 - 云端目录树：后端提供 `/drive/tree`，前端可展示云空间层级
+- Docx 转 Markdown：支持标题/加粗/表格/图片块的基础解析与图片落盘
 
 ## 本地开发
 ### 依赖安装
