@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.7-dev.1 (2026-01-27)
+- 目标：完成 Task 2.4 本地写入与 mtime 同步。
+- 结果：新增 FileWriter 支持写入 Markdown/二进制并强制设置 mtime；补充单测。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.6-dev.1 (2026-01-27)
 - 目标：完成 Task 2.3 转码引擎基础能力（标题/加粗/表格/图片）。
 - 结果：新增 DocxTranscoder/DocxParser，支持 H1/H2/Bold/Table/Image 转 Markdown；图片下载器与 assets 落盘；新增转码单测。

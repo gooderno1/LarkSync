@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-27] v0.1.7-dev.1 feat(writer): 本地写入与 mtime 同步
 [2026-01-27] v0.1.6-dev.1 feat(transcoder): Docx 转 Markdown 与图片落盘
 [2026-01-27] v0.1.5-dev.1 feat(crawler): 递归目录树获取与前端展示
 [2026-01-27] v0.1.4-dev.1 feat(auth): OAuth 登录、令牌存储与前端连接页
