@@ -1,0 +1,31 @@
+[project]
+name = "larksync-backend"
+version = "0.1.0"
+description = "LarkSync backend service"
+readme = "../../README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.23",
+  "sqlalchemy>=2.0",
+  "pydantic>=2.0",
+  "watchdog>=3.0",
+  "loguru>=0.7",
+  "aiosqlite>=0.19"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4",
+  "pytest-asyncio>=0.23",
+  "httpx>=0.25"
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-q"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
