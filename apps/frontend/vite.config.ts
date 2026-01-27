@@ -6,6 +6,12 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+        ws: true,
+        rewrite: (path) => path.replace(/^\\/api/, "")
+      },
       "/auth": "http://localhost:8000",
       "/drive": "http://localhost:8000",
       "/conflicts": "http://localhost:8000",

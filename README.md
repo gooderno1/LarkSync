@@ -41,3 +41,10 @@
   - `LARKSYNC_AUTH_REDIRECT_URI`
   - `LARKSYNC_AUTH_SCOPES`（逗号分隔）
   - `LARKSYNC_TOKEN_STORE`（`keyring` / `memory`）
+
+## 生产部署（Docker）
+- 构建与启动：
+  - `docker-compose build`
+  - `docker-compose up -d`
+- 访问地址：`http://localhost:8080`
+- 说明：生产环境通过 Nginx 反向代理 `/api/*` 到后端，前端已在生产模式下自动加 `/api` 前缀。

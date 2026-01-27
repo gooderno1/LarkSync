@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.13-dev.1 (2026-01-27)
+- 目标：完成 Task 4.2 Docker 生产构建与部署配置。
+- 结果：新增多阶段 Dockerfile、Nginx 反向代理配置与 docker-compose；前端生产环境自动使用 /api 前缀。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。生产镜像如需自定义端口或域名，请告知。
+
 ## v0.1.12-dev.1 (2026-01-27)
 - 目标：完成 Task 4.1 冲突处理 UI 与后端冲突标记基础。
 - 结果：新增 ConflictService 与 /conflicts 接口；前端冲突中心展示与“使用本地/云端”操作；补充单测。

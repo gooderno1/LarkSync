@@ -81,6 +81,8 @@ function TreeNode({ node }: { node: DriveNode }) {
 }
 
 export default function App() {
+  const apiBase = import.meta.env.PROD ? "/api" : "";
+  const apiUrl = (path: string) => `${apiBase}${path}`;
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
@@ -100,7 +102,7 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    fetch("/auth/status")
+    fetch(apiUrl("/auth/status"))
       .then((res) => res.json())
       .then((data) => {
         if (!active) return;
@@ -122,7 +124,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetch("/watcher/status")
+    fetch(apiUrl("/watcher/status"))
       .then((res) => res.json())
       .then((data) => {
         setWatcherRunning(Boolean(data.running));
@@ -138,7 +140,9 @@ export default function App() {
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(`${protocol}://${window.location.host}/ws/events`);
+    const socket = new WebSocket(
+      `${protocol}://${window.location.host}${apiUrl("/ws/events")}`
+    );
     setWsStatus("connecting");
 
     socket.onopen = () => setWsStatus("open");
@@ -162,7 +166,7 @@ export default function App() {
     if (!connected) return;
     setTreeLoading(true);
     setTreeError(null);
-    fetch("/drive/tree")
+    fetch(apiUrl("/drive/tree"))
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -184,7 +188,7 @@ export default function App() {
   const loadConflicts = () => {
     setConflictLoading(true);
     setConflictError(null);
-    fetch("/conflicts")
+    fetch(apiUrl("/conflicts"))
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -204,7 +208,7 @@ export default function App() {
   };
 
   const resolveConflict = (id: string, action: "use_local" | "use_cloud") => {
-    fetch(`/conflicts/${id}/resolve`, {
+    fetch(apiUrl(`/conflicts/${id}/resolve`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action })
@@ -230,7 +234,7 @@ export default function App() {
       return;
     }
     setWatcherError(null);
-    fetch("/watcher/start", {
+    fetch(apiUrl("/watcher/start"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: watchPath.trim() })
@@ -251,7 +255,7 @@ export default function App() {
   };
 
   const stopWatcher = () => {
-    fetch("/watcher/stop", { method: "POST" })
+    fetch(apiUrl("/watcher/stop"), { method: "POST" })
       .then(() => {
         setWatcherRunning(false);
       })
@@ -281,14 +285,14 @@ export default function App() {
         <div className="mt-8 flex flex-wrap gap-4">
           <a
             className="inline-flex items-center justify-center rounded-full border border-slate-500 px-6 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300"
-            href="/auth/login"
+            href={apiUrl("/auth/login")}
           >
             登录飞书
           </a>
           <button
             className="inline-flex items-center justify-center rounded-full bg-slate-100 px-6 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white"
             onClick={() => {
-              fetch("/auth/logout", { method: "POST" }).then(() => {
+              fetch(apiUrl("/auth/logout"), { method: "POST" }).then(() => {
                 setConnected(false);
                 setExpiresAt(null);
               });
