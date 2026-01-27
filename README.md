@@ -6,7 +6,23 @@
 - 全栈脚手架已搭建：FastAPI 后端 + Vite React TypeScript 前端
 - 统一开发入口：根目录 `npm run dev` 并行启动前后端
 - 预留同步核心模块与数据层目录结构（core / services / db）
+- 配置中心：支持 `data/config.json` 与环境变量覆盖（含 `sync_mode`）
+- SQLite 同步状态模型：`SyncMapping`
 
-## 开发
-- 后端：`apps/backend`（FastAPI，默认端口 8000）
-- 前端：`apps/frontend`（Vite，默认端口 3000）
+## 本地开发
+### 依赖安装
+- 根目录：`npm install`（用于并行启动前后端）
+- 前端：`cd apps/frontend` 后执行 `npm install`
+- 后端：`cd apps/backend` 后执行 `python -m pip install -r requirements.txt`
+  - 开发依赖：`python -m pip install -r requirements-dev.txt`
+
+### 启动
+- 统一入口：根目录执行 `npm run dev`
+- 分别启动：
+  - 后端：`cd apps/backend` 后执行 `uvicorn src.main:app --reload --port 8000`
+  - 前端：`cd apps/frontend` 后执行 `npm run dev`
+
+### 配置
+- 默认读取 `data/config.json`，可通过环境变量覆盖：
+  - `LARKSYNC_SYNC_MODE`：`bidirectional` / `download_only` / `upload_only`
+  - `LARKSYNC_DATABASE_URL` 或 `LARKSYNC_DB_PATH`
