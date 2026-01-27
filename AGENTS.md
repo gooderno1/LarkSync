@@ -27,7 +27,7 @@
 - TDD 优先：先写测试，再写实现。
 - 后端：新增逻辑必须有 pytest；前端：无 TS 类型报错、无 ESLint 警告。
 - 文档同步：功能变更必须更新 `README.md` 功能列表。
-- 变更记录：必须在 `CHANGELOG.md` 追加 `[YYYY-MM-DD] feat/fix: description`。
+- 变更记录：必须在 `CHANGELOG.md` 追加 `[YYYY-MM-DD] vX.Y.Z-dev.N feat/fix: description`。
 - 版本更新：按语义化版本更新 `apps/backend/pyproject.toml` 或 `apps/frontend/package.json`。
 - Git 同步（必须执行）：
   - 开发前：`git status` 检查工作区；如存在远端，先 `git pull --rebase` 保持同步。

@@ -55,7 +55,7 @@ larksync-root/
    * 前端：无 TypeScript 类型报错，无 ESLint 警告。  
 2. **Documentation**:  
    * 若修改了功能，**必须**同步更新 README.md 的功能列表。  
-   * **必须**在 CHANGELOG.md 中追加一条记录（格式：\[YYYY-MM-DD\] feat/fix: description）。  
+   * **必须**在 CHANGELOG.md 中追加一条记录（格式：\[YYYY-MM-DD\] vX.Y.Z-dev.N feat/fix: description）。  
 3. **Versioning**:  
    * 根据语义化版本规范，自动更新 apps/backend/pyproject.toml 或 package.json 中的版本号。  
 4. **Git Ops**:  
@@ -170,12 +170,11 @@ larksync-root/
 class SyncMapping(Base):  
     \_\_tablename\_\_ \= "sync\_mappings"  
       
-    doc\_token: str \= Column(String, primary\_key=True)  
-    file\_hash: str \= Column(String, nullable=False)  \# SHA256 of local content  
-    local\_path: str \= Column(String, unique=True, nullable=False)  
-    cloud\_version: int \= Column(Integer, default=0)  
-    last\_sync\_ts: float \= Column(Float, default=0.0)  
-    status: str \= Column(String, default="synced") \# synced, dirty, conflict  
+    file\_hash: str \= Column(String, primary\_key=True)  
+    feishu\_token: str \= Column(String, index=True)  
+    local\_path: str \= Column(String, nullable=False)  
+    last\_sync\_mtime: float \= Column(Float, default=0.0)  
+    version: int \= Column(Integer, default=0)  
 
 ## **6\. 飞书云开发文档地址**
 
