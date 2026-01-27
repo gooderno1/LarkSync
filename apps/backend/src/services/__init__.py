@@ -3,6 +3,8 @@ from .drive_service import DriveNode, DriveService
 from .docx_service import DocxService, DocxServiceError
 from .event_hub import EventHub
 from .file_downloader import FileDownloader
+from .file_hash import calculate_file_hash
+from .file_uploader import FileUploadError, FileUploader, UploadResult
 from .file_writer import FileWriter
 from .feishu_client import FeishuClient
 from .state_store import AuthStateStore
@@ -19,6 +21,10 @@ __all__ = [
     "DocxServiceError",
     "EventHub",
     "FileDownloader",
+    "FileUploadError",
+    "FileUploader",
+    "UploadResult",
+    "calculate_file_hash",
     "FileWriter",
     "FeishuClient",
     "AuthStateStore",

@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-27] v0.1.11-dev.1 feat(upload): 非 MD 文件上传与 SyncMapping 记录
 [2026-01-27] v0.1.10-dev.1 feat(docx-upload): Markdown 转 Docx 全量覆盖与指数退避重试
 [2026-01-27] v0.1.9-dev.1 feat(watcher): 本地监听与 WebSocket 事件推送
 [2026-01-27] v0.1.8-dev.1 feat(download): 非在线文档下载与本地落盘

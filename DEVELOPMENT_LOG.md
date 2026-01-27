@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.11-dev.1 (2026-01-27)
+- 目标：完成 Task 3.3 通用文件上传（非 MD）与上传后状态记录。
+- 结果：新增 FileUploader（upload_all + 分片上传）与 file_hash 计算；上传完成写入 SyncMapping。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。若需接入具体同步根目录与云端目录映射，请提供设计/字段。
+
 ## v0.1.10-dev.1 (2026-01-27)
 - 目标：完成 Task 3.2 Markdown → Docx 全量覆盖上传与 429 指数退避。
 - 结果：新增 DocxService（convert + blocks list/create/batch_delete 全量替换）；FeishuClient 支持 429/1061045 指数退避；新增 docx service 单测。
