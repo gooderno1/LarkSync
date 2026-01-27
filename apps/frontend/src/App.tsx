@@ -5,10 +5,66 @@ const statusText: Record<boolean, string> = {
   false: "未连接"
 };
 
+type ShortcutInfo = {
+  target_token: string;
+  target_type: string;
+};
+
+type DriveNode = {
+  token: string;
+  name: string;
+  type: string;
+  parent_token?: string | null;
+  url?: string | null;
+  created_time?: string | null;
+  modified_time?: string | null;
+  owner_id?: string | null;
+  shortcut_info?: ShortcutInfo | null;
+  children?: DriveNode[];
+};
+
+function TreeNode({ node }: { node: DriveNode }) {
+  const [open, setOpen] = useState(true);
+  const isFolder = node.type === "folder";
+  const hasChildren = Boolean(node.children && node.children.length);
+
+  return (
+    <li className="space-y-2">
+      <div className="flex items-center gap-2">
+        {isFolder ? (
+          <button
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 text-xs text-slate-200"
+            onClick={() => setOpen((prev) => !prev)}
+            type="button"
+          >
+            {open ? "▾" : "▸"}
+          </button>
+        ) : (
+          <span className="text-slate-500">•</span>
+        )}
+        <span className="text-sm text-slate-100">{node.name}</span>
+        <span className="rounded-full border border-slate-700 px-2 py-0.5 text-xs uppercase tracking-widest text-slate-400">
+          {node.type}
+        </span>
+      </div>
+      {isFolder && hasChildren && open ? (
+        <ul className="ml-4 space-y-2 border-l border-slate-800 pl-4">
+          {node.children?.map((child) => (
+            <TreeNode key={child.token} node={child} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [tree, setTree] = useState<DriveNode | null>(null);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [treeError, setTreeError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -32,6 +88,29 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  const loadTree = () => {
+    if (!connected) return;
+    setTreeLoading(true);
+    setTreeError(null);
+    fetch("/drive/tree")
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "获取目录失败");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setTree(data);
+      })
+      .catch((err: Error) => {
+        setTreeError(err.message);
+      })
+      .finally(() => {
+        setTreeLoading(false);
+      });
+  };
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -80,6 +159,38 @@ export default function App() {
             <li>LARKSYNC_AUTH_REDIRECT_URI</li>
           </ul>
         </div>
+
+        <section className="mt-16 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold">云端目录树</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                递归展示飞书云空间的文件夹与文档结构。
+              </p>
+            </div>
+            <button
+              className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!connected || treeLoading}
+              onClick={loadTree}
+              type="button"
+            >
+              {treeLoading ? "加载中..." : "刷新目录"}
+            </button>
+          </div>
+          <div className="mt-6">
+            {!connected ? (
+              <p className="text-sm text-slate-500">请先完成登录后再加载目录。</p>
+            ) : treeError ? (
+              <p className="text-sm text-rose-300">加载失败：{treeError}</p>
+            ) : tree ? (
+              <ul className="space-y-3">
+                <TreeNode node={tree} />
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-500">尚未加载目录。</p>
+            )}
+          </div>
+        </section>
       </section>
     </main>
   );

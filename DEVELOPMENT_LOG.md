@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.5-dev.1 (2026-01-27)
+- 目标：完成 Task 2.2 递归目录爬虫与前端目录树展示。
+- 结果：新增 DriveService 与 `/drive/tree`；支持分页与递归；前端树形展示与刷新按钮；补充 Vite 代理。
+- 测试：`python -m pytest`（apps/backend）；`npm audit`（apps/frontend）。
+- 问题：暂无阻塞问题。若 /drive/v1/files 响应字段与文档不一致，请提供 JSON 样例。
+
 ## v0.1.4-dev.1 (2026-01-27)
 - 目标：完成 OAuth2 登录链路的骨架、令牌安全存储与前端连接页面。
 - 结果：新增 /auth/login、/auth/callback、/auth/status、/auth/logout；引入 keyring 安全存储；前端登录页与 Vite 代理配置完成。

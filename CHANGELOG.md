@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-27] v0.1.5-dev.1 feat(crawler): 递归目录树获取与前端展示
 [2026-01-27] v0.1.4-dev.1 feat(auth): OAuth 登录、令牌存储与前端连接页
 [2026-01-27] v0.1.3-dev.1 feat(release): 新增 release 脚本与版本归档日志
 [2026-01-27] v0.1.2-dev.1 fix(security): 升级 vite 修复 esbuild 漏洞；统一 SyncMapping 字段与版本格式
