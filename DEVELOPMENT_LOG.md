@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.9-dev.1 (2026-01-27)
+- 目标：完成 Task 3.1 本地文件系统监听、去抖与 WebSocket 推送。
+- 结果：新增 WatcherService/WatcherManager 与 EventHub；提供 `/watcher/*` 与 `/ws/events`；前端监听控制与事件面板。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。若需接入具体同步根目录，请提供路径规划。
+
 ## v0.1.8-dev.1 (2026-01-27)
 - 目标：完成 Task 2.5 非在线文档下载与本地落盘。
 - 结果：新增 FileDownloader，支持通过 Drive 下载接口写入本地并设置 mtime；补充单测。

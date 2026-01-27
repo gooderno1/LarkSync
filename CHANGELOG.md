@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-27] v0.1.9-dev.1 feat(watcher): 本地监听与 WebSocket 事件推送
 [2026-01-27] v0.1.8-dev.1 feat(download): 非在线文档下载与本地落盘
 [2026-01-27] v0.1.7-dev.1 feat(writer): 本地写入与 mtime 同步
 [2026-01-27] v0.1.6-dev.1 feat(transcoder): Docx 转 Markdown 与图片落盘

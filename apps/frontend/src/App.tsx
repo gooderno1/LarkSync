@@ -23,6 +23,13 @@ type DriveNode = {
   children?: DriveNode[];
 };
 
+type WatchEvent = {
+  event_type: string;
+  src_path: string;
+  dest_path?: string | null;
+  timestamp: number;
+};
+
 function TreeNode({ node }: { node: DriveNode }) {
   const [open, setOpen] = useState(true);
   const isFolder = node.type === "folder";
@@ -65,6 +72,13 @@ export default function App() {
   const [tree, setTree] = useState<DriveNode | null>(null);
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeError, setTreeError] = useState<string | null>(null);
+  const [watchPath, setWatchPath] = useState("");
+  const [watcherRunning, setWatcherRunning] = useState(false);
+  const [watcherError, setWatcherError] = useState<string | null>(null);
+  const [events, setEvents] = useState<WatchEvent[]>([]);
+  const [wsStatus, setWsStatus] = useState<"connecting" | "open" | "closed">(
+    "connecting"
+  );
 
   useEffect(() => {
     let active = true;
@@ -89,6 +103,42 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    fetch("/watcher/status")
+      .then((res) => res.json())
+      .then((data) => {
+        setWatcherRunning(Boolean(data.running));
+        if (data.path) {
+          setWatchPath(data.path);
+        }
+      })
+      .catch(() => {
+        setWatcherRunning(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${protocol}://${window.location.host}/ws/events`);
+    setWsStatus("connecting");
+
+    socket.onopen = () => setWsStatus("open");
+    socket.onclose = () => setWsStatus("closed");
+    socket.onerror = () => setWsStatus("closed");
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as WatchEvent;
+        setEvents((prev) => [payload, ...prev].slice(0, 50));
+      } catch {
+        // ignore malformed payload
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, []);
+
   const loadTree = () => {
     if (!connected) return;
     setTreeLoading(true);
@@ -109,6 +159,42 @@ export default function App() {
       })
       .finally(() => {
         setTreeLoading(false);
+      });
+  };
+
+  const startWatcher = () => {
+    if (!watchPath.trim()) {
+      setWatcherError("请先填写需要监听的本地路径。");
+      return;
+    }
+    setWatcherError(null);
+    fetch("/watcher/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: watchPath.trim() })
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "启动监听失败");
+        }
+        return res.json();
+      })
+      .then(() => {
+        setWatcherRunning(true);
+      })
+      .catch((err: Error) => {
+        setWatcherError(err.message);
+      });
+  };
+
+  const stopWatcher = () => {
+    fetch("/watcher/stop", { method: "POST" })
+      .then(() => {
+        setWatcherRunning(false);
+      })
+      .catch(() => {
+        setWatcherError("停止监听失败");
       });
   };
 
@@ -188,6 +274,73 @@ export default function App() {
               </ul>
             ) : (
               <p className="text-sm text-slate-500">尚未加载目录。</p>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-12 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold">本地文件监听</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                监听本地目录变更并通过 WebSocket 推送事件。
+              </p>
+            </div>
+            <span className="text-xs uppercase tracking-[0.3em] text-slate-500">
+              WS {wsStatus}
+            </span>
+          </div>
+          <div className="mt-6 flex flex-col gap-4">
+            <input
+              className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+              placeholder="输入需要监听的本地路径，例如 C:\\\\Docs"
+              value={watchPath}
+              onChange={(event) => setWatchPath(event.target.value)}
+            />
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={watcherRunning}
+                onClick={startWatcher}
+                type="button"
+              >
+                启动监听
+              </button>
+              <button
+                className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!watcherRunning}
+                onClick={stopWatcher}
+                type="button"
+              >
+                停止监听
+              </button>
+              <span className="self-center text-sm text-slate-400">
+                状态：{watcherRunning ? "运行中" : "未启动"}
+              </span>
+            </div>
+            {watcherError ? (
+              <p className="text-sm text-rose-300">错误：{watcherError}</p>
+            ) : null}
+          </div>
+          <div className="mt-6 max-h-60 overflow-auto rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
+            {events.length === 0 ? (
+              <p className="text-slate-500">暂无监听事件。</p>
+            ) : (
+              <ul className="space-y-2">
+                {events.map((evt, index) => (
+                  <li key={`${evt.timestamp}-${index}`} className="flex flex-col gap-1">
+                    <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                      {evt.event_type}
+                    </span>
+                    <span>{evt.src_path}</span>
+                    {evt.dest_path ? (
+                      <span className="text-slate-500">
+                        → {evt.dest_path}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </section>
