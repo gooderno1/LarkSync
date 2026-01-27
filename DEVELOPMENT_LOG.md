@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.8-dev.1 (2026-01-27)
+- 目标：完成 Task 2.5 非在线文档下载与本地落盘。
+- 结果：新增 FileDownloader，支持通过 Drive 下载接口写入本地并设置 mtime；补充单测。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.7-dev.1 (2026-01-27)
 - 目标：完成 Task 2.4 本地写入与 mtime 同步。
 - 结果：新增 FileWriter 支持写入 Markdown/二进制并强制设置 mtime；补充单测。

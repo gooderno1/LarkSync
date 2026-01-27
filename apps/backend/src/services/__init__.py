@@ -1,5 +1,6 @@
 from .auth_service import AuthService, AuthError
 from .drive_service import DriveNode, DriveService
+from .file_downloader import FileDownloader
 from .file_writer import FileWriter
 from .feishu_client import FeishuClient
 from .state_store import AuthStateStore
@@ -10,6 +11,7 @@ __all__ = [
     "AuthError",
     "DriveNode",
     "DriveService",
+    "FileDownloader",
     "FileWriter",
     "FeishuClient",
     "AuthStateStore",
