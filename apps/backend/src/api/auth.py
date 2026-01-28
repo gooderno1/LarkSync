@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from urllib.parse import urlparse
+
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
 from src.services import AuthError, AuthService, AuthStateStore
@@ -11,9 +13,14 @@ state_store = AuthStateStore()
 
 
 @router.get("/login")
-async def login(state: str | None = Query(default=None)):
+async def login(
+    request: Request,
+    state: str | None = Query(default=None),
+    redirect: str | None = Query(default=None),
+):
     auth_service = AuthService()
-    state_value = state or state_store.issue()
+    redirect_target = _sanitize_redirect(redirect, request)
+    state_value = state or state_store.issue(redirect_target)
     try:
         url = auth_service.build_authorize_url(state_value)
     except AuthError as exc:
@@ -23,8 +30,11 @@ async def login(state: str | None = Query(default=None)):
 
 @router.get("/callback")
 async def callback(code: str = Query(...), state: str | None = Query(default=None)):
-    if state and not state_store.consume(state):
-        raise HTTPException(status_code=400, detail="state 无效或已过期")
+    redirect_target = None
+    if state:
+        valid, redirect_target = state_store.consume(state)
+        if not valid:
+            raise HTTPException(status_code=400, detail="state 无效或已过期")
 
     auth_service = AuthService()
     try:
@@ -32,6 +42,8 @@ async def callback(code: str = Query(...), state: str | None = Query(default=Non
     except AuthError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if redirect_target:
+        return RedirectResponse(redirect_target)
     return {
         "connected": True,
         "expires_at": token.expires_at,
@@ -54,3 +66,25 @@ async def logout():
     store = auth_service._token_store
     store.clear()
     return {"connected": False}
+
+
+def _sanitize_redirect(redirect: str | None, request: Request) -> str | None:
+    if not redirect:
+        return None
+    value = redirect.strip()
+    if not value:
+        return None
+    parsed = urlparse(value)
+    if not parsed.scheme:
+        return value if value.startswith("/") else None
+    if parsed.scheme not in {"http", "https"}:
+        return None
+
+    hostname = parsed.hostname or ""
+    if hostname in {"localhost", "127.0.0.1"}:
+        return value
+
+    request_host = request.headers.get("host", "").split(":")[0]
+    if request_host and hostname == request_host:
+        return value
+    return None

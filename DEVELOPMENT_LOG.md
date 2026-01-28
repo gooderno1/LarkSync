@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.27-dev.1 (2026-01-28)
+- 目标：完善 OAuth 回调体验，授权后自动返回前端页面。
+- 结果：/auth/login 支持 redirect 参数并在 callback 成功后重定向；前端登录链接带 redirect；状态存储新增重定向支持；使用文档更新。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.26-dev.1 (2026-01-28)
 - 目标：增强 OAuth Token 错误可读性，避免 500 且便于定位。
 - 结果：Token 请求失败时输出 HTTP 响应详情；补充网络错误与非 JSON 响应处理；新增单测覆盖。

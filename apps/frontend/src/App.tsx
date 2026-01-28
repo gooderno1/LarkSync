@@ -90,6 +90,11 @@ function TreeNode({ node }: { node: DriveNode }) {
 export default function App() {
   const apiBase = import.meta.env.PROD ? "/api" : "";
   const apiUrl = (path: string) => `${apiBase}${path}`;
+  const redirectTarget =
+    typeof window !== "undefined" ? window.location.origin : "";
+  const loginUrl = redirectTarget
+    ? `${apiUrl("/auth/login")}?redirect=${encodeURIComponent(redirectTarget)}`
+    : apiUrl("/auth/login");
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
@@ -492,7 +497,7 @@ export default function App() {
         <div className="mt-8 flex flex-wrap gap-4">
           <a
             className="inline-flex items-center justify-center rounded-full border border-slate-500 px-6 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300"
-            href={apiUrl("/auth/login")}
+            href={loginUrl}
           >
             登录飞书
           </a>
