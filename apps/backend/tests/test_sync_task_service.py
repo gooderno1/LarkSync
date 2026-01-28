@@ -51,3 +51,25 @@ async def test_update_task_fields(tmp_path) -> None:
     assert updated.name == "任务B"
     assert updated.sync_mode == "upload_only"
     assert updated.enabled is False
+
+
+@pytest.mark.asyncio
+async def test_delete_task(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'test.db').as_posix()}"
+    await init_db(db_url)
+    service = SyncTaskService(session_maker=get_session_maker(db_url))
+
+    item = await service.create_task(
+        name="待删除",
+        local_path="C:/docs",
+        cloud_folder_token="fld123",
+        base_path=None,
+        sync_mode="download_only",
+        enabled=True,
+    )
+
+    deleted = await service.delete_task(item.id)
+    assert deleted is True
+
+    missing = await service.get_task(item.id)
+    assert missing is None

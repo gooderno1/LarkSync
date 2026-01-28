@@ -52,6 +52,25 @@ type SyncTask = {
   updated_at: number;
 };
 
+type SyncFileEvent = {
+  path: string;
+  status: string;
+  message?: string | null;
+};
+
+type SyncTaskStatus = {
+  task_id: string;
+  state: string;
+  started_at?: number | null;
+  finished_at?: number | null;
+  total_files: number;
+  completed_files: number;
+  failed_files: number;
+  skipped_files: number;
+  last_error?: string | null;
+  last_files: SyncFileEvent[];
+};
+
 type CloudSelection = {
   token: string;
   name: string;
@@ -195,6 +214,9 @@ export default function App() {
   const [selectedCloud, setSelectedCloud] = useState<CloudSelection | null>(null);
   const [folderPickLoading, setFolderPickLoading] = useState(false);
   const [folderPickError, setFolderPickError] = useState<string | null>(null);
+  const [taskStatusMap, setTaskStatusMap] = useState<Record<string, SyncTaskStatus>>(
+    {}
+  );
 
   useEffect(() => {
     let active = true;
@@ -249,6 +271,33 @@ export default function App() {
       })
       .catch((err: Error) => setTaskError(err.message))
       .finally(() => setTaskLoading(false));
+  };
+
+  const loadTaskStatus = () => {
+    fetch(apiUrl("/sync/tasks/status"))
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "获取任务状态失败");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (!Array.isArray(data)) {
+          setTaskStatusMap({});
+          return;
+        }
+        const mapped: Record<string, SyncTaskStatus> = {};
+        data.forEach((item: SyncTaskStatus) => {
+          if (item?.task_id) {
+            mapped[item.task_id] = item;
+          }
+        });
+        setTaskStatusMap(mapped);
+      })
+      .catch(() => {
+        // ignore status errors
+      });
   };
 
   const pickLocalFolder = () => {
@@ -312,6 +361,7 @@ export default function App() {
         setTaskSyncMode("bidirectional");
         setTaskEnabled(true);
         loadTasks();
+        loadTaskStatus();
       })
       .catch((err: Error) => setTaskError(err.message));
   };
@@ -329,7 +379,43 @@ export default function App() {
         }
         return res.json();
       })
-      .then(() => loadTasks())
+      .then(() => {
+        loadTasks();
+        loadTaskStatus();
+      })
+      .catch((err: Error) => setTaskError(err.message));
+  };
+
+  const runTask = (task: SyncTask) => {
+    setTaskError(null);
+    fetch(apiUrl(`/sync/tasks/${task.id}/run`), { method: "POST" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "触发同步失败");
+        }
+        return res.json();
+      })
+      .then(() => {
+        loadTaskStatus();
+      })
+      .catch((err: Error) => setTaskError(err.message));
+  };
+
+  const deleteTask = (task: SyncTask) => {
+    setTaskError(null);
+    fetch(apiUrl(`/sync/tasks/${task.id}`), { method: "DELETE" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "删除任务失败");
+        }
+        return res.json();
+      })
+      .then(() => {
+        loadTasks();
+        loadTaskStatus();
+      })
       .catch((err: Error) => setTaskError(err.message));
   };
 
@@ -520,6 +606,15 @@ export default function App() {
   useEffect(() => {
     loadTasks();
   }, []);
+
+  useEffect(() => {
+    loadTaskStatus();
+    if (tasks.length === 0) {
+      return;
+    }
+    const timer = window.setInterval(loadTaskStatus, 5000);
+    return () => window.clearInterval(timer);
+  }, [tasks.length]);
 
   useEffect(() => {
     loadConfig();
@@ -889,41 +984,97 @@ export default function App() {
                   <p className="text-slate-500">暂无同步任务。</p>
                 ) : (
                   <ul className="space-y-3">
-                    {tasks.map((task) => (
-                      <li
-                        key={task.id}
-                        className="rounded-xl border border-slate-200 bg-white p-4"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm text-slate-900">
-                              {task.name || "未命名任务"}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              本地：{task.local_path}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              云端：{task.cloud_folder_token}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              模式：{task.sync_mode}
-                            </p>
-                            {task.base_path ? (
-                              <p className="text-xs text-slate-500">
-                                base_path：{task.base_path}
+                    {tasks.map((task) => {
+                      const status = taskStatusMap[task.id];
+                      const isRunning = status?.state === "running";
+                      const progress =
+                        status && status.total_files > 0
+                          ? `${status.completed_files}/${status.total_files}`
+                          : "0/0";
+                      return (
+                        <li
+                          key={task.id}
+                          className="rounded-xl border border-slate-200 bg-white p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div className="space-y-1">
+                              <p className="text-sm text-slate-900">
+                                {task.name || "未命名任务"}
                               </p>
-                            ) : null}
+                              <p className="text-xs text-slate-500">
+                                本地：{task.local_path}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                云端：{task.cloud_folder_token}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                模式：{task.sync_mode}
+                              </p>
+                              {task.base_path ? (
+                                <p className="text-xs text-slate-500">
+                                  base_path：{task.base_path}
+                                </p>
+                              ) : null}
+                              <p className="text-xs text-slate-600">
+                                状态：
+                                <span
+                                  className={`ml-1 font-medium ${
+                                    status?.state === "failed"
+                                      ? "text-rose-600"
+                                      : status?.state === "running"
+                                        ? "text-emerald-600"
+                                        : "text-slate-700"
+                                  }`}
+                                >
+                                  {status?.state || "idle"}
+                                </span>
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                进度：{progress}，失败 {status?.failed_files ?? 0}
+                              </p>
+                              {status?.last_error ? (
+                                <p className="text-xs text-rose-600">
+                                  错误：{status.last_error}
+                                </p>
+                              ) : null}
+                              {status?.last_files?.length ? (
+                                <div className="mt-2 space-y-1 text-xs text-slate-500">
+                                  {status.last_files.slice(-3).map((file, index) => (
+                                    <p key={`${task.id}-file-${index}`}>
+                                      {file.status}：{file.path}
+                                    </p>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => runTask(task)}
+                                disabled={isRunning}
+                                type="button"
+                              >
+                                {isRunning ? "同步中" : "立即同步"}
+                              </button>
+                              <button
+                                className="rounded-full border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-400"
+                                onClick={() => toggleTask(task)}
+                                type="button"
+                              >
+                                {task.enabled ? "停用" : "启用"}
+                              </button>
+                              <button
+                                className="rounded-full border border-rose-200 px-4 py-2 text-xs font-medium text-rose-600 transition hover:border-rose-300"
+                                onClick={() => deleteTask(task)}
+                                type="button"
+                              >
+                                删除
+                              </button>
+                            </div>
                           </div>
-                          <button
-                            className="rounded-full border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-400"
-                            onClick={() => toggleTask(task)}
-                            type="button"
-                          >
-                            {task.enabled ? "停用" : "启用"}
-                          </button>
-                        </div>
-                      </li>
-                    ))}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>

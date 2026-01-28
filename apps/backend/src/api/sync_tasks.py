@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from src.core.config import SyncMode
 from src.services.docx_service import DocxService, DocxServiceError
+from src.services.sync_runner import SyncFileEvent, SyncTaskRunner, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem, SyncTaskService
 
 
@@ -57,12 +58,57 @@ class MarkdownReplaceRequest(BaseModel):
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 service = SyncTaskService()
+runner = SyncTaskRunner()
+
+
+class SyncFileEventResponse(BaseModel):
+    path: str
+    status: str
+    message: str | None = None
+
+    @classmethod
+    def from_event(cls, event: SyncFileEvent) -> "SyncFileEventResponse":
+        return cls(path=event.path, status=event.status, message=event.message)
+
+
+class SyncTaskStatusResponse(BaseModel):
+    task_id: str
+    state: str
+    started_at: float | None = None
+    finished_at: float | None = None
+    total_files: int
+    completed_files: int
+    failed_files: int
+    skipped_files: int
+    last_error: str | None = None
+    last_files: list[SyncFileEventResponse] = Field(default_factory=list)
+
+    @classmethod
+    def from_status(cls, status: SyncTaskStatus) -> "SyncTaskStatusResponse":
+        return cls(
+            task_id=status.task_id,
+            state=status.state,
+            started_at=status.started_at,
+            finished_at=status.finished_at,
+            total_files=status.total_files,
+            completed_files=status.completed_files,
+            failed_files=status.failed_files,
+            skipped_files=status.skipped_files,
+            last_error=status.last_error,
+            last_files=[SyncFileEventResponse.from_event(evt) for evt in status.last_files],
+        )
 
 
 @router.get("/tasks", response_model=list[SyncTaskResponse])
 async def list_tasks() -> list[SyncTaskResponse]:
     items = await service.list_tasks()
     return [SyncTaskResponse.from_item(item) for item in items]
+
+
+@router.get("/tasks/status", response_model=list[SyncTaskStatusResponse])
+async def list_task_status() -> list[SyncTaskStatusResponse]:
+    statuses = runner.list_statuses()
+    return [SyncTaskStatusResponse.from_status(status) for status in statuses.values()]
 
 
 @router.post("/tasks", response_model=SyncTaskResponse)
@@ -75,6 +121,8 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
         sync_mode=payload.sync_mode.value,
         enabled=payload.enabled,
     )
+    if item.enabled and item.sync_mode == SyncMode.download_only.value:
+        runner.start_task(item)
     return SyncTaskResponse.from_item(item)
 
 
@@ -91,7 +139,35 @@ async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskR
     )
     if not item:
         raise HTTPException(status_code=404, detail="Task not found")
+    if payload.enabled is False:
+        runner.cancel_task(task_id)
+    if item.enabled and item.sync_mode == SyncMode.download_only.value:
+        runner.start_task(item)
     return SyncTaskResponse.from_item(item)
+
+
+@router.delete("/tasks/{task_id}")
+async def delete_task(task_id: str) -> dict:
+    runner.cancel_task(task_id)
+    deleted = await service.delete_task(task_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"status": "deleted"}
+
+
+@router.post("/tasks/{task_id}/run", response_model=SyncTaskStatusResponse)
+async def run_task(task_id: str) -> SyncTaskStatusResponse:
+    item = await service.get_task(task_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Task not found")
+    status = runner.start_task(item)
+    return SyncTaskStatusResponse.from_status(status)
+
+
+@router.get("/tasks/{task_id}/status", response_model=SyncTaskStatusResponse)
+async def get_task_status(task_id: str) -> SyncTaskStatusResponse:
+    status = runner.get_status(task_id)
+    return SyncTaskStatusResponse.from_status(status)
 
 
 @router.post("/markdown/replace")

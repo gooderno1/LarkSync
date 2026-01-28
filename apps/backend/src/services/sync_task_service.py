@@ -102,6 +102,15 @@ class SyncTaskService:
             await session.commit()
             return self._to_item(record)
 
+    async def delete_task(self, task_id: str) -> bool:
+        async with self._session_maker() as session:
+            record = await session.get(SyncTask, task_id)
+            if not record:
+                return False
+            await session.delete(record)
+            await session.commit()
+            return True
+
     @staticmethod
     def _to_item(record: SyncTask) -> SyncTaskItem:
         return SyncTaskItem(
