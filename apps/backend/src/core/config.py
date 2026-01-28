@@ -74,6 +74,18 @@ class ConfigManager:
         self._config = self._load_config()
         return self._config
 
+    @property
+    def config_path(self) -> Path:
+        return self._config_path
+
+    def save_config(self, data: dict[str, object]) -> AppConfig:
+        self._config_path.parent.mkdir(parents=True, exist_ok=True)
+        self._config_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        self._config = self._load_config()
+        return self._config
+
     def _load_config(self) -> AppConfig:
         data: dict[str, object] = {}
         if self._config_path.exists():

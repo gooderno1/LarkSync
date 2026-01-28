@@ -13,8 +13,10 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, "")
       },
       "/auth": "http://localhost:8000",
+      "/config": "http://localhost:8000",
       "/drive": "http://localhost:8000",
       "/conflicts": "http://localhost:8000",
+      "/sync": "http://localhost:8000",
       "/watcher": "http://localhost:8000",
       "/health": "http://localhost:8000",
       "/ws": {

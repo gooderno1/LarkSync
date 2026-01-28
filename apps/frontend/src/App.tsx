@@ -122,6 +122,17 @@ export default function App() {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [configAuthorizeUrl, setConfigAuthorizeUrl] = useState("");
+  const [configTokenUrl, setConfigTokenUrl] = useState("");
+  const [configClientId, setConfigClientId] = useState("");
+  const [configClientSecret, setConfigClientSecret] = useState("");
+  const [configRedirectUri, setConfigRedirectUri] = useState("");
+  const [configScopes, setConfigScopes] = useState("");
+  const [configSyncMode, setConfigSyncMode] = useState("bidirectional");
+  const [configTokenStore, setConfigTokenStore] = useState("keyring");
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [configStatus, setConfigStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -230,6 +241,68 @@ export default function App() {
       })
       .then(() => loadTasks())
       .catch((err: Error) => setTaskError(err.message));
+  };
+
+  const loadConfig = () => {
+    setConfigLoading(true);
+    setConfigError(null);
+    fetch(apiUrl("/config"))
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "加载配置失败");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setConfigAuthorizeUrl(data.auth_authorize_url || "");
+        setConfigTokenUrl(data.auth_token_url || "");
+        setConfigClientId(data.auth_client_id || "");
+        setConfigRedirectUri(data.auth_redirect_uri || "");
+        setConfigScopes(Array.isArray(data.auth_scopes) ? data.auth_scopes.join(", ") : "");
+        setConfigSyncMode(data.sync_mode || "bidirectional");
+        setConfigTokenStore(data.token_store || "keyring");
+      })
+      .catch((err: Error) => setConfigError(err.message))
+      .finally(() => setConfigLoading(false));
+  };
+
+  const saveConfig = () => {
+    setConfigLoading(true);
+    setConfigError(null);
+    setConfigStatus(null);
+    const scopes = configScopes
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    fetch(apiUrl("/config"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        auth_authorize_url: configAuthorizeUrl.trim() || null,
+        auth_token_url: configTokenUrl.trim() || null,
+        auth_client_id: configClientId.trim() || null,
+        auth_client_secret: configClientSecret.trim() || null,
+        auth_redirect_uri: configRedirectUri.trim() || null,
+        auth_scopes: scopes.length > 0 ? scopes : null,
+        sync_mode: configSyncMode,
+        token_store: configTokenStore
+      })
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "保存配置失败");
+        }
+        return res.json();
+      })
+      .then(() => {
+        setConfigClientSecret("");
+        setConfigStatus("已保存");
+        loadConfig();
+      })
+      .catch((err: Error) => setConfigError(err.message))
+      .finally(() => setConfigLoading(false));
   };
 
   const uploadMarkdown = () => {
@@ -358,6 +431,10 @@ export default function App() {
     loadTasks();
   }, []);
 
+  useEffect(() => {
+    loadConfig();
+  }, []);
+
   const startWatcher = () => {
     if (!watchPath.trim()) {
       setWatcherError("请先填写需要监听的本地路径。");
@@ -441,6 +518,112 @@ export default function App() {
             <li>LARKSYNC_AUTH_REDIRECT_URI</li>
           </ul>
         </div>
+
+        <section className="mt-10 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold">OAuth 配置向导</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                通过网页填写 App ID/Secret 与回调地址，保存到本地配置文件。
+              </p>
+            </div>
+            <button
+              className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={configLoading}
+              onClick={loadConfig}
+              type="button"
+            >
+              {configLoading ? "加载中..." : "刷新配置"}
+            </button>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="授权地址（Authorize URL）"
+                value={configAuthorizeUrl}
+                onChange={(event) => setConfigAuthorizeUrl(event.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="Token 地址（Access Token URL）"
+                value={configTokenUrl}
+                onChange={(event) => setConfigTokenUrl(event.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="App ID"
+                value={configClientId}
+                onChange={(event) => setConfigClientId(event.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="App Secret（留空则不更新）"
+                value={configClientSecret}
+                onChange={(event) => setConfigClientSecret(event.target.value)}
+                type="password"
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="回调地址，例如 http://localhost:8000/auth/callback"
+                value={configRedirectUri}
+                onChange={(event) => setConfigRedirectUri(event.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="权限 scopes，逗号分隔"
+                value={configScopes}
+                onChange={(event) => setConfigScopes(event.target.value)}
+              />
+              <div className="flex flex-wrap gap-3">
+                <select
+                  className="rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none"
+                  value={configSyncMode}
+                  onChange={(event) => setConfigSyncMode(event.target.value)}
+                >
+                  <option value="bidirectional">双向同步</option>
+                  <option value="download_only">仅下载</option>
+                  <option value="upload_only">仅上传</option>
+                </select>
+                <select
+                  className="rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none"
+                  value={configTokenStore}
+                  onChange={(event) => setConfigTokenStore(event.target.value)}
+                >
+                  <option value="keyring">keyring</option>
+                  <option value="memory">memory</option>
+                </select>
+              </div>
+              <button
+                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={saveConfig}
+                disabled={configLoading}
+                type="button"
+              >
+                {configLoading ? "保存中..." : "保存配置"}
+              </button>
+              {configStatus ? (
+                <p className="text-sm text-emerald-300">{configStatus}</p>
+              ) : null}
+              {configError ? (
+                <p className="text-sm text-rose-300">错误：{configError}</p>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+              <p className="text-slate-200">获取参数指引</p>
+              <ol className="mt-3 list-decimal space-y-2 pl-4 text-xs text-slate-400">
+                <li>登录飞书开放平台，创建“企业自建应用”。</li>
+                <li>在“应用凭证”页面获取 App ID 与 App Secret。</li>
+                <li>在“安全设置/OAuth 回调”中添加回调地址。</li>
+                <li>在“权限管理”中添加所需权限 scopes。</li>
+                <li>在 OAuth2 文档中获取授权地址与 Token 地址。</li>
+              </ol>
+              <p className="mt-3 text-xs text-slate-500">
+                提示：生产回调一般为 http://localhost:8080/api/auth/callback。
+              </p>
+            </div>
+          </div>
+        </section>
 
         <section className="mt-16 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
           <div className="flex flex-wrap items-center justify-between gap-4">

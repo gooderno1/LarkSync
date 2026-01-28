@@ -13,6 +13,27 @@
   - 开发依赖：`python -m pip install -r requirements-dev.txt`
 
 ## 3. 配置飞书 OAuth
+### 3.0 网页配置向导（推荐）
+在前端首页的“OAuth 配置向导”中填写并保存以下信息：
+- 授权地址（Authorize URL）
+- Token 地址（Access Token URL）
+- App ID / App Secret
+- 回调地址（Redirect URI）
+- 权限 scopes（逗号分隔）
+
+参数获取步骤：
+1) 登录飞书开放平台，创建企业自建应用。
+2) 在“应用凭证”页面获取 App ID 与 App Secret。
+3) 在“安全设置 / OAuth 回调”中添加回调地址：  
+   - 开发：`http://localhost:8000/auth/callback`  
+   - 生产：`http://localhost:8080/api/auth/callback`
+4) 在“权限管理”中添加 scopes（建议最少）：  
+   - `drive:drive`  
+   - `docs:doc`  
+   - `drive:meta`  
+   - `contact:contact.base:readonly`
+5) 在飞书 OAuth2 文档中查看授权地址与 Token 地址，并填入上方表单。
+
 ### 3.1 data/config.json（推荐）
 在 `data/config.json` 中填入飞书应用信息：
 

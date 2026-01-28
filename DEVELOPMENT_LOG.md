@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.19-dev.1 (2026-01-28)
+- 目标：提供网页配置 OAuth 参数并补充获取指南。
+- 结果：新增 /config API；前端 OAuth 配置向导；补充配置获取步骤说明；Vite 代理新增 /config 与 /sync；新增配置 API 单测。
+- 测试：`python -m pytest`（apps/backend）；`npm run build`（apps/frontend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.18-dev.1 (2026-01-28)
 - 目标：修复登录 500 与数据库未初始化导致的接口异常。
 - 结果：/auth/login 捕获 AuthError 返回 400；启动时自动初始化 DB；新增登录 API 测试。

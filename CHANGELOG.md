@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-28] v0.1.19-dev.1 feat(config): 网页配置 OAuth 参数向导
 [2026-01-28] v0.1.18-dev.1 fix(auth-db): 登录错误返回 400 + 启动时初始化数据库
 [2026-01-28] v0.1.17-dev.1 fix(dev): npm run dev 使用 python -m uvicorn
 [2026-01-28] v0.1.16-dev.1 feat(ui): 手动上传 Markdown 入口
