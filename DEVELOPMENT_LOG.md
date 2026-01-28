@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.22-dev.1 (2026-01-28)
+- 目标：完善 OAuth 配置向导说明并避免本地密钥误提交。
+- 结果：优化前端向导提示；更新 `docs/OAUTH_GUIDE.md` 详细步骤；`.gitignore` 忽略 `data/config.json`。
+- 测试：`npm run build`（apps/frontend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.21-dev.1 (2026-01-28)
 - 目标：修复 Token 响应缺少 access_token 的解析问题。
 - 结果：AuthService 兼容 `code/msg/data` 包装格式；新增单测覆盖。

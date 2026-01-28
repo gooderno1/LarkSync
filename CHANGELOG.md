@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-28] v0.1.22-dev.1 docs(oauth): 详细配置向导说明 + 忽略本地密钥配置
 [2026-01-28] v0.1.21-dev.1 fix(auth): 兼容飞书 Token 包装响应
 [2026-01-28] v0.1.20-dev.1 docs(oauth): 完善 OAuth 配置指南与向导说明
 [2026-01-28] v0.1.19-dev.1 feat(config): 网页配置 OAuth 参数向导

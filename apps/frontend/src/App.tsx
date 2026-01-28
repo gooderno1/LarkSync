@@ -620,11 +620,12 @@ export default function App() {
                 <li>保存配置后，再点击“登录飞书”完成授权。</li>
               </ol>
               <div className="mt-4 space-y-2 text-xs text-slate-500">
-                <p>常用地址示例：</p>
+                <p>常用地址示例（仅示例，以官方文档为准）：</p>
                 <p>授权地址：`https://open.feishu.cn/open-apis/authen/v1/index`</p>
                 <p>Token 地址：`https://open.feishu.cn/open-apis/authen/v1/access_token`</p>
                 <p>开发回调：`http://localhost:8000/auth/callback`</p>
                 <p>生产回调：`http://localhost:8080/api/auth/callback`</p>
+                <p>详细步骤见 `docs/OAUTH_GUIDE.md`。</p>
               </div>
             </div>
           </div>
