@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.26-dev.1 (2026-01-28)
+- 目标：增强 OAuth Token 错误可读性，避免 500 且便于定位。
+- 结果：Token 请求失败时输出 HTTP 响应详情；补充网络错误与非 JSON 响应处理；新增单测覆盖。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.25-dev.1 (2026-01-28)
 - 目标：修复飞书 OAuth Token 请求缺失 app_id/app_secret 的问题。
 - 结果：授权地址参数改为 app_id；Token 交换与刷新改为 app_id/app_secret；新增凭证缺失单测。

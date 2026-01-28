@@ -1,10 +1,28 @@
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 
 from src.core.config import AppConfig
 from src.core.security import MemoryTokenStore, TokenData
 from src.services.auth_service import AuthError, AuthService
+
+
+class FakeAsyncClient:
+    def __init__(self, response: httpx.Response | None = None, exc: Exception | None = None):
+        self._response = response
+        self._exc = exc
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, url: str, json: dict[str, str]):
+        if self._exc:
+            raise self._exc
+        return self._response
 
 
 def test_build_authorize_url() -> None:
@@ -70,6 +88,70 @@ async def test_refresh_requires_app_credentials() -> None:
 
     with pytest.raises(AuthError):
         await service.refresh()
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_handles_http_error() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    request = httpx.Request("POST", "https://example.com/oauth/token")
+    response = httpx.Response(
+        400,
+        json={"code": 20025, "msg": "missing app id or app secret"},
+        request=request,
+    )
+    client = FakeAsyncClient(response=response)
+    service = AuthService(config=config, token_store=MemoryTokenStore(), http_client=client)
+
+    with pytest.raises(AuthError) as excinfo:
+        await service.exchange_code("code-123")
+
+    assert "missing app id" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_handles_request_error() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    request = httpx.Request("POST", "https://example.com/oauth/token")
+    exc = httpx.RequestError("boom", request=request)
+    client = FakeAsyncClient(exc=exc)
+    service = AuthService(config=config, token_store=MemoryTokenStore(), http_client=client)
+
+    with pytest.raises(AuthError) as excinfo:
+        await service.exchange_code("code-123")
+
+    assert "Token 请求失败" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_handles_non_json_response() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    request = httpx.Request("POST", "https://example.com/oauth/token")
+    response = httpx.Response(200, content=b"not-json", request=request)
+    client = FakeAsyncClient(response=response)
+    service = AuthService(config=config, token_store=MemoryTokenStore(), http_client=client)
+
+    with pytest.raises(AuthError) as excinfo:
+        await service.exchange_code("code-123")
+
+    assert "Token 响应不是 JSON" in str(excinfo.value)
 
 
 def test_parse_token_response_missing_fields() -> None:

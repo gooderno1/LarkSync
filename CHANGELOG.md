@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-28] v0.1.26-dev.1 fix(auth): token 异常转为可读错误
 [2026-01-28] v0.1.25-dev.1 fix(auth): token 请求使用 app_id/app_secret
 [2026-01-28] v0.1.24-dev.1 docs(oauth): 明确向导字段来源与步骤
 [2026-01-28] v0.1.23-dev.1 fix(auth): Token 请求改为 JSON 体

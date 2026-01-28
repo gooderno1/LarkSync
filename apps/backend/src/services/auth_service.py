@@ -32,36 +32,47 @@ class AuthService:
         self._token_store = token_store or get_token_store()
         self._http_client = http_client
 
+    @staticmethod
+    def _require_config(value: str, label: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise AuthError(f"{label} 未配置")
+        return cleaned
+
     def build_authorize_url(self, state: str) -> str:
-        if not self._config.auth_authorize_url:
-            raise AuthError("auth_authorize_url 未配置")
-        if not self._config.auth_client_id:
-            raise AuthError("auth_client_id 未配置")
-        if not self._config.auth_redirect_uri:
-            raise AuthError("auth_redirect_uri 未配置")
+        authorize_url = self._require_config(
+            self._config.auth_authorize_url, "auth_authorize_url"
+        )
+        client_id = self._require_config(self._config.auth_client_id, "auth_client_id")
+        redirect_uri = self._require_config(
+            self._config.auth_redirect_uri, "auth_redirect_uri"
+        )
 
         params = {
-            "app_id": self._config.auth_client_id,
-            "redirect_uri": self._config.auth_redirect_uri,
+            "app_id": client_id,
+            "redirect_uri": redirect_uri,
             "response_type": "code",
             "state": state,
         }
         if self._config.auth_scopes:
             params["scope"] = " ".join(self._config.auth_scopes)
 
-        return f"{self._config.auth_authorize_url}?{urlencode(params)}"
+        return f"{authorize_url}?{urlencode(params)}"
 
     async def exchange_code(self, code: str) -> TokenData:
-        if not self._config.auth_client_id:
-            raise AuthError("auth_client_id 未配置")
-        if not self._config.auth_client_secret:
-            raise AuthError("auth_client_secret 未配置")
+        client_id = self._require_config(self._config.auth_client_id, "auth_client_id")
+        client_secret = self._require_config(
+            self._config.auth_client_secret, "auth_client_secret"
+        )
+        redirect_uri = self._require_config(
+            self._config.auth_redirect_uri, "auth_redirect_uri"
+        )
         payload = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": self._config.auth_redirect_uri,
-            "app_id": self._config.auth_client_id,
-            "app_secret": self._config.auth_client_secret,
+            "redirect_uri": redirect_uri,
+            "app_id": client_id,
+            "app_secret": client_secret,
         }
         return await self._request_token(payload)
 
@@ -69,15 +80,15 @@ class AuthService:
         current = self._token_store.get()
         if not current:
             raise AuthError("缺少 refresh_token，请重新登录")
-        if not self._config.auth_client_id:
-            raise AuthError("auth_client_id 未配置")
-        if not self._config.auth_client_secret:
-            raise AuthError("auth_client_secret 未配置")
+        client_id = self._require_config(self._config.auth_client_id, "auth_client_id")
+        client_secret = self._require_config(
+            self._config.auth_client_secret, "auth_client_secret"
+        )
         payload = {
             "grant_type": "refresh_token",
             "refresh_token": current.refresh_token,
-            "app_id": self._config.auth_client_id,
-            "app_secret": self._config.auth_client_secret,
+            "app_id": client_id,
+            "app_secret": client_secret,
         }
         return await self._request_token(payload)
 
@@ -93,13 +104,22 @@ class AuthService:
         return token.access_token
 
     async def _request_token(self, payload: dict[str, str]) -> TokenData:
-        if not self._config.auth_token_url:
-            raise AuthError("auth_token_url 未配置")
+        token_url = self._require_config(self._config.auth_token_url, "auth_token_url")
 
         async with self._get_client() as client:
-            response = await client.post(self._config.auth_token_url, json=payload)
-            response.raise_for_status()
-            data = response.json()
+            try:
+                response = await client.post(token_url, json=payload)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                message = self._format_http_error(exc.response)
+                raise AuthError(message) from exc
+            except httpx.RequestError as exc:
+                raise AuthError(f"Token 请求失败：{exc}") from exc
+            try:
+                data = response.json()
+            except ValueError as exc:
+                snippet = response.text[:200]
+                raise AuthError(f"Token 响应不是 JSON：{snippet}") from exc
 
         token = self._parse_token_response(data)
         expires_at = None
@@ -142,6 +162,30 @@ class AuthService:
             refresh_token=refresh_token,
             expires_in=expires_value,
         )
+
+    def _format_http_error(self, response: httpx.Response) -> str:
+        message = f"Token 请求失败（HTTP {response.status_code}）"
+        try:
+            payload = response.json()
+        except ValueError:
+            body = response.text.strip()
+            return f"{message}：{body}" if body else message
+
+        if isinstance(payload, dict):
+            code = payload.get("code")
+            msg = payload.get("msg") or payload.get("message")
+            error = payload.get("error") or payload.get("error_description")
+            detail_parts: list[str] = []
+            if msg:
+                detail_parts.append(str(msg))
+            if error:
+                detail_parts.append(str(error))
+            if code is not None:
+                detail_parts.append(f"code={code}")
+            if detail_parts:
+                return f"{message}：{' '.join(detail_parts)}"
+
+        return f"{message}：{payload}"
 
     def _get_client(self) -> httpx.AsyncClient:
         return self._http_client or httpx.AsyncClient(timeout=15.0)
