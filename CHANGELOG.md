@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-28] v0.1.14-dev.1 feat(docx-image): Markdown 图片上传与使用教程文档
 [2026-01-27] v0.1.13-dev.1 feat(docker): 生产 Dockerfile 与 Nginx 反向代理
 [2026-01-27] v0.1.12-dev.1 feat(conflict): 冲突检测接口与前端冲突中心
 [2026-01-27] v0.1.11-dev.1 feat(upload): 非 MD 文件上传与 SyncMapping 记录

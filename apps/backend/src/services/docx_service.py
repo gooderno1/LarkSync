@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable
 
 from src.services.feishu_client import FeishuClient
+from src.services.media_uploader import MediaUploader
 
 
 class DocxServiceError(RuntimeError):
@@ -17,24 +20,50 @@ class ConvertResult:
     blocks: list[dict[str, Any]]
 
 
+@dataclass
+class MarkdownSegment:
+    kind: str
+    value: str
+
+
+_IMAGE_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
+
+
 class DocxService:
     def __init__(
         self,
         client: FeishuClient | None = None,
         base_url: str = "https://open.feishu.cn",
+        media_uploader: MediaUploader | None = None,
+        image_parent_type: str = "docx_image",
     ) -> None:
         self._client = client or FeishuClient()
         self._base_url = base_url.rstrip("/")
+        self._image_parent_type = image_parent_type
+        self._media_uploader = media_uploader or MediaUploader(
+            client=self._client,
+            base_url=self._base_url,
+            default_parent_type=image_parent_type,
+        )
 
     async def replace_document_content(
-        self, document_id: str, markdown: str, user_id_type: str = "open_id"
+        self,
+        document_id: str,
+        markdown: str,
+        user_id_type: str = "open_id",
+        base_path: str | Path | None = None,
     ) -> None:
         items = await self.list_blocks(document_id, user_id_type=user_id_type)
         root_block = self._find_root_block(items)
         if not root_block:
             raise DocxServiceError("未找到文档根 Block")
 
-        convert = await self.convert_markdown(markdown, user_id_type=user_id_type)
+        convert = await self.convert_markdown_with_images(
+            markdown,
+            document_id=document_id,
+            user_id_type=user_id_type,
+            base_path=base_path,
+        )
 
         children = root_block.get("children") or []
         if children:
@@ -69,6 +98,50 @@ class DocxService:
         blocks = data.get("blocks")
         if not isinstance(first_level_block_ids, list) or not isinstance(blocks, list):
             raise DocxServiceError("转换接口响应缺少 blocks 信息")
+        return ConvertResult(
+            first_level_block_ids=first_level_block_ids,
+            blocks=blocks,
+        )
+
+    async def convert_markdown_with_images(
+        self,
+        markdown: str,
+        document_id: str,
+        user_id_type: str = "open_id",
+        base_path: str | Path | None = None,
+    ) -> ConvertResult:
+        segments = self._split_markdown_images(markdown)
+        if not any(segment.kind == "image" for segment in segments):
+            return await self.convert_markdown(markdown, user_id_type=user_id_type)
+
+        first_level_block_ids: list[str] = []
+        blocks: list[dict[str, Any]] = []
+        for segment in segments:
+            if segment.kind == "text":
+                if not segment.value.strip():
+                    continue
+                convert = await self.convert_markdown(
+                    segment.value, user_id_type=user_id_type
+                )
+                first_level_block_ids.extend(convert.first_level_block_ids)
+                blocks.extend(convert.blocks)
+                continue
+            image_path = self._resolve_image_path(segment.value, base_path)
+            image_token = await self._media_uploader.upload_image(
+                image_path,
+                parent_node=document_id,
+                parent_type=self._image_parent_type,
+            )
+            image_block_id = f"img_{uuid.uuid4().hex}"
+            first_level_block_ids.append(image_block_id)
+            blocks.append(
+                {
+                    "block_id": image_block_id,
+                    "block_type": 27,
+                    "image": {"token": image_token},
+                }
+            )
+
         return ConvertResult(
             first_level_block_ids=first_level_block_ids,
             blocks=blocks,
@@ -205,7 +278,65 @@ class DocxService:
             raise DocxServiceError("飞书 API 响应格式错误")
         return payload
 
+    @staticmethod
+    def _split_markdown_images(markdown: str) -> list[MarkdownSegment]:
+        segments: list[MarkdownSegment] = []
+        cursor = 0
+        for match in _IMAGE_PATTERN.finditer(markdown):
+            before = markdown[cursor : match.start()]
+            if before:
+                _append_text_segment(segments, before)
+            raw = match.group(0)
+            ref = _normalize_image_ref(match.group(1))
+            if _is_remote_image(ref):
+                _append_text_segment(segments, raw)
+            else:
+                segments.append(MarkdownSegment(kind="image", value=ref))
+            cursor = match.end()
+        tail = markdown[cursor:]
+        if tail:
+            _append_text_segment(segments, tail)
+        if not segments:
+            segments.append(MarkdownSegment(kind="text", value=markdown))
+        return segments
+
+    @staticmethod
+    def _resolve_image_path(ref: str, base_path: str | Path | None) -> Path:
+        normalized = ref
+        if ref.lower().startswith("file://"):
+            normalized = ref[7:]
+        path = Path(normalized)
+        if not path.is_absolute() and base_path:
+            base = Path(base_path)
+            if base.is_file():
+                base = base.parent
+            path = base / path
+        return path
+
 
 def _chunked(values: list[str], size: int) -> Iterable[list[str]]:
     for index in range(0, len(values), size):
         yield values[index : index + size]
+
+
+def _append_text_segment(segments: list[MarkdownSegment], text: str) -> None:
+    if segments and segments[-1].kind == "text":
+        segments[-1].value += text
+    else:
+        segments.append(MarkdownSegment(kind="text", value=text))
+
+
+def _normalize_image_ref(raw: str) -> str:
+    ref = raw.strip()
+    if ref.startswith("<") and ref.endswith(">"):
+        ref = ref[1:-1].strip()
+    if " " in ref:
+        ref = ref.split()[0]
+    return ref
+
+
+def _is_remote_image(ref: str) -> bool:
+    lowered = ref.lower()
+    return lowered.startswith("http://") or lowered.startswith("https://") or lowered.startswith(
+        "data:"
+    )

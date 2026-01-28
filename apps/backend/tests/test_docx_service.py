@@ -138,3 +138,71 @@ async def test_replace_document_content_creates_nested_children() -> None:
     assert client.requests[3][1].endswith(
         "/open-apis/docx/v1/documents/doc456/blocks/np1/children"
     )
+
+
+@pytest.mark.asyncio
+async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
+    responses = [
+        {
+            "code": 0,
+            "data": {
+                "items": [
+                    {"block_id": "root", "block_type": 1, "children": ["c1"]}
+                ],
+                "has_more": False,
+            },
+        },
+        {
+            "code": 0,
+            "data": {
+                "first_level_block_ids": ["t1"],
+                "blocks": [
+                    {"block_id": "t1", "block_type": 2, "text": {"elements": []}}
+                ],
+            },
+        },
+        {"code": 0, "data": {"file_token": "img-token"}},
+        {
+            "code": 0,
+            "data": {
+                "first_level_block_ids": ["t2"],
+                "blocks": [
+                    {"block_id": "t2", "block_type": 2, "text": {"elements": []}}
+                ],
+            },
+        },
+        {"code": 0, "data": {"document_revision_id": 1, "client_token": "t"}},
+        {
+            "code": 0,
+            "data": {
+                "children": [
+                    {"block_id": "n1"},
+                    {"block_id": "n2"},
+                    {"block_id": "n3"},
+                ]
+            },
+        },
+    ]
+    client = FakeClient(responses)
+    service = DocxService(client=client)
+
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir()
+    image_path = assets_dir / "logo.png"
+    image_path.write_bytes(b"img")
+
+    markdown = "段落一\n\n![](assets/logo.png)\n\n段落二"
+
+    await service.replace_document_content(
+        "doc789", markdown, base_path=tmp_path.as_posix()
+    )
+
+    assert client.requests[1][1].endswith("/open-apis/docx/documents/blocks/convert")
+    assert client.requests[2][1].endswith("/open-apis/drive/v1/medias/upload_all")
+    assert client.requests[2][2]["data"]["parent_node"] == "doc789"
+    assert client.requests[2][2]["data"]["parent_type"] == "docx_image"
+
+    create_call = client.requests[5]
+    children_payload = create_call[2]["json"]["children"]
+    assert len(children_payload) == 3
+    assert any(child.get("image", {}).get("token") == "img-token" for child in children_payload)

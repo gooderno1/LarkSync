@@ -16,10 +16,13 @@
 - 非文档下载：提供 Drive 文件下载器，直接写入本地目录
 - 本地监听：Watchdog 防抖监听 + WebSocket 实时事件推送
 - Markdown 转 Docx：调用 Docx Block 接口执行全量覆盖（含 429 指数退避重试）
+- Markdown 图片上传：本地图片自动上传为 Docx 图片块并插入文档
 - 通用文件上传：支持 upload_all / 分片上传，并在本地状态库记录 file_hash 与云端 token
 - 冲突中心：后端冲突标记与前端对比视图，支持“使用本地/云端”决策
 
 ## 本地开发
+### 使用教程
+- 完整使用步骤见 `docs/USAGE.md`，后续功能变更会同步更新。
 ### 依赖安装
 - 根目录：`npm install`（用于并行启动前后端）
 - 前端：`cd apps/frontend` 后执行 `npm install`

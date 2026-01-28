@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.14-dev.1 (2026-01-28)
+- 目标：补齐 Markdown 图片上传链路并落地使用教程文档。
+- 结果：新增 MediaUploader 与 DocxService 图片解析/上传；本地图片自动转 Docx 图片块；新增 `docs/USAGE.md` 教程。
+- 测试：`python -m pytest`（apps/backend）；`npm audit --omit=dev`（apps/frontend）。
+- 问题：图片上传依赖 `base_path` 指定 Markdown 所在目录，目前 UI 尚未暴露该参数。
+
 ## v0.1.13-dev.1 (2026-01-27)
 - 目标：完成 Task 4.2 Docker 生产构建与部署配置。
 - 结果：新增多阶段 Dockerfile、Nginx 反向代理配置与 docker-compose；前端生产环境自动使用 /api 前缀。
