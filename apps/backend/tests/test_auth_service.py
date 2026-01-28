@@ -21,11 +21,55 @@ def test_build_authorize_url() -> None:
     parsed = urlparse(url)
     assert parsed.scheme == "https"
     params = parse_qs(parsed.query)
-    assert params["client_id"] == ["client-123"]
+    assert params["app_id"] == ["client-123"]
     assert params["redirect_uri"] == ["http://localhost/callback"]
     assert params["response_type"] == ["code"]
     assert params["state"] == ["state-xyz"]
     assert params["scope"] == ["scope.read scope.write"]
+
+
+@pytest.mark.asyncio
+async def test_exchange_code_requires_app_credentials() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    service = AuthService(config=config, token_store=MemoryTokenStore())
+
+    with pytest.raises(AuthError):
+        await service.exchange_code("code-123")
+
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    service = AuthService(config=config, token_store=MemoryTokenStore())
+
+    with pytest.raises(AuthError):
+        await service.exchange_code("code-456")
+
+
+@pytest.mark.asyncio
+async def test_refresh_requires_app_credentials() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    store = MemoryTokenStore()
+    store.set(TokenData(access_token="a", refresh_token="r", expires_at=None))
+    service = AuthService(config=config, token_store=store)
+
+    with pytest.raises(AuthError):
+        await service.refresh()
 
 
 def test_parse_token_response_missing_fields() -> None:

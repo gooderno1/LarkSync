@@ -41,7 +41,7 @@ class AuthService:
             raise AuthError("auth_redirect_uri 未配置")
 
         params = {
-            "client_id": self._config.auth_client_id,
+            "app_id": self._config.auth_client_id,
             "redirect_uri": self._config.auth_redirect_uri,
             "response_type": "code",
             "state": state,
@@ -52,12 +52,16 @@ class AuthService:
         return f"{self._config.auth_authorize_url}?{urlencode(params)}"
 
     async def exchange_code(self, code: str) -> TokenData:
+        if not self._config.auth_client_id:
+            raise AuthError("auth_client_id 未配置")
+        if not self._config.auth_client_secret:
+            raise AuthError("auth_client_secret 未配置")
         payload = {
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": self._config.auth_redirect_uri,
-            "client_id": self._config.auth_client_id,
-            "client_secret": self._config.auth_client_secret,
+            "app_id": self._config.auth_client_id,
+            "app_secret": self._config.auth_client_secret,
         }
         return await self._request_token(payload)
 
@@ -65,11 +69,15 @@ class AuthService:
         current = self._token_store.get()
         if not current:
             raise AuthError("缺少 refresh_token，请重新登录")
+        if not self._config.auth_client_id:
+            raise AuthError("auth_client_id 未配置")
+        if not self._config.auth_client_secret:
+            raise AuthError("auth_client_secret 未配置")
         payload = {
             "grant_type": "refresh_token",
             "refresh_token": current.refresh_token,
-            "client_id": self._config.auth_client_id,
-            "client_secret": self._config.auth_client_secret,
+            "app_id": self._config.auth_client_id,
+            "app_secret": self._config.auth_client_secret,
         }
         return await self._request_token(payload)
 

@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.25-dev.1 (2026-01-28)
+- 目标：修复飞书 OAuth Token 请求缺失 app_id/app_secret 的问题。
+- 结果：授权地址参数改为 app_id；Token 交换与刷新改为 app_id/app_secret；新增凭证缺失单测。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.24-dev.1 (2026-01-28)
 - 目标：优化 OAuth 配置向导说明，强调官方文档对齐。
 - 结果：更新 `docs/OAUTH_GUIDE.md` 与向导提示文本。
