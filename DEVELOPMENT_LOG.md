@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.17-dev.1 (2026-01-28)
+- 目标：修复 Windows 下 `npm run dev` 找不到 uvicorn 的问题。
+- 结果：根目录 dev 脚本改为 `python -m uvicorn`，避免 PATH 依赖。
+- 测试：未执行（脚本变更，请按文档自行验证）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.16-dev.1 (2026-01-28)
 - 目标：补充手动上传入口，便于验证图片上传与 Docx 覆盖链路。
 - 结果：前端新增“手动上传 Markdown”表单，支持选择任务或手填 base_path；修正 Vite /api 代理正则；文档同步更新。

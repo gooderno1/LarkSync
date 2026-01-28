@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-28] v0.1.17-dev.1 fix(dev): npm run dev 使用 python -m uvicorn
 [2026-01-28] v0.1.16-dev.1 feat(ui): 手动上传 Markdown 入口
 [2026-01-28] v0.1.16-dev.1 fix(vite): 修正 /api 代理正则
 [2026-01-28] v0.1.15-dev.1 feat(sync-task): 同步任务配置向导与冲突持久化
