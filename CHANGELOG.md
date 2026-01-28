@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-01-28] v0.1.16-dev.1 feat(ui): 手动上传 Markdown 入口
+[2026-01-28] v0.1.16-dev.1 fix(vite): 修正 /api 代理正则
 [2026-01-28] v0.1.15-dev.1 feat(sync-task): 同步任务配置向导与冲突持久化
 [2026-01-28] v0.1.14-dev.1 feat(docx-image): Markdown 图片上传与使用教程文档
 [2026-01-27] v0.1.13-dev.1 feat(docker): 生产 Dockerfile 与 Nginx 反向代理

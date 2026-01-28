@@ -10,7 +10,7 @@ export default defineConfig({
         target: "http://localhost:8000",
         changeOrigin: true,
         ws: true,
-        rewrite: (path) => path.replace(/^\\/api/, "")
+        rewrite: (path) => path.replace(/^\/api/, "")
       },
       "/auth": "http://localhost:8000",
       "/drive": "http://localhost:8000",

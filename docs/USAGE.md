@@ -102,7 +102,7 @@
 - 建议使用相对路径，并确保 `base_path` 指向 Markdown 文件所在目录（可在同步任务配置中填写）。
 
 ### 6.1 手动触发 Markdown 替换上传
-可用接口触发 Markdown 全量覆盖上传（用于测试图片上传链路）：  
+前端“手动上传 Markdown”区域支持直接触发上传；也可用接口触发 Markdown 全量覆盖上传（用于测试图片上传链路）：  
 `POST /sync/markdown/replace`
 
 请求示例：

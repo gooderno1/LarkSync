@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.16-dev.1 (2026-01-28)
+- 目标：补充手动上传入口，便于验证图片上传与 Docx 覆盖链路。
+- 结果：前端新增“手动上传 Markdown”表单，支持选择任务或手填 base_path；修正 Vite /api 代理正则；文档同步更新。
+- 测试：`npm run build`（apps/frontend）。
+- 问题：手动上传目前仅前端入口，后续可与任务触发器合并。
+
 ## v0.1.15-dev.1 (2026-01-28)
 - 目标：同步任务配置向导、冲突持久化、base_path 接入。
 - 结果：新增 SyncTask/ConflictRecord 数据表与服务；/sync/tasks 与 /sync/markdown/replace 接口；前端同步任务配置 UI；冲突记录持久化到 SQLite。

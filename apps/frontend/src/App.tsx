@@ -1,10 +1,5 @@
 import { useEffect, useState } from "react";
 
-const statusText: Record<boolean, string> = {
-  true: "已连接",
-  false: "未连接"
-};
-
 type ShortcutInfo = {
   target_token: string;
   target_type: string;
@@ -120,6 +115,13 @@ export default function App() {
   const [taskCloudToken, setTaskCloudToken] = useState("");
   const [taskSyncMode, setTaskSyncMode] = useState("bidirectional");
   const [taskEnabled, setTaskEnabled] = useState(true);
+  const [uploadDocumentId, setUploadDocumentId] = useState("");
+  const [uploadMarkdownPath, setUploadMarkdownPath] = useState("");
+  const [uploadTaskId, setUploadTaskId] = useState("");
+  const [uploadBasePath, setUploadBasePath] = useState("");
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -230,6 +232,37 @@ export default function App() {
       .catch((err: Error) => setTaskError(err.message));
   };
 
+  const uploadMarkdown = () => {
+    if (!uploadDocumentId.trim() || !uploadMarkdownPath.trim()) {
+      setUploadError("请填写文档 token 与 Markdown 路径。");
+      return;
+    }
+    setUploadLoading(true);
+    setUploadError(null);
+    setUploadStatus(null);
+    fetch(apiUrl("/sync/markdown/replace"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        document_id: uploadDocumentId.trim(),
+        markdown_path: uploadMarkdownPath.trim(),
+        task_id: uploadTaskId.trim() || null,
+        base_path: uploadBasePath.trim() || null
+      })
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "上传失败");
+        }
+        return res.json();
+      })
+      .then(() => {
+        setUploadStatus("上传完成");
+      })
+      .catch((err: Error) => setUploadError(err.message))
+      .finally(() => setUploadLoading(false));
+  };
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -371,7 +404,7 @@ export default function App() {
         <p className="mt-4 max-w-2xl text-base text-slate-300">
           当前状态：
           <span className="ml-2 font-medium text-white">
-            {loading ? "检测中..." : statusText[connected]}
+            {loading ? "检测中..." : connected ? "已连接" : "未连接"}
           </span>
         </p>
         {expiresAt ? (
@@ -527,7 +560,76 @@ export default function App() {
           </div>
         </section>
 
-        <section className="mt-16 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+        <section className="mt-12 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold">手动上传 Markdown</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                用于快速验证图片上传与 Docx 全量覆盖链路。
+              </p>
+            </div>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="Docx 文档 token"
+                value={uploadDocumentId}
+                onChange={(event) => setUploadDocumentId(event.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="Markdown 文件路径，例如 C:\\\\Docs\\\\note.md"
+                value={uploadMarkdownPath}
+                onChange={(event) => setUploadMarkdownPath(event.target.value)}
+              />
+              <select
+                className="rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none"
+                value={uploadTaskId}
+                onChange={(event) => setUploadTaskId(event.target.value)}
+              >
+                <option value="">选择任务（可选）</option>
+                {tasks.map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {task.name || task.local_path}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="base_path（可选）"
+                value={uploadBasePath}
+                onChange={(event) => setUploadBasePath(event.target.value)}
+              />
+              <button
+                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={uploadMarkdown}
+                disabled={uploadLoading}
+                type="button"
+              >
+                {uploadLoading ? "上传中..." : "开始上传"}
+              </button>
+              {uploadStatus ? (
+                <p className="text-sm text-emerald-300">{uploadStatus}</p>
+              ) : null}
+              {uploadError ? (
+                <p className="text-sm text-rose-300">错误：{uploadError}</p>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+              <p className="text-slate-400">
+                说明：
+              </p>
+              <ul className="mt-3 space-y-2 text-xs text-slate-400">
+                <li>如果选择任务，后端会优先使用任务的 base_path。</li>
+                <li>未选择任务时，可手动填写 base_path（Markdown 所在目录）。</li>
+                <li>上传会执行 Docx 全量覆盖，请谨慎操作。</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-12 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold">云端目录树</h2>
