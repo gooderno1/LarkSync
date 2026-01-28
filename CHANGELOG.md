@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-28] v0.1.28-dev.1 feat(ui): 同步任务支持目录选择器 + 明亮主题
 [2026-01-28] v0.1.27-dev.1 fix(auth): 回调后自动跳转回前端
 [2026-01-28] v0.1.26-dev.1 fix(auth): token 异常转为可读错误
 [2026-01-28] v0.1.25-dev.1 fix(auth): token 请求使用 app_id/app_secret

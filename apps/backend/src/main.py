@@ -9,6 +9,7 @@ from src.api import (
     conflicts_router,
     drive_router,
     events_router,
+    system_router,
     sync_router,
     watcher_router,
 )
@@ -32,6 +33,7 @@ app.include_router(drive_router)
 app.include_router(watcher_router)
 app.include_router(events_router)
 app.include_router(sync_router)
+app.include_router(system_router)
 
 
 @app.on_event("startup")

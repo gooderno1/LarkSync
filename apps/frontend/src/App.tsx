@@ -52,17 +52,39 @@ type SyncTask = {
   updated_at: number;
 };
 
-function TreeNode({ node }: { node: DriveNode }) {
+type CloudSelection = {
+  token: string;
+  name: string;
+  path: string;
+};
+
+type TreeNodeProps = {
+  node: DriveNode;
+  path?: string;
+  selectable?: boolean;
+  selectedToken?: string | null;
+  onSelect?: (selection: CloudSelection) => void;
+};
+
+function TreeNode({
+  node,
+  path = "",
+  selectable = false,
+  selectedToken = null,
+  onSelect
+}: TreeNodeProps) {
   const [open, setOpen] = useState(true);
   const isFolder = node.type === "folder";
   const hasChildren = Boolean(node.children && node.children.length);
+  const currentPath = path ? `${path}/${node.name}` : node.name;
+  const isSelected = selectedToken === node.token;
 
   return (
     <li className="space-y-2">
       <div className="flex items-center gap-2">
         {isFolder ? (
           <button
-            className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 text-xs text-slate-200"
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 text-xs text-slate-700"
             onClick={() => setOpen((prev) => !prev)}
             type="button"
           >
@@ -71,15 +93,47 @@ function TreeNode({ node }: { node: DriveNode }) {
         ) : (
           <span className="text-slate-500">•</span>
         )}
-        <span className="text-sm text-slate-100">{node.name}</span>
-        <span className="rounded-full border border-slate-700 px-2 py-0.5 text-xs uppercase tracking-widest text-slate-400">
+        <button
+          className={`text-left text-sm ${
+            isSelected ? "font-semibold text-emerald-700" : "text-slate-900"
+          }`}
+          disabled={!selectable || !isFolder}
+          onClick={() => {
+            if (!selectable || !isFolder) return;
+            onSelect?.({ token: node.token, name: node.name, path: currentPath });
+          }}
+          type="button"
+        >
+          {node.name}
+        </button>
+        <span className="rounded-full border border-slate-300 px-2 py-0.5 text-xs uppercase tracking-widest text-slate-500">
           {node.type}
         </span>
+        {selectable && isFolder ? (
+          <button
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+              isSelected
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-slate-300 text-slate-600 hover:border-slate-400"
+            }`}
+            onClick={() => onSelect?.({ token: node.token, name: node.name, path: currentPath })}
+            type="button"
+          >
+            选择
+          </button>
+        ) : null}
       </div>
       {isFolder && hasChildren && open ? (
-        <ul className="ml-4 space-y-2 border-l border-slate-800 pl-4">
+        <ul className="ml-4 space-y-2 border-l border-slate-200 pl-4">
           {node.children?.map((child) => (
-            <TreeNode key={child.token} node={child} />
+            <TreeNode
+              key={child.token}
+              node={child}
+              path={currentPath}
+              selectable={selectable}
+              selectedToken={selectedToken}
+              onSelect={onSelect}
+            />
           ))}
         </ul>
       ) : null}
@@ -138,6 +192,9 @@ export default function App() {
   const [configLoading, setConfigLoading] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [configStatus, setConfigStatus] = useState<string | null>(null);
+  const [selectedCloud, setSelectedCloud] = useState<CloudSelection | null>(null);
+  const [folderPickLoading, setFolderPickLoading] = useState(false);
+  const [folderPickError, setFolderPickError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -192,6 +249,34 @@ export default function App() {
       })
       .catch((err: Error) => setTaskError(err.message))
       .finally(() => setTaskLoading(false));
+  };
+
+  const pickLocalFolder = () => {
+    setFolderPickLoading(true);
+    setFolderPickError(null);
+    fetch(apiUrl("/system/select-folder"), { method: "POST" })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "选择文件夹失败");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (data?.path) {
+          setTaskLocalPath(data.path);
+          if (!taskBasePath.trim()) {
+            setTaskBasePath(data.path);
+          }
+        }
+      })
+      .catch((err: Error) => setFolderPickError(err.message))
+      .finally(() => setFolderPickLoading(false));
+  };
+
+  const selectCloudFolder = (selection: CloudSelection) => {
+    setSelectedCloud(selection);
+    setTaskCloudToken(selection.token);
   };
 
   const createTask = () => {
@@ -477,15 +562,19 @@ export default function App() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <main className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-emerald-50 text-slate-900">
       <section className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-start justify-center px-6 py-16">
-        <span className="text-sm uppercase tracking-[0.3em] text-slate-400">
+        <span className="text-sm uppercase tracking-[0.3em] text-slate-600">
           LarkSync OAuth
         </span>
         <h1 className="mt-4 text-4xl font-semibold">飞书账号连接</h1>
-        <p className="mt-4 max-w-2xl text-base text-slate-300">
+        <p className="mt-4 max-w-2xl text-base text-slate-600">
           当前状态：
-          <span className="ml-2 font-medium text-white">
+          <span
+            className={`ml-2 font-medium ${
+              connected ? "text-emerald-700" : "text-rose-600"
+            }`}
+          >
             {loading ? "检测中..." : connected ? "已连接" : "未连接"}
           </span>
         </p>
@@ -496,13 +585,13 @@ export default function App() {
         ) : null}
         <div className="mt-8 flex flex-wrap gap-4">
           <a
-            className="inline-flex items-center justify-center rounded-full border border-slate-500 px-6 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300"
+            className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
             href={loginUrl}
           >
             登录飞书
           </a>
           <button
-            className="inline-flex items-center justify-center rounded-full bg-slate-100 px-6 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white"
+            className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400"
             onClick={() => {
               fetch(apiUrl("/auth/logout"), { method: "POST" }).then(() => {
                 setConnected(false);
@@ -513,7 +602,7 @@ export default function App() {
             断开连接
           </button>
         </div>
-        <div className="mt-10 grid gap-4 text-sm text-slate-400">
+        <div className="mt-10 grid gap-4 text-sm text-slate-600">
           <p>请在环境变量或 data/config.json 中配置 OAuth 参数。</p>
           <ul className="list-disc space-y-1 pl-4">
             <li>LARKSYNC_AUTH_AUTHORIZE_URL</li>
@@ -524,16 +613,16 @@ export default function App() {
           </ul>
         </div>
 
-        <section className="mt-10 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+        <section className="mt-10 w-full rounded-3xl border border-slate-200 bg-white/80 p-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold">OAuth 配置向导</h2>
-              <p className="mt-2 text-sm text-slate-400">
+              <p className="mt-2 text-sm text-slate-600">
                 通过网页填写 App ID/Secret 与回调地址，保存到本地配置文件。
               </p>
             </div>
             <button
-              className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={configLoading}
               onClick={loadConfig}
               type="button"
@@ -544,45 +633,45 @@ export default function App() {
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <div className="space-y-4">
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                 placeholder="授权地址（Authorize URL）"
                 value={configAuthorizeUrl}
                 onChange={(event) => setConfigAuthorizeUrl(event.target.value)}
               />
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                 placeholder="Token 地址（Access Token URL）"
                 value={configTokenUrl}
                 onChange={(event) => setConfigTokenUrl(event.target.value)}
               />
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                 placeholder="App ID"
                 value={configClientId}
                 onChange={(event) => setConfigClientId(event.target.value)}
               />
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                 placeholder="App Secret（留空则不更新）"
                 value={configClientSecret}
                 onChange={(event) => setConfigClientSecret(event.target.value)}
                 type="password"
               />
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                 placeholder="回调地址，例如 http://localhost:8000/auth/callback"
                 value={configRedirectUri}
                 onChange={(event) => setConfigRedirectUri(event.target.value)}
               />
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                 placeholder="权限 scopes，逗号分隔"
                 value={configScopes}
                 onChange={(event) => setConfigScopes(event.target.value)}
               />
               <div className="flex flex-wrap gap-3">
                 <select
-                  className="rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none"
+                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
                   value={configSyncMode}
                   onChange={(event) => setConfigSyncMode(event.target.value)}
                 >
@@ -591,7 +680,7 @@ export default function App() {
                   <option value="upload_only">仅上传</option>
                 </select>
                 <select
-                  className="rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none"
+                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
                   value={configTokenStore}
                   onChange={(event) => setConfigTokenStore(event.target.value)}
                 >
@@ -600,7 +689,7 @@ export default function App() {
                 </select>
               </div>
               <button
-                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={saveConfig}
                 disabled={configLoading}
                 type="button"
@@ -608,15 +697,15 @@ export default function App() {
                 {configLoading ? "保存中..." : "保存配置"}
               </button>
               {configStatus ? (
-                <p className="text-sm text-emerald-300">{configStatus}</p>
+                <p className="text-sm text-emerald-600">{configStatus}</p>
               ) : null}
               {configError ? (
-                <p className="text-sm text-rose-300">错误：{configError}</p>
+                <p className="text-sm text-rose-600">错误：{configError}</p>
               ) : null}
             </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-              <p className="text-slate-200">配置步骤（按顺序）</p>
-              <ol className="mt-3 list-decimal space-y-2 pl-4 text-xs text-slate-400">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+              <p className="text-slate-800">配置步骤（按顺序）</p>
+              <ol className="mt-3 list-decimal space-y-2 pl-4 text-xs text-slate-600">
                 <li>登录飞书开放平台控制台，创建“企业自建应用”。</li>
                 <li>进入“应用凭证”，复制 App ID 与 App Secret。</li>
                 <li>进入“安全设置 / OAuth 回调”，添加回调地址（需与下方填写一致）。</li>
@@ -636,52 +725,108 @@ export default function App() {
           </div>
         </section>
 
-        <section className="mt-16 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+        <section className="mt-16 w-full rounded-3xl border border-slate-200 bg-white/80 p-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold">同步任务配置</h2>
-              <p className="mt-2 text-sm text-slate-400">
-                配置本地目录、云端目录与同步模式，作为后续同步任务的基础。
+              <p className="mt-2 text-sm text-slate-600">
+                先选择本地目录与云端目录，再保存同步任务，确保路径与 token 一致。
               </p>
             </div>
-            <button
-              className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={taskLoading}
-              onClick={loadTasks}
-              type="button"
-            >
-              {taskLoading ? "加载中..." : "刷新任务"}
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={taskLoading}
+                onClick={loadTasks}
+                type="button"
+              >
+                {taskLoading ? "加载中..." : "刷新任务"}
+              </button>
+              <button
+                className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!connected || treeLoading}
+                onClick={loadTree}
+                type="button"
+              >
+                {treeLoading ? "读取中..." : "读取云端目录"}
+              </button>
+            </div>
           </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="space-y-4">
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
-                placeholder="任务名称（可选）"
-                value={taskName}
-                onChange={(event) => setTaskName(event.target.value)}
-              />
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
-                placeholder="本地同步路径，例如 C:\\\\Docs"
-                value={taskLocalPath}
-                onChange={(event) => setTaskLocalPath(event.target.value)}
-              />
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
-                placeholder="Markdown base_path（可选）"
-                value={taskBasePath}
-                onChange={(event) => setTaskBasePath(event.target.value)}
-              />
-              <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
-                placeholder="云端文件夹 token"
-                value={taskCloudToken}
-                onChange={(event) => setTaskCloudToken(event.target.value)}
-              />
-              <div className="flex flex-wrap gap-3">
+          <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">任务名称</label>
+                <input
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-400"
+                  placeholder="例如：个人知识库同步"
+                  value={taskName}
+                  onChange={(event) => setTaskName(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">本地同步路径</label>
+                <div className="flex flex-wrap gap-3">
+                  <input
+                    className="min-w-[240px] flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-400"
+                    placeholder="例如 C:\\\\Docs"
+                    value={taskLocalPath}
+                    onChange={(event) => setTaskLocalPath(event.target.value)}
+                  />
+                  <button
+                    className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={pickLocalFolder}
+                    disabled={folderPickLoading}
+                    type="button"
+                  >
+                    {folderPickLoading ? "选择中..." : "选择本地文件夹"}
+                  </button>
+                </div>
+                {folderPickError ? (
+                  <p className="text-xs text-rose-600">错误：{folderPickError}</p>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Markdown base_path（图片路径基准）
+                </label>
+                <div className="flex flex-wrap gap-3">
+                  <input
+                    className="min-w-[240px] flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-400"
+                    placeholder="可选，建议填本地根目录"
+                    value={taskBasePath}
+                    onChange={(event) => setTaskBasePath(event.target.value)}
+                  />
+                  <button
+                    className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => setTaskBasePath(taskLocalPath)}
+                    disabled={!taskLocalPath.trim()}
+                    type="button"
+                  >
+                    使用本地路径
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">云端文件夹</label>
+                <input
+                  className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-emerald-400"
+                  placeholder="请从右侧目录选择，或手动粘贴 token"
+                  value={taskCloudToken}
+                  onChange={(event) => setTaskCloudToken(event.target.value)}
+                />
+                {selectedCloud ? (
+                  <p className="text-xs text-emerald-700">
+                    已选择：{selectedCloud.path}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    选择后会自动填充云端 token。
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
                 <select
-                  className="rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none"
+                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
                   value={taskSyncMode}
                   onChange={(event) => setTaskSyncMode(event.target.value)}
                 >
@@ -690,7 +835,7 @@ export default function App() {
                   <option value="upload_only">仅上传</option>
                 </select>
                 <button
-                  className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300"
+                  className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400"
                   type="button"
                   onClick={() => setTaskEnabled((prev) => !prev)}
                 >
@@ -698,67 +843,99 @@ export default function App() {
                 </button>
               </div>
               <button
-                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white"
+                className="rounded-full bg-emerald-600 px-6 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
                 onClick={createTask}
                 type="button"
               >
                 保存任务
               </button>
               {taskError ? (
-                <p className="text-sm text-rose-300">错误：{taskError}</p>
+                <p className="text-sm text-rose-600">错误：{taskError}</p>
               ) : null}
             </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-              {tasks.length === 0 ? (
-                <p className="text-slate-500">暂无同步任务。</p>
-              ) : (
-                <ul className="space-y-3">
-                  {tasks.map((task) => (
-                    <li
-                      key={task.id}
-                      className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm text-slate-100">
-                            {task.name || "未命名任务"}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            本地：{task.local_path}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            云端：{task.cloud_folder_token}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            模式：{task.sync_mode}
-                          </p>
-                          {task.base_path ? (
-                            <p className="text-xs text-slate-500">
-                              base_path：{task.base_path}
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      云端目录选择器
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      点击文件夹名称或“选择”即可填充 token。
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 max-h-64 overflow-auto">
+                  {!connected ? (
+                    <p className="text-xs text-slate-500">请先完成登录再读取目录。</p>
+                  ) : treeError ? (
+                    <p className="text-xs text-rose-600">加载失败：{treeError}</p>
+                  ) : tree ? (
+                    <ul className="space-y-3">
+                      <TreeNode
+                        node={tree}
+                        selectable
+                        selectedToken={selectedCloud?.token || null}
+                        onSelect={selectCloudFolder}
+                      />
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-slate-500">尚未读取云端目录。</p>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                {tasks.length === 0 ? (
+                  <p className="text-slate-500">暂无同步任务。</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {tasks.map((task) => (
+                      <li
+                        key={task.id}
+                        className="rounded-xl border border-slate-200 bg-white p-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm text-slate-900">
+                              {task.name || "未命名任务"}
                             </p>
-                          ) : null}
+                            <p className="text-xs text-slate-500">
+                              本地：{task.local_path}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              云端：{task.cloud_folder_token}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              模式：{task.sync_mode}
+                            </p>
+                            {task.base_path ? (
+                              <p className="text-xs text-slate-500">
+                                base_path：{task.base_path}
+                              </p>
+                            ) : null}
+                          </div>
+                          <button
+                            className="rounded-full border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-400"
+                            onClick={() => toggleTask(task)}
+                            type="button"
+                          >
+                            {task.enabled ? "停用" : "启用"}
+                          </button>
                         </div>
-                        <button
-                          className="rounded-full border border-slate-600 px-4 py-2 text-xs font-medium text-slate-100 transition hover:border-slate-300"
-                          onClick={() => toggleTask(task)}
-                          type="button"
-                        >
-                          {task.enabled ? "停用" : "启用"}
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="mt-12 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+        <section className="mt-12 w-full rounded-3xl border border-slate-200 bg-white/80 p-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold">手动上传 Markdown</h2>
-              <p className="mt-2 text-sm text-slate-400">
+              <p className="mt-2 text-sm text-slate-600">
                 用于快速验证图片上传与 Docx 全量覆盖链路。
               </p>
             </div>
@@ -766,19 +943,19 @@ export default function App() {
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <div className="space-y-4">
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                 placeholder="Docx 文档 token"
                 value={uploadDocumentId}
                 onChange={(event) => setUploadDocumentId(event.target.value)}
               />
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                 placeholder="Markdown 文件路径，例如 C:\\\\Docs\\\\note.md"
                 value={uploadMarkdownPath}
                 onChange={(event) => setUploadMarkdownPath(event.target.value)}
               />
               <select
-                className="rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none"
+                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
                 value={uploadTaskId}
                 onChange={(event) => setUploadTaskId(event.target.value)}
               >
@@ -790,13 +967,13 @@ export default function App() {
                 ))}
               </select>
               <input
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
                 placeholder="base_path（可选）"
                 value={uploadBasePath}
                 onChange={(event) => setUploadBasePath(event.target.value)}
               />
               <button
-                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={uploadMarkdown}
                 disabled={uploadLoading}
                 type="button"
@@ -804,17 +981,17 @@ export default function App() {
                 {uploadLoading ? "上传中..." : "开始上传"}
               </button>
               {uploadStatus ? (
-                <p className="text-sm text-emerald-300">{uploadStatus}</p>
+                <p className="text-sm text-emerald-600">{uploadStatus}</p>
               ) : null}
               {uploadError ? (
-                <p className="text-sm text-rose-300">错误：{uploadError}</p>
+                <p className="text-sm text-rose-600">错误：{uploadError}</p>
               ) : null}
             </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-              <p className="text-slate-400">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+              <p className="text-slate-600">
                 说明：
               </p>
-              <ul className="mt-3 space-y-2 text-xs text-slate-400">
+              <ul className="mt-3 space-y-2 text-xs text-slate-600">
                 <li>如果选择任务，后端会优先使用任务的 base_path。</li>
                 <li>未选择任务时，可手动填写 base_path（Markdown 所在目录）。</li>
                 <li>上传会执行 Docx 全量覆盖，请谨慎操作。</li>
@@ -823,43 +1000,11 @@ export default function App() {
           </div>
         </section>
 
-        <section className="mt-12 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-semibold">云端目录树</h2>
-              <p className="mt-2 text-sm text-slate-400">
-                递归展示飞书云空间的文件夹与文档结构。
-              </p>
-            </div>
-            <button
-              className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!connected || treeLoading}
-              onClick={loadTree}
-              type="button"
-            >
-              {treeLoading ? "加载中..." : "刷新目录"}
-            </button>
-          </div>
-          <div className="mt-6">
-            {!connected ? (
-              <p className="text-sm text-slate-500">请先完成登录后再加载目录。</p>
-            ) : treeError ? (
-              <p className="text-sm text-rose-300">加载失败：{treeError}</p>
-            ) : tree ? (
-              <ul className="space-y-3">
-                <TreeNode node={tree} />
-              </ul>
-            ) : (
-              <p className="text-sm text-slate-500">尚未加载目录。</p>
-            )}
-          </div>
-        </section>
-
-        <section className="mt-12 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+        <section className="mt-12 w-full rounded-3xl border border-slate-200 bg-white/80 p-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold">本地文件监听</h2>
-              <p className="mt-2 text-sm text-slate-400">
+              <p className="mt-2 text-sm text-slate-600">
                 监听本地目录变更并通过 WebSocket 推送事件。
               </p>
             </div>
@@ -869,14 +1014,14 @@ export default function App() {
           </div>
           <div className="mt-6 flex flex-col gap-4">
             <input
-              className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+              className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
               placeholder="输入需要监听的本地路径，例如 C:\\\\Docs"
               value={watchPath}
               onChange={(event) => setWatchPath(event.target.value)}
             />
             <div className="flex flex-wrap gap-3">
               <button
-                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={watcherRunning}
                 onClick={startWatcher}
                 type="button"
@@ -884,22 +1029,22 @@ export default function App() {
                 启动监听
               </button>
               <button
-                className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!watcherRunning}
                 onClick={stopWatcher}
                 type="button"
               >
                 停止监听
               </button>
-              <span className="self-center text-sm text-slate-400">
+              <span className="self-center text-sm text-slate-600">
                 状态：{watcherRunning ? "运行中" : "未启动"}
               </span>
             </div>
             {watcherError ? (
-              <p className="text-sm text-rose-300">错误：{watcherError}</p>
+              <p className="text-sm text-rose-600">错误：{watcherError}</p>
             ) : null}
           </div>
-          <div className="mt-6 max-h-60 overflow-auto rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
+          <div className="mt-6 max-h-60 overflow-auto rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
             {events.length === 0 ? (
               <p className="text-slate-500">暂无监听事件。</p>
             ) : (
@@ -922,16 +1067,16 @@ export default function App() {
           </div>
         </section>
 
-        <section className="mt-12 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+        <section className="mt-12 w-full rounded-3xl border border-slate-200 bg-white/80 p-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold">冲突中心</h2>
-              <p className="mt-2 text-sm text-slate-400">
+              <p className="mt-2 text-sm text-slate-600">
                 当云端与本地同时被修改时，将在此处展示冲突详情。
               </p>
             </div>
             <button
-              className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={conflictLoading}
               onClick={loadConflicts}
               type="button"
@@ -941,21 +1086,21 @@ export default function App() {
           </div>
           <div className="mt-6 space-y-4">
             {conflictError ? (
-              <p className="text-sm text-rose-300">加载失败：{conflictError}</p>
+              <p className="text-sm text-rose-600">加载失败：{conflictError}</p>
             ) : conflicts.length === 0 ? (
               <p className="text-sm text-slate-500">暂无冲突记录。</p>
             ) : (
               conflicts.map((conflict) => (
                 <div
                   key={conflict.id}
-                  className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5"
+                  className="rounded-2xl border border-slate-200 bg-white p-5"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="space-y-1">
                       <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
                         本地路径
                       </p>
-                      <p className="text-sm text-slate-100">{conflict.local_path}</p>
+                      <p className="text-sm text-slate-900">{conflict.local_path}</p>
                       <p className="text-xs text-slate-500">
                         云端 Token：{conflict.cloud_token}
                       </p>
@@ -971,25 +1116,25 @@ export default function App() {
                   </div>
                   <div className="mt-4 grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <p className="text-sm font-semibold text-slate-200">
+                      <p className="text-sm font-semibold text-slate-800">
                         本地版本
                       </p>
-                      <pre className="max-h-48 overflow-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+                      <pre className="max-h-48 overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
                         {conflict.local_preview || "暂无本地预览。"}
                       </pre>
                     </div>
                     <div className="space-y-2">
-                      <p className="text-sm font-semibold text-slate-200">
+                      <p className="text-sm font-semibold text-slate-800">
                         云端版本
                       </p>
-                      <pre className="max-h-48 overflow-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300">
+                      <pre className="max-h-48 overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
                         {conflict.cloud_preview || "暂无云端预览。"}
                       </pre>
                     </div>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-3">
                     <button
-                      className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={conflict.resolved}
                       onClick={() => resolveConflict(conflict.id, "use_local")}
                       type="button"
@@ -997,7 +1142,7 @@ export default function App() {
                       使用本地
                     </button>
                     <button
-                      className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-900 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={conflict.resolved}
                       onClick={() => resolveConflict(conflict.id, "use_cloud")}
                       type="button"

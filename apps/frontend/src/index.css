@@ -3,10 +3,12 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 body {
   margin: 0;
   font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
+  background: #f8fafc;
+  color: #0f172a;
 }

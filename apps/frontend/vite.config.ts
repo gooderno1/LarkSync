@@ -18,6 +18,7 @@ export default defineConfig({
       "/conflicts": "http://localhost:8000",
       "/sync": "http://localhost:8000",
       "/watcher": "http://localhost:8000",
+      "/system": "http://localhost:8000",
       "/health": "http://localhost:8000",
       "/ws": {
         target: "ws://localhost:8000",
