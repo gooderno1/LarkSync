@@ -278,6 +278,11 @@ class DocxService:
             raise DocxServiceError("飞书 API 响应格式错误")
         return payload
 
+    async def close(self) -> None:
+        close = getattr(self._client, "close", None)
+        if close:
+            await close()
+
     @staticmethod
     def _split_markdown_images(markdown: str) -> list[MarkdownSegment]:
         segments: list[MarkdownSegment] = []

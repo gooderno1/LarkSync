@@ -53,18 +53,19 @@ service = ConflictService()
 
 @router.get("")
 async def list_conflicts(include_resolved: bool = False) -> list[ConflictResponse]:
-    return [ConflictResponse.from_item(item) for item in service.list_conflicts(include_resolved)]
+    items = await service.list_conflicts(include_resolved)
+    return [ConflictResponse.from_item(item) for item in items]
 
 
 @router.post("", response_model=ConflictResponse)
 async def create_conflict(payload: ConflictCreateRequest) -> ConflictResponse:
-    item = service.add_conflict(**payload.model_dump())
+    item = await service.add_conflict(**payload.model_dump())
     return ConflictResponse.from_item(item)
 
 
 @router.post("/check", response_model=ConflictCheckResponse)
 async def check_conflict(payload: ConflictCreateRequest) -> ConflictCheckResponse:
-    item = service.detect_and_add(**payload.model_dump())
+    item = await service.detect_and_add(**payload.model_dump())
     if not item:
         return ConflictCheckResponse(conflict=False)
     return ConflictCheckResponse(conflict=True, item=ConflictResponse.from_item(item))
@@ -74,7 +75,7 @@ async def check_conflict(payload: ConflictCreateRequest) -> ConflictCheckRespons
 async def resolve_conflict(
     conflict_id: str, payload: ConflictResolveRequest
 ) -> ConflictResponse:
-    item = service.resolve(conflict_id, payload.action)
+    item = await service.resolve(conflict_id, payload.action)
     if not item:
         raise HTTPException(status_code=404, detail="Conflict not found")
     return ConflictResponse.from_item(item)

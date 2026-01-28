@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.15-dev.1 (2026-01-28)
+- 目标：同步任务配置向导、冲突持久化、base_path 接入。
+- 结果：新增 SyncTask/ConflictRecord 数据表与服务；/sync/tasks 与 /sync/markdown/replace 接口；前端同步任务配置 UI；冲突记录持久化到 SQLite。
+- 测试：`python -m pytest`（apps/backend）；`npm audit --omit=dev`（apps/frontend）。
+- 问题：同步任务尚未驱动自动上传/下载，仅用于配置与手动上传触发。
+
 ## v0.1.14-dev.1 (2026-01-28)
 - 目标：补齐 Markdown 图片上传链路并落地使用教程文档。
 - 结果：新增 MediaUploader 与 DocxService 图片解析/上传；本地图片自动转 Docx 图片块；新增 `docs/USAGE.md` 教程。

@@ -64,6 +64,13 @@
 - 前端：`cd apps/frontend` 后执行 `npm run dev`
 
 ## 5. 主要功能使用
+### 5.0 同步任务配置
+- 前端“同步任务配置”区域可新建任务，包含本地路径、云端文件夹 token 与同步模式。
+- 后端接口：
+  - `GET /sync/tasks`
+  - `POST /sync/tasks`
+  - `PATCH /sync/tasks/{id}`
+
 ### 5.1 登录与连接状态
 - 打开前端页面，点击“登录飞书”。
 - 授权完成后，前端会显示 Connected 状态。
@@ -92,7 +99,21 @@
 - 当 Markdown 中包含本地图片路径（如 `![](assets/logo.png)`）时，上传流程会：
   1) 调用飞书素材上传接口获取 `file_token`。
   2) 生成 Docx 图片块并插入文档。
-- 建议使用相对路径，并确保 `base_path` 指向 Markdown 文件所在目录（当前为服务端接口参数，UI 尚未暴露）。
+- 建议使用相对路径，并确保 `base_path` 指向 Markdown 文件所在目录（可在同步任务配置中填写）。
+
+### 6.1 手动触发 Markdown 替换上传
+可用接口触发 Markdown 全量覆盖上传（用于测试图片上传链路）：  
+`POST /sync/markdown/replace`
+
+请求示例：
+```json
+{
+  "document_id": "doccnxxxx",
+  "markdown_path": "C:/Docs/test.md",
+  "task_id": "可选：同步任务 ID",
+  "base_path": "可选：Markdown 基准路径"
+}
+```
 
 ## 7. 生产部署（Docker）
 - 构建镜像：`docker-compose build`

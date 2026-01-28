@@ -1,4 +1,4 @@
-from sqlalchemy import Float, Integer, String
+from sqlalchemy import Boolean, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -12,3 +12,35 @@ class SyncMapping(Base):
     local_path: Mapped[str] = mapped_column(String, nullable=False)
     last_sync_mtime: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class ConflictRecord(Base):
+    __tablename__ = "conflicts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    local_path: Mapped[str] = mapped_column(String, nullable=False)
+    cloud_token: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    local_hash: Mapped[str] = mapped_column(String, nullable=False)
+    db_hash: Mapped[str] = mapped_column(String, nullable=False)
+    cloud_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    db_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    local_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cloud_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    resolved_action: Mapped[str | None] = mapped_column(String, nullable=True)
+    resolved_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class SyncTask(Base):
+    __tablename__ = "sync_tasks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    local_path: Mapped[str] = mapped_column(String, nullable=False)
+    cloud_folder_token: Mapped[str] = mapped_column(String, nullable=False)
+    base_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    sync_mode: Mapped[str] = mapped_column(String, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)

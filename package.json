@@ -1,7 +1,7 @@
 {
   "name": "larksync-root",
   "private": true,
-  "version": "v0.1.14-dev.1",
+  "version": "v0.1.15-dev.1",
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix apps/frontend\" \"cd apps/backend && uvicorn src.main:app --reload --port 8000\""
   },

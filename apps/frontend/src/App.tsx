@@ -45,6 +45,18 @@ type ConflictItem = {
   resolved_action?: string | null;
 };
 
+type SyncTask = {
+  id: string;
+  name?: string | null;
+  local_path: string;
+  cloud_folder_token: string;
+  base_path?: string | null;
+  sync_mode: string;
+  enabled: boolean;
+  created_at: number;
+  updated_at: number;
+};
+
 function TreeNode({ node }: { node: DriveNode }) {
   const [open, setOpen] = useState(true);
   const isFolder = node.type === "folder";
@@ -99,6 +111,15 @@ export default function App() {
   const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
   const [conflictLoading, setConflictLoading] = useState(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<SyncTask[]>([]);
+  const [taskLoading, setTaskLoading] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [taskName, setTaskName] = useState("");
+  const [taskLocalPath, setTaskLocalPath] = useState("");
+  const [taskBasePath, setTaskBasePath] = useState("");
+  const [taskCloudToken, setTaskCloudToken] = useState("");
+  const [taskSyncMode, setTaskSyncMode] = useState("bidirectional");
+  const [taskEnabled, setTaskEnabled] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -136,6 +157,78 @@ export default function App() {
         setWatcherRunning(false);
       });
   }, []);
+
+  const loadTasks = () => {
+    setTaskLoading(true);
+    setTaskError(null);
+    fetch(apiUrl("/sync/tasks"))
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "获取任务失败");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setTasks(Array.isArray(data) ? data : []);
+      })
+      .catch((err: Error) => setTaskError(err.message))
+      .finally(() => setTaskLoading(false));
+  };
+
+  const createTask = () => {
+    if (!taskLocalPath.trim() || !taskCloudToken.trim()) {
+      setTaskError("请填写本地路径与云端文件夹 token。");
+      return;
+    }
+    setTaskError(null);
+    fetch(apiUrl("/sync/tasks"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: taskName.trim() || null,
+        local_path: taskLocalPath.trim(),
+        cloud_folder_token: taskCloudToken.trim(),
+        base_path: taskBasePath.trim() || null,
+        sync_mode: taskSyncMode,
+        enabled: taskEnabled
+      })
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "创建任务失败");
+        }
+        return res.json();
+      })
+      .then(() => {
+        setTaskName("");
+        setTaskBasePath("");
+        setTaskCloudToken("");
+        setTaskLocalPath("");
+        setTaskSyncMode("bidirectional");
+        setTaskEnabled(true);
+        loadTasks();
+      })
+      .catch((err: Error) => setTaskError(err.message));
+  };
+
+  const toggleTask = (task: SyncTask) => {
+    fetch(apiUrl(`/sync/tasks/${task.id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: !task.enabled })
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "更新任务失败");
+        }
+        return res.json();
+      })
+      .then(() => loadTasks())
+      .catch((err: Error) => setTaskError(err.message));
+  };
 
 
   useEffect(() => {
@@ -228,6 +321,10 @@ export default function App() {
     loadConflicts();
   }, []);
 
+  useEffect(() => {
+    loadTasks();
+  }, []);
+
   const startWatcher = () => {
     if (!watchPath.trim()) {
       setWatcherError("请先填写需要监听的本地路径。");
@@ -311,6 +408,124 @@ export default function App() {
             <li>LARKSYNC_AUTH_REDIRECT_URI</li>
           </ul>
         </div>
+
+        <section className="mt-16 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold">同步任务配置</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                配置本地目录、云端目录与同步模式，作为后续同步任务的基础。
+              </p>
+            </div>
+            <button
+              className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={taskLoading}
+              onClick={loadTasks}
+              type="button"
+            >
+              {taskLoading ? "加载中..." : "刷新任务"}
+            </button>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="space-y-4">
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="任务名称（可选）"
+                value={taskName}
+                onChange={(event) => setTaskName(event.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="本地同步路径，例如 C:\\\\Docs"
+                value={taskLocalPath}
+                onChange={(event) => setTaskLocalPath(event.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="Markdown base_path（可选）"
+                value={taskBasePath}
+                onChange={(event) => setTaskBasePath(event.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none transition focus:border-slate-400"
+                placeholder="云端文件夹 token"
+                value={taskCloudToken}
+                onChange={(event) => setTaskCloudToken(event.target.value)}
+              />
+              <div className="flex flex-wrap gap-3">
+                <select
+                  className="rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-sm text-slate-100 outline-none"
+                  value={taskSyncMode}
+                  onChange={(event) => setTaskSyncMode(event.target.value)}
+                >
+                  <option value="bidirectional">双向同步</option>
+                  <option value="download_only">仅下载</option>
+                  <option value="upload_only">仅上传</option>
+                </select>
+                <button
+                  className="rounded-full border border-slate-600 px-5 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-300"
+                  type="button"
+                  onClick={() => setTaskEnabled((prev) => !prev)}
+                >
+                  {taskEnabled ? "启用中" : "已停用"}
+                </button>
+              </div>
+              <button
+                className="rounded-full bg-slate-100 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white"
+                onClick={createTask}
+                type="button"
+              >
+                保存任务
+              </button>
+              {taskError ? (
+                <p className="text-sm text-rose-300">错误：{taskError}</p>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
+              {tasks.length === 0 ? (
+                <p className="text-slate-500">暂无同步任务。</p>
+              ) : (
+                <ul className="space-y-3">
+                  {tasks.map((task) => (
+                    <li
+                      key={task.id}
+                      className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm text-slate-100">
+                            {task.name || "未命名任务"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            本地：{task.local_path}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            云端：{task.cloud_folder_token}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            模式：{task.sync_mode}
+                          </p>
+                          {task.base_path ? (
+                            <p className="text-xs text-slate-500">
+                              base_path：{task.base_path}
+                            </p>
+                          ) : null}
+                        </div>
+                        <button
+                          className="rounded-full border border-slate-600 px-4 py-2 text-xs font-medium text-slate-100 transition hover:border-slate-300"
+                          onClick={() => toggleTask(task)}
+                          type="button"
+                        >
+                          {task.enabled ? "停用" : "启用"}
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
 
         <section className="mt-16 w-full rounded-3xl border border-slate-800 bg-slate-900/60 p-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
