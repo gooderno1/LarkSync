@@ -118,3 +118,23 @@ async def test_transcoder_handles_heading_bold_table_and_image(tmp_path: Path) -
 
     assert downloader.calls[0][0] == "img-token"
     assert (tmp_path / "doc-123" / "img-token.png").exists()
+
+
+@pytest.mark.asyncio
+async def test_transcoder_fallback_for_unknown_block(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["unknown"]},
+        {
+            "block_id": "unknown",
+            "block_type": 99,
+            "parent_id": "root",
+            "text": {
+                "style": {},
+                "elements": [{"text_run": {"content": "未知块文本"}}],
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-unknown", blocks)
+    assert "未知块文本" in markdown

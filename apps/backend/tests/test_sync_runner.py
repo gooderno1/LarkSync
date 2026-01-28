@@ -79,6 +79,12 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
                     )
                 ],
             ),
+            DriveNode(
+                token="sheet-1",
+                name="表格",
+                type="sheet",
+                modified_time="1700000000",
+            ),
         ],
     )
 
@@ -105,8 +111,9 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     await runner.run_task(task)
 
     status = runner.get_status(task.id)
-    assert status.total_files == 3
+    assert status.total_files == 4
     assert status.completed_files == 3
+    assert status.skipped_files == 1
     assert status.failed_files == 0
     assert status.state == "success"
 

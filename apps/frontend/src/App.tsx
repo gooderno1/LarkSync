@@ -1030,7 +1030,8 @@ export default function App() {
                                 </span>
                               </p>
                               <p className="text-xs text-slate-500">
-                                进度：{progress}，失败 {status?.failed_files ?? 0}
+                                进度：{progress}，失败 {status?.failed_files ?? 0}，
+                                跳过 {status?.skipped_files ?? 0}
                               </p>
                               {status?.last_error ? (
                                 <p className="text-xs text-rose-600">

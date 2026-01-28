@@ -196,6 +196,10 @@ class DocxTranscoder:
             relative_path = self._assets_relative / document_id / filename
             return f"![]({relative_path.as_posix()})", (token, output_path)
 
+        fallback_text = parser.text_from_block(block)
+        if fallback_text:
+            return fallback_text, None
+
         return None, None
 
     async def close(self) -> None:

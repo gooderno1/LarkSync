@@ -135,7 +135,7 @@ class SyncTaskRunner:
                 target_dir = Path(task.local_path) / relative_dir
                 mtime = _parse_mtime(node.modified_time)
                 try:
-                    if node.type == "docx":
+                    if node.type in {"docx", "doc"}:
                         markdown = await self._download_docx(
                             node.token,
                             docx_service=docx_service,
@@ -151,7 +151,7 @@ class SyncTaskRunner:
                                 path=str(target_dir / filename), status="downloaded"
                             )
                         )
-                    else:
+                    elif node.type == "file":
                         await file_downloader.download(
                             file_token=node.token,
                             file_name=node.name,
@@ -162,6 +162,15 @@ class SyncTaskRunner:
                         status.record_event(
                             SyncFileEvent(
                                 path=str(target_dir / node.name), status="downloaded"
+                            )
+                        )
+                    else:
+                        status.skipped_files += 1
+                        status.record_event(
+                            SyncFileEvent(
+                                path=str(target_dir / node.name),
+                                status="skipped",
+                                message=f"暂不支持类型: {node.type}",
                             )
                         )
                 except Exception as exc:
