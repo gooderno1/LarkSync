@@ -14,7 +14,10 @@ state_store = AuthStateStore()
 async def login(state: str | None = Query(default=None)):
     auth_service = AuthService()
     state_value = state or state_store.issue()
-    url = auth_service.build_authorize_url(state_value)
+    try:
+        url = auth_service.build_authorize_url(state_value)
+    except AuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url)
 
 

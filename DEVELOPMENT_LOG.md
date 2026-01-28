@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.18-dev.1 (2026-01-28)
+- 目标：修复登录 500 与数据库未初始化导致的接口异常。
+- 结果：/auth/login 捕获 AuthError 返回 400；启动时自动初始化 DB；新增登录 API 测试。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.17-dev.1 (2026-01-28)
 - 目标：修复 Windows 下 `npm run dev` 找不到 uvicorn 的问题。
 - 结果：根目录 dev 脚本改为 `python -m uvicorn`，避免 PATH 依赖。

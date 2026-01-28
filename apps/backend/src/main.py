@@ -11,6 +11,7 @@ from src.api import (
     sync_router,
     watcher_router,
 )
+from src.db.session import init_db
 from src.api.watcher import watcher_manager
 
 app = FastAPI(title="LarkSync API")
@@ -34,6 +35,7 @@ app.include_router(sync_router)
 @app.on_event("startup")
 async def startup_event() -> None:
     watcher_manager.set_loop(asyncio.get_running_loop())
+    await init_db()
 
 
 @app.get("/health", tags=["health"])
