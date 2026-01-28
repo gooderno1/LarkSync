@@ -14,7 +14,7 @@
 
 ## 3. 配置飞书 OAuth
 ### 3.0 网页配置向导（推荐）
-在前端首页的“OAuth 配置向导”中填写并保存以下信息：
+在前端首页的“OAuth 配置向导”中填写并保存以下信息（详见 `docs/OAUTH_GUIDE.md`）：
 - 授权地址（Authorize URL）
 - Token 地址（Access Token URL）
 - App ID / App Secret

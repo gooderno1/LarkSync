@@ -26,7 +26,7 @@
 ### 使用教程
 - 完整使用步骤见 `docs/USAGE.md`，后续功能变更会同步更新。
 ### OAuth 配置
-- 支持在网页中通过“OAuth 配置向导”填写并保存应用参数。
+- 支持在网页中通过“OAuth 配置向导”填写并保存应用参数，详细步骤见 `docs/OAUTH_GUIDE.md`。
 ### 依赖安装
 - 根目录：`npm install`（用于并行启动前后端）
 - 前端：`cd apps/frontend` 后执行 `npm install`

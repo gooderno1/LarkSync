@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.20-dev.1 (2026-01-28)
+- 目标：补充更详细的 OAuth 配置指南，提升可理解度。
+- 结果：新增 `docs/OAUTH_GUIDE.md` 详细步骤；更新向导说明与使用文档。
+- 测试：`npm run build`（apps/frontend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.19-dev.1 (2026-01-28)
 - 目标：提供网页配置 OAuth 参数并补充获取指南。
 - 结果：新增 /config API；前端 OAuth 配置向导；补充配置获取步骤说明；Vite 代理新增 /config 与 /sync；新增配置 API 单测。

@@ -610,17 +610,22 @@ export default function App() {
               ) : null}
             </div>
             <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-300">
-              <p className="text-slate-200">获取参数指引</p>
+              <p className="text-slate-200">配置步骤（按顺序）</p>
               <ol className="mt-3 list-decimal space-y-2 pl-4 text-xs text-slate-400">
-                <li>登录飞书开放平台，创建“企业自建应用”。</li>
-                <li>在“应用凭证”页面获取 App ID 与 App Secret。</li>
-                <li>在“安全设置/OAuth 回调”中添加回调地址。</li>
-                <li>在“权限管理”中添加所需权限 scopes。</li>
-                <li>在 OAuth2 文档中获取授权地址与 Token 地址。</li>
+                <li>登录飞书开放平台控制台，创建“企业自建应用”。</li>
+                <li>进入“应用凭证”，复制 App ID 与 App Secret。</li>
+                <li>进入“安全设置 / OAuth 回调”，添加回调地址（需与下方填写一致）。</li>
+                <li>进入“权限管理”，添加需要的 scopes（最少权限原则）。</li>
+                <li>从飞书 OAuth2 文档确认授权地址与 Token 地址，填入本表单。</li>
+                <li>保存配置后，再点击“登录飞书”完成授权。</li>
               </ol>
-              <p className="mt-3 text-xs text-slate-500">
-                提示：生产回调一般为 http://localhost:8080/api/auth/callback。
-              </p>
+              <div className="mt-4 space-y-2 text-xs text-slate-500">
+                <p>常用地址示例：</p>
+                <p>授权地址：`https://open.feishu.cn/open-apis/authen/v1/index`</p>
+                <p>Token 地址：`https://open.feishu.cn/open-apis/authen/v1/access_token`</p>
+                <p>开发回调：`http://localhost:8000/auth/callback`</p>
+                <p>生产回调：`http://localhost:8080/api/auth/callback`</p>
+              </div>
             </div>
           </div>
         </section>
