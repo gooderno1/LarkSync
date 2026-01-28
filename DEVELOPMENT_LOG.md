@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.23-dev.1 (2026-01-28)
+- 目标：修复 Token 接口报空 grant_type。
+- 结果：Token 请求改为 JSON body 发送；版本与变更记录更新。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.22-dev.1 (2026-01-28)
 - 目标：完善 OAuth 配置向导说明并避免本地密钥误提交。
 - 结果：优化前端向导提示；更新 `docs/OAUTH_GUIDE.md` 详细步骤；`.gitignore` 忽略 `data/config.json`。

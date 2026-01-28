@@ -89,7 +89,7 @@ class AuthService:
             raise AuthError("auth_token_url 未配置")
 
         async with self._get_client() as client:
-            response = await client.post(self._config.auth_token_url, data=payload)
+            response = await client.post(self._config.auth_token_url, json=payload)
             response.raise_for_status()
             data = response.json()
 
