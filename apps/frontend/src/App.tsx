@@ -1043,6 +1043,7 @@ export default function App() {
                                   {status.last_files.slice(-3).map((file, index) => (
                                     <p key={`${task.id}-file-${index}`}>
                                       {file.status}：{file.path}
+                                      {file.message ? `（${file.message}）` : ""}
                                     </p>
                                   ))}
                                 </div>

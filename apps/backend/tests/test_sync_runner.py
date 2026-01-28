@@ -38,7 +38,11 @@ class FakeTranscoder:
 
 
 class FakeFileDownloader:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
     async def download(self, file_token: str, file_name: str, target_dir: Path, mtime: float):
+        self.calls.append((file_token, file_name))
         target_dir.mkdir(parents=True, exist_ok=True)
         path = target_dir / file_name
         path.write_bytes(b"data")
@@ -85,14 +89,25 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
                 type="sheet",
                 modified_time="1700000000",
             ),
+            DriveNode(
+                token="shortcut-1",
+                name="快捷方式文件",
+                type="shortcut",
+                shortcut_info={
+                    "target_token": "file-target",
+                    "target_type": "file",
+                },
+                modified_time="1700000000",
+            ),
         ],
     )
 
+    downloader = FakeFileDownloader()
     runner = SyncTaskRunner(
         drive_service=FakeDriveService(tree),
         docx_service=FakeDocxService(),
         transcoder=FakeTranscoder(),
-        file_downloader=FakeFileDownloader(),
+        file_downloader=downloader,
         file_writer=FileWriter(),
     )
 
@@ -111,8 +126,8 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     await runner.run_task(task)
 
     status = runner.get_status(task.id)
-    assert status.total_files == 4
-    assert status.completed_files == 3
+    assert status.total_files == 5
+    assert status.completed_files == 4
     assert status.skipped_files == 1
     assert status.failed_files == 0
     assert status.state == "success"
@@ -120,3 +135,5 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     assert (tmp_path / "设计文档.md").exists()
     assert (tmp_path / "spec.pdf").exists()
     assert (tmp_path / "子目录" / "note.md").exists()
+    assert (tmp_path / "快捷方式文件").exists()
+    assert downloader.calls[-1][0] == "file-target"

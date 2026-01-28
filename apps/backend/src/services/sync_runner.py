@@ -132,12 +132,13 @@ class SyncTaskRunner:
             status.total_files = len(files)
 
             for node, relative_dir in files:
+                effective_token, effective_type = _resolve_target(node)
                 target_dir = Path(task.local_path) / relative_dir
                 mtime = _parse_mtime(node.modified_time)
                 try:
-                    if node.type in {"docx", "doc"}:
+                    if effective_type in {"docx", "doc"}:
                         markdown = await self._download_docx(
-                            node.token,
+                            effective_token,
                             docx_service=docx_service,
                             transcoder=transcoder,
                         )
@@ -151,9 +152,9 @@ class SyncTaskRunner:
                                 path=str(target_dir / filename), status="downloaded"
                             )
                         )
-                    elif node.type == "file":
+                    elif effective_type == "file":
                         await file_downloader.download(
-                            file_token=node.token,
+                            file_token=effective_token,
                             file_name=node.name,
                             target_dir=target_dir,
                             mtime=mtime,
@@ -170,7 +171,7 @@ class SyncTaskRunner:
                             SyncFileEvent(
                                 path=str(target_dir / node.name),
                                 status="skipped",
-                                message=f"暂不支持类型: {node.type}",
+                                message=f"暂不支持类型: {effective_type}",
                             )
                         )
                 except Exception as exc:
@@ -180,7 +181,7 @@ class SyncTaskRunner:
                         SyncFileEvent(
                             path=str(target_dir / node.name),
                             status="failed",
-                            message=str(exc),
+                            message=f"type={effective_type} token={effective_token} error={exc}",
                         )
                     )
         finally:
@@ -226,6 +227,16 @@ def _parse_mtime(value: str | int | float | None) -> float:
     if ts > 1e12:
         ts = ts / 1000.0
     return ts
+
+
+def _resolve_target(node: DriveNode) -> tuple[str, str]:
+    token = node.token
+    node_type = node.type
+    shortcut = node.shortcut_info
+    if shortcut:
+        token = shortcut.target_token or token
+        node_type = shortcut.target_type or node_type
+    return token, node_type
 
 
 __all__ = ["SyncTaskRunner", "SyncTaskStatus", "SyncFileEvent"]
