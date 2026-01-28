@@ -138,3 +138,132 @@ async def test_transcoder_fallback_for_unknown_block(tmp_path: Path) -> None:
     transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
     markdown = await transcoder.to_markdown("doc-unknown", blocks)
     assert "未知块文本" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_handles_lists_quotes_code_and_todo(tmp_path: Path) -> None:
+    blocks = [
+        {
+            "block_id": "root",
+            "block_type": 1,
+            "children": [
+                "bul1",
+                "bul2",
+                "ord1",
+                "ord2",
+                "todo1",
+                "code1",
+                "quote1",
+                "callout1",
+                "divider1",
+            ],
+        },
+        {
+            "block_id": "bul1",
+            "block_type": 12,
+            "parent_id": "root",
+            "children": ["bul1_child"],
+            "bullet": {
+                "style": {},
+                "elements": [{"text_run": {"content": "列表一"}}],
+            },
+        },
+        {
+            "block_id": "bul1_child",
+            "block_type": 12,
+            "parent_id": "bul1",
+            "bullet": {
+                "style": {},
+                "elements": [{"text_run": {"content": "子项"}}],
+            },
+        },
+        {
+            "block_id": "bul2",
+            "block_type": 12,
+            "parent_id": "root",
+            "bullet": {
+                "style": {},
+                "elements": [{"text_run": {"content": "列表二"}}],
+            },
+        },
+        {
+            "block_id": "ord1",
+            "block_type": 13,
+            "parent_id": "root",
+            "ordered": {
+                "style": {},
+                "elements": [{"text_run": {"content": "步骤一"}}],
+            },
+        },
+        {
+            "block_id": "ord2",
+            "block_type": 13,
+            "parent_id": "root",
+            "ordered": {
+                "style": {},
+                "elements": [{"text_run": {"content": "步骤二"}}],
+            },
+        },
+        {
+            "block_id": "todo1",
+            "block_type": 17,
+            "parent_id": "root",
+            "todo": {
+                "style": {},
+                "elements": [{"text_run": {"content": "待办任务"}}],
+            },
+        },
+        {
+            "block_id": "code1",
+            "block_type": 14,
+            "parent_id": "root",
+            "code": {
+                "style": {},
+                "elements": [{"text_run": {"content": "print('hi')"}}],
+            },
+        },
+        {
+            "block_id": "quote1",
+            "block_type": 15,
+            "parent_id": "root",
+            "quote": {
+                "style": {},
+                "elements": [{"text_run": {"content": "引用内容"}}],
+            },
+        },
+        {
+            "block_id": "callout1",
+            "block_type": 19,
+            "parent_id": "root",
+            "children": ["callout_text"],
+        },
+        {
+            "block_id": "callout_text",
+            "block_type": 2,
+            "parent_id": "callout1",
+            "text": {
+                "style": {},
+                "elements": [{"text_run": {"content": "提示内容"}}],
+            },
+        },
+        {
+            "block_id": "divider1",
+            "block_type": 22,
+            "parent_id": "root",
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-list", blocks)
+
+    assert "- 列表一" in markdown
+    assert "  - 子项" in markdown
+    assert "- 列表二" in markdown
+    assert "1. 步骤一" in markdown
+    assert "1. 步骤二" in markdown
+    assert "- [ ] 待办任务" in markdown
+    assert "```" in markdown
+    assert "print('hi')" in markdown
+    assert "> 引用内容" in markdown
+    assert "> 提示内容" in markdown
+    assert "---" in markdown

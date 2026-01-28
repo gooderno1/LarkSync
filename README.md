@@ -11,7 +11,7 @@
 - 发布脚本：`scripts/release.py` 自动更新版本、CHANGELOG 并提交推送
 - OAuth 登录：后端提供 `/auth/login`、`/auth/callback`、`/auth/status`、`/auth/logout`
 - 云端目录树：后端提供 `/drive/tree`，前端可展示云空间层级
-- Docx 转 Markdown：支持标题/加粗/表格/图片块的基础解析与图片落盘
+- Docx 转 Markdown：支持标题/加粗/列表/引用/代码块/待办/表格/图片块解析与图片落盘
 - 本地写入器：写入文件后强制同步云端 mtime
 - 非文档下载：提供 Drive 文件下载器，直接写入本地目录
 - 本地监听：Watchdog 防抖监听 + WebSocket 实时事件推送
