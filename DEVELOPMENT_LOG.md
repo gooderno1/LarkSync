@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.21-dev.1 (2026-01-28)
+- 目标：修复 Token 响应缺少 access_token 的解析问题。
+- 结果：AuthService 兼容 `code/msg/data` 包装格式；新增单测覆盖。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.20-dev.1 (2026-01-28)
 - 目标：补充更详细的 OAuth 配置指南，提升可理解度。
 - 结果：新增 `docs/OAUTH_GUIDE.md` 详细步骤；更新向导说明与使用文档。

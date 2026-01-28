@@ -1,6 +1,6 @@
 [project]
 name = "larksync-backend"
-version = "v0.1.20-dev.1"
+version = "v0.1.21-dev.1"
 description = "LarkSync backend service"
 readme = "../../README.md"
 requires-python = ">=3.10"

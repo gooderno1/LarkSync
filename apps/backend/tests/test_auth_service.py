@@ -42,6 +42,30 @@ def test_parse_token_response_missing_fields() -> None:
         service._parse_token_response({})
 
 
+def test_parse_token_response_wrapped_data() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    service = AuthService(config=config, token_store=MemoryTokenStore())
+
+    payload = {
+        "code": 0,
+        "msg": "success",
+        "data": {
+            "access_token": "token-123",
+            "refresh_token": "refresh-456",
+            "expires_in": 3600,
+        },
+    }
+    token = service._parse_token_response(payload)
+    assert token.access_token == "token-123"
+    assert token.refresh_token == "refresh-456"
+
+
 def test_token_store_roundtrip() -> None:
     store = MemoryTokenStore()
     token = TokenData(access_token="a", refresh_token="r", expires_at=None)

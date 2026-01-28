@@ -107,6 +107,15 @@ class AuthService:
         return stored
 
     def _parse_token_response(self, data: dict[str, object]) -> TokenResponse:
+        if isinstance(data, dict):
+            code = data.get("code")
+            if isinstance(code, int) and code != 0:
+                message = data.get("msg") or data.get("message") or "Token 接口返回错误"
+                raise AuthError(f"{message} (code={code})")
+            wrapped = data.get("data")
+            if isinstance(wrapped, dict):
+                data = wrapped
+
         access_token = data.get("access_token")
         refresh_token = data.get("refresh_token")
         expires_in = data.get("expires_in")
