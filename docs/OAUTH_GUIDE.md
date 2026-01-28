@@ -45,7 +45,7 @@
 以下为本项目常见的最小权限组合，请以你实际业务和官方权限说明为准：
 - `drive:drive`
 - `docs:doc`
-- `drive:meta`
+- `drive:drive.metadata:readonly`
 - `contact:contact.base:readonly`
 
 ## 4. 保存与验证
@@ -56,6 +56,11 @@
    - App ID / App Secret 是否正确。
    - Scopes 是否已添加并通过审核（如需要）。
    - 授权地址与 Token 地址是否与官方文档一致。
+
+### 常见报错：Access denied / 缺少权限
+若出现“获取根目录失败: Access denied”或提示缺少权限（如 `drive:drive`、`drive:drive.metadata:readonly`），请确认：
+1) 飞书控制台“权限管理”中已添加上述权限，且是**用户身份权限**。
+2) 保存权限配置后，必须**重新授权**（退出登录后再次点击“登录飞书”）。
 
 ## 5. 官方文档链接（务必以官方为准）
 > 由于飞书官方文档为动态页面，请以飞书开放平台文档中的最新说明为准：

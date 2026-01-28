@@ -30,7 +30,7 @@
 4) 在“权限管理”中添加 scopes（建议最少）：  
    - `drive:drive`  
    - `docs:doc`  
-   - `drive:meta`  
+   - `drive:drive.metadata:readonly`  
    - `contact:contact.base:readonly`
 5) 在飞书 OAuth2 文档中查看授权地址与 Token 地址，并填入上方表单。
 
@@ -47,7 +47,7 @@
   "auth_scopes": [
     "drive:drive",
     "docs:doc",
-    "drive:meta",
+    "drive:drive.metadata:readonly",
     "contact:contact.base:readonly"
   ],
   "sync_mode": "bidirectional",
@@ -101,6 +101,7 @@
 ### 5.2 云端目录树
 - 页面点击“刷新目录”即可拉取云端目录树。
 - 后端接口：`GET /drive/tree`（可选参数 `folder_token`）。
+> 若提示 Access denied，请在飞书控制台“权限管理”添加用户身份权限（`drive:drive` 或 `drive:drive.metadata:readonly`），并重新授权。
 
 ### 5.3 本地监听与事件日志
 - 在前端输入本地目录并启动监听。

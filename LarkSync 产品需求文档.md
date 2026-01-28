@@ -79,7 +79,7 @@ graph TD
 
 * **交互**：点击“登录飞书”按钮 \-\> 唤起浏览器 OAuth 2.0 授权页 \-\> 用户确认 \-\> 跳转回应用。  
 * **后端逻辑**：获取 user\_access\_token（非 tenant\_token，确保访问的是用户个人视角的数据）。  
-* **特殊说明**：需申请 drive:drive (读写云空间), docs:doc (读写文档), drive:meta (获取时间戳) 权限。
+* **特殊说明**：需申请 drive:drive (读写云空间), docs:doc (读写文档), drive:drive.metadata:readonly (获取元数据) 权限。
 
 #### **3.1.2 新建同步任务**
 

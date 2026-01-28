@@ -38,7 +38,7 @@ def _default_scopes() -> list[str]:
     return [
         "drive:drive",
         "docs:doc",
-        "drive:meta",
+        "drive:drive.metadata:readonly",
         "contact:contact.base:readonly",
     ]
 

@@ -41,7 +41,7 @@
 * **权限范围（Scopes）：** 根据最小权限原则与功能需求，必须申请以下权限 9：  
   * drive:drive：查看、评论、编辑和管理云空间的所有文件（核心读写权限）。  
   * docs:doc：查看、评论、编辑和管理文档（用于 Docx 内容读写）。  
-  * drive:meta：查看云空间文件的元数据（用于获取修改时间戳）。  
+  * drive:drive.metadata:readonly：查看云空间文件的元数据（用于获取修改时间戳）。  
   * contact:contact.base:readonly：获取用户基本信息（用于记录最后修改者身份）。
 
 ### **3.2 Drive API：文件系统的骨架**
