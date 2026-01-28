@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-28] v0.1.24-dev.1 docs(oauth): 明确向导字段来源与步骤
 [2026-01-28] v0.1.23-dev.1 fix(auth): Token 请求改为 JSON 体
 [2026-01-28] v0.1.22-dev.1 docs(oauth): 详细配置向导说明 + 忽略本地密钥配置
 [2026-01-28] v0.1.21-dev.1 fix(auth): 兼容飞书 Token 包装响应
