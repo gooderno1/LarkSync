@@ -282,7 +282,18 @@ class DocxTranscoder:
         )
 
         for token, path in images:
-            await self._downloader.download(token, path)
+            try:
+                await self._downloader.download(token, path)
+            except Exception:
+                try:
+                    await self._file_downloader.download(
+                        file_token=token,
+                        file_name=path.name,
+                        target_dir=path.parent,
+                        mtime=time.time(),
+                    )
+                except Exception:
+                    continue
 
         for token, name, target_dir in attachments:
             try:

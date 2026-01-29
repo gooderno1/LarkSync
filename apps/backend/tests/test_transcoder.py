@@ -15,6 +15,11 @@ class StubDownloader:
         output_path.write_bytes(b"fake-image")
 
 
+class FailingDownloader:
+    async def download(self, file_token: str, output_path: Path) -> None:
+        raise RuntimeError("download failed")
+
+
 class StubFileDownloader:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, Path]] = []
@@ -390,3 +395,32 @@ async def test_transcoder_downloads_attachment_blocks(tmp_path: Path) -> None:
     assert "[附件.pdf](attachments/附件.pdf)" in markdown
     assert file_downloader.calls[0][0] == "file-token"
     assert (base_dir / "attachments" / "附件.pdf").exists()
+
+
+@pytest.mark.asyncio
+async def test_transcoder_falls_back_when_image_download_fails(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["img1"]},
+        {
+            "block_id": "img1",
+            "block_type": 27,
+            "parent_id": "root",
+            "image": {"token": "img-token"},
+        },
+    ]
+
+    file_downloader = StubFileDownloader()
+    transcoder = DocxTranscoder(
+        assets_root=tmp_path,
+        downloader=FailingDownloader(),
+        file_downloader=file_downloader,
+    )
+    markdown = await transcoder.to_markdown(
+        "doc-image",
+        blocks,
+        base_dir=tmp_path,
+        link_map={},
+    )
+
+    assert "![](assets/doc-image/img-token.png)" in markdown
+    assert file_downloader.calls[0][0] == "img-token"
