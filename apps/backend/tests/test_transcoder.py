@@ -267,3 +267,84 @@ async def test_transcoder_handles_lists_quotes_code_and_todo(tmp_path: Path) -> 
     assert "> 引用内容" in markdown
     assert "> 提示内容" in markdown
     assert "---" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_table_cell_collects_nested_text(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["tbl"]},
+        {
+            "block_id": "tbl",
+            "block_type": 31,
+            "parent_id": "root",
+            "table": {"cells": ["cell1"], "property": {"row_size": 1, "column_size": 1}},
+        },
+        {"block_id": "cell1", "block_type": 32, "parent_id": "tbl", "children": ["bul1"]},
+        {
+            "block_id": "bul1",
+            "block_type": 12,
+            "parent_id": "cell1",
+            "bullet": {
+                "style": {},
+                "elements": [{"text_run": {"content": "列表项"}}],
+            },
+            "children": ["bul_child"],
+        },
+        {
+            "block_id": "bul_child",
+            "block_type": 12,
+            "parent_id": "bul1",
+            "bullet": {
+                "style": {},
+                "elements": [{"text_run": {"content": "子项"}}],
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-table", blocks)
+
+    assert "| 列表项 子项 |" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_rewrites_links_to_local_paths(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["p1"]},
+        {
+            "block_id": "p1",
+            "block_type": 2,
+            "parent_id": "root",
+            "text": {
+                "style": {},
+                "elements": [
+                    {
+                        "text_run": {
+                            "content": "链接",
+                            "text_element_style": {
+                                "link": {
+                                    "url": "https://example.feishu.cn/docx/doccnABC123"
+                                }
+                            },
+                        }
+                    }
+                ],
+            },
+        },
+    ]
+
+    base_dir = tmp_path / "docs"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    target_path = tmp_path / "Doc.md"
+    link_map = {"doccnABC123": target_path}
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown(
+        "doc-link",
+        blocks,
+        base_dir=base_dir,
+        link_map=link_map,
+    )
+
+    assert "[链接](" in markdown
+    assert "Doc.md" in markdown

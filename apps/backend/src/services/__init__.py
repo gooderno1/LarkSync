@@ -9,6 +9,7 @@ from .file_uploader import FileUploadError, FileUploader, UploadResult
 from .file_writer import FileWriter
 from .feishu_client import FeishuClient
 from .media_uploader import MediaUploadError, MediaUploader
+from .sync_link_service import SyncLinkItem, SyncLinkService
 from .sync_task_service import SyncTaskItem, SyncTaskService
 from .state_store import AuthStateStore
 from .transcoder import DocxParser, DocxTranscoder
@@ -34,6 +35,8 @@ __all__ = [
     "FeishuClient",
     "MediaUploadError",
     "MediaUploader",
+    "SyncLinkItem",
+    "SyncLinkService",
     "SyncTaskItem",
     "SyncTaskService",
     "AuthStateStore",

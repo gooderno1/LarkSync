@@ -14,6 +14,16 @@ class SyncMapping(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class SyncLink(Base):
+    __tablename__ = "sync_links"
+
+    local_path: Mapped[str] = mapped_column(String, primary_key=True)
+    cloud_token: Mapped[str] = mapped_column(String, index=True)
+    cloud_type: Mapped[str] = mapped_column(String, nullable=False)
+    task_id: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+
 class ConflictRecord(Base):
     __tablename__ = "conflicts"
 

@@ -30,7 +30,14 @@ class FakeDocxService:
 
 
 class FakeTranscoder:
-    async def to_markdown(self, document_id: str, blocks: list[dict]) -> str:
+    async def to_markdown(
+        self,
+        document_id: str,
+        blocks: list[dict],
+        *,
+        base_dir=None,
+        link_map=None,
+    ) -> str:
         return f"# {document_id}"
 
     async def close(self) -> None:
@@ -48,6 +55,20 @@ class FakeFileDownloader:
         path.write_bytes(b"data")
 
     async def close(self) -> None:
+        return None
+
+
+class FakeLinkService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str, str]] = []
+
+    async def upsert_link(
+        self, local_path: str, cloud_token: str, cloud_type: str, task_id: str, updated_at=None
+    ):
+        self.calls.append((local_path, cloud_token, cloud_type, task_id))
+        return None
+
+    async def get_by_local_path(self, local_path: str):
         return None
 
 
@@ -109,6 +130,7 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
         transcoder=FakeTranscoder(),
         file_downloader=downloader,
         file_writer=FileWriter(),
+        link_service=FakeLinkService(),
     )
 
     task = SyncTaskItem(

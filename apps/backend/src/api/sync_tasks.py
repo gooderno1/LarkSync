@@ -121,7 +121,7 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
         sync_mode=payload.sync_mode.value,
         enabled=payload.enabled,
     )
-    if item.enabled and item.sync_mode == SyncMode.download_only.value:
+    if item.enabled:
         runner.start_task(item)
     return SyncTaskResponse.from_item(item)
 
@@ -141,7 +141,9 @@ async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskR
         raise HTTPException(status_code=404, detail="Task not found")
     if payload.enabled is False:
         runner.cancel_task(task_id)
-    if item.enabled and item.sync_mode == SyncMode.download_only.value:
+    if payload.sync_mode is not None:
+        runner.cancel_task(task_id)
+    if item.enabled:
         runner.start_task(item)
     return SyncTaskResponse.from_item(item)
 

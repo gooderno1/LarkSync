@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
+from typing import Callable
 from urllib.parse import unquote
 
 from src.services.feishu_client import FeishuClient
+from src.services.file_downloader import FileDownloader
 
 BLOCK_TYPE_PAGE = 1
 BLOCK_TYPE_TEXT = 2
@@ -63,8 +67,13 @@ class MediaDownloader:
 
 
 class DocxParser:
-    def __init__(self, blocks: list[dict]) -> None:
+    def __init__(
+        self,
+        blocks: list[dict],
+        link_rewriter: Callable[[str], str] | None = None,
+    ) -> None:
         self._blocks = blocks
+        self._link_rewriter = link_rewriter
         self._block_map = {
             block_id: block
             for block in blocks
@@ -121,6 +130,20 @@ class DocxParser:
         text = "".join(parts)
         return text.strip() if strip else text
 
+    def collect_text(self, block_id: str, max_depth: int = 6) -> str:
+        block = self.get_block(block_id)
+        if not block or max_depth < 0:
+            return ""
+        parts: list[str] = []
+        text = self.text_from_block(block)
+        if text:
+            parts.append(text)
+        for child_id in self.children_ids(block_id):
+            child_text = self.collect_text(child_id, max_depth=max_depth - 1)
+            if child_text:
+                parts.append(child_text)
+        return " ".join(parts).strip()
+
     def _resolve_text_block(self, block: dict) -> dict | None:
         block_type = block.get("block_type")
         heading_field = self._heading_field(block_type)
@@ -157,12 +180,16 @@ class DocxParser:
         link = style.get("link") or {}
         if link.get("url"):
             url = unquote(link.get("url"))
+            if self._link_rewriter:
+                url = self._link_rewriter(url)
             text = f"[{text}]({url})"
         return text
 
     def table_markdown(self, block: dict) -> str:
         table = block.get("table") or {}
         cells: list[str] = table.get("cells") or []
+        if not cells:
+            cells = block.get("children") or []
         prop = table.get("property") or {}
         rows = int(prop.get("row_size") or 0)
         cols = int(prop.get("column_size") or 0)
@@ -188,15 +215,15 @@ class DocxParser:
         cell = self.get_block(cell_id)
         if not cell:
             return ""
+        children = cell.get("children") or []
+        if not children:
+            return self.collect_text(cell_id)
         parts: list[str] = []
-        for child_id in cell.get("children") or []:
-            child = self.get_block(child_id)
-            if not child:
-                continue
-            text = self.text_from_block(child)
+        for child_id in children:
+            text = self.collect_text(child_id)
             if text:
                 parts.append(text)
-        return " ".join(parts).strip()
+        return "<br>".join(parts).strip()
 
 
 class _LineBuffer:
@@ -217,26 +244,53 @@ class DocxTranscoder:
         self,
         assets_root: Path | None = None,
         downloader: MediaDownloader | None = None,
+        file_downloader: FileDownloader | None = None,
+        attachments_dir_name: str = "attachments",
     ) -> None:
         self._assets_root = assets_root or _default_assets_root()
         self._assets_relative = Path("assets")
         self._downloader = downloader or MediaDownloader()
+        self._file_downloader = file_downloader or FileDownloader()
+        self._attachments_dir_name = attachments_dir_name
 
-    async def to_markdown(self, document_id: str, blocks: list[dict]) -> str:
-        parser = DocxParser(blocks)
+    async def to_markdown(
+        self,
+        document_id: str,
+        blocks: list[dict],
+        *,
+        base_dir: Path | None = None,
+        link_map: dict[str, Path] | None = None,
+    ) -> str:
+        resolved_base = Path(base_dir) if base_dir is not None else None
+        resolved_link_map = link_map or {}
+        link_rewriter = self._build_link_rewriter(resolved_base, resolved_link_map)
+
+        parser = DocxParser(blocks, link_rewriter=link_rewriter)
         ordered_ids = parser.resolve_order()
         images: list[tuple[str, Path]] = []
+        attachments: list[tuple[str, str, Path]] = []
         lines = self._render_block_ids(
             ordered_ids,
             parser,
             document_id,
             images,
+            attachments,
+            base_dir=resolved_base,
+            link_map=resolved_link_map,
             base_indent="",
             quote_prefix="",
         )
 
         for token, path in images:
             await self._downloader.download(token, path)
+
+        for token, name, target_dir in attachments:
+            await self._file_downloader.download(
+                file_token=token,
+                file_name=name,
+                target_dir=target_dir,
+                mtime=time.time(),
+            )
 
         return "\n".join(lines).strip()
 
@@ -246,7 +300,10 @@ class DocxTranscoder:
         parser: DocxParser,
         document_id: str,
         images: list[tuple[str, Path]],
+        attachments: list[tuple[str, str, Path]],
         *,
+        base_dir: Path | None,
+        link_map: dict[str, Path],
         base_indent: str,
         quote_prefix: str,
     ) -> list[str]:
@@ -277,6 +334,9 @@ class DocxTranscoder:
                     parser,
                     document_id,
                     images,
+                    attachments,
+                    base_dir=base_dir,
+                    link_map=link_map,
                     base_indent=base_indent,
                     quote_prefix=quote_prefix,
                 )
@@ -288,6 +348,9 @@ class DocxTranscoder:
                 parser,
                 document_id,
                 images,
+                attachments,
+                base_dir=base_dir,
+                link_map=link_map,
                 base_indent=base_indent,
                 quote_prefix=quote_prefix,
             )
@@ -303,7 +366,10 @@ class DocxTranscoder:
         parser: DocxParser,
         document_id: str,
         images: list[tuple[str, Path]],
+        attachments: list[tuple[str, str, Path]],
         *,
+        base_dir: Path | None,
+        link_map: dict[str, Path],
         base_indent: str,
         quote_prefix: str,
     ) -> list[str]:
@@ -330,6 +396,9 @@ class DocxTranscoder:
                     parser,
                     document_id,
                     images,
+                    attachments,
+                    base_dir=base_dir,
+                    link_map=link_map,
                     base_indent=f"{base_indent}  ",
                     quote_prefix=quote_prefix,
                 )
@@ -342,7 +411,10 @@ class DocxTranscoder:
         parser: DocxParser,
         document_id: str,
         images: list[tuple[str, Path]],
+        attachments: list[tuple[str, str, Path]],
         *,
+        base_dir: Path | None,
+        link_map: dict[str, Path],
         base_indent: str,
         quote_prefix: str,
     ) -> list[str]:
@@ -358,6 +430,9 @@ class DocxTranscoder:
                     parser,
                     document_id,
                     images,
+                    attachments,
+                    base_dir=base_dir,
+                    link_map=link_map,
                     base_indent=base_indent,
                     quote_prefix=quote_prefix,
                 )
@@ -410,6 +485,22 @@ class DocxTranscoder:
             line = f"![]({relative_path.as_posix()})"
             return [self._line_with_prefix(prefix, line, keep_blank=keep_blank)]
 
+        if block_type == BLOCK_TYPE_FILE:
+            token, name = self._extract_file_info(block)
+            if not token or not name:
+                return []
+            if base_dir and token in link_map:
+                rel_link = self._relative_link(base_dir, link_map[token])
+                line = f"[{name}]({rel_link})"
+                return [self._line_with_prefix(prefix, line, keep_blank=keep_blank)]
+            if not base_dir:
+                return [self._line_with_prefix(prefix, name, keep_blank=keep_blank)]
+            attachments_dir = base_dir / self._attachments_dir_name
+            attachments.append((token, name, attachments_dir))
+            rel = Path(self._attachments_dir_name) / name
+            line = f"[{name}]({rel.as_posix()})"
+            return [self._line_with_prefix(prefix, line, keep_blank=keep_blank)]
+
         if block_type == BLOCK_TYPE_DIVIDER:
             return [self._line_with_prefix(prefix, "---", keep_blank=keep_blank)]
 
@@ -419,6 +510,9 @@ class DocxTranscoder:
                 parser,
                 document_id,
                 images,
+                attachments,
+                base_dir=base_dir,
+                link_map=link_map,
                 base_indent=base_indent,
                 quote_prefix=quote_prefix,
             )
@@ -431,6 +525,9 @@ class DocxTranscoder:
                     parser,
                     document_id,
                     images,
+                    attachments,
+                    base_dir=base_dir,
+                    link_map=link_map,
                     base_indent=base_indent,
                     quote_prefix=quote_prefix,
                 )
@@ -448,7 +545,10 @@ class DocxTranscoder:
         parser: DocxParser,
         document_id: str,
         images: list[tuple[str, Path]],
+        attachments: list[tuple[str, str, Path]],
         *,
+        base_dir: Path | None,
+        link_map: dict[str, Path],
         base_indent: str,
         quote_prefix: str,
     ) -> list[str]:
@@ -468,12 +568,64 @@ class DocxTranscoder:
                 parser,
                 document_id,
                 images,
+                attachments,
+                base_dir=base_dir,
+                link_map=link_map,
                 base_indent=base_indent,
                 quote_prefix=new_quote_prefix,
             )
             buffer.add_block(child_lines)
 
         return buffer.lines
+
+    def _build_link_rewriter(
+        self, base_dir: Path | None, link_map: dict[str, Path]
+    ) -> Callable[[str], str] | None:
+        if base_dir is None or not link_map:
+            return None
+        tokens = sorted(link_map.keys(), key=len, reverse=True)
+
+        def _rewrite(url: str) -> str:
+            for token in tokens:
+                if token in url:
+                    return self._relative_link(base_dir, link_map[token])
+            return url
+
+        return _rewrite
+
+    @staticmethod
+    def _relative_link(base_dir: Path, target: Path) -> str:
+        try:
+            rel = os.path.relpath(target, start=base_dir)
+            return Path(rel).as_posix()
+        except ValueError:
+            return target.as_posix()
+
+    @staticmethod
+    def _extract_file_info(block: dict) -> tuple[str | None, str | None]:
+        file_info = block.get("file")
+        if isinstance(file_info, dict):
+            token = file_info.get("token") or file_info.get("file_token")
+            name = (
+                file_info.get("name")
+                or file_info.get("title")
+                or file_info.get("file_name")
+            )
+            if token:
+                token = str(token)
+            if name:
+                name = str(name)
+            return token, name
+
+        for value in block.values():
+            if not isinstance(value, dict):
+                continue
+            token = value.get("token") or value.get("file_token")
+            name = value.get("name") or value.get("title") or value.get("file_name")
+            if token and name:
+                return str(token), str(name)
+
+        return None, None
 
     @staticmethod
     def _line_with_prefix(prefix: str, content: str, *, keep_blank: bool) -> str:
@@ -494,6 +646,9 @@ class DocxTranscoder:
         close = getattr(self._downloader, "close", None)
         if close:
             await close()
+        file_close = getattr(self._file_downloader, "close", None)
+        if file_close:
+            await file_close()
 
 
 __all__ = ["DocxParser", "DocxTranscoder", "MediaDownloader"]
