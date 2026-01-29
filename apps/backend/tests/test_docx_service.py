@@ -59,7 +59,7 @@ async def test_replace_document_content_clears_and_creates() -> None:
     client = FakeClient(responses)
     service = DocxService(client=client)
 
-    await service.replace_document_content("doc123", "# Title")
+    await service.replace_document_content("doc123", "# Title", update_mode="full")
 
     list_call = client.requests[0]
     assert list_call[0] == "GET"
@@ -135,7 +135,7 @@ async def test_replace_document_content_creates_nested_children() -> None:
     client = FakeClient(responses)
     service = DocxService(client=client)
 
-    await service.replace_document_content("doc456", "- item")
+    await service.replace_document_content("doc456", "- item", update_mode="full")
 
     assert len(client.requests) == 4
     assert client.requests[2][1].endswith(
@@ -200,7 +200,7 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
     markdown = "段落一\n\n![](assets/logo.png)\n\n段落二"
 
     await service.replace_document_content(
-        "doc789", markdown, base_path=tmp_path.as_posix()
+        "doc789", markdown, base_path=tmp_path.as_posix(), update_mode="full"
     )
 
     assert client.requests[1][1].endswith("/open-apis/docx/v1/documents/blocks/convert")

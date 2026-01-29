@@ -51,6 +51,9 @@ class MarkdownReplaceRequest(BaseModel):
     markdown_path: str = Field(..., description="Markdown 文件路径")
     task_id: str | None = Field(default=None, description="可选任务 ID，用于推导 base_path")
     base_path: str | None = Field(default=None, description="可选 Markdown 基准路径")
+    update_mode: Literal["auto", "full", "partial"] = Field(
+        default="auto", description="更新模式"
+    )
     user_id_type: Literal["open_id", "union_id", "user_id"] = Field(
         default="open_id", description="用户 ID 类型"
     )
@@ -194,6 +197,7 @@ async def replace_markdown(payload: MarkdownReplaceRequest) -> dict:
             markdown,
             user_id_type=payload.user_id_type,
             base_path=base_path,
+            update_mode=payload.update_mode,
         )
     except DocxServiceError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import difflib
+import hashlib
 import re
 import uuid
 from dataclasses import dataclass
@@ -10,6 +12,7 @@ from loguru import logger
 
 from src.services.feishu_client import FeishuClient
 from src.services.media_uploader import MediaUploadError, MediaUploader
+from src.services.transcoder import DocxParser, BLOCK_TYPE_IMAGE, BLOCK_TYPE_TABLE, BLOCK_TYPE_FILE
 
 
 class DocxServiceError(RuntimeError):
@@ -54,6 +57,7 @@ class DocxService:
         markdown: str,
         user_id_type: str = "open_id",
         base_path: str | Path | None = None,
+        update_mode: str = "auto",
     ) -> None:
         logger.info(
             "替换文档内容: document_id={} length={}", document_id, len(markdown)
@@ -84,28 +88,44 @@ class DocxService:
             root_block.get("block_id"),
             len(children),
         )
-        await self._create_from_convert(
-            document_id=document_id,
-            root_block_id=root_block["block_id"],
-            convert=convert,
-            user_id_type=user_id_type,
-        )
-        logger.info(
-            "新内容已创建: document_id={} blocks={}",
-            document_id,
-            len(convert.blocks),
-        )
+        if update_mode not in {"auto", "partial", "full"}:
+            update_mode = "auto"
 
-        if children:
-            await self.delete_children(
+        partial_applied = False
+        if update_mode in {"auto", "partial"} and children:
+            partial_applied = await self._apply_partial_update(
                 document_id=document_id,
-                block_id=root_block["block_id"],
-                start_index=0,
-                end_index=len(children),
+                root_block_id=root_block["block_id"],
+                current_children=children,
+                current_blocks=items,
+                convert=convert,
+                user_id_type=user_id_type,
+                force=update_mode == "partial",
+            )
+
+        if not partial_applied:
+            await self._create_from_convert(
+                document_id=document_id,
+                root_block_id=root_block["block_id"],
+                convert=convert,
+                user_id_type=user_id_type,
             )
             logger.info(
-                "旧内容已删除: document_id={} count={}", document_id, len(children)
+                "新内容已创建: document_id={} blocks={}",
+                document_id,
+                len(convert.blocks),
             )
+
+            if children:
+                await self.delete_children(
+                    document_id=document_id,
+                    block_id=root_block["block_id"],
+                    start_index=0,
+                    end_index=len(children),
+                )
+                logger.info(
+                    "旧内容已删除: document_id={} count={}", document_id, len(children)
+                )
         logger.info(
             "替换完成: document_id={} blocks={}",
             document_id,
@@ -260,7 +280,9 @@ class DocxService:
         block_map: dict[str, dict[str, Any]],
         children_map: dict[str, list[str]],
         user_id_type: str,
+        insert_index: int = -1,
     ) -> None:
+        next_index = insert_index
         for chunk in _chunked(child_ids, 50):
             logger.info(
                 "创建子块: document_id={} parent={} size={} types={}",
@@ -271,8 +293,10 @@ class DocxService:
             )
             payload = {
                 "children": [self._sanitize_block(block_map[child_id]) for child_id in chunk],
-                "index": -1,
+                "index": next_index if next_index >= 0 else -1,
             }
+            if next_index >= 0:
+                next_index += len(chunk)
             try:
                 response = await self._request_json(
                     "POST",
@@ -307,13 +331,14 @@ class DocxService:
                 old_children = children_map.get(old_id, [])
                 if old_children:
                     await self._create_children_recursive(
-                        document_id=document_id,
-                        parent_block_id=new_id,
-                        child_ids=old_children,
-                        block_map=block_map,
-                        children_map=children_map,
-                        user_id_type=user_id_type,
-                    )
+                    document_id=document_id,
+                    parent_block_id=new_id,
+                    child_ids=old_children,
+                    block_map=block_map,
+                    children_map=children_map,
+                    user_id_type=user_id_type,
+                    insert_index=-1,
+                )
 
     async def _handle_create_children_error(
         self,
@@ -339,15 +364,15 @@ class DocxService:
             block_id = chunk[0]
             block = self._sanitize_block(block_map[block_id])
             logger.error(
-                "无效块已跳过: document_id={} parent={} block_id={} block_type={} keys={} payload={}",
-                document_id,
-                parent_block_id,
-                block_id,
-                block.get("block_type"),
-                sorted(block.keys()),
-                _truncate_payload(block),
-            )
-            return
+            "无效块已跳过: document_id={} parent={} block_id={} block_type={} keys={} payload={}",
+            document_id,
+            parent_block_id,
+            block_id,
+            block.get("block_type"),
+            sorted(block.keys()),
+            _truncate_payload(block),
+        )
+        return
         mid = len(chunk) // 2
         await self._create_children_recursive(
             document_id=document_id,
@@ -365,6 +390,90 @@ class DocxService:
             children_map=children_map,
             user_id_type=user_id_type,
         )
+
+    async def _apply_partial_update(
+        self,
+        *,
+        document_id: str,
+        root_block_id: str,
+        current_children: list[str],
+        current_blocks: list[dict[str, Any]],
+        convert: ConvertResult,
+        user_id_type: str,
+        force: bool,
+    ) -> bool:
+        current_map = {block.get("block_id"): block for block in current_blocks}
+        current_ids = [block_id for block_id in current_children if block_id in current_map]
+        if not current_ids:
+            return False
+
+        desired_ids = convert.first_level_block_ids
+        if not desired_ids:
+            return False
+
+        current_parser = _build_parser(current_blocks)
+        desired_parser = _build_parser(convert.blocks)
+
+        current_sigs = [
+            _block_signature(block_id, current_map, current_parser)
+            for block_id in current_ids
+        ]
+        desired_map = {block.get("block_id"): block for block in convert.blocks}
+        desired_sigs = [
+            _block_signature(block_id, desired_map, desired_parser)
+            for block_id in desired_ids
+        ]
+
+        matcher = difflib.SequenceMatcher(a=current_sigs, b=desired_sigs)
+        opcodes = matcher.get_opcodes()
+        changed = sum((i2 - i1) for tag, i1, i2, _, _ in opcodes if tag != "equal")
+        change_ratio = changed / max(len(current_sigs), 1)
+        logger.info(
+            "局部更新评估: document_id={} current={} desired={} ops={} change_ratio={:.2f}",
+            document_id,
+            len(current_sigs),
+            len(desired_sigs),
+            len(opcodes),
+            change_ratio,
+        )
+
+        if not force and (change_ratio > 0.6 or len(opcodes) > 50):
+            logger.info("局部更新跳过: change_ratio 太高或 ops 过多，退回全量覆盖")
+            return False
+
+        block_map = {block.get("block_id"): block for block in convert.blocks}
+        children_map = {
+            block.get("block_id"): block.get("children", [])
+            for block in convert.blocks
+        }
+
+        offset = 0
+        for tag, i1, i2, j1, j2 in opcodes:
+            if tag == "equal":
+                continue
+            start = i1 + offset
+            end = i2 + offset
+            if tag in {"delete", "replace"} and end > start:
+                await self.delete_children(
+                    document_id=document_id,
+                    block_id=root_block_id,
+                    start_index=start,
+                    end_index=end,
+                )
+                offset -= (i2 - i1)
+            if tag in {"insert", "replace"} and j2 > j1:
+                await self._create_children_recursive(
+                    document_id=document_id,
+                    parent_block_id=root_block_id,
+                    child_ids=desired_ids[j1:j2],
+                    block_map=block_map,
+                    children_map=children_map,
+                    user_id_type=user_id_type,
+                    insert_index=start,
+                )
+                offset += (j2 - j1)
+        logger.info("局部更新完成: document_id={}", document_id)
+        return True
 
     @staticmethod
     def _sanitize_block(block: dict[str, Any]) -> dict[str, Any]:
@@ -526,3 +635,35 @@ def _truncate_payload(payload: dict[str, Any], limit: int = 800) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + "...(truncated)"
+
+
+def _build_parser(blocks: list[dict[str, Any]]) -> DocxParser:
+    return DocxParser(blocks)
+
+
+def _block_signature(
+    block_id: str,
+    block_map: dict[str, dict[str, Any]],
+    parser: DocxParser,
+) -> str:
+    block = block_map.get(block_id)
+    if not block:
+        return "missing"
+    block_type = block.get("block_type")
+    if block_type == BLOCK_TYPE_IMAGE:
+        token = (block.get("image") or {}).get("token") or ""
+        return f"27:{token}"
+    if block_type == BLOCK_TYPE_FILE:
+        token = (block.get("file") or {}).get("token") or ""
+        return f"23:{token}"
+    if block_type == BLOCK_TYPE_TABLE:
+        table_md = parser.table_markdown(block)
+        return f"31:{_hash_text(table_md)}"
+    text = parser.collect_text(block_id)
+    return f"{block_type}:{_hash_text(text)}"
+
+
+def _hash_text(text: str) -> str:
+    if not text:
+        return ""
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()

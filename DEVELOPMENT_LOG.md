@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.10 (2026-01-30)
+- 目标：针对 Markdown 上行做块级差异更新，减少全量覆盖。
+- 结果：基于顶层 block signature 做 diff；仅对变更段落执行删除/插入；新增 update_mode 参数并默认对同步任务启用 partial。
+- 测试：`PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py`。
+- 问题：若仍有 400 invalid param，将在日志中定位具体 block payload 并继续修正。
+
 ## v0.1.36-dev.9 (2026-01-30)
 - 目标：在 400 invalid param 时自动定位无效块并继续上传。
 - 结果：创建子块失败时拆分重试，单块失败则记录 payload 并跳过；日志包含 block_type/keys 便于定位。
