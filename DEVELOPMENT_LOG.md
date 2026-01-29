@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.6 (2026-01-29)
+- 目标：自动记录运行日志与错误信息，便于排查同步问题。
+- 结果：引入 Loguru 初始化；HTTP 请求日志与异常写入 `data/logs/larksync.log`；新增单测与使用文档说明。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：暂无阻塞问题。
+
 ## v0.1.36-dev.5 (2026-01-29)
 - 目标：修复上传时缺图导致 400 与图片路径不一致问题。
 - 结果：下载时图片保存到文档同目录 `assets/`；上传时 base_path 使用文档所在目录；缺图仅插入占位文本不再生成无效 image block。

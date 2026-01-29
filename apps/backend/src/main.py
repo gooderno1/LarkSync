@@ -1,7 +1,10 @@
 import asyncio
+import time
 
 from fastapi import FastAPI
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 
 from src.api import (
     auth_router,
@@ -13,6 +16,7 @@ from src.api import (
     sync_router,
     watcher_router,
 )
+from src.core.logging import init_logging
 from src.db.session import init_db
 from src.api.watcher import watcher_manager
 
@@ -36,8 +40,28 @@ app.include_router(sync_router)
 app.include_router(system_router)
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("请求处理失败: {} {}", request.method, request.url.path)
+        raise
+    duration_ms = (time.time() - start) * 1000
+    logger.info(
+        "{} {} -> {} ({:.1f} ms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
+
+
 @app.on_event("startup")
 async def startup_event() -> None:
+    init_logging()
     watcher_manager.set_loop(asyncio.get_running_loop())
     await init_db()
 

@@ -160,6 +160,10 @@
 - 后端单测：`cd apps/backend` 后执行 `python -m pytest`
 - 前端暂无单测，建议执行 `npm run lint`（如已配置）。
 
+## 8.1 运行日志
+- 后端运行日志默认写入：`data/logs/larksync.log`
+- 日志会按 10MB 轮转并保留 10 天，方便排查同步/上传问题。
+
 ## 9. 已知限制
 - Markdown 新建 Docx 需提供飞书导入接口样例以实现自动创建。
 - 非 Markdown 文件的“覆盖更新”接口尚未接入。
