@@ -273,16 +273,28 @@ class DocxService:
                 "children": [self._sanitize_block(block_map[child_id]) for child_id in chunk],
                 "index": -1,
             }
-            response = await self._request_json(
-                "POST",
-                f"{self._base_url}/open-apis/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children",
-                params={
-                    "client_token": str(uuid.uuid4()),
-                    "document_revision_id": -1,
-                    "user_id_type": user_id_type,
-                },
-                json=payload,
-            )
+            try:
+                response = await self._request_json(
+                    "POST",
+                    f"{self._base_url}/open-apis/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children",
+                    params={
+                        "client_token": str(uuid.uuid4()),
+                        "document_revision_id": -1,
+                        "user_id_type": user_id_type,
+                    },
+                    json=payload,
+                )
+            except Exception as exc:
+                await self._handle_create_children_error(
+                    exc,
+                    document_id=document_id,
+                    parent_block_id=parent_block_id,
+                    chunk=chunk,
+                    block_map=block_map,
+                    children_map=children_map,
+                    user_id_type=user_id_type,
+                )
+                continue
             data = response.get("data") or {}
             created = data.get("children", [])
             if not isinstance(created, list):
@@ -302,6 +314,57 @@ class DocxService:
                         children_map=children_map,
                         user_id_type=user_id_type,
                     )
+
+    async def _handle_create_children_error(
+        self,
+        exc: Exception,
+        *,
+        document_id: str,
+        parent_block_id: str,
+        chunk: list[str],
+        block_map: dict[str, dict[str, Any]],
+        children_map: dict[str, list[str]],
+        user_id_type: str,
+    ) -> None:
+        logger.warning(
+            "创建子块失败，准备拆分重试: document_id={} parent={} size={} error={}",
+            document_id,
+            parent_block_id,
+            len(chunk),
+            exc,
+        )
+        if len(chunk) <= 1:
+            if not chunk:
+                return
+            block_id = chunk[0]
+            block = self._sanitize_block(block_map[block_id])
+            logger.error(
+                "无效块已跳过: document_id={} parent={} block_id={} block_type={} keys={} payload={}",
+                document_id,
+                parent_block_id,
+                block_id,
+                block.get("block_type"),
+                sorted(block.keys()),
+                _truncate_payload(block),
+            )
+            return
+        mid = len(chunk) // 2
+        await self._create_children_recursive(
+            document_id=document_id,
+            parent_block_id=parent_block_id,
+            child_ids=chunk[:mid],
+            block_map=block_map,
+            children_map=children_map,
+            user_id_type=user_id_type,
+        )
+        await self._create_children_recursive(
+            document_id=document_id,
+            parent_block_id=parent_block_id,
+            child_ids=chunk[mid:],
+            block_map=block_map,
+            children_map=children_map,
+            user_id_type=user_id_type,
+        )
 
     @staticmethod
     def _sanitize_block(block: dict[str, Any]) -> dict[str, Any]:
@@ -453,3 +516,13 @@ def _summarize_block_types(blocks: Iterable[dict[str, Any]]) -> dict[int | None,
             block_type = None
         summary[block_type] = summary.get(block_type, 0) + 1
     return summary
+
+
+def _truncate_payload(payload: dict[str, Any], limit: int = 800) -> str:
+    try:
+        text = str(payload)
+    except Exception:
+        return "<unprintable>"
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...(truncated)"
