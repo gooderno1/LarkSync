@@ -15,6 +15,16 @@ class StubDownloader:
         output_path.write_bytes(b"fake-image")
 
 
+class StubFileDownloader:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, Path]] = []
+
+    async def download(self, file_token: str, file_name: str, target_dir: Path, mtime: float):
+        self.calls.append((file_token, file_name, target_dir))
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (target_dir / file_name).write_bytes(b"file")
+
+
 @pytest.mark.asyncio
 async def test_transcoder_handles_heading_bold_table_and_image(tmp_path: Path) -> None:
     blocks = [
@@ -348,3 +358,35 @@ async def test_transcoder_rewrites_links_to_local_paths(tmp_path: Path) -> None:
 
     assert "[链接](" in markdown
     assert "Doc.md" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_downloads_attachment_blocks(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["file1"]},
+        {
+            "block_id": "file1",
+            "block_type": 23,
+            "parent_id": "root",
+            "file": {"token": "file-token", "name": "附件.pdf"},
+        },
+    ]
+
+    base_dir = tmp_path / "doc"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    file_downloader = StubFileDownloader()
+    transcoder = DocxTranscoder(
+        assets_root=tmp_path,
+        downloader=StubDownloader(),
+        file_downloader=file_downloader,
+    )
+    markdown = await transcoder.to_markdown(
+        "doc-attach",
+        blocks,
+        base_dir=base_dir,
+        link_map={},
+    )
+
+    assert "[附件.pdf](attachments/附件.pdf)" in markdown
+    assert file_downloader.calls[0][0] == "file-token"
+    assert (base_dir / "attachments" / "附件.pdf").exists()

@@ -285,12 +285,19 @@ class DocxTranscoder:
             await self._downloader.download(token, path)
 
         for token, name, target_dir in attachments:
-            await self._file_downloader.download(
-                file_token=token,
-                file_name=name,
-                target_dir=target_dir,
-                mtime=time.time(),
-            )
+            try:
+                await self._file_downloader.download(
+                    file_token=token,
+                    file_name=name,
+                    target_dir=target_dir,
+                    mtime=time.time(),
+                )
+            except Exception:
+                try:
+                    output_path = target_dir / name
+                    await self._downloader.download(token, output_path)
+                except Exception:
+                    continue
 
         return "\n".join(lines).strip()
 
@@ -611,6 +618,9 @@ class DocxTranscoder:
                 or file_info.get("title")
                 or file_info.get("file_name")
             )
+            if not name and token:
+                ext = file_info.get("file_extension") or file_info.get("extension")
+                name = f"{token}.{ext}" if ext else str(token)
             if token:
                 token = str(token)
             if name:
@@ -622,6 +632,9 @@ class DocxTranscoder:
                 continue
             token = value.get("token") or value.get("file_token")
             name = value.get("name") or value.get("title") or value.get("file_name")
+            if not name and token:
+                ext = value.get("file_extension") or value.get("extension")
+                name = f"{token}.{ext}" if ext else str(token)
             if token and name:
                 return str(token), str(name)
 

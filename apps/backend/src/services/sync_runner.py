@@ -250,13 +250,18 @@ class SyncTaskRunner:
     async def _run_upload(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
         docx_service = self._docx_service or DocxService()
         file_uploader = self._file_uploader or FileUploader()
+        drive_service = self._drive_service or DriveService()
         owned_services = []
         if self._docx_service is None:
             owned_services.append(docx_service)
         if self._file_uploader is None:
             owned_services.append(file_uploader)
+        if self._drive_service is None:
+            owned_services.append(drive_service)
 
         try:
+            if task.sync_mode == "upload_only":
+                await self._prefill_links_from_cloud(task, drive_service)
             files = list(self._iter_local_files(task))
             status.total_files += len(files)
             for path in files:
@@ -309,7 +314,7 @@ class SyncTaskRunner:
                 )
             )
             return
-        if mtime <= (link.updated_at + 1.0):
+        if task.sync_mode != "upload_only" and mtime <= (link.updated_at + 1.0):
             status.skipped_files += 1
             status.record_event(
                 SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
@@ -350,7 +355,7 @@ class SyncTaskRunner:
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
         mtime = path.stat().st_mtime
-        if link and mtime <= (link.updated_at + 1.0):
+        if task.sync_mode != "upload_only" and link and mtime <= (link.updated_at + 1.0):
             status.skipped_files += 1
             status.record_event(
                 SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
@@ -465,6 +470,31 @@ class SyncTaskRunner:
                 close = getattr(service, "close", None)
                 if close:
                     await close()
+
+    async def _prefill_links_from_cloud(
+        self, task: SyncTaskItem, drive_service: DriveService
+    ) -> None:
+        tree = await drive_service.scan_folder(
+            task.cloud_folder_token, name=task.name or "同步根目录"
+        )
+        files = list(_flatten_files(tree))
+        for node, relative_dir in files:
+            token, node_type = _resolve_target(node)
+            if node_type not in {"docx", "doc", "file"}:
+                continue
+            target_dir = Path(task.local_path) / relative_dir
+            local_path = (
+                target_dir / _docx_filename(node.name)
+                if node_type in {"docx", "doc"}
+                else target_dir / node.name
+            )
+            await self._link_service.upsert_link(
+                local_path=str(local_path),
+                cloud_token=token,
+                cloud_type=node_type,
+                task_id=task.id,
+                updated_at=0.0,
+            )
 
 def _flatten_files(node: DriveNode, base: Path | None = None) -> Iterable[tuple[DriveNode, Path]]:
     base = base or Path()

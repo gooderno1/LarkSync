@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.35-dev.1 (2026-01-29)
+- 目标：修复双向上传未触发与附件下载失败问题。
+- 结果：upload_only 预填充云端映射避免缺失；上传跳过逻辑在 upload_only 下关闭；附件下载增加 media 兜底并容错；新增附件块测试。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：Markdown 新建 Docx 与云端文件覆盖更新仍需导入/更新接口样例。
+
 ## v0.1.34-dev.1 (2026-01-29)
 - 目标：补齐双向同步上传链路，修复表格内容缺失，并支持文档链接与附件本地化。
 - 结果：同步任务支持 upload_only/bidirectional 执行；下载时建立云端 token→本地路径映射，Docx 转码支持链接改写与附件下载；表格单元格内容递归提取；新增 SyncLink 表与相关测试。
