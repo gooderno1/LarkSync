@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from loguru import logger
+
 from src.services.feishu_client import FeishuClient
 from src.services.media_uploader import MediaUploadError, MediaUploader
 
@@ -53,6 +55,9 @@ class DocxService:
         user_id_type: str = "open_id",
         base_path: str | Path | None = None,
     ) -> None:
+        logger.info(
+            "替换文档内容: document_id={} length={}", document_id, len(markdown)
+        )
         items = await self.list_blocks(document_id, user_id_type=user_id_type)
         root_block = self._find_root_block(items)
         if not root_block:
@@ -66,6 +71,23 @@ class DocxService:
         )
 
         children = root_block.get("children") or []
+        logger.info(
+            "根块信息: block_id={} children={}",
+            root_block.get("block_id"),
+            len(children),
+        )
+        await self._create_from_convert(
+            document_id=document_id,
+            root_block_id=root_block["block_id"],
+            convert=convert,
+            user_id_type=user_id_type,
+        )
+        logger.info(
+            "新内容已创建: document_id={} blocks={}",
+            document_id,
+            len(convert.blocks),
+        )
+
         if children:
             await self.delete_children(
                 document_id=document_id,
@@ -73,12 +95,13 @@ class DocxService:
                 start_index=0,
                 end_index=len(children),
             )
-
-        await self._create_from_convert(
-            document_id=document_id,
-            root_block_id=root_block["block_id"],
-            convert=convert,
-            user_id_type=user_id_type,
+            logger.info(
+                "旧内容已删除: document_id={} count={}", document_id, len(children)
+            )
+        logger.info(
+            "替换完成: document_id={} blocks={}",
+            document_id,
+            len(convert.blocks),
         )
 
     async def convert_markdown(
@@ -278,9 +301,26 @@ class DocxService:
 
     async def _request_json(self, method: str, url: str, **kwargs) -> dict[str, Any]:
         response = await self._client.request_with_retry(method, url, **kwargs)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except Exception as exc:
+            logger.error(
+                "请求失败: {} {} status={} body={}",
+                method,
+                url,
+                response.status_code,
+                response.text,
+            )
+            raise exc
         payload = response.json()
         if isinstance(payload, dict) and payload.get("code", 0) != 0:
+            logger.error(
+                "飞书 API 错误: {} {} code={} msg={}",
+                method,
+                url,
+                payload.get("code"),
+                payload.get("msg"),
+            )
             raise DocxServiceError(payload.get("msg", "飞书 API 返回错误"))
         if not isinstance(payload, dict):
             raise DocxServiceError("飞书 API 响应格式错误")

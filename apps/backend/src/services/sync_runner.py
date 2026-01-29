@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Literal
 
+from loguru import logger
+
 from src.services.docx_service import DocxService
 from src.services.drive_service import DriveNode, DriveService
 from src.services.file_downloader import FileDownloader
@@ -67,6 +69,8 @@ class SyncTaskRunner:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._watchers: dict[str, WatcherService] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._uploading_paths: set[str] = set()
+        self._doc_locks: dict[str, asyncio.Lock] = {}
 
     def get_status(self, task_id: str) -> SyncTaskStatus:
         return self._statuses.get(task_id) or SyncTaskStatus(task_id=task_id)
@@ -95,6 +99,13 @@ class SyncTaskRunner:
         status.last_files = []
         if task.sync_mode in {"bidirectional", "upload_only"}:
             self._ensure_watcher(task)
+        logger.info(
+            "启动同步任务: id={} mode={} local={} cloud={}",
+            task.id,
+            task.sync_mode,
+            task.local_path,
+            task.cloud_folder_token,
+        )
         self._tasks[task.id] = asyncio.create_task(self.run_task(task))
         return status
 
@@ -153,6 +164,9 @@ class SyncTaskRunner:
                 task.cloud_folder_token, name=task.name or "同步根目录"
             )
             files = list(_flatten_files(tree))
+            logger.info(
+                "下载阶段: task_id={} files={}", task.id, len(files)
+            )
             link_map = _build_link_map(files, task.local_path)
             status.total_files = len(files)
 
@@ -227,6 +241,14 @@ class SyncTaskRunner:
                             message=f"type={effective_type} token={effective_token} error={exc}",
                         )
                     )
+                    logger.error(
+                        "下载失败: task_id={} path={} type={} token={} error={}",
+                        task.id,
+                        target_dir / node.name,
+                        effective_type,
+                        effective_token,
+                        exc,
+                    )
         finally:
             for service in owned_services:
                 close = getattr(service, "close", None)
@@ -263,6 +285,9 @@ class SyncTaskRunner:
             if task.sync_mode == "upload_only":
                 await self._prefill_links_from_cloud(task, drive_service)
             files = list(self._iter_local_files(task))
+            logger.info(
+                "上传阶段: task_id={} files={}", task.id, len(files)
+            )
             status.total_files += len(files)
             for path in files:
                 await self._upload_path(task, status, path, docx_service, file_uploader)
@@ -280,19 +305,31 @@ class SyncTaskRunner:
         docx_service: DocxService,
         file_uploader: FileUploader,
     ) -> None:
-        if self._should_ignore_path(task, path):
+        key = str(path)
+        if key in self._uploading_paths:
             status.skipped_files += 1
             status.record_event(
-                SyncFileEvent(path=str(path), status="skipped", message="忽略内部目录")
+                SyncFileEvent(path=key, status="skipped", message="上传中，跳过重复触发")
             )
+            logger.info("重复上传触发，已跳过: task_id={} path={}", task.id, key)
             return
-        if not path.exists() or not path.is_file():
-            return
-        suffix = path.suffix.lower()
-        if suffix == ".md":
-            await self._upload_markdown(task, status, path, docx_service)
-            return
-        await self._upload_file(task, status, path, file_uploader)
+        self._uploading_paths.add(key)
+        try:
+            if self._should_ignore_path(task, path):
+                status.skipped_files += 1
+                status.record_event(
+                    SyncFileEvent(path=key, status="skipped", message="忽略内部目录")
+                )
+                return
+            if not path.exists() or not path.is_file():
+                return
+            suffix = path.suffix.lower()
+            if suffix == ".md":
+                await self._upload_markdown(task, status, path, docx_service)
+                return
+            await self._upload_file(task, status, path, file_uploader)
+        finally:
+            self._uploading_paths.discard(key)
 
     async def _upload_markdown(
         self,
@@ -330,12 +367,20 @@ class SyncTaskRunner:
                 )
             )
             return
-        markdown = path.read_text(encoding="utf-8")
-        await docx_service.replace_document_content(
-            link.cloud_token,
-            markdown,
-            base_path=base_path,
-        )
+        lock = self._doc_locks.setdefault(link.cloud_token, asyncio.Lock())
+        async with lock:
+            markdown = path.read_text(encoding="utf-8")
+            logger.info(
+                "上传文档: task_id={} path={} token={}",
+                task.id,
+                path,
+                link.cloud_token,
+            )
+            await docx_service.replace_document_content(
+                link.cloud_token,
+                markdown,
+                base_path=base_path,
+            )
         await self._link_service.upsert_link(
             local_path=str(path),
             cloud_token=link.cloud_token,
@@ -345,6 +390,7 @@ class SyncTaskRunner:
         )
         status.completed_files += 1
         status.record_event(SyncFileEvent(path=str(path), status="uploaded"))
+        logger.info("上传完成: task_id={} path={}", task.id, path)
 
     async def _upload_file(
         self,
@@ -381,6 +427,7 @@ class SyncTaskRunner:
                 )
             )
             return
+        logger.info("上传文件: task_id={} path={}", task.id, path)
         result = await file_uploader.upload_file(
             file_path=path,
             parent_node=task.cloud_folder_token,

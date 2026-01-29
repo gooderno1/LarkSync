@@ -46,7 +46,6 @@ async def test_replace_document_content_clears_and_creates() -> None:
                 ],
             },
         },
-        {"code": 0, "data": {"document_revision_id": 1, "client_token": "t"}},
         {
             "code": 0,
             "data": {
@@ -55,6 +54,7 @@ async def test_replace_document_content_clears_and_creates() -> None:
                 "client_token": "t2",
             },
         },
+        {"code": 0, "data": {"document_revision_id": 1, "client_token": "t"}},
     ]
     client = FakeClient(responses)
     service = DocxService(client=client)
@@ -69,15 +69,7 @@ async def test_replace_document_content_clears_and_creates() -> None:
     assert convert_call[0] == "POST"
     assert convert_call[1].endswith("/open-apis/docx/v1/documents/blocks/convert")
 
-    delete_call = client.requests[2]
-    assert delete_call[0] == "DELETE"
-    assert delete_call[1].endswith(
-        "/open-apis/docx/v1/documents/doc123/blocks/root/children/batch_delete"
-    )
-    assert delete_call[2]["json"]["start_index"] == 0
-    assert delete_call[2]["json"]["end_index"] == 2
-
-    create_call = client.requests[3]
+    create_call = client.requests[2]
     assert create_call[0] == "POST"
     assert create_call[1].endswith(
         "/open-apis/docx/v1/documents/doc123/blocks/root/children"
@@ -86,6 +78,14 @@ async def test_replace_document_content_clears_and_creates() -> None:
     assert "block_id" not in child_payload
     assert "parent_id" not in child_payload
     assert "children" not in child_payload
+
+    delete_call = client.requests[3]
+    assert delete_call[0] == "DELETE"
+    assert delete_call[1].endswith(
+        "/open-apis/docx/v1/documents/doc123/blocks/root/children/batch_delete"
+    )
+    assert delete_call[2]["json"]["start_index"] == 0
+    assert delete_call[2]["json"]["end_index"] == 2
 
 
 @pytest.mark.asyncio
@@ -177,7 +177,6 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
                 ],
             },
         },
-        {"code": 0, "data": {"document_revision_id": 1, "client_token": "t"}},
         {
             "code": 0,
             "data": {
@@ -188,6 +187,7 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
                 ]
             },
         },
+        {"code": 0, "data": {"document_revision_id": 1, "client_token": "t"}},
     ]
     client = FakeClient(responses)
     service = DocxService(client=client)
@@ -208,7 +208,7 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
     assert client.requests[2][2]["data"]["parent_node"] == "doc789"
     assert client.requests[2][2]["data"]["parent_type"] == "docx_image"
 
-    create_call = client.requests[5]
+    create_call = client.requests[4]
     children_payload = create_call[2]["json"]["children"]
     assert len(children_payload) == 3
     assert any(child.get("image", {}).get("token") == "img-token" for child in children_payload)
