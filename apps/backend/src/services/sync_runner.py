@@ -302,7 +302,7 @@ class SyncTaskRunner:
         docx_service: DocxService,
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
-        base_path = task.base_path or task.local_path
+        base_path = path.parent.as_posix()
         mtime = path.stat().st_mtime
         if not link:
             status.failed_files += 1

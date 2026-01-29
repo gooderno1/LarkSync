@@ -235,6 +235,15 @@ async def test_convert_markdown_with_images_falls_back_on_missing_image(tmp_path
                 ],
             },
         },
+        {
+            "code": 0,
+            "data": {
+                "first_level_block_ids": ["t3"],
+                "blocks": [
+                    {"block_id": "t3", "block_type": 2, "text": {"elements": []}}
+                ],
+            },
+        },
     ]
     client = FakeClient(responses)
     service = DocxService(client=client, media_uploader=FailingMediaUploader())
@@ -244,7 +253,4 @@ async def test_convert_markdown_with_images_falls_back_on_missing_image(tmp_path
         markdown, document_id="docid", base_path=tmp_path
     )
 
-    assert any(
-        block.get("block_type") == 27 and block.get("image", {}).get("token") == "token"
-        for block in convert.blocks
-    )
+    assert all(block.get("block_type") != 27 for block in convert.blocks)

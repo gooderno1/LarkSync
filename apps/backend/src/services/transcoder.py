@@ -497,7 +497,10 @@ class DocxTranscoder:
             if not token:
                 return []
             filename = f"{token}.png"
-            output_path = self._assets_root / document_id / filename
+            if base_dir:
+                output_path = base_dir / self._assets_relative / document_id / filename
+            else:
+                output_path = self._assets_root / document_id / filename
             relative_path = self._assets_relative / document_id / filename
             images.append((token, output_path))
             line = f"![]({relative_path.as_posix()})"

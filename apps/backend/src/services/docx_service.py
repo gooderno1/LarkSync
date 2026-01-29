@@ -143,24 +143,12 @@ class DocxService:
                     }
                 )
             except MediaUploadError:
-                fallback_token = self._infer_image_token(segment.value)
-                if fallback_token:
-                    image_block_id = f"img_{uuid.uuid4().hex}"
-                    first_level_block_ids.append(image_block_id)
-                    blocks.append(
-                        {
-                            "block_id": image_block_id,
-                            "block_type": 27,
-                            "image": {"token": fallback_token},
-                        }
-                    )
-                else:
-                    placeholder = f"[图片缺失: {segment.value}]"
-                    convert = await self.convert_markdown(
-                        placeholder, user_id_type=user_id_type
-                    )
-                    first_level_block_ids.extend(convert.first_level_block_ids)
-                    blocks.extend(convert.blocks)
+                placeholder = f"[图片缺失: {segment.value}]"
+                convert = await self.convert_markdown(
+                    placeholder, user_id_type=user_id_type
+                )
+                first_level_block_ids.extend(convert.first_level_block_ids)
+                blocks.extend(convert.blocks)
 
         return ConvertResult(
             first_level_block_ids=first_level_block_ids,
@@ -338,15 +326,6 @@ class DocxService:
             path = base / path
         return path
 
-    @staticmethod
-    def _infer_image_token(ref: str) -> str | None:
-        try:
-            candidate = Path(ref).stem
-        except Exception:
-            return None
-        if not candidate:
-            return None
-        return candidate
 
 
 def _chunked(values: list[str], size: int) -> Iterable[list[str]]:
