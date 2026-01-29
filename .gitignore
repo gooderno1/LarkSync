@@ -13,6 +13,7 @@ node_modules/
 dist/
 
 # Logs & data
+data/
 data/*.db
 data/config.json
 *.log
