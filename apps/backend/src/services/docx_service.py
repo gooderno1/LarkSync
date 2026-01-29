@@ -4,7 +4,7 @@ import difflib
 import hashlib
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -23,6 +23,7 @@ class DocxServiceError(RuntimeError):
 class ConvertResult:
     first_level_block_ids: list[str]
     blocks: list[dict[str, Any]]
+    image_paths: dict[str, Path] = field(default_factory=dict)
 
 
 @dataclass
@@ -174,6 +175,7 @@ class DocxService:
 
         first_level_block_ids: list[str] = []
         blocks: list[dict[str, Any]] = []
+        image_paths: dict[str, Path] = {}
         for segment in segments:
             if segment.kind == "text":
                 if not segment.value.strip():
@@ -186,20 +188,18 @@ class DocxService:
                 continue
             image_path = self._resolve_image_path(segment.value, base_path)
             try:
-                image_token = await self._media_uploader.upload_image(
-                    image_path,
-                    parent_node=document_id,
-                    parent_type=self._image_parent_type,
-                )
+                if not image_path.exists() or not image_path.is_file():
+                    raise MediaUploadError(f"图片不存在: {image_path}")
                 image_block_id = f"img_{uuid.uuid4().hex}"
                 first_level_block_ids.append(image_block_id)
                 blocks.append(
                     {
                         "block_id": image_block_id,
                         "block_type": 27,
-                        "image": {"token": image_token},
+                        "image": {},
                     }
                 )
+                image_paths[image_block_id] = image_path
             except MediaUploadError:
                 placeholder = f"[图片缺失: {segment.value}]"
                 convert = await self.convert_markdown(
@@ -211,6 +211,7 @@ class DocxService:
         return ConvertResult(
             first_level_block_ids=first_level_block_ids,
             blocks=blocks,
+            image_paths=image_paths,
         )
 
     async def list_blocks(
@@ -260,7 +261,7 @@ class DocxService:
     ) -> None:
         block_map = {block.get("block_id"): block for block in convert.blocks}
         children_map = {
-            block.get("block_id"): block.get("children", [])
+            block.get("block_id"): _extract_children_ids(block)
             for block in convert.blocks
         }
         await self._create_children_recursive(
@@ -270,6 +271,7 @@ class DocxService:
             block_map=block_map,
             children_map=children_map,
             user_id_type=user_id_type,
+            image_paths=convert.image_paths,
         )
 
     async def _create_children_recursive(
@@ -281,6 +283,7 @@ class DocxService:
         children_map: dict[str, list[str]],
         user_id_type: str,
         insert_index: int = -1,
+        image_paths: dict[str, Path] | None = None,
     ) -> None:
         next_index = insert_index
         for chunk in _chunked(child_ids, 50):
@@ -295,6 +298,12 @@ class DocxService:
                 "children": [self._sanitize_block(block_map[child_id]) for child_id in chunk],
                 "index": next_index if next_index >= 0 else -1,
             }
+            image_uploads: list[tuple[int, Path]] = []
+            if image_paths:
+                for idx, child_id in enumerate(chunk):
+                    image_path = image_paths.get(child_id)
+                    if image_path:
+                        image_uploads.append((idx, image_path))
             if next_index >= 0:
                 next_index += len(chunk)
             try:
@@ -317,12 +326,36 @@ class DocxService:
                     block_map=block_map,
                     children_map=children_map,
                     user_id_type=user_id_type,
+                    image_paths=image_paths,
+                    insert_index=insert_index,
                 )
                 continue
             data = response.get("data") or {}
             created = data.get("children", [])
             if not isinstance(created, list):
                 raise DocxServiceError("创建块响应缺少 children")
+
+            if image_uploads:
+                for idx, image_path in image_uploads:
+                    if idx >= len(created):
+                        continue
+                    new_id = created[idx].get("block_id")
+                    if not new_id:
+                        continue
+                    try:
+                        await self._media_uploader.upload_image(
+                            image_path,
+                            parent_node=new_id,
+                            parent_type=self._image_parent_type,
+                        )
+                    except MediaUploadError as exc:
+                        logger.error(
+                            "图片上传失败: document_id={} block_id={} path={} error={}",
+                            document_id,
+                            new_id,
+                            image_path,
+                            exc,
+                        )
 
             for old_id, new_block in zip(chunk, created):
                 new_id = new_block.get("block_id")
@@ -331,14 +364,15 @@ class DocxService:
                 old_children = children_map.get(old_id, [])
                 if old_children:
                     await self._create_children_recursive(
-                    document_id=document_id,
-                    parent_block_id=new_id,
-                    child_ids=old_children,
-                    block_map=block_map,
-                    children_map=children_map,
-                    user_id_type=user_id_type,
-                    insert_index=-1,
-                )
+                        document_id=document_id,
+                        parent_block_id=new_id,
+                        child_ids=old_children,
+                        block_map=block_map,
+                        children_map=children_map,
+                        user_id_type=user_id_type,
+                        insert_index=-1,
+                        image_paths=image_paths,
+                    )
 
     async def _handle_create_children_error(
         self,
@@ -350,6 +384,8 @@ class DocxService:
         block_map: dict[str, dict[str, Any]],
         children_map: dict[str, list[str]],
         user_id_type: str,
+        image_paths: dict[str, Path] | None = None,
+        insert_index: int = -1,
     ) -> None:
         logger.warning(
             "创建子块失败，准备拆分重试: document_id={} parent={} size={} error={}",
@@ -381,6 +417,8 @@ class DocxService:
             block_map=block_map,
             children_map=children_map,
             user_id_type=user_id_type,
+            insert_index=insert_index,
+            image_paths=image_paths,
         )
         await self._create_children_recursive(
             document_id=document_id,
@@ -389,6 +427,8 @@ class DocxService:
             block_map=block_map,
             children_map=children_map,
             user_id_type=user_id_type,
+            insert_index=insert_index if insert_index < 0 else insert_index + mid,
+            image_paths=image_paths,
         )
 
     async def _apply_partial_update(
@@ -481,6 +521,12 @@ class DocxService:
         cleaned.pop("block_id", None)
         cleaned.pop("parent_id", None)
         cleaned.pop("children", None)
+        if cleaned.get("block_type") == BLOCK_TYPE_TABLE:
+            table = cleaned.get("table")
+            if isinstance(table, dict):
+                table = dict(table)
+                table.pop("cells", None)
+                cleaned["table"] = table
         return cleaned
 
     @staticmethod
@@ -544,6 +590,7 @@ class DocxService:
             return ConvertResult(
                 first_level_block_ids=new_first_level,
                 blocks=new_blocks,
+                image_paths=dict(convert.image_paths),
             )
         return convert
 
@@ -667,3 +714,15 @@ def _hash_text(text: str) -> str:
     if not text:
         return ""
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+def _extract_children_ids(block: dict[str, Any]) -> list[str]:
+    children = block.get("children") or []
+    if children:
+        return list(children)
+    if block.get("block_type") == BLOCK_TYPE_TABLE:
+        table = block.get("table") or {}
+        cells = table.get("cells") or []
+        if isinstance(cells, list) and cells:
+            return list(cells)
+    return []

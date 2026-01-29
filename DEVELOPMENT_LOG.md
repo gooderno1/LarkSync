@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.11 (2026-01-30)
+- 目标：修复上行图片/表格 block 的 400 invalid param。
+- 结果：图片块改为先创建空块再上传素材；表格块移除 cells 引用并用 cells 作为子块创建；同步默认 update_mode=auto。
+- 测试：`PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py`。
+- 问题：若仍有 invalid param，将继续根据无效块日志调整 payload。
+
 ## v0.1.36-dev.10 (2026-01-30)
 - 目标：针对 Markdown 上行做块级差异更新，减少全量覆盖。
 - 结果：基于顶层 block signature 做 diff；仅对变更段落执行删除/插入；新增 update_mode 参数并默认对同步任务启用 partial。

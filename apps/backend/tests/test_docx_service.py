@@ -167,7 +167,6 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
                 ],
             },
         },
-        {"code": 0, "data": {"file_token": "img-token"}},
         {
             "code": 0,
             "data": {
@@ -187,6 +186,7 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
                 ]
             },
         },
+        {"code": 0, "data": {"file_token": "img-token"}},
         {"code": 0, "data": {"document_revision_id": 1, "client_token": "t"}},
     ]
     client = FakeClient(responses)
@@ -204,14 +204,18 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
     )
 
     assert client.requests[1][1].endswith("/open-apis/docx/v1/documents/blocks/convert")
-    assert client.requests[2][1].endswith("/open-apis/drive/v1/medias/upload_all")
-    assert client.requests[2][2]["data"]["parent_node"] == "doc789"
-    assert client.requests[2][2]["data"]["parent_type"] == "docx_image"
+    assert client.requests[2][1].endswith("/open-apis/docx/v1/documents/blocks/convert")
 
-    create_call = client.requests[4]
+    create_call = client.requests[3]
     children_payload = create_call[2]["json"]["children"]
     assert len(children_payload) == 3
-    assert any(child.get("image", {}).get("token") == "img-token" for child in children_payload)
+    image_blocks = [child for child in children_payload if child.get("block_type") == 27]
+    assert image_blocks and image_blocks[0].get("image") == {}
+
+    upload_call = client.requests[4]
+    assert upload_call[1].endswith("/open-apis/drive/v1/medias/upload_all")
+    assert upload_call[2]["data"]["parent_node"] == "n2"
+    assert upload_call[2]["data"]["parent_type"] == "docx_image"
 
 
 @pytest.mark.asyncio
