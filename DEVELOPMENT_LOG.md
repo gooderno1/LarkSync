@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.8 (2026-01-29)
+- 目标：补齐上行日志并定位 400 invalid param。
+- 结果：补充上传阶段逐文件错误日志；Docx 转换结果统计与根块规整；创建子块前输出块类型摘要；图片上传记录 token。
+- 测试：`PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py`。
+- 问题：若仍出现 400，请提供 log_id（日志已打印），便于对照飞书排障指引。
+
 ## v0.1.36-dev.7 (2026-01-29)
 - 目标：避免云端文档被清空并补充同步日志。
 - 结果：Docx 覆盖流程改为先创建再删除旧内容；上传去重与同文档互斥锁；同步阶段与失败信息写入日志；更新单测。

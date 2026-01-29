@@ -290,7 +290,26 @@ class SyncTaskRunner:
             )
             status.total_files += len(files)
             for path in files:
-                await self._upload_path(task, status, path, docx_service, file_uploader)
+                try:
+                    await self._upload_path(
+                        task, status, path, docx_service, file_uploader
+                    )
+                except Exception as exc:
+                    status.failed_files += 1
+                    status.last_error = str(exc)
+                    status.record_event(
+                        SyncFileEvent(
+                            path=str(path),
+                            status="failed",
+                            message=str(exc),
+                        )
+                    )
+                    logger.error(
+                        "上传失败: task_id={} path={} error={}",
+                        task.id,
+                        path,
+                        exc,
+                    )
         finally:
             for service in owned_services:
                 close = getattr(service, "close", None)

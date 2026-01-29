@@ -69,6 +69,14 @@ class DocxService:
             user_id_type=user_id_type,
             base_path=base_path,
         )
+        convert = self._normalize_convert(convert)
+        logger.info(
+            "转换结果: document_id={} blocks={} first_level={} types={}",
+            document_id,
+            len(convert.blocks),
+            len(convert.first_level_block_ids),
+            _summarize_block_types(convert.blocks),
+        )
 
         children = root_block.get("children") or []
         logger.info(
@@ -134,7 +142,14 @@ class DocxService:
         base_path: str | Path | None = None,
     ) -> ConvertResult:
         segments = self._split_markdown_images(markdown)
-        if not any(segment.kind == "image" for segment in segments):
+        image_count = sum(1 for segment in segments if segment.kind == "image")
+        logger.info(
+            "解析 Markdown 图片: document_id={} segments={} images={}",
+            document_id,
+            len(segments),
+            image_count,
+        )
+        if image_count == 0:
             return await self.convert_markdown(markdown, user_id_type=user_id_type)
 
         first_level_block_ids: list[str] = []
@@ -247,6 +262,13 @@ class DocxService:
         user_id_type: str,
     ) -> None:
         for chunk in _chunked(child_ids, 50):
+            logger.info(
+                "创建子块: document_id={} parent={} size={} types={}",
+                document_id,
+                parent_block_id,
+                len(chunk),
+                _summarize_block_types([block_map[child_id] for child_id in chunk]),
+            )
             payload = {
                 "children": [self._sanitize_block(block_map[child_id]) for child_id in chunk],
                 "index": -1,
@@ -305,26 +327,53 @@ class DocxService:
             response.raise_for_status()
         except Exception as exc:
             logger.error(
-                "请求失败: {} {} status={} body={}",
+                "请求失败: {} {} status={} params={} body={}",
                 method,
                 url,
                 response.status_code,
+                kwargs.get("params"),
                 response.text,
             )
             raise exc
         payload = response.json()
         if isinstance(payload, dict) and payload.get("code", 0) != 0:
             logger.error(
-                "飞书 API 错误: {} {} code={} msg={}",
+                "飞书 API 错误: {} {} code={} msg={} params={}",
                 method,
                 url,
                 payload.get("code"),
                 payload.get("msg"),
+                kwargs.get("params"),
             )
             raise DocxServiceError(payload.get("msg", "飞书 API 返回错误"))
         if not isinstance(payload, dict):
             raise DocxServiceError("飞书 API 响应格式错误")
         return payload
+
+    @staticmethod
+    def _normalize_convert(convert: ConvertResult) -> ConvertResult:
+        block_map = {block.get("block_id"): block for block in convert.blocks}
+        new_first_level: list[str] = []
+        removed = 0
+        for block_id in convert.first_level_block_ids:
+            block = block_map.get(block_id)
+            if block and block.get("block_type") == 1:
+                removed += 1
+                children = block.get("children") or []
+                new_first_level.extend(children)
+            else:
+                new_first_level.append(block_id)
+        if removed:
+            logger.warning(
+                "转换结果包含根块，已展开 children: removed={}",
+                removed,
+            )
+            new_blocks = [block for block in convert.blocks if block.get("block_type") != 1]
+            return ConvertResult(
+                first_level_block_ids=new_first_level,
+                blocks=new_blocks,
+            )
+        return convert
 
     async def close(self) -> None:
         close = getattr(self._client, "close", None)
@@ -394,3 +443,13 @@ def _is_remote_image(ref: str) -> bool:
     return lowered.startswith("http://") or lowered.startswith("https://") or lowered.startswith(
         "data:"
     )
+
+
+def _summarize_block_types(blocks: Iterable[dict[str, Any]]) -> dict[int | None, int]:
+    summary: dict[int | None, int] = {}
+    for block in blocks:
+        block_type = block.get("block_type")
+        if not isinstance(block_type, int):
+            block_type = None
+        summary[block_type] = summary.get(block_type, 0) + 1
+    return summary
