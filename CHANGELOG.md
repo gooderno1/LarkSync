@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-29] v0.1.36-dev.4 fix(docx): 上传缺图自动跳过并回退 token
 [2026-01-29] v0.1.36-dev.3 fix(docx): 图片下载失败兜底
 [2026-01-29] v0.1.36-dev.2 chore(repo): 忽略 data 运行数据目录
 [2026-01-29] v0.1.36-dev.1 fix(docx): 修正 Markdown 转换接口路径

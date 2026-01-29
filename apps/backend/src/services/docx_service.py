@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from src.services.feishu_client import FeishuClient
-from src.services.media_uploader import MediaUploader
+from src.services.media_uploader import MediaUploadError, MediaUploader
 
 
 class DocxServiceError(RuntimeError):
@@ -127,20 +127,40 @@ class DocxService:
                 blocks.extend(convert.blocks)
                 continue
             image_path = self._resolve_image_path(segment.value, base_path)
-            image_token = await self._media_uploader.upload_image(
-                image_path,
-                parent_node=document_id,
-                parent_type=self._image_parent_type,
-            )
-            image_block_id = f"img_{uuid.uuid4().hex}"
-            first_level_block_ids.append(image_block_id)
-            blocks.append(
-                {
-                    "block_id": image_block_id,
-                    "block_type": 27,
-                    "image": {"token": image_token},
-                }
-            )
+            try:
+                image_token = await self._media_uploader.upload_image(
+                    image_path,
+                    parent_node=document_id,
+                    parent_type=self._image_parent_type,
+                )
+                image_block_id = f"img_{uuid.uuid4().hex}"
+                first_level_block_ids.append(image_block_id)
+                blocks.append(
+                    {
+                        "block_id": image_block_id,
+                        "block_type": 27,
+                        "image": {"token": image_token},
+                    }
+                )
+            except MediaUploadError:
+                fallback_token = self._infer_image_token(segment.value)
+                if fallback_token:
+                    image_block_id = f"img_{uuid.uuid4().hex}"
+                    first_level_block_ids.append(image_block_id)
+                    blocks.append(
+                        {
+                            "block_id": image_block_id,
+                            "block_type": 27,
+                            "image": {"token": fallback_token},
+                        }
+                    )
+                else:
+                    placeholder = f"[图片缺失: {segment.value}]"
+                    convert = await self.convert_markdown(
+                        placeholder, user_id_type=user_id_type
+                    )
+                    first_level_block_ids.extend(convert.first_level_block_ids)
+                    blocks.extend(convert.blocks)
 
         return ConvertResult(
             first_level_block_ids=first_level_block_ids,
@@ -317,6 +337,16 @@ class DocxService:
                 base = base.parent
             path = base / path
         return path
+
+    @staticmethod
+    def _infer_image_token(ref: str) -> str | None:
+        try:
+            candidate = Path(ref).stem
+        except Exception:
+            return None
+        if not candidate:
+            return None
+        return candidate
 
 
 def _chunked(values: list[str], size: int) -> Iterable[list[str]]:

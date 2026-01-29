@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from src.services.docx_service import DocxService
+from src.services.media_uploader import MediaUploadError
 
 
 class FakeClient:
@@ -17,6 +18,11 @@ class FakeClient:
 
     async def close(self) -> None:
         return None
+
+
+class FailingMediaUploader:
+    async def upload_image(self, file_path, parent_node: str, parent_type: str | None = None) -> str:
+        raise MediaUploadError("图片不存在")
 
 
 @pytest.mark.asyncio
@@ -206,3 +212,39 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
     children_payload = create_call[2]["json"]["children"]
     assert len(children_payload) == 3
     assert any(child.get("image", {}).get("token") == "img-token" for child in children_payload)
+
+
+@pytest.mark.asyncio
+async def test_convert_markdown_with_images_falls_back_on_missing_image(tmp_path) -> None:
+    responses = [
+        {
+            "code": 0,
+            "data": {
+                "first_level_block_ids": ["t1"],
+                "blocks": [
+                    {"block_id": "t1", "block_type": 2, "text": {"elements": []}}
+                ],
+            },
+        },
+        {
+            "code": 0,
+            "data": {
+                "first_level_block_ids": ["t2"],
+                "blocks": [
+                    {"block_id": "t2", "block_type": 2, "text": {"elements": []}}
+                ],
+            },
+        },
+    ]
+    client = FakeClient(responses)
+    service = DocxService(client=client, media_uploader=FailingMediaUploader())
+
+    markdown = "前文 ![](assets/docid/token.png) 后文"
+    convert = await service.convert_markdown_with_images(
+        markdown, document_id="docid", base_path=tmp_path
+    )
+
+    assert any(
+        block.get("block_type") == 27 and block.get("image", {}).get("token") == "token"
+        for block in convert.blocks
+    )
