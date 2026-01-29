@@ -87,7 +87,7 @@ class DocxService:
         payload = {"content_type": "markdown", "content": markdown}
         response = await self._request_json(
             "POST",
-            f"{self._base_url}/open-apis/docx/documents/blocks/convert",
+            f"{self._base_url}/open-apis/docx/v1/documents/blocks/convert",
             params={"user_id_type": user_id_type},
             json=payload,
         )

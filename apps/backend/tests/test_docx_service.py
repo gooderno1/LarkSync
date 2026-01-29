@@ -61,7 +61,7 @@ async def test_replace_document_content_clears_and_creates() -> None:
 
     convert_call = client.requests[1]
     assert convert_call[0] == "POST"
-    assert convert_call[1].endswith("/open-apis/docx/documents/blocks/convert")
+    assert convert_call[1].endswith("/open-apis/docx/v1/documents/blocks/convert")
 
     delete_call = client.requests[2]
     assert delete_call[0] == "DELETE"
@@ -197,7 +197,7 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
         "doc789", markdown, base_path=tmp_path.as_posix()
     )
 
-    assert client.requests[1][1].endswith("/open-apis/docx/documents/blocks/convert")
+    assert client.requests[1][1].endswith("/open-apis/docx/v1/documents/blocks/convert")
     assert client.requests[2][1].endswith("/open-apis/drive/v1/medias/upload_all")
     assert client.requests[2][2]["data"]["parent_node"] == "doc789"
     assert client.requests[2][2]["data"]["parent_type"] == "docx_image"

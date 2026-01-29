@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-29] v0.1.36-dev.1 fix(docx): 修正 Markdown 转换接口路径
 [2026-01-29] v0.1.35-dev.1 fix(sync): 上传预映射与附件下载兜底
 [2026-01-29] v0.1.34-dev.1 feat(sync): 双向任务上传与链接/附件本地化
 [2026-01-28] v0.1.33-dev.1 fix(transcoder): 完善 Docx 转码列表/引用/代码/待办等块解析

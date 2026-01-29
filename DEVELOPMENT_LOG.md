@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.1 (2026-01-29)
+- 目标：修复本地上传时 Markdown 转换接口 404。
+- 结果：Docx markdown convert 接口改为 v1 路径；更新单测。
+- 测试：`python -m pytest`（apps/backend）。
+- 问题：附件块字段与云端更新接口样例仍待补齐。
+
 ## v0.1.35-dev.1 (2026-01-29)
 - 目标：修复双向上传未触发与附件下载失败问题。
 - 结果：upload_only 预填充云端映射避免缺失；上传跳过逻辑在 upload_only 下关闭；附件下载增加 media 兜底并容错；新增附件块测试。
