@@ -373,6 +373,99 @@ async def test_transcoder_table_supports_nested_cell_matrix(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_transcoder_renders_mentions_and_reminders(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["p1"]},
+        {
+            "block_id": "p1",
+            "block_type": 2,
+            "parent_id": "root",
+            "text": {
+                "elements": [
+                    {"text_run": {"content": "任务："}},
+                    {
+                        "mention_doc": {
+                            "title": "示例文档",
+                            "url": "https://example.com/doc",
+                            "text_element_style": {},
+                        }
+                    },
+                    {
+                        "mention_user": {
+                            "user_id": "ou_test",
+                            "text_element_style": {},
+                        }
+                    },
+                    {
+                        "reminder": {
+                            "notify_time": "1700000000000",
+                            "text_element_style": {},
+                        }
+                    },
+                ]
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-mention", blocks)
+
+    assert "[示例文档](https://example.com/doc)" in markdown
+    assert "@ou_test" in markdown
+    assert "提醒(" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_todo_done_marker(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["t1", "t2"]},
+        {
+            "block_id": "t1",
+            "block_type": 17,
+            "parent_id": "root",
+            "todo": {
+                "style": {"done": True},
+                "elements": [{"text_run": {"content": "完成事项"}}],
+            },
+        },
+        {
+            "block_id": "t2",
+            "block_type": 17,
+            "parent_id": "root",
+            "todo": {
+                "style": {"done": False},
+                "elements": [{"text_run": {"content": "未完成事项"}}],
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-todo", blocks)
+
+    assert "- [x] 完成事项" in markdown
+    assert "- [ ] 未完成事项" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_unknown_container_renders_children(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["v1"]},
+        {"block_id": "v1", "block_type": 33, "parent_id": "root", "children": ["p1"]},
+        {
+            "block_id": "p1",
+            "block_type": 2,
+            "parent_id": "v1",
+            "text": {"elements": [{"text_run": {"content": "内容"}}]},
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-view", blocks)
+
+    assert "内容" in markdown
+
+
+@pytest.mark.asyncio
 async def test_transcoder_rewrites_links_to_local_paths(tmp_path: Path) -> None:
     blocks = [
         {"block_id": "root", "block_type": 1, "children": ["p1"]},

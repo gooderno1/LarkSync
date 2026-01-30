@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.21 (2026-01-30)
+- 目标：补齐“任务/提及/提醒”渲染缺失，避免云端内容遗漏。
+- 结果：支持 mention_doc/mention_user/reminder 渲染；TODO 块支持完成状态；未知容器块（如 block_type=33）递归渲染子块；新增单测覆盖。
+- 测试：`PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_transcoder.py`。
+- 问题：仍需你确认本地任务/提醒展示是否符合预期文案。
+
 ## v0.1.36-dev.20 (2026-01-30)
 - 目标：避免上传失败清空云端内容，并强化块级更新对表格/矩阵结构的兼容。
 - 结果：创建子块仅在 index>=0 时传入 index；创建失败不会删除旧内容；块级替换先插入后删除降低数据丢失风险；下载后重建块级状态；表格 cells 支持矩阵展开；上传前基于 file_hash 判断未变更跳过。

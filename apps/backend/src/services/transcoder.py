@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote
@@ -123,10 +124,9 @@ class DocxParser:
         elements = text_block.get("elements") or []
         parts: list[str] = []
         for element in elements:
-            text_run = element.get("text_run")
-            if not text_run:
-                continue
-            parts.append(self._format_text_run(text_run))
+            formatted = self._format_element(element)
+            if formatted:
+                parts.append(formatted)
         text = "".join(parts)
         return text.strip() if strip else text
 
@@ -168,21 +168,57 @@ class DocxParser:
 
     def _format_text_run(self, text_run: dict) -> str:
         content = text_run.get("content") or ""
+        if not content:
+            return ""
         style = text_run.get("text_element_style") or {}
-
-        text = content
-        if style.get("bold"):
-            text = f"**{text}**"
-        if style.get("italic"):
-            text = f"*{text}*"
-        if style.get("inline_code"):
-            text = f"`{text}`"
+        text = self._apply_text_style(content, style)
         link = style.get("link") or {}
         if link.get("url"):
             url = unquote(link.get("url"))
             if self._link_rewriter:
                 url = self._link_rewriter(url)
             text = f"[{text}]({url})"
+        return text
+
+    def _format_element(self, element: dict) -> str:
+        text_run = element.get("text_run")
+        if text_run:
+            return self._format_text_run(text_run)
+        mention_doc = element.get("mention_doc")
+        if mention_doc:
+            title = mention_doc.get("title") or mention_doc.get("token") or "文档"
+            style = mention_doc.get("text_element_style") or {}
+            text = self._apply_text_style(title, style)
+            url = mention_doc.get("url")
+            if url:
+                if self._link_rewriter:
+                    url = self._link_rewriter(url)
+                return f"[{text}]({url})"
+            return text
+        mention_user = element.get("mention_user")
+        if mention_user:
+            user_id = mention_user.get("user_id") or "unknown"
+            style = mention_user.get("text_element_style") or {}
+            return self._apply_text_style(f"@{user_id}", style)
+        reminder = element.get("reminder")
+        if reminder:
+            style = reminder.get("text_element_style") or {}
+            text = _format_reminder(reminder)
+            return self._apply_text_style(text, style)
+        return ""
+
+    @staticmethod
+    def _apply_text_style(text: str, style: dict) -> str:
+        if style.get("inline_code"):
+            text = f"`{text}`"
+        if style.get("bold"):
+            text = f"**{text}**"
+        if style.get("italic"):
+            text = f"*{text}*"
+        if style.get("strikethrough"):
+            text = f"~~{text}~~"
+        if style.get("underline"):
+            text = f"<u>{text}</u>"
         return text
 
     def table_markdown(self, block: dict) -> str:
@@ -420,7 +456,13 @@ class DocxTranscoder:
             if not block:
                 continue
             text = parser.text_from_block(block)
-            line = f"{marker}{text}".rstrip()
+            effective_marker = marker
+            if list_type == BLOCK_TYPE_TODO:
+                todo = block.get("todo") or {}
+                style = todo.get("style") or {}
+                if style.get("done"):
+                    effective_marker = "- [x] "
+            line = f"{effective_marker}{text}".rstrip()
             lines.append(self._line_with_prefix(prefix, line, keep_blank=keep_blank))
             children = parser.children_ids(block_id)
             if children:
@@ -569,6 +611,20 @@ class DocxTranscoder:
                 )
             return []
 
+        children = parser.children_ids(block.get("block_id", ""))
+        if children:
+            return self._render_block_ids(
+                children,
+                parser,
+                document_id,
+                images,
+                attachments,
+                base_dir=base_dir,
+                link_map=link_map,
+                base_indent=base_indent,
+                quote_prefix=quote_prefix,
+            )
+
         fallback_text = parser.text_from_block(block)
         if fallback_text:
             return [self._line_with_prefix(prefix, fallback_text, keep_blank=keep_blank)]
@@ -691,6 +747,23 @@ class DocxTranscoder:
         file_close = getattr(self._file_downloader, "close", None)
         if file_close:
             await file_close()
+
+
+def _format_reminder(reminder: dict) -> str:
+    timestamp = reminder.get("notify_time") or reminder.get("expire_time")
+    if timestamp is None:
+        return "提醒"
+    try:
+        ts = int(timestamp)
+    except (TypeError, ValueError):
+        return "提醒"
+    if ts > 1e12:
+        ts = ts // 1000
+    try:
+        dt = datetime.fromtimestamp(ts)
+    except (OSError, ValueError):
+        return "提醒"
+    return f"提醒({dt:%Y-%m-%d %H:%M})"
 
 
 __all__ = ["DocxParser", "DocxTranscoder", "MediaDownloader"]
