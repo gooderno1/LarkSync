@@ -33,7 +33,8 @@ let shuttingDown = false;
 const spawnProcess = (name, command, args, options) => {
   const child = spawn(command, args, {
     ...options,
-    shell: true,
+    shell: false,
+    windowsHide: true,
     env: process.env,
   });
   children.push(child);
@@ -81,10 +82,14 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("exit", () => logStream.end());
 
-spawnProcess("frontend", "npm", ["run", "dev", "--prefix", "apps/frontend"], {
+const isWindows = process.platform === "win32";
+const npmCommand = isWindows ? "npm.cmd" : "npm";
+const pythonCommand = isWindows ? "python" : "python3";
+
+spawnProcess("frontend", npmCommand, ["run", "dev", "--prefix", "apps/frontend"], {
   cwd: root,
 });
 
-spawnProcess("backend", "python", ["-m", "uvicorn", "src.main:app", "--reload", "--port", "8000"], {
+spawnProcess("backend", pythonCommand, ["-m", "uvicorn", "src.main:app", "--reload", "--port", "8000"], {
   cwd: path.join(root, "apps", "backend"),
 });

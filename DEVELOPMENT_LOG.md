@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.15 (2026-01-30)
+- 目标：修复启动时 SQLite 迁移报错，并清理 dev 启动警告。
+- 结果：ALTER TABLE 默认值改为字面量，避免参数占位导致语法错误；dev 启动脚本改为非 shell 模式调用，避免弃用警告。
+- 测试：`python -m pytest apps/backend/tests/test_db_session.py`。
+- 问题：无。
+
 ## v0.1.36-dev.14 (2026-01-30)
 - 目标：确保开发控制台输出落盘，便于定位启动问题。
 - 结果：新增 `scripts/dev.js`，`npm run dev` 输出同步写入 `data/logs/dev-console.log`；文档启动指令改为 `python -m uvicorn`。
