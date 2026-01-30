@@ -2,7 +2,7 @@ import hashlib
 import httpx
 import pytest
 
-from src.services.docx_service import DocxService
+from src.services.docx_service import ConvertResult, DocxService
 from src.services.media_uploader import MediaUploadError
 
 
@@ -271,3 +271,93 @@ async def test_convert_markdown_patches_table_property() -> None:
     prop = (table_block.get("table") or {}).get("property") or {}
     assert prop.get("row_size") == 2
     assert prop.get("column_size") == 2
+
+
+@pytest.mark.asyncio
+async def test_partial_update_skips_when_duplicate_signatures() -> None:
+    service = DocxService(client=FakeClient([]))
+    current_blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["c1", "c2"]},
+        {
+            "block_id": "c1",
+            "block_type": 2,
+            "text": {"elements": [{"text_run": {"content": "same"}}]},
+        },
+        {
+            "block_id": "c2",
+            "block_type": 2,
+            "text": {"elements": [{"text_run": {"content": "same"}}]},
+        },
+    ]
+    convert = ConvertResult(
+        first_level_block_ids=["n1", "n2"],
+        blocks=[
+            {
+                "block_id": "n1",
+                "block_type": 2,
+                "text": {"elements": [{"text_run": {"content": "same"}}]},
+            },
+            {
+                "block_id": "n2",
+                "block_type": 2,
+                "text": {"elements": [{"text_run": {"content": "same"}}]},
+            },
+        ],
+    )
+    applied = await service._apply_partial_update(
+        document_id="doc-skip",
+        root_block_id="root",
+        current_children=["c1", "c2"],
+        current_blocks=current_blocks,
+        convert=convert,
+        user_id_type="open_id",
+        force=False,
+    )
+    assert applied is False
+
+
+@pytest.mark.asyncio
+async def test_partial_update_table_children_uses_cells() -> None:
+    class SpyDocxService(DocxService):
+        def __init__(self) -> None:
+            super().__init__(client=FakeClient([]))
+            self.children_map = None
+
+        async def delete_children(self, *args, **kwargs) -> None:
+            return None
+
+        async def _create_children_recursive(self, *args, **kwargs) -> None:
+            self.children_map = kwargs.get("children_map")
+
+    service = SpyDocxService()
+    current_blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["c1"]},
+        {
+            "block_id": "c1",
+            "block_type": 2,
+            "text": {"elements": [{"text_run": {"content": "old"}}]},
+        },
+    ]
+    convert = ConvertResult(
+        first_level_block_ids=["t1"],
+        blocks=[
+            {
+                "block_id": "t1",
+                "block_type": 31,
+                "table": {"cells": ["cell1", "cell2"]},
+            },
+            {"block_id": "cell1", "block_type": 32, "children": []},
+            {"block_id": "cell2", "block_type": 32, "children": []},
+        ],
+    )
+    await service._apply_partial_update(
+        document_id="doc-table",
+        root_block_id="root",
+        current_children=["c1"],
+        current_blocks=current_blocks,
+        convert=convert,
+        user_id_type="open_id",
+        force=True,
+    )
+    assert service.children_map is not None
+    assert service.children_map.get("t1") == ["cell1", "cell2"]

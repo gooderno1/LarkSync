@@ -425,6 +425,11 @@ class DocxService:
         desired_ids = convert.first_level_block_ids
         if not desired_ids:
             return False
+        if not force and any(
+            block.get("block_type") == BLOCK_TYPE_TABLE for block in convert.blocks
+        ):
+            logger.info("局部更新跳过: 检测到表格块，退回全量覆盖")
+            return False
 
         current_parser = _build_parser(current_blocks)
         desired_parser = _build_parser(convert.blocks)
@@ -438,6 +443,9 @@ class DocxService:
             _block_signature(block_id, desired_map, desired_parser)
             for block_id in desired_ids
         ]
+        if not force and len(set(desired_sigs)) < len(desired_sigs):
+            logger.info("局部更新跳过: 检测到重复块签名，退回全量覆盖")
+            return False
 
         matcher = difflib.SequenceMatcher(a=current_sigs, b=desired_sigs)
         opcodes = matcher.get_opcodes()
@@ -458,7 +466,7 @@ class DocxService:
 
         block_map = {block.get("block_id"): block for block in convert.blocks}
         children_map = {
-            block.get("block_id"): block.get("children", [])
+            block.get("block_id"): _extract_children_ids(block)
             for block in convert.blocks
         }
 
