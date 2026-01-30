@@ -47,6 +47,7 @@ type SyncTask = {
   cloud_folder_token: string;
   base_path?: string | null;
   sync_mode: string;
+  update_mode?: string | null;
   enabled: boolean;
   created_at: number;
   updated_at: number;
@@ -192,11 +193,16 @@ export default function App() {
   const [taskBasePath, setTaskBasePath] = useState("");
   const [taskCloudToken, setTaskCloudToken] = useState("");
   const [taskSyncMode, setTaskSyncMode] = useState("bidirectional");
+  const [taskUpdateMode, setTaskUpdateMode] = useState("auto");
   const [taskEnabled, setTaskEnabled] = useState(true);
+  const [taskUpdateModeMap, setTaskUpdateModeMap] = useState<Record<string, string>>(
+    {}
+  );
   const [uploadDocumentId, setUploadDocumentId] = useState("");
   const [uploadMarkdownPath, setUploadMarkdownPath] = useState("");
   const [uploadTaskId, setUploadTaskId] = useState("");
   const [uploadBasePath, setUploadBasePath] = useState("");
+  const [uploadUpdateMode, setUploadUpdateMode] = useState("auto");
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -343,6 +349,7 @@ export default function App() {
         cloud_folder_token: taskCloudToken.trim(),
         base_path: taskBasePath.trim() || null,
         sync_mode: taskSyncMode,
+        update_mode: taskUpdateMode,
         enabled: taskEnabled
       })
     })
@@ -359,6 +366,7 @@ export default function App() {
         setTaskCloudToken("");
         setTaskLocalPath("");
         setTaskSyncMode("bidirectional");
+        setTaskUpdateMode("auto");
         setTaskEnabled(true);
         loadTasks();
         loadTaskStatus();
@@ -371,6 +379,26 @@ export default function App() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: !task.enabled })
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "更新任务失败");
+        }
+        return res.json();
+      })
+      .then(() => {
+        loadTasks();
+        loadTaskStatus();
+      })
+      .catch((err: Error) => setTaskError(err.message));
+  };
+
+  const updateTaskMode = (task: SyncTask, mode: string) => {
+    fetch(apiUrl(`/sync/tasks/${task.id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ update_mode: mode })
     })
       .then(async (res) => {
         if (!res.ok) {
@@ -496,7 +524,8 @@ export default function App() {
         document_id: uploadDocumentId.trim(),
         markdown_path: uploadMarkdownPath.trim(),
         task_id: uploadTaskId.trim() || null,
-        base_path: uploadBasePath.trim() || null
+        base_path: uploadBasePath.trim() || null,
+        update_mode: uploadUpdateMode
       })
     })
       .then(async (res) => {
@@ -615,6 +644,18 @@ export default function App() {
     const timer = window.setInterval(loadTaskStatus, 5000);
     return () => window.clearInterval(timer);
   }, [tasks.length]);
+
+  useEffect(() => {
+    setTaskUpdateModeMap((prev) => {
+      const next = { ...prev };
+      tasks.forEach((task) => {
+        if (!next[task.id]) {
+          next[task.id] = task.update_mode || "auto";
+        }
+      });
+      return next;
+    });
+  }, [tasks]);
 
   useEffect(() => {
     loadConfig();
@@ -929,6 +970,15 @@ export default function App() {
                   <option value="download_only">仅下载</option>
                   <option value="upload_only">仅上传</option>
                 </select>
+                <select
+                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
+                  value={taskUpdateMode}
+                  onChange={(event) => setTaskUpdateMode(event.target.value)}
+                >
+                  <option value="auto">更新模式：自动</option>
+                  <option value="partial">更新模式：局部</option>
+                  <option value="full">更新模式：全量</option>
+                </select>
                 <button
                   className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400"
                   type="button"
@@ -1010,6 +1060,9 @@ export default function App() {
                               <p className="text-xs text-slate-500">
                                 模式：{task.sync_mode}
                               </p>
+                              <p className="text-xs text-slate-500">
+                                更新：{task.update_mode || "auto"}
+                              </p>
                               {task.base_path ? (
                                 <p className="text-xs text-slate-500">
                                   base_path：{task.base_path}
@@ -1050,6 +1103,32 @@ export default function App() {
                               ) : null}
                             </div>
                             <div className="flex flex-wrap gap-2">
+                              <select
+                                className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none"
+                                value={taskUpdateModeMap[task.id] || task.update_mode || "auto"}
+                                onChange={(event) =>
+                                  setTaskUpdateModeMap((prev) => ({
+                                    ...prev,
+                                    [task.id]: event.target.value
+                                  }))
+                                }
+                              >
+                                <option value="auto">自动更新</option>
+                                <option value="partial">局部更新</option>
+                                <option value="full">全量覆盖</option>
+                              </select>
+                              <button
+                                className="rounded-full border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-400"
+                                onClick={() =>
+                                  updateTaskMode(
+                                    task,
+                                    taskUpdateModeMap[task.id] || task.update_mode || "auto"
+                                  )
+                                }
+                                type="button"
+                              >
+                                更新模式
+                              </button>
                               <button
                                 className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 onClick={() => runTask(task)}
@@ -1125,6 +1204,15 @@ export default function App() {
                 value={uploadBasePath}
                 onChange={(event) => setUploadBasePath(event.target.value)}
               />
+              <select
+                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
+                value={uploadUpdateMode}
+                onChange={(event) => setUploadUpdateMode(event.target.value)}
+              >
+                <option value="auto">更新模式：自动</option>
+                <option value="partial">更新模式：局部</option>
+                <option value="full">更新模式：全量</option>
+              </select>
               <button
                 className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={uploadMarkdown}
@@ -1147,7 +1235,7 @@ export default function App() {
               <ul className="mt-3 space-y-2 text-xs text-slate-600">
                 <li>如果选择任务，后端会优先使用任务的 base_path。</li>
                 <li>未选择任务时，可手动填写 base_path（Markdown 所在目录）。</li>
-                <li>上传会执行 Docx 全量覆盖，请谨慎操作。</li>
+                <li>更新模式可选“自动/局部/全量”，自动会在大改动时回退全量。</li>
               </ul>
             </div>
           </div>

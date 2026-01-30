@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from sqlalchemy import text
+
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from src.core.config import ConfigManager
@@ -24,4 +26,31 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
     engine = create_engine(database_url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_column(
+            conn,
+            table="sync_tasks",
+            column="update_mode",
+            column_type="TEXT",
+            default_value="auto",
+        )
     return engine
+
+
+async def _ensure_column(
+    conn,
+    *,
+    table: str,
+    column: str,
+    column_type: str,
+    default_value: str,
+) -> None:
+    result = await conn.execute(text(f"PRAGMA table_info({table})"))
+    columns = {row[1] for row in result}
+    if column in columns:
+        return
+    await conn.execute(
+        text(
+            f"ALTER TABLE {table} ADD COLUMN {column} {column_type} DEFAULT :default_value"
+        ),
+        {"default_value": default_value},
+    )

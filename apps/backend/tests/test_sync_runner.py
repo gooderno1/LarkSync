@@ -140,6 +140,7 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
         cloud_folder_token="root-token",
         base_path=None,
         sync_mode="download_only",
+        update_mode="auto",
         enabled=True,
         created_at=0,
         updated_at=0,

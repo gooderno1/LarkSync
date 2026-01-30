@@ -399,7 +399,7 @@ class SyncTaskRunner:
                 link.cloud_token,
                 markdown,
                 base_path=base_path,
-                update_mode="auto",
+                update_mode=task.update_mode or "auto",
             )
         await self._link_service.upsert_link(
             local_path=str(path),

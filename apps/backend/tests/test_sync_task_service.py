@@ -20,6 +20,7 @@ async def test_create_and_list_tasks(tmp_path) -> None:
     )
     assert item.id
     assert item.local_path == "C:/docs"
+    assert item.update_mode == "auto"
 
     items = await service.list_tasks()
     assert len(items) == 1
@@ -45,11 +46,13 @@ async def test_update_task_fields(tmp_path) -> None:
         item.id,
         name="任务B",
         sync_mode="upload_only",
+        update_mode="partial",
         enabled=False,
     )
     assert updated is not None
     assert updated.name == "任务B"
     assert updated.sync_mode == "upload_only"
+    assert updated.update_mode == "partial"
     assert updated.enabled is False
 
 

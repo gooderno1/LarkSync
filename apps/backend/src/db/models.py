@@ -51,6 +51,7 @@ class SyncTask(Base):
     cloud_folder_token: Mapped[str] = mapped_column(String, nullable=False)
     base_path: Mapped[str | None] = mapped_column(String, nullable=True)
     sync_mode: Mapped[str] = mapped_column(String, nullable=False)
+    update_mode: Mapped[str] = mapped_column(String, nullable=False, default="auto")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False)

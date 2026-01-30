@@ -17,6 +17,7 @@
 - 本地监听：Watchdog 防抖监听 + WebSocket 实时事件推送
 - Markdown 转 Docx：调用 Docx Block 接口执行全量覆盖（含 429 指数退避重试）
 - Markdown 上行局部更新：基于 block 差异仅更新变更段落（支持 fallback 全量覆盖）
+- 同步任务支持更新模式：自动/局部/全量
 - Markdown 图片上传：本地图片自动上传为 Docx 图片块并插入文档
 - 通用文件上传：支持 upload_all / 分片上传，并在本地状态库记录 file_hash 与云端 token
 - 冲突中心：持久化冲突记录与前端对比视图，支持“使用本地/云端”决策

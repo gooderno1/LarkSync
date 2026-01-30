@@ -19,6 +19,7 @@ class SyncTaskItem:
     cloud_folder_token: str
     base_path: str | None
     sync_mode: str
+    update_mode: str
     enabled: bool
     created_at: float
     updated_at: float
@@ -38,6 +39,7 @@ class SyncTaskService:
         cloud_folder_token: str,
         base_path: str | None,
         sync_mode: str,
+        update_mode: str = "auto",
         enabled: bool = True,
     ) -> SyncTaskItem:
         now = time.time()
@@ -48,6 +50,7 @@ class SyncTaskService:
             cloud_folder_token=cloud_folder_token,
             base_path=base_path,
             sync_mode=sync_mode,
+            update_mode=update_mode,
             enabled=enabled,
             created_at=now,
             updated_at=now,
@@ -80,6 +83,7 @@ class SyncTaskService:
         cloud_folder_token: str | None = None,
         base_path: str | None = None,
         sync_mode: str | None = None,
+        update_mode: str | None = None,
         enabled: bool | None = None,
     ) -> SyncTaskItem | None:
         async with self._session_maker() as session:
@@ -96,6 +100,8 @@ class SyncTaskService:
                 record.base_path = base_path
             if sync_mode is not None:
                 record.sync_mode = sync_mode
+            if update_mode is not None:
+                record.update_mode = update_mode
             if enabled is not None:
                 record.enabled = enabled
             record.updated_at = time.time()
@@ -120,6 +126,7 @@ class SyncTaskService:
             cloud_folder_token=record.cloud_folder_token,
             base_path=record.base_path,
             sync_mode=record.sync_mode,
+            update_mode=record.update_mode,
             enabled=record.enabled,
             created_at=record.created_at,
             updated_at=record.updated_at,

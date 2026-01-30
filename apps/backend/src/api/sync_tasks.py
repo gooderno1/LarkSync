@@ -18,6 +18,9 @@ class SyncTaskCreateRequest(BaseModel):
     cloud_folder_token: str = Field(..., description="云端文件夹 token")
     base_path: str | None = Field(default=None, description="Markdown 基准路径")
     sync_mode: SyncMode = Field(default=SyncMode.bidirectional, description="同步模式")
+    update_mode: Literal["auto", "partial", "full"] = Field(
+        default="auto", description="更新模式"
+    )
     enabled: bool = Field(default=True, description="是否启用")
 
 
@@ -27,6 +30,7 @@ class SyncTaskUpdateRequest(BaseModel):
     cloud_folder_token: str | None = None
     base_path: str | None = None
     sync_mode: SyncMode | None = None
+    update_mode: Literal["auto", "partial", "full"] | None = None
     enabled: bool | None = None
 
 
@@ -37,6 +41,7 @@ class SyncTaskResponse(BaseModel):
     cloud_folder_token: str
     base_path: str | None
     sync_mode: str
+    update_mode: str
     enabled: bool
     created_at: float
     updated_at: float
@@ -122,6 +127,7 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
         cloud_folder_token=payload.cloud_folder_token,
         base_path=payload.base_path,
         sync_mode=payload.sync_mode.value,
+        update_mode=payload.update_mode,
         enabled=payload.enabled,
     )
     if item.enabled:
@@ -138,6 +144,7 @@ async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskR
         cloud_folder_token=payload.cloud_folder_token,
         base_path=payload.base_path,
         sync_mode=payload.sync_mode.value if payload.sync_mode else None,
+        update_mode=payload.update_mode,
         enabled=payload.enabled,
     )
     if not item:
