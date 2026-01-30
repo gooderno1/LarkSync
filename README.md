@@ -28,6 +28,7 @@
 - 文档链接本地化：云端链接自动改写为本地相对路径，附件落盘至 attachments
 - 日志系统：后端运行日志写入 `data/logs/larksync.log`
 - 开发控制台日志：`npm run dev` 输出同时写入 `data/logs/dev-console.log`
+- 同步日志：前端按时间展示任务与文件同步事件
 
 ## 本地开发
 ### 使用教程

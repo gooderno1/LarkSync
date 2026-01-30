@@ -4,7 +4,7 @@ import pytest
 
 from src.services.drive_service import DriveNode
 from src.services.file_writer import FileWriter
-from src.services.sync_runner import SyncTaskRunner
+from src.services.sync_runner import SyncTaskRunner, _parse_mtime
 from src.services.sync_task_service import SyncTaskItem
 
 
@@ -160,3 +160,12 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     assert (tmp_path / "子目录" / "note.md").exists()
     assert (tmp_path / "快捷方式文件").exists()
     assert downloader.calls[-1][0] == "file-target"
+
+
+def test_parse_mtime_supports_iso8601() -> None:
+    ts = _parse_mtime("2025-01-02T03:04:05Z")
+    assert abs(ts - 1735787045) < 1.0
+
+
+def test_parse_mtime_supports_ms_string() -> None:
+    assert _parse_mtime("1700000000000") == 1700000000.0

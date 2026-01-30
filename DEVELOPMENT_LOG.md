@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.17 (2026-01-30)
+- 目标：修复上传表格丢失与时间戳判定问题，并优化同步日志展示。
+- 结果：Markdown 转换缺失表格属性时按源表格补齐 row/column；支持 ISO 时间戳解析；同步事件带时间戳并前端按时间线展示；任务同步模式可在列表中更新。
+- 测试：`python -m pytest apps/backend/tests/test_docx_service.py apps/backend/tests/test_sync_runner.py`。
+- 问题：如仍有表格缺失，请提供对应 Markdown 与日志。
+
 ## v0.1.36-dev.16 (2026-01-30)
 - 目标：修复 Windows 下 dev 启动脚本的 spawn EINVAL。
 - 结果：Windows 使用 shell 字符串启动并补充异常捕获日志；非 Windows 保持 spawn args 模式。

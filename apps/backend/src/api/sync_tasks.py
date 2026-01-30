@@ -73,10 +73,16 @@ class SyncFileEventResponse(BaseModel):
     path: str
     status: str
     message: str | None = None
+    timestamp: float
 
     @classmethod
     def from_event(cls, event: SyncFileEvent) -> "SyncFileEventResponse":
-        return cls(path=event.path, status=event.status, message=event.message)
+        return cls(
+            path=event.path,
+            status=event.status,
+            message=event.message,
+            timestamp=event.timestamp,
+        )
 
 
 class SyncTaskStatusResponse(BaseModel):

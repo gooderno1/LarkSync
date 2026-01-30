@@ -238,3 +238,36 @@ async def test_convert_markdown_with_images_falls_back_on_missing_image(tmp_path
     )
 
     assert all(block.get("block_type") != 27 for block in convert.blocks)
+
+
+@pytest.mark.asyncio
+async def test_convert_markdown_patches_table_property() -> None:
+    responses = [
+        {
+            "code": 0,
+            "data": {
+                "first_level_block_ids": ["t1"],
+                "blocks": [
+                    {
+                        "block_id": "t1",
+                        "block_type": 31,
+                        "table": {"cells": ["c1", "c2", "c3", "c4"]},
+                    }
+                ],
+            },
+        }
+    ]
+    client = FakeClient(responses)
+    service = DocxService(client=client)
+
+    markdown = "| A | B |\n| --- | --- |\n| 1 | 2 |"
+    convert = await service.convert_markdown_with_images(
+        markdown, document_id="doc-table"
+    )
+
+    table_block = next(
+        block for block in convert.blocks if block.get("block_type") == 31
+    )
+    prop = (table_block.get("table") or {}).get("property") or {}
+    assert prop.get("row_size") == 2
+    assert prop.get("column_size") == 2

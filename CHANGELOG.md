@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-30] v0.1.36-dev.17 feat(sync): 同步日志时间线 + 时间戳修正 + 表格上传补丁
 [2026-01-30] v0.1.36-dev.16 fix(dev): Windows 下 dev 启动避免 spawn EINVAL
 [2026-01-30] v0.1.36-dev.15 fix(db): SQLite 迁移默认值改为字面量
 [2026-01-30] v0.1.36-dev.14 feat(dev): npm run dev 输出落盘到 dev-console.log

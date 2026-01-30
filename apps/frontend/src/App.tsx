@@ -57,6 +57,7 @@ type SyncFileEvent = {
   path: string;
   status: string;
   message?: string | null;
+  timestamp?: number | null;
 };
 
 type SyncTaskStatus = {
@@ -198,6 +199,7 @@ export default function App() {
   const [taskUpdateModeMap, setTaskUpdateModeMap] = useState<Record<string, string>>(
     {}
   );
+  const [taskSyncModeMap, setTaskSyncModeMap] = useState<Record<string, string>>({});
   const [uploadDocumentId, setUploadDocumentId] = useState("");
   const [uploadMarkdownPath, setUploadMarkdownPath] = useState("");
   const [uploadTaskId, setUploadTaskId] = useState("");
@@ -394,6 +396,31 @@ export default function App() {
       .catch((err: Error) => setTaskError(err.message));
   };
 
+  const updateTaskSyncMode = (task: SyncTask, mode: string) => {
+    setTaskError(null);
+    fetch(apiUrl(`/sync/tasks/${task.id}`), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sync_mode: mode })
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || "更新同步模式失败");
+        }
+        return res.json();
+      })
+      .then((item: SyncTask) => {
+        setTasks((prev) => prev.map((taskItem) => (taskItem.id === item.id ? item : taskItem)));
+        setTaskSyncModeMap((prev) => {
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
+      })
+      .catch((err: Error) => setTaskError(err.message));
+  };
+
   const updateTaskMode = (task: SyncTask, mode: string) => {
     fetch(apiUrl(`/sync/tasks/${task.id}`), {
       method: "PATCH",
@@ -413,6 +440,41 @@ export default function App() {
       })
       .catch((err: Error) => setTaskError(err.message));
   };
+
+  const formatTimestamp = (ts?: number | null) => {
+    if (!ts) return "未知时间";
+    const date = new Date(ts * 1000);
+    if (Number.isNaN(date.getTime())) return "未知时间";
+    return date.toLocaleString();
+  };
+
+  const statusLabelMap: Record<string, string> = {
+    downloaded: "下载",
+    uploaded: "上传",
+    failed: "失败",
+    skipped: "跳过",
+    started: "开始",
+    success: "完成",
+    cancelled: "取消"
+  };
+
+  const syncLogEntries = Object.values(taskStatusMap)
+    .flatMap((status) =>
+      (status.last_files || []).map((file) => ({
+        taskId: status.task_id,
+        taskName: tasks.find((task) => task.id === status.task_id)?.name || "未命名任务",
+        timestamp:
+          file.timestamp ??
+          status.finished_at ??
+          status.started_at ??
+          Math.floor(Date.now() / 1000),
+        status: file.status,
+        path: file.path,
+        message: file.message
+      }))
+    )
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 200);
 
   const runTask = (task: SyncTask) => {
     setTaskError(null);
@@ -805,24 +867,30 @@ export default function App() {
                 value={configScopes}
                 onChange={(event) => setConfigScopes(event.target.value)}
               />
-              <div className="flex flex-wrap gap-3">
-                <select
-                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
-                  value={configSyncMode}
-                  onChange={(event) => setConfigSyncMode(event.target.value)}
-                >
-                  <option value="bidirectional">双向同步</option>
-                  <option value="download_only">仅下载</option>
-                  <option value="upload_only">仅上传</option>
-                </select>
-                <select
-                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
-                  value={configTokenStore}
-                  onChange={(event) => setConfigTokenStore(event.target.value)}
-                >
-                  <option value="keyring">keyring</option>
-                  <option value="memory">memory</option>
-                </select>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">同步模式</span>
+                  <select
+                    className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
+                    value={configSyncMode}
+                    onChange={(event) => setConfigSyncMode(event.target.value)}
+                  >
+                    <option value="bidirectional">双向同步</option>
+                    <option value="download_only">仅下载</option>
+                    <option value="upload_only">仅上传</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">令牌存储</span>
+                  <select
+                    className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
+                    value={configTokenStore}
+                    onChange={(event) => setConfigTokenStore(event.target.value)}
+                  >
+                    <option value="keyring">keyring</option>
+                    <option value="memory">memory</option>
+                  </select>
+                </div>
               </div>
               <button
                 className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -961,24 +1029,30 @@ export default function App() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <select
-                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
-                  value={taskSyncMode}
-                  onChange={(event) => setTaskSyncMode(event.target.value)}
-                >
-                  <option value="bidirectional">双向同步</option>
-                  <option value="download_only">仅下载</option>
-                  <option value="upload_only">仅上传</option>
-                </select>
-                <select
-                  className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
-                  value={taskUpdateMode}
-                  onChange={(event) => setTaskUpdateMode(event.target.value)}
-                >
-                  <option value="auto">更新模式：自动</option>
-                  <option value="partial">更新模式：局部</option>
-                  <option value="full">更新模式：全量</option>
-                </select>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">同步模式</span>
+                  <select
+                    className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
+                    value={taskSyncMode}
+                    onChange={(event) => setTaskSyncMode(event.target.value)}
+                  >
+                    <option value="bidirectional">双向同步</option>
+                    <option value="download_only">仅下载</option>
+                    <option value="upload_only">仅上传</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">更新模式</span>
+                  <select
+                    className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none"
+                    value={taskUpdateMode}
+                    onChange={(event) => setTaskUpdateMode(event.target.value)}
+                  >
+                    <option value="auto">自动</option>
+                    <option value="partial">局部</option>
+                    <option value="full">全量</option>
+                  </select>
+                </div>
                 <button
                   className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400"
                   type="button"
@@ -1105,6 +1179,32 @@ export default function App() {
                             <div className="flex flex-wrap gap-2">
                               <select
                                 className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none"
+                                value={taskSyncModeMap[task.id] || task.sync_mode}
+                                onChange={(event) =>
+                                  setTaskSyncModeMap((prev) => ({
+                                    ...prev,
+                                    [task.id]: event.target.value
+                                  }))
+                                }
+                              >
+                                <option value="bidirectional">双向同步</option>
+                                <option value="download_only">仅下载</option>
+                                <option value="upload_only">仅上传</option>
+                              </select>
+                              <button
+                                className="rounded-full border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-400"
+                                onClick={() =>
+                                  updateTaskSyncMode(
+                                    task,
+                                    taskSyncModeMap[task.id] || task.sync_mode
+                                  )
+                                }
+                                type="button"
+                              >
+                                更新同步模式
+                              </button>
+                              <select
+                                className="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none"
                                 value={taskUpdateModeMap[task.id] || task.update_mode || "auto"}
                                 onChange={(event) =>
                                   setTaskUpdateModeMap((prev) => ({
@@ -1160,6 +1260,70 @@ export default function App() {
                 )}
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="mt-12 w-full rounded-3xl border border-slate-200 bg-white/80 p-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold">同步日志</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                按时间倒序展示同步事件，自动每 5 秒刷新。
+              </p>
+            </div>
+            <button
+              className="rounded-full border border-slate-300 px-5 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400"
+              onClick={loadTaskStatus}
+              type="button"
+            >
+              刷新日志
+            </button>
+          </div>
+          <div className="mt-6 max-h-80 overflow-auto rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+            {syncLogEntries.length === 0 ? (
+              <p className="text-slate-500">暂无同步日志。</p>
+            ) : (
+              <ul className="space-y-3">
+                {syncLogEntries.map((entry, index) => (
+                  <li
+                    key={`${entry.taskId}-${entry.timestamp}-${index}`}
+                    className="rounded-xl border border-slate-200 bg-white p-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="text-xs text-slate-500">
+                          {formatTimestamp(entry.timestamp)}
+                        </p>
+                        <p className="text-sm text-slate-900">
+                          {entry.taskName}
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          {entry.path}
+                        </p>
+                        {entry.message ? (
+                          <p className="text-xs text-slate-500">
+                            {entry.message}
+                          </p>
+                        ) : null}
+                      </div>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-medium ${
+                          entry.status === "failed"
+                            ? "bg-rose-50 text-rose-600"
+                            : entry.status === "skipped"
+                              ? "bg-slate-100 text-slate-600"
+                              : entry.status === "success"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-emerald-100 text-emerald-700"
+                        }`}
+                      >
+                        {statusLabelMap[entry.status] || entry.status}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
 

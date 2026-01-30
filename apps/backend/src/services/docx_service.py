@@ -180,14 +180,14 @@ class DocxService:
             processed_markdown, user_id_type=user_id_type
         )
         if not placeholders:
-            return convert
+            return _patch_table_properties(convert, processed_markdown)
 
         convert = self._replace_placeholders_with_images(
             convert,
             placeholders=placeholders,
             image_paths=image_paths,
         )
-        return convert
+        return _patch_table_properties(convert, processed_markdown)
 
     async def list_blocks(
         self, document_id: str, user_id_type: str = "open_id"
@@ -774,3 +774,104 @@ def _extract_children_ids(block: dict[str, Any]) -> list[str]:
         if isinstance(cells, list) and cells:
             return list(cells)
     return []
+
+
+def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertResult:
+    specs = _extract_markdown_table_specs(markdown)
+    if not specs:
+        return convert
+    spec_index = 0
+    for block in convert.blocks:
+        if block.get("block_type") != BLOCK_TYPE_TABLE:
+            continue
+        table = block.get("table") or {}
+        prop = table.get("property") or {}
+        row_size = _safe_int(prop.get("row_size"))
+        col_size = _safe_int(prop.get("column_size"))
+        if row_size > 0 and col_size > 0:
+            continue
+        if spec_index >= len(specs):
+            continue
+        rows, cols = specs[spec_index]
+        spec_index += 1
+        prop = dict(prop)
+        if row_size <= 0:
+            prop["row_size"] = rows
+        if col_size <= 0:
+            prop["column_size"] = cols
+        table = dict(table)
+        table["property"] = prop
+        block["table"] = table
+        logger.info("补齐表格属性: rows={} cols={}", rows, cols)
+    return convert
+
+
+def _extract_markdown_table_specs(markdown: str) -> list[tuple[int, int]]:
+    tables: list[tuple[int, int]] = []
+    lines = markdown.splitlines()
+    in_code_block = False
+    i = 0
+    while i + 1 < len(lines):
+        line = lines[i].strip()
+        if line.startswith("```"):
+            in_code_block = not in_code_block
+            i += 1
+            continue
+        if in_code_block:
+            i += 1
+            continue
+        if "|" not in line:
+            i += 1
+            continue
+        sep = lines[i + 1].strip()
+        if not _is_table_separator(sep):
+            i += 1
+            continue
+        cols = _count_table_columns(line)
+        if cols <= 0:
+            i += 1
+            continue
+        rows = 1
+        j = i + 2
+        while j < len(lines):
+            row_line = lines[j].strip()
+            if row_line.startswith("```"):
+                break
+            if "|" not in row_line:
+                break
+            if _is_table_separator(row_line):
+                break
+            rows += 1
+            j += 1
+        tables.append((rows, cols))
+        i = j
+    return tables
+
+
+def _is_table_separator(line: str) -> bool:
+    if "|" not in line:
+        return False
+    parts = [part.strip() for part in line.strip().strip("|").split("|")]
+    if not parts:
+        return False
+    for part in parts:
+        if not part:
+            return False
+        body = part.replace(":", "")
+        if len(body) < 3:
+            return False
+        if any(ch != "-" for ch in body):
+            return False
+    return True
+
+
+def _count_table_columns(line: str) -> int:
+    parts = [part.strip() for part in line.strip().strip("|").split("|")]
+    return len(parts)
+
+
+def _safe_int(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0

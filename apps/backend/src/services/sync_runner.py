@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Literal
@@ -19,6 +20,7 @@ from src.services.transcoder import DocxTranscoder
 from src.services.watcher import FileChangeEvent, WatcherService
 
 SyncState = Literal["idle", "running", "success", "failed", "cancelled"]
+SYNC_LOG_LIMIT = 200
 
 
 @dataclass
@@ -26,6 +28,7 @@ class SyncFileEvent:
     path: str
     status: str
     message: str | None = None
+    timestamp: float = field(default_factory=time.time)
 
 
 @dataclass
@@ -41,7 +44,7 @@ class SyncTaskStatus:
     last_error: str | None = None
     last_files: list[SyncFileEvent] = field(default_factory=list)
 
-    def record_event(self, event: SyncFileEvent, limit: int = 20) -> None:
+    def record_event(self, event: SyncFileEvent, limit: int = SYNC_LOG_LIMIT) -> None:
         self.last_files.append(event)
         if len(self.last_files) > limit:
             self.last_files = self.last_files[-limit:]
@@ -97,6 +100,13 @@ class SyncTaskRunner:
         status.skipped_files = 0
         status.last_error = None
         status.last_files = []
+        status.record_event(
+            SyncFileEvent(
+                path=task.local_path,
+                status="started",
+                message=f"任务启动: mode={task.sync_mode} update={task.update_mode or 'auto'}",
+            )
+        )
         if task.sync_mode in {"bidirectional", "upload_only"}:
             self._ensure_watcher(task)
         logger.info(
@@ -141,6 +151,22 @@ class SyncTaskRunner:
             status.last_error = str(exc)
             status.finished_at = time.time()
         finally:
+            if status.state == "cancelled":
+                message = "任务已取消"
+            else:
+                message = (
+                    f"完成: total={status.total_files} "
+                    f"ok={status.completed_files} "
+                    f"failed={status.failed_files} "
+                    f"skipped={status.skipped_files}"
+                )
+            status.record_event(
+                SyncFileEvent(
+                    path=task.local_path,
+                    status=status.state,
+                    message=message,
+                )
+            )
             self._tasks.pop(task.id, None)
 
     async def _run_download(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
@@ -587,10 +613,15 @@ def _parse_mtime(value: str | int | float | None) -> float:
     if isinstance(value, (int, float)):
         ts = float(value)
     else:
+        raw = str(value).strip()
         try:
-            ts = float(value)
+            ts = float(raw)
         except ValueError:
-            return time.time()
+            try:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                ts = dt.timestamp()
+            except ValueError:
+                return time.time()
     if ts > 1e12:
         ts = ts / 1000.0
     return ts
