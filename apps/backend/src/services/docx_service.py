@@ -4,6 +4,7 @@ import difflib
 import hashlib
 import re
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -443,9 +444,28 @@ class DocxService:
             _block_signature(block_id, desired_map, desired_parser)
             for block_id in desired_ids
         ]
-        if not force and len(set(desired_sigs)) < len(desired_sigs):
+        if not force and (_has_duplicate_signatures(current_sigs) or _has_duplicate_signatures(desired_sigs)):
             logger.info("局部更新跳过: 检测到重复块签名，退回全量覆盖")
             return False
+        if not force:
+            anchors = _unique_anchor_pairs(current_sigs, desired_sigs)
+            min_len = min(len(current_sigs), len(desired_sigs))
+            anchor_ratio = len(anchors) / max(min_len, 1)
+            if min_len >= 8 and len(anchors) < 2:
+                logger.info("局部更新跳过: 唯一锚点不足 (anchors={})", len(anchors))
+                return False
+            if min_len >= 20 and anchor_ratio < 0.2:
+                logger.info(
+                    "局部更新跳过: 唯一锚点占比过低 (anchors={} ratio={:.2f})",
+                    len(anchors),
+                    anchor_ratio,
+                )
+                return False
+            if anchors:
+                desired_order = [item[1] for item in anchors]
+                if desired_order != sorted(desired_order):
+                    logger.info("局部更新跳过: 锚点顺序不一致，退回全量覆盖")
+                    return False
 
         matcher = difflib.SequenceMatcher(a=current_sigs, b=desired_sigs)
         opcodes = matcher.get_opcodes()
@@ -462,6 +482,9 @@ class DocxService:
 
         if not force and (change_ratio > 0.6 or len(opcodes) > 50):
             logger.info("局部更新跳过: change_ratio 太高或 ops 过多，退回全量覆盖")
+            return False
+        if not force and matcher.ratio() < 0.55:
+            logger.info("局部更新跳过: 相似度过低 (ratio={:.2f})", matcher.ratio())
             return False
 
         block_map = {block.get("block_id"): block for block in convert.blocks}
@@ -782,6 +805,31 @@ def _extract_children_ids(block: dict[str, Any]) -> list[str]:
         if isinstance(cells, list) and cells:
             return list(cells)
     return []
+
+
+def _has_duplicate_signatures(signatures: list[str]) -> bool:
+    if not signatures:
+        return False
+    return len(set(signatures)) < len(signatures)
+
+
+def _unique_anchor_pairs(
+    current_sigs: list[str], desired_sigs: list[str]
+) -> list[tuple[int, int]]:
+    current_counts = Counter(current_sigs)
+    desired_counts = Counter(desired_sigs)
+    current_unique = {
+        sig: idx for idx, sig in enumerate(current_sigs) if current_counts[sig] == 1
+    }
+    desired_unique = {
+        sig: idx for idx, sig in enumerate(desired_sigs) if desired_counts[sig] == 1
+    }
+    anchors = [
+        (current_unique[sig], desired_unique[sig])
+        for sig in current_unique.keys() & desired_unique.keys()
+    ]
+    anchors.sort(key=lambda item: item[0])
+    return anchors
 
 
 def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertResult:
