@@ -323,6 +323,56 @@ async def test_transcoder_table_cell_collects_nested_text(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_transcoder_table_supports_nested_cell_matrix(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["tbl"]},
+        {
+            "block_id": "tbl",
+            "block_type": 31,
+            "parent_id": "root",
+            "table": {
+                "cells": [["cell1", "cell2"], ["cell3", "cell4"]],
+                "property": {"row_size": 2, "column_size": 2},
+            },
+        },
+        {"block_id": "cell1", "block_type": 32, "parent_id": "tbl", "children": ["t1"]},
+        {"block_id": "cell2", "block_type": 32, "parent_id": "tbl", "children": ["t2"]},
+        {"block_id": "cell3", "block_type": 32, "parent_id": "tbl", "children": ["t3"]},
+        {"block_id": "cell4", "block_type": 32, "parent_id": "tbl", "children": ["t4"]},
+        {
+            "block_id": "t1",
+            "block_type": 2,
+            "parent_id": "cell1",
+            "text": {"elements": [{"text_run": {"content": "A"}}]},
+        },
+        {
+            "block_id": "t2",
+            "block_type": 2,
+            "parent_id": "cell2",
+            "text": {"elements": [{"text_run": {"content": "B"}}]},
+        },
+        {
+            "block_id": "t3",
+            "block_type": 2,
+            "parent_id": "cell3",
+            "text": {"elements": [{"text_run": {"content": "C"}}]},
+        },
+        {
+            "block_id": "t4",
+            "block_type": 2,
+            "parent_id": "cell4",
+            "text": {"elements": [{"text_run": {"content": "D"}}]},
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-table", blocks)
+
+    assert "| A | B |" in markdown
+    assert "| C | D |" in markdown
+
+
+@pytest.mark.asyncio
 async def test_transcoder_rewrites_links_to_local_paths(tmp_path: Path) -> None:
     blocks = [
         {"block_id": "root", "block_type": 1, "children": ["p1"]},

@@ -361,3 +361,51 @@ async def test_partial_update_table_children_uses_cells() -> None:
     )
     assert service.children_map is not None
     assert service.children_map.get("t1") == ["cell1", "cell2"]
+
+
+@pytest.mark.asyncio
+async def test_partial_update_table_children_flattens_nested_cells() -> None:
+    class SpyDocxService(DocxService):
+        def __init__(self) -> None:
+            super().__init__(client=FakeClient([]))
+            self.children_map = None
+
+        async def delete_children(self, *args, **kwargs) -> None:
+            return None
+
+        async def _create_children_recursive(self, *args, **kwargs) -> None:
+            self.children_map = kwargs.get("children_map")
+
+    service = SpyDocxService()
+    current_blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["c1"]},
+        {
+            "block_id": "c1",
+            "block_type": 2,
+            "text": {"elements": [{"text_run": {"content": "old"}}]},
+        },
+    ]
+    convert = ConvertResult(
+        first_level_block_ids=["t1"],
+        blocks=[
+            {
+                "block_id": "t1",
+                "block_type": 31,
+                "table": {"cells": [["cell1", "cell2"], ["cell3"]]},
+            },
+            {"block_id": "cell1", "block_type": 32, "children": []},
+            {"block_id": "cell2", "block_type": 32, "children": []},
+            {"block_id": "cell3", "block_type": 32, "children": []},
+        ],
+    )
+    await service._apply_partial_update(
+        document_id="doc-table",
+        root_block_id="root",
+        current_children=["c1"],
+        current_blocks=current_blocks,
+        convert=convert,
+        user_id_type="open_id",
+        force=True,
+    )
+    assert service.children_map is not None
+    assert service.children_map.get("t1") == ["cell1", "cell2", "cell3"]

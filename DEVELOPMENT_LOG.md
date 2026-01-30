@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.20 (2026-01-30)
+- 目标：避免上传失败清空云端内容，并强化块级更新对表格/矩阵结构的兼容。
+- 结果：创建子块仅在 index>=0 时传入 index；创建失败不会删除旧内容；块级替换先插入后删除降低数据丢失风险；下载后重建块级状态；表格 cells 支持矩阵展开；上传前基于 file_hash 判断未变更跳过。
+- 测试：`PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py apps/backend/tests/test_transcoder.py apps/backend/tests/test_sync_runner_block_update.py apps/backend/tests/test_markdown_blocks.py`。
+- 问题：仍需真实文档验证 400 invalid param 是否完全消除。
+
 ## v0.1.36-dev.19 (2026-01-30)
 - 目标：避免局部更新误匹配导致未改内容被覆盖。
 - 结果：增加重复块签名与唯一锚点检测，低相似度时自动回退全量覆盖。

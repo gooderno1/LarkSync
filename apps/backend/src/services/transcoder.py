@@ -187,7 +187,8 @@ class DocxParser:
 
     def table_markdown(self, block: dict) -> str:
         table = block.get("table") or {}
-        cells: list[str] = table.get("cells") or []
+        raw_cells = table.get("cells") or []
+        cells = self._flatten_table_cells(raw_cells)
         if not cells:
             cells = block.get("children") or []
         prop = table.get("property") or {}
@@ -210,6 +211,20 @@ class DocxParser:
             "| " + " | ".join(row) + " |" for row in matrix[1:] if row is not None
         ]
         return "\n".join([header, separator, *body])
+
+    @staticmethod
+    def _flatten_table_cells(cells: object) -> list[str]:
+        if not isinstance(cells, list):
+            return []
+        flattened: list[str] = []
+        for cell in cells:
+            if isinstance(cell, list):
+                for inner in cell:
+                    if isinstance(inner, str):
+                        flattened.append(inner)
+            elif isinstance(cell, str):
+                flattened.append(cell)
+        return flattened
 
     def _table_cell_text(self, cell_id: str) -> str:
         cell = self.get_block(cell_id)

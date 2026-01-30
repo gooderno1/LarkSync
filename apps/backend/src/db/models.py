@@ -55,3 +55,17 @@ class SyncTask(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class SyncBlockState(Base):
+    __tablename__ = "sync_block_states"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    file_hash: Mapped[str] = mapped_column(String, index=True)
+    local_path: Mapped[str] = mapped_column(String, nullable=False)
+    cloud_token: Mapped[str] = mapped_column(String, index=True)
+    block_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    block_hash: Mapped[str] = mapped_column(String, nullable=False)
+    block_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)

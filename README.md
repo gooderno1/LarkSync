@@ -29,6 +29,7 @@
 - 日志系统：后端运行日志写入 `data/logs/larksync.log`
 - 开发控制台日志：`npm run dev` 输出同时写入 `data/logs/dev-console.log`
 - 同步日志：前端按时间展示任务与文件同步事件
+- 块级更新：Markdown 变更按块检测与更新，记录每块更新时间
 
 ## 本地开发
 ### 使用教程

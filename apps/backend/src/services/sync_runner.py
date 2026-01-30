@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import time
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -12,8 +13,11 @@ from loguru import logger
 from src.services.docx_service import DocxService
 from src.services.drive_service import DriveNode, DriveService
 from src.services.file_downloader import FileDownloader
+from src.services.file_hash import calculate_file_hash
 from src.services.file_uploader import FileUploader
 from src.services.file_writer import FileWriter
+from src.services.markdown_blocks import hash_block, split_markdown_blocks
+from src.services.sync_block_service import BlockStateItem, SyncBlockService
 from src.services.sync_link_service import SyncLinkService
 from src.services.sync_task_service import SyncTaskItem
 from src.services.transcoder import DocxTranscoder
@@ -68,6 +72,7 @@ class SyncTaskRunner:
         self._file_uploader = file_uploader
         self._file_writer = file_writer or FileWriter()
         self._link_service = link_service or SyncLinkService()
+        self._block_service = SyncBlockService()
         self._statuses: dict[str, SyncTaskStatus] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._watchers: dict[str, WatcherService] = {}
@@ -220,6 +225,18 @@ class SyncTaskRunner:
                             task_id=task.id,
                             updated_at=mtime,
                         )
+                        if task.sync_mode in {"bidirectional", "upload_only"} and (
+                            (task.update_mode or "auto") != "full"
+                        ):
+                            await self._rebuild_block_state(
+                                task=task,
+                                docx_service=docx_service,
+                                document_id=effective_token,
+                                markdown=markdown,
+                                base_path=target_dir.as_posix(),
+                                file_path=target_dir / filename,
+                                user_id_type="open_id",
+                            )
                         self._silence_path(task.id, target_dir / filename)
                         status.completed_files += 1
                         status.record_event(
@@ -396,12 +413,22 @@ class SyncTaskRunner:
                 )
             )
             return
-        if task.sync_mode != "upload_only" and mtime <= (link.updated_at + 1.0):
-            status.skipped_files += 1
-            status.record_event(
-                SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
-            )
-            return
+        file_hash = calculate_file_hash(path)
+        block_states = await self._block_service.list_blocks(str(path), link.cloud_token)
+        if block_states:
+            if all(item.file_hash == file_hash for item in block_states):
+                status.skipped_files += 1
+                status.record_event(
+                    SyncFileEvent(path=str(path), status="skipped", message="内容未变化")
+                )
+                return
+        else:
+            if task.sync_mode != "upload_only" and mtime <= (link.updated_at + 1.0):
+                status.skipped_files += 1
+                status.record_event(
+                    SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
+                )
+                return
         if link.cloud_type not in {"docx", "doc"}:
             status.failed_files += 1
             status.record_event(
@@ -421,12 +448,34 @@ class SyncTaskRunner:
                 path,
                 link.cloud_token,
             )
-            await docx_service.replace_document_content(
-                link.cloud_token,
-                markdown,
-                base_path=base_path,
-                update_mode=task.update_mode or "auto",
-            )
+            update_mode = task.update_mode or "auto"
+            applied = False
+            if update_mode in {"auto", "partial"}:
+                applied = await self._apply_block_update(
+                    task=task,
+                    docx_service=docx_service,
+                    document_id=link.cloud_token,
+                    markdown=markdown,
+                    base_path=base_path,
+                    file_path=path,
+                    force=update_mode == "partial",
+                )
+            if not applied:
+                await docx_service.replace_document_content(
+                    link.cloud_token,
+                    markdown,
+                    base_path=base_path,
+                    update_mode="full",
+                )
+                await self._rebuild_block_state(
+                    task=task,
+                    docx_service=docx_service,
+                    document_id=link.cloud_token,
+                    markdown=markdown,
+                    base_path=base_path,
+                    file_path=path,
+                    user_id_type="open_id",
+                )
         await self._link_service.upsert_link(
             local_path=str(path),
             cloud_token=link.cloud_token,
@@ -563,6 +612,186 @@ class SyncTaskRunner:
                 close = getattr(service, "close", None)
                 if close:
                     await close()
+
+    async def _apply_block_update(
+        self,
+        *,
+        task: SyncTaskItem,
+        docx_service: DocxService,
+        document_id: str,
+        markdown: str,
+        base_path: str,
+        file_path: Path,
+        force: bool,
+    ) -> bool:
+        blocks = split_markdown_blocks(markdown)
+        if not blocks:
+            return False
+        file_hash = calculate_file_hash(file_path)
+        block_hashes = [hash_block(block) for block in blocks]
+        existing = await self._block_service.list_blocks(str(file_path), document_id)
+        if not existing:
+            if force:
+                raise RuntimeError("缺少块级状态，无法局部更新")
+            return False
+        total_existing = sum(item.block_count for item in existing)
+        root_block, _ = await docx_service.get_root_block(document_id)
+        root_children = root_block.get("children") or []
+        if total_existing != len(root_children):
+            if force:
+                raise RuntimeError("块级映射不一致，无法局部更新")
+            logger.info("块级更新跳过: 映射数量不一致")
+            return False
+
+        matcher = difflib.SequenceMatcher(
+            a=[item.block_hash for item in existing], b=block_hashes
+        )
+        opcodes = matcher.get_opcodes()
+        if not opcodes:
+            return False
+
+        now = time.time()
+        counts = [item.block_count for item in existing]
+        new_states: list[BlockStateItem] = list(existing)
+        offset_blocks = 0
+
+        for tag, i1, i2, j1, j2 in opcodes:
+            if tag == "equal":
+                continue
+            start_block = i1 + offset_blocks
+            end_block = i2 + offset_blocks
+            start_index = sum(counts[:start_block])
+            end_index = sum(counts[:end_block])
+            if tag == "delete":
+                if end_index > start_index:
+                    await docx_service.delete_children(
+                        document_id=document_id,
+                        block_id=root_block["block_id"],
+                        start_index=start_index,
+                        end_index=end_index,
+                    )
+                    del counts[start_block:end_block]
+                    del new_states[start_block:end_block]
+                offset_blocks -= (i2 - i1)
+                continue
+            if tag == "insert":
+                if j2 <= j1:
+                    continue
+                insert_index = start_index
+                insert_items: list[BlockStateItem] = []
+                for block in blocks[j1:j2]:
+                    count = await docx_service.insert_markdown_block(
+                        document_id=document_id,
+                        root_block_id=root_block["block_id"],
+                        markdown=block,
+                        base_path=base_path,
+                        user_id_type="open_id",
+                        insert_index=insert_index,
+                    )
+                    insert_index += count
+                    insert_items.append(
+                        BlockStateItem(
+                            file_hash=file_hash,
+                            local_path=str(file_path),
+                            cloud_token=document_id,
+                            block_index=0,
+                            block_hash=hash_block(block),
+                            block_count=count,
+                            updated_at=now,
+                            created_at=now,
+                        )
+                    )
+                counts[start_block:start_block] = [item.block_count for item in insert_items]
+                new_states[start_block:start_block] = insert_items
+                offset_blocks += (j2 - j1)
+                continue
+            if tag == "replace":
+                if j2 <= j1 and end_index <= start_index:
+                    continue
+                insert_index = start_index
+                insert_items: list[BlockStateItem] = []
+                for block in blocks[j1:j2]:
+                    count = await docx_service.insert_markdown_block(
+                        document_id=document_id,
+                        root_block_id=root_block["block_id"],
+                        markdown=block,
+                        base_path=base_path,
+                        user_id_type="open_id",
+                        insert_index=insert_index,
+                    )
+                    insert_index += count
+                    insert_items.append(
+                        BlockStateItem(
+                            file_hash=file_hash,
+                            local_path=str(file_path),
+                            cloud_token=document_id,
+                            block_index=0,
+                            block_hash=hash_block(block),
+                            block_count=count,
+                            updated_at=now,
+                            created_at=now,
+                        )
+                    )
+                inserted_count = sum(item.block_count for item in insert_items)
+                if end_index > start_index:
+                    await docx_service.delete_children(
+                        document_id=document_id,
+                        block_id=root_block["block_id"],
+                        start_index=start_index + inserted_count,
+                        end_index=end_index + inserted_count,
+                    )
+                    del counts[start_block:end_block]
+                    del new_states[start_block:end_block]
+                if insert_items:
+                    counts[start_block:start_block] = [
+                        item.block_count for item in insert_items
+                    ]
+                    new_states[start_block:start_block] = insert_items
+                offset_blocks += (j2 - j1) - (i2 - i1)
+
+        for idx, item in enumerate(new_states):
+            item.block_index = idx
+        await self._block_service.replace_blocks(str(file_path), document_id, new_states)
+        return True
+
+    async def _rebuild_block_state(
+        self,
+        *,
+        task: SyncTaskItem,
+        docx_service: DocxService,
+        document_id: str,
+        markdown: str,
+        base_path: str,
+        file_path: Path,
+        user_id_type: str,
+    ) -> None:
+        blocks = split_markdown_blocks(markdown)
+        if not blocks:
+            return
+        now = time.time()
+        file_hash = calculate_file_hash(file_path)
+        items: list[BlockStateItem] = []
+        for idx, block in enumerate(blocks):
+            convert = await docx_service.convert_markdown_with_images(
+                block,
+                document_id=document_id,
+                user_id_type=user_id_type,
+                base_path=base_path,
+            )
+            convert = docx_service._normalize_convert(convert)
+            items.append(
+                BlockStateItem(
+                    file_hash=file_hash,
+                    local_path=str(file_path),
+                    cloud_token=document_id,
+                    block_index=idx,
+                    block_hash=hash_block(block),
+                    block_count=len(convert.first_level_block_ids),
+                    updated_at=now,
+                    created_at=now,
+                )
+            )
+        await self._block_service.replace_blocks(str(file_path), document_id, items)
 
     async def _prefill_links_from_cloud(
         self, task: SyncTaskItem, drive_service: DriveService

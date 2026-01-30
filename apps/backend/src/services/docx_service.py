@@ -112,12 +112,14 @@ class DocxService:
             )
 
         if not partial_applied:
-            await self._create_from_convert(
+            ok = await self._create_from_convert(
                 document_id=document_id,
                 root_block_id=root_block["block_id"],
                 convert=convert,
                 user_id_type=user_id_type,
             )
+            if not ok:
+                raise DocxServiceError("创建块失败，已中止替换")
             logger.info(
                 "新内容已创建: document_id={} blocks={}",
                 document_id,
@@ -228,13 +230,24 @@ class DocxService:
             json=payload,
         )
 
+    async def get_root_block(
+        self, document_id: str, user_id_type: str = "open_id"
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        items = await self.list_blocks(document_id, user_id_type=user_id_type)
+        root_block = self._find_root_block(items)
+        if not root_block:
+            raise DocxServiceError("未找到文档根 Block")
+        return root_block, items
+
     async def _create_from_convert(
         self,
         document_id: str,
         root_block_id: str,
         convert: ConvertResult,
         user_id_type: str,
-    ) -> None:
+        insert_index: int = -1,
+    ) -> bool:
+        error_flag = {"error": False}
         block_map = {block.get("block_id"): block for block in convert.blocks}
         children_map = {
             block.get("block_id"): _extract_children_ids(block)
@@ -247,8 +260,39 @@ class DocxService:
             block_map=block_map,
             children_map=children_map,
             user_id_type=user_id_type,
+            insert_index=insert_index,
             image_paths=convert.image_paths,
+            error_flag=error_flag,
         )
+        return not error_flag["error"]
+
+    async def insert_markdown_block(
+        self,
+        document_id: str,
+        root_block_id: str,
+        markdown: str,
+        *,
+        base_path: str | Path | None,
+        user_id_type: str = "open_id",
+        insert_index: int = -1,
+    ) -> int:
+        convert = await self.convert_markdown_with_images(
+            markdown,
+            document_id=document_id,
+            user_id_type=user_id_type,
+            base_path=base_path,
+        )
+        convert = self._normalize_convert(convert)
+        ok = await self._create_from_convert(
+            document_id=document_id,
+            root_block_id=root_block_id,
+            convert=convert,
+            user_id_type=user_id_type,
+            insert_index=insert_index,
+        )
+        if not ok:
+            raise DocxServiceError("创建块失败，已中止插入")
+        return len(convert.first_level_block_ids)
 
     async def _create_children_recursive(
         self,
@@ -260,6 +304,7 @@ class DocxService:
         user_id_type: str,
         insert_index: int = -1,
         image_paths: dict[str, Path] | None = None,
+        error_flag: dict[str, bool] | None = None,
     ) -> None:
         next_index = insert_index
         for chunk in _chunked(child_ids, 50):
@@ -272,8 +317,9 @@ class DocxService:
             )
             payload = {
                 "children": [self._sanitize_block(block_map[child_id]) for child_id in chunk],
-                "index": next_index if next_index >= 0 else -1,
             }
+            if next_index >= 0:
+                payload["index"] = next_index
             image_uploads: list[tuple[int, Path]] = []
             if image_paths:
                 for idx, child_id in enumerate(chunk):
@@ -304,6 +350,7 @@ class DocxService:
                     user_id_type=user_id_type,
                     image_paths=image_paths,
                     insert_index=insert_index,
+                    error_flag=error_flag,
                 )
                 continue
             data = response.get("data") or {}
@@ -348,6 +395,7 @@ class DocxService:
                         user_id_type=user_id_type,
                         insert_index=-1,
                         image_paths=image_paths,
+                        error_flag=error_flag,
                     )
 
     async def _handle_create_children_error(
@@ -362,6 +410,7 @@ class DocxService:
         user_id_type: str,
         image_paths: dict[str, Path] | None = None,
         insert_index: int = -1,
+        error_flag: dict[str, bool] | None = None,
     ) -> None:
         logger.warning(
             "创建子块失败，准备拆分重试: document_id={} parent={} size={} error={}",
@@ -376,15 +425,17 @@ class DocxService:
             block_id = chunk[0]
             block = self._sanitize_block(block_map[block_id])
             logger.error(
-            "无效块已跳过: document_id={} parent={} block_id={} block_type={} keys={} payload={}",
-            document_id,
-            parent_block_id,
-            block_id,
-            block.get("block_type"),
-            sorted(block.keys()),
-            _truncate_payload(block),
-        )
-        return
+                "无效块已跳过: document_id={} parent={} block_id={} block_type={} keys={} payload={}",
+                document_id,
+                parent_block_id,
+                block_id,
+                block.get("block_type"),
+                sorted(block.keys()),
+                _truncate_payload(block),
+            )
+            if error_flag is not None:
+                error_flag["error"] = True
+            return
         mid = len(chunk) // 2
         await self._create_children_recursive(
             document_id=document_id,
@@ -395,6 +446,7 @@ class DocxService:
             user_id_type=user_id_type,
             insert_index=insert_index,
             image_paths=image_paths,
+            error_flag=error_flag,
         )
         await self._create_children_recursive(
             document_id=document_id,
@@ -405,6 +457,7 @@ class DocxService:
             user_id_type=user_id_type,
             insert_index=insert_index if insert_index < 0 else insert_index + mid,
             image_paths=image_paths,
+            error_flag=error_flag,
         )
 
     async def _apply_partial_update(
@@ -802,9 +855,24 @@ def _extract_children_ids(block: dict[str, Any]) -> list[str]:
     if block.get("block_type") == BLOCK_TYPE_TABLE:
         table = block.get("table") or {}
         cells = table.get("cells") or []
-        if isinstance(cells, list) and cells:
-            return list(cells)
+        flattened = _flatten_table_cells(cells)
+        if flattened:
+            return flattened
     return []
+
+
+def _flatten_table_cells(cells: object) -> list[str]:
+    if not isinstance(cells, list):
+        return []
+    flattened: list[str] = []
+    for cell in cells:
+        if isinstance(cell, list):
+            for inner in cell:
+                if isinstance(inner, str):
+                    flattened.append(inner)
+        elif isinstance(cell, str):
+            flattened.append(cell)
+    return flattened
 
 
 def _has_duplicate_signatures(signatures: list[str]) -> bool:
