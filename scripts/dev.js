@@ -29,14 +29,40 @@ logStream.write(`[${timestamp()}] [system] log file: ${logPath}\n`);
 
 const children = [];
 let shuttingDown = false;
+const isWindows = process.platform === "win32";
+const npmCommand = isWindows ? "npm.cmd" : "npm";
+const pythonCommand = isWindows ? "python" : "python3";
+
+const quoteArg = (value) => {
+  const text = String(value);
+  if (/[\s"]/u.test(text)) {
+    return `"${text.replace(/"/g, '\\"')}"`;
+  }
+  return text;
+};
+
+const buildCommand = (command, args) => {
+  if (!args || args.length === 0) {
+    return command;
+  }
+  return [command, ...args.map(quoteArg)].join(" ");
+};
 
 const spawnProcess = (name, command, args, options) => {
-  const child = spawn(command, args, {
+  const spawnOptions = {
     ...options,
-    shell: false,
     windowsHide: true,
     env: process.env,
-  });
+  };
+  const child = isWindows
+    ? spawn(buildCommand(command, args), {
+        ...spawnOptions,
+        shell: true,
+      })
+    : spawn(command, args, {
+        ...spawnOptions,
+        shell: false,
+      });
   children.push(child);
 
   child.stdout.on("data", (data) => {
@@ -81,10 +107,14 @@ const shutdown = (signal) => {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("exit", () => logStream.end());
-
-const isWindows = process.platform === "win32";
-const npmCommand = isWindows ? "npm.cmd" : "npm";
-const pythonCommand = isWindows ? "python" : "python3";
+process.on("uncaughtException", (error) => {
+  writeLines("system:err", error?.stack ?? String(error));
+  shutdown("SIGTERM");
+});
+process.on("unhandledRejection", (reason) => {
+  writeLines("system:err", reason?.stack ?? String(reason));
+  shutdown("SIGTERM");
+});
 
 spawnProcess("frontend", npmCommand, ["run", "dev", "--prefix", "apps/frontend"], {
   cwd: root,

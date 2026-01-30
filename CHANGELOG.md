@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-01-30] v0.1.36-dev.16 fix(dev): Windows 下 dev 启动避免 spawn EINVAL
 [2026-01-30] v0.1.36-dev.15 fix(db): SQLite 迁移默认值改为字面量
 [2026-01-30] v0.1.36-dev.14 feat(dev): npm run dev 输出落盘到 dev-console.log
 [2026-01-30] v0.1.36-dev.13 feat(ui): 同步任务支持更新模式配置

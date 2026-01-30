@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.16 (2026-01-30)
+- 目标：修复 Windows 下 dev 启动脚本的 spawn EINVAL。
+- 结果：Windows 使用 shell 字符串启动并补充异常捕获日志；非 Windows 保持 spawn args 模式。
+- 测试：未执行（启动脚本变更）。
+- 问题：无。
+
 ## v0.1.36-dev.15 (2026-01-30)
 - 目标：修复启动时 SQLite 迁移报错，并清理 dev 启动警告。
 - 结果：ALTER TABLE 默认值改为字面量，避免参数占位导致语法错误；dev 启动脚本改为非 shell 模式调用，避免弃用警告。
