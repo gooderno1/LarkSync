@@ -1,9 +1,9 @@
 {
   "name": "larksync-root",
   "private": true,
-  "version": "v0.1.32-dev.1",
+  "version": "v0.1.36-dev.14",
   "scripts": {
-    "dev": "concurrently \"npm run dev --prefix apps/frontend\" \"cd apps/backend && python -m uvicorn src.main:app --reload --port 8000\""
+    "dev": "node scripts/dev.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

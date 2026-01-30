@@ -79,9 +79,11 @@
 默认端口：
 - 前端：`http://localhost:3000`
 - 后端：`http://localhost:8000`
+日志输出：
+- 前后端控制台输出会写入 `data/logs/dev-console.log`
 
 ### 4.2 分别启动
-- 后端：`cd apps/backend` 后执行 `uvicorn src.main:app --reload --port 8000`
+- 后端：`cd apps/backend` 后执行 `python -m uvicorn src.main:app --reload --port 8000`
 - 前端：`cd apps/frontend` 后执行 `npm run dev`
 
 ## 5. 主要功能使用

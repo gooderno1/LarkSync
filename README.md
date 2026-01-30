@@ -27,6 +27,7 @@
 - 手动上传 Markdown：用于快速验证 Docx 全量覆盖与图片上传链路
 - 文档链接本地化：云端链接自动改写为本地相对路径，附件落盘至 attachments
 - 日志系统：后端运行日志写入 `data/logs/larksync.log`
+- 开发控制台日志：`npm run dev` 输出同时写入 `data/logs/dev-console.log`
 
 ## 本地开发
 ### 使用教程
@@ -41,8 +42,9 @@
 
 ### 启动
 - 统一入口：根目录执行 `npm run dev`
+- `npm run dev` 会将前后端控制台输出写入 `data/logs/dev-console.log`
 - 分别启动：
-  - 后端：`cd apps/backend` 后执行 `uvicorn src.main:app --reload --port 8000`
+  - 后端：`cd apps/backend` 后执行 `python -m uvicorn src.main:app --reload --port 8000`
   - 前端：`cd apps/frontend` 后执行 `npm run dev`
 
 ### 配置

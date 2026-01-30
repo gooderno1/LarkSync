@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.14 (2026-01-30)
+- 目标：确保开发控制台输出落盘，便于定位启动问题。
+- 结果：新增 `scripts/dev.js`，`npm run dev` 输出同步写入 `data/logs/dev-console.log`；文档启动指令改为 `python -m uvicorn`。
+- 测试：未执行（脚本与文档变更）。
+- 问题：无。
+
 ## v0.1.36-dev.13 (2026-01-30)
 - 目标：在界面中开放更新模式设置，并保存到任务配置。
 - 结果：后端任务新增 update_mode 字段与迁移；前端新增“更新模式”选择与更新按钮；手动上传支持 update_mode。
