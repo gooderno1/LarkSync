@@ -12,7 +12,13 @@ from loguru import logger
 
 from src.services.feishu_client import FeishuClient
 from src.services.media_uploader import MediaUploadError, MediaUploader
-from src.services.transcoder import DocxParser, BLOCK_TYPE_IMAGE, BLOCK_TYPE_TABLE, BLOCK_TYPE_FILE
+from src.services.transcoder import (
+    DocxParser,
+    BLOCK_TYPE_IMAGE,
+    BLOCK_TYPE_TABLE,
+    BLOCK_TYPE_FILE,
+    BLOCK_TYPE_TEXT,
+)
 
 
 class DocxServiceError(RuntimeError):
@@ -162,57 +168,26 @@ class DocxService:
         user_id_type: str = "open_id",
         base_path: str | Path | None = None,
     ) -> ConvertResult:
-        segments = self._split_markdown_images(markdown)
-        image_count = sum(1 for segment in segments if segment.kind == "image")
-        logger.info(
-            "解析 Markdown 图片: document_id={} segments={} images={}",
-            document_id,
-            len(segments),
-            image_count,
+        processed_markdown, placeholders, image_paths = self._build_image_placeholders(
+            markdown, base_path
         )
-        if image_count == 0:
-            return await self.convert_markdown(markdown, user_id_type=user_id_type)
+        logger.info(
+            "解析 Markdown 图片: document_id={} placeholders={}",
+            document_id,
+            len(placeholders),
+        )
+        convert = await self.convert_markdown(
+            processed_markdown, user_id_type=user_id_type
+        )
+        if not placeholders:
+            return convert
 
-        first_level_block_ids: list[str] = []
-        blocks: list[dict[str, Any]] = []
-        image_paths: dict[str, Path] = {}
-        for segment in segments:
-            if segment.kind == "text":
-                if not segment.value.strip():
-                    continue
-                convert = await self.convert_markdown(
-                    segment.value, user_id_type=user_id_type
-                )
-                first_level_block_ids.extend(convert.first_level_block_ids)
-                blocks.extend(convert.blocks)
-                continue
-            image_path = self._resolve_image_path(segment.value, base_path)
-            try:
-                if not image_path.exists() or not image_path.is_file():
-                    raise MediaUploadError(f"图片不存在: {image_path}")
-                image_block_id = f"img_{uuid.uuid4().hex}"
-                first_level_block_ids.append(image_block_id)
-                blocks.append(
-                    {
-                        "block_id": image_block_id,
-                        "block_type": 27,
-                        "image": {},
-                    }
-                )
-                image_paths[image_block_id] = image_path
-            except MediaUploadError:
-                placeholder = f"[图片缺失: {segment.value}]"
-                convert = await self.convert_markdown(
-                    placeholder, user_id_type=user_id_type
-                )
-                first_level_block_ids.extend(convert.first_level_block_ids)
-                blocks.extend(convert.blocks)
-
-        return ConvertResult(
-            first_level_block_ids=first_level_block_ids,
-            blocks=blocks,
+        convert = self._replace_placeholders_with_images(
+            convert,
+            placeholders=placeholders,
             image_paths=image_paths,
         )
+        return convert
 
     async def list_blocks(
         self, document_id: str, user_id_type: str = "open_id"
@@ -620,6 +595,79 @@ class DocxService:
         if not segments:
             segments.append(MarkdownSegment(kind="text", value=markdown))
         return segments
+
+    def _build_image_placeholders(
+        self, markdown: str, base_path: str | Path | None
+    ) -> tuple[str, dict[str, str], dict[str, Path]]:
+        processed = markdown
+        placeholders: dict[str, str] = {}
+        image_paths: dict[str, Path] = {}
+        for match in _IMAGE_PATTERN.finditer(markdown):
+            raw = match.group(0)
+            ref = _normalize_image_ref(match.group(1))
+            if _is_remote_image(ref):
+                continue
+            image_path = self._resolve_image_path(ref, base_path)
+            if not image_path.exists() or not image_path.is_file():
+                processed = processed.replace(raw, f"[图片缺失: {ref}]")
+                continue
+            placeholder = f"[[LARKSYNC_IMAGE:{_hash_text(str(image_path))}]]"
+            placeholders[placeholder] = ref
+            image_paths[placeholder] = image_path
+            processed = processed.replace(raw, placeholder)
+        return processed, placeholders, image_paths
+
+    def _replace_placeholders_with_images(
+        self,
+        convert: ConvertResult,
+        *,
+        placeholders: dict[str, str],
+        image_paths: dict[str, Path],
+    ) -> ConvertResult:
+        if not placeholders:
+            return convert
+        block_map = {block.get("block_id"): block for block in convert.blocks}
+        parser = DocxParser(convert.blocks)
+        new_blocks: list[dict[str, Any]] = []
+        replaced: dict[str, str] = {}
+        image_block_paths: dict[str, Path] = {}
+        for block_id in convert.first_level_block_ids:
+            block = block_map.get(block_id)
+            if not block:
+                continue
+            text = parser.text_from_block(block).strip()
+            if (
+                block.get("block_type") == BLOCK_TYPE_TEXT
+                and text in placeholders
+            ):
+                image_block_id = f"img_{uuid.uuid4().hex}"
+                replaced[block_id] = image_block_id
+                image_block_paths[image_block_id] = image_paths[text]
+                new_blocks.append(
+                    {"block_id": image_block_id, "block_type": 27, "image": {}}
+                )
+            else:
+                new_blocks.append(block)
+
+        if not replaced:
+            convert.image_paths.update(image_block_paths)
+            return convert
+
+        new_first_level = [
+            replaced.get(block_id, block_id) for block_id in convert.first_level_block_ids
+        ]
+        filtered_blocks = [
+            block for block in convert.blocks if block.get("block_id") not in replaced
+        ]
+        filtered_blocks.extend(
+            block for block in new_blocks if block.get("block_id") in replaced.values()
+        )
+        convert.image_paths.update(image_block_paths)
+        return ConvertResult(
+            first_level_block_ids=new_first_level,
+            blocks=filtered_blocks,
+            image_paths=convert.image_paths,
+        )
 
     @staticmethod
     def _resolve_image_path(ref: str, base_path: str | Path | None) -> Path:

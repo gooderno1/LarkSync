@@ -1,3 +1,4 @@
+import hashlib
 import httpx
 import pytest
 
@@ -148,6 +149,12 @@ async def test_replace_document_content_creates_nested_children() -> None:
 
 @pytest.mark.asyncio
 async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir()
+    image_path = assets_dir / "logo.png"
+    image_path.write_bytes(b"img")
+    placeholder = f"[[LARKSYNC_IMAGE:{hashlib.sha1(str(image_path).encode('utf-8')).hexdigest()}]]"
+
     responses = [
         {
             "code": 0,
@@ -161,18 +168,15 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
         {
             "code": 0,
             "data": {
-                "first_level_block_ids": ["t1"],
+                "first_level_block_ids": ["t1", "t2", "t3"],
                 "blocks": [
-                    {"block_id": "t1", "block_type": 2, "text": {"elements": []}}
-                ],
-            },
-        },
-        {
-            "code": 0,
-            "data": {
-                "first_level_block_ids": ["t2"],
-                "blocks": [
-                    {"block_id": "t2", "block_type": 2, "text": {"elements": []}}
+                    {"block_id": "t1", "block_type": 2, "text": {"elements": []}},
+                    {
+                        "block_id": "t2",
+                        "block_type": 2,
+                        "text": {"elements": [{"text_run": {"content": placeholder}}]},
+                    },
+                    {"block_id": "t3", "block_type": 2, "text": {"elements": []}},
                 ],
             },
         },
@@ -192,11 +196,6 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
     client = FakeClient(responses)
     service = DocxService(client=client)
 
-    assets_dir = tmp_path / "assets"
-    assets_dir.mkdir()
-    image_path = assets_dir / "logo.png"
-    image_path.write_bytes(b"img")
-
     markdown = "段落一\n\n![](assets/logo.png)\n\n段落二"
 
     await service.replace_document_content(
@@ -204,15 +203,14 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
     )
 
     assert client.requests[1][1].endswith("/open-apis/docx/v1/documents/blocks/convert")
-    assert client.requests[2][1].endswith("/open-apis/docx/v1/documents/blocks/convert")
 
-    create_call = client.requests[3]
+    create_call = client.requests[2]
     children_payload = create_call[2]["json"]["children"]
     assert len(children_payload) == 3
     image_blocks = [child for child in children_payload if child.get("block_type") == 27]
     assert image_blocks and image_blocks[0].get("image") == {}
 
-    upload_call = client.requests[4]
+    upload_call = client.requests[3]
     assert upload_call[1].endswith("/open-apis/drive/v1/medias/upload_all")
     assert upload_call[2]["data"]["parent_node"] == "n2"
     assert upload_call[2]["data"]["parent_type"] == "docx_image"
@@ -227,24 +225,6 @@ async def test_convert_markdown_with_images_falls_back_on_missing_image(tmp_path
                 "first_level_block_ids": ["t1"],
                 "blocks": [
                     {"block_id": "t1", "block_type": 2, "text": {"elements": []}}
-                ],
-            },
-        },
-        {
-            "code": 0,
-            "data": {
-                "first_level_block_ids": ["t2"],
-                "blocks": [
-                    {"block_id": "t2", "block_type": 2, "text": {"elements": []}}
-                ],
-            },
-        },
-        {
-            "code": 0,
-            "data": {
-                "first_level_block_ids": ["t3"],
-                "blocks": [
-                    {"block_id": "t3", "block_type": 2, "text": {"elements": []}}
                 ],
             },
         },

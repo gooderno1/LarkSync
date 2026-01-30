@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.12 (2026-01-30)
+- 目标：修复上传列表/表格/图片转换异常。
+- 结果：Markdown 不再分段转换，改为图片占位单次转换以保留列表结构；表格创建时剥离 cells 并用 cells 作为子块创建；图片用占位文本替换为 image block 后再上传素材。
+- 测试：`PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py`。
+- 问题：若仍出现列表变代码或表格缺失，请提供最新日志与对应 Markdown 片段。
+
 ## v0.1.36-dev.11 (2026-01-30)
 - 目标：修复上行图片/表格 block 的 400 invalid param。
 - 结果：图片块改为先创建空块再上传素材；表格块移除 cells 引用并用 cells 作为子块创建；同步默认 update_mode=auto。
