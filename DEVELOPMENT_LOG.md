@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.22 (2026-01-31)
+- 目标：支持本地 Markdown 无映射时自动创建云端 Docx，便于上传对比与回归。
+- 结果：新增导入任务服务（drive import_tasks）；上传侧自动上传 Markdown、创建 Docx 并落库映射；新增轮询定位新文档逻辑；补齐使用教程与功能列表。
+- 测试：`python -m pytest tests/test_import_task_service.py tests/test_sync_runner_upload_new_doc.py`（在 apps/backend 目录执行）。
+- 问题：仍需你用“日常记录 - 聂玮奇 副本 - 副本.md”实测云端对齐效果并反馈差异点。
+
 ## v0.1.36-dev.21 (2026-01-30)
 - 目标：补齐“任务/提及/提醒”渲染缺失，避免云端内容遗漏。
 - 结果：支持 mention_doc/mention_user/reminder 渲染；TODO 块支持完成状态；未知容器块（如 block_type=33）递归渲染子块；新增单测覆盖。

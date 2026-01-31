@@ -11,14 +11,15 @@ from typing import Iterable, Literal
 from loguru import logger
 
 from src.services.docx_service import DocxService
-from src.services.drive_service import DriveNode, DriveService
+from src.services.drive_service import DriveFile, DriveNode, DriveService
 from src.services.file_downloader import FileDownloader
 from src.services.file_hash import calculate_file_hash
 from src.services.file_uploader import FileUploader
 from src.services.file_writer import FileWriter
 from src.services.markdown_blocks import hash_block, split_markdown_blocks
+from src.services.import_task_service import ImportTaskError, ImportTaskService
 from src.services.sync_block_service import BlockStateItem, SyncBlockService
-from src.services.sync_link_service import SyncLinkService
+from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_task_service import SyncTaskItem
 from src.services.transcoder import DocxTranscoder
 from src.services.watcher import FileChangeEvent, WatcherService
@@ -64,6 +65,9 @@ class SyncTaskRunner:
         file_uploader: FileUploader | None = None,
         file_writer: FileWriter | None = None,
         link_service: SyncLinkService | None = None,
+        import_task_service: ImportTaskService | None = None,
+        import_poll_attempts: int = 10,
+        import_poll_interval: float = 1.0,
     ) -> None:
         self._drive_service = drive_service
         self._docx_service = docx_service
@@ -73,6 +77,9 @@ class SyncTaskRunner:
         self._file_writer = file_writer or FileWriter()
         self._link_service = link_service or SyncLinkService()
         self._block_service = SyncBlockService()
+        self._import_task_service = import_task_service
+        self._import_poll_attempts = max(1, import_poll_attempts)
+        self._import_poll_interval = max(0.0, import_poll_interval)
         self._statuses: dict[str, SyncTaskStatus] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._watchers: dict[str, WatcherService] = {}
@@ -316,6 +323,7 @@ class SyncTaskRunner:
         docx_service = self._docx_service or DocxService()
         file_uploader = self._file_uploader or FileUploader()
         drive_service = self._drive_service or DriveService()
+        import_task_service = self._import_task_service or ImportTaskService()
         owned_services = []
         if self._docx_service is None:
             owned_services.append(docx_service)
@@ -323,6 +331,8 @@ class SyncTaskRunner:
             owned_services.append(file_uploader)
         if self._drive_service is None:
             owned_services.append(drive_service)
+        if self._import_task_service is None:
+            owned_services.append(import_task_service)
 
         try:
             if task.sync_mode == "upload_only":
@@ -335,7 +345,13 @@ class SyncTaskRunner:
             for path in files:
                 try:
                     await self._upload_path(
-                        task, status, path, docx_service, file_uploader
+                        task,
+                        status,
+                        path,
+                        docx_service,
+                        file_uploader,
+                        drive_service,
+                        import_task_service,
                     )
                 except Exception as exc:
                     status.failed_files += 1
@@ -366,6 +382,8 @@ class SyncTaskRunner:
         path: Path,
         docx_service: DocxService,
         file_uploader: FileUploader,
+        drive_service: DriveService,
+        import_task_service: ImportTaskService,
     ) -> None:
         key = str(path)
         if key in self._uploading_paths:
@@ -387,7 +405,15 @@ class SyncTaskRunner:
                 return
             suffix = path.suffix.lower()
             if suffix == ".md":
-                await self._upload_markdown(task, status, path, docx_service)
+                await self._upload_markdown(
+                    task,
+                    status,
+                    path,
+                    docx_service,
+                    file_uploader,
+                    drive_service,
+                    import_task_service,
+                )
                 return
             await self._upload_file(task, status, path, file_uploader)
         finally:
@@ -399,20 +425,34 @@ class SyncTaskRunner:
         status: SyncTaskStatus,
         path: Path,
         docx_service: DocxService,
+        file_uploader: FileUploader,
+        drive_service: DriveService,
+        import_task_service: ImportTaskService,
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
+        created_doc = False
+        if not link:
+            link = await self._create_cloud_doc_for_markdown(
+                task=task,
+                status=status,
+                path=path,
+                file_uploader=file_uploader,
+                drive_service=drive_service,
+                import_task_service=import_task_service,
+            )
+            if not link:
+                status.failed_files += 1
+                status.record_event(
+                    SyncFileEvent(
+                        path=str(path),
+                        status="failed",
+                        message="创建云端文档失败",
+                    )
+                )
+                return
+            created_doc = True
         base_path = path.parent.as_posix()
         mtime = path.stat().st_mtime
-        if not link:
-            status.failed_files += 1
-            status.record_event(
-                SyncFileEvent(
-                    path=str(path),
-                    status="failed",
-                    message="缺少云端文档映射，需提供导入接口样例以创建新文档",
-                )
-            )
-            return
         file_hash = calculate_file_hash(path)
         block_states = await self._block_service.list_blocks(str(path), link.cloud_token)
         if block_states:
@@ -448,19 +488,7 @@ class SyncTaskRunner:
                 path,
                 link.cloud_token,
             )
-            update_mode = task.update_mode or "auto"
-            applied = False
-            if update_mode in {"auto", "partial"}:
-                applied = await self._apply_block_update(
-                    task=task,
-                    docx_service=docx_service,
-                    document_id=link.cloud_token,
-                    markdown=markdown,
-                    base_path=base_path,
-                    file_path=path,
-                    force=update_mode == "partial",
-                )
-            if not applied:
+            if created_doc:
                 await docx_service.replace_document_content(
                     link.cloud_token,
                     markdown,
@@ -476,6 +504,35 @@ class SyncTaskRunner:
                     file_path=path,
                     user_id_type="open_id",
                 )
+            else:
+                update_mode = task.update_mode or "auto"
+                applied = False
+                if update_mode in {"auto", "partial"}:
+                    applied = await self._apply_block_update(
+                        task=task,
+                        docx_service=docx_service,
+                        document_id=link.cloud_token,
+                        markdown=markdown,
+                        base_path=base_path,
+                        file_path=path,
+                        force=update_mode == "partial",
+                    )
+                if not applied:
+                    await docx_service.replace_document_content(
+                        link.cloud_token,
+                        markdown,
+                        base_path=base_path,
+                        update_mode="full",
+                    )
+                    await self._rebuild_block_state(
+                        task=task,
+                        docx_service=docx_service,
+                        document_id=link.cloud_token,
+                        markdown=markdown,
+                        base_path=base_path,
+                        file_path=path,
+                        user_id_type="open_id",
+                    )
         await self._link_service.upsert_link(
             local_path=str(path),
             cloud_token=link.cloud_token,
@@ -538,6 +595,85 @@ class SyncTaskRunner:
         status.completed_files += 1
         status.record_event(SyncFileEvent(path=str(path), status="uploaded"))
 
+    async def _create_cloud_doc_for_markdown(
+        self,
+        *,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        path: Path,
+        file_uploader: FileUploader,
+        drive_service: DriveService,
+        import_task_service: ImportTaskService,
+    ) -> SyncLinkItem | None:
+        suffix = path.suffix.lower().lstrip(".")
+        if not suffix:
+            status.record_event(
+                SyncFileEvent(
+                    path=str(path),
+                    status="failed",
+                    message="Markdown 文件缺少扩展名",
+                )
+            )
+            return None
+        status.record_event(
+            SyncFileEvent(path=str(path), status="creating", message="创建云端文档")
+        )
+        existing_tokens = await self._list_folder_tokens(
+            drive_service, task.cloud_folder_token
+        )
+        try:
+            upload = await file_uploader.upload_file(
+                file_path=path,
+                parent_node=task.cloud_folder_token,
+                parent_type="explorer",
+                record_db=False,
+            )
+            await import_task_service.create_import_task(
+                file_extension=suffix,
+                file_token=upload.file_token,
+                mount_key=task.cloud_folder_token,
+                file_name=path.stem,
+                doc_type="docx",
+            )
+        except ImportTaskError as exc:
+            status.record_event(
+                SyncFileEvent(path=str(path), status="failed", message=str(exc))
+            )
+            return None
+        except Exception as exc:
+            status.record_event(
+                SyncFileEvent(path=str(path), status="failed", message=str(exc))
+            )
+            return None
+
+        doc_token = await self._wait_for_imported_doc(
+            drive_service=drive_service,
+            folder_token=task.cloud_folder_token,
+            expected_name=path.stem,
+            existing_tokens=existing_tokens,
+        )
+        if not doc_token:
+            status.record_event(
+                SyncFileEvent(
+                    path=str(path),
+                    status="failed",
+                    message="导入任务完成但未找到新文档",
+                )
+            )
+            return None
+
+        link = await self._link_service.upsert_link(
+            local_path=str(path),
+            cloud_token=doc_token,
+            cloud_type="docx",
+            task_id=task.id,
+            updated_at=0.0,
+        )
+        status.record_event(
+            SyncFileEvent(path=str(path), status="created", message="云端文档已创建")
+        )
+        return link
+
     def _iter_local_files(self, task: SyncTaskItem) -> Iterable[Path]:
         root = Path(task.local_path)
         if not root.exists():
@@ -584,6 +720,46 @@ class SyncTaskRunner:
         watcher = self._watchers.get(task_id)
         if watcher:
             watcher.silence(path)
+
+    async def _list_folder_tokens(
+        self, drive_service: DriveService, folder_token: str
+    ) -> set[str]:
+        items = await self._list_files_all(drive_service, folder_token)
+        return {item.token for item in items}
+
+    async def _list_files_all(
+        self, drive_service: DriveService, folder_token: str
+    ) -> list[DriveFile]:
+        files: list[DriveFile] = []
+        page_token: str | None = None
+        while True:
+            result = await drive_service.list_files(folder_token, page_token=page_token)
+            files.extend(result.files)
+            if not result.has_more or not result.next_page_token:
+                break
+            page_token = result.next_page_token
+        return files
+
+    async def _wait_for_imported_doc(
+        self,
+        *,
+        drive_service: DriveService,
+        folder_token: str,
+        expected_name: str,
+        existing_tokens: set[str],
+    ) -> str | None:
+        for attempt in range(self._import_poll_attempts):
+            items = await self._list_files_all(drive_service, folder_token)
+            for item in items:
+                if (
+                    item.name == expected_name
+                    and item.type in {"docx", "doc"}
+                    and item.token not in existing_tokens
+                ):
+                    return item.token
+            if attempt < self._import_poll_attempts - 1:
+                await asyncio.sleep(self._import_poll_interval)
+        return None
 
     async def _handle_local_event(self, task: SyncTaskItem, event: FileChangeEvent) -> None:
         if task.sync_mode == "download_only":
