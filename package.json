@@ -1,7 +1,7 @@
 {
   "name": "larksync-root",
   "private": true,
-  "version": "v0.1.36-dev.22",
+  "version": "v0.1.36-dev.23",
   "scripts": {
     "dev": "node scripts/dev.js"
   },
