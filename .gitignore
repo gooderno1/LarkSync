@@ -17,3 +17,15 @@ data/
 data/*.db
 data/config.json
 *.log
+
+# Feishu dev docs (local only)
+docs/feishu/
+
+# Product definition docs (local only)
+docs/local_specs/
+
+# Legacy root spec docs (local only)
+/LarkSync Vibe Coding 开发执行计划.md
+/LarkSync 产品需求文档.md
+/LarkSync 产品开发计划书.md
+/LarkSync飞书云文档本地同步方案深度调研.md
