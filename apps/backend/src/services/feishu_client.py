@@ -5,6 +5,8 @@ import httpx
 
 from src.services.auth_service import AuthService
 
+RETRYABLE_API_CODES = {1061045, 99991400}
+
 
 class FeishuClient:
     def __init__(
@@ -37,9 +39,12 @@ class FeishuClient:
                 payload = response.json()
             except Exception:
                 return response
-            if isinstance(payload, dict) and payload.get("code") == 1061045:
-                await self._sleep_backoff(attempt, response)
-                continue
+            if isinstance(payload, dict):
+                code = payload.get("code")
+                message = str(payload.get("msg", "")).lower()
+                if code in RETRYABLE_API_CODES or "frequency limit" in message:
+                    await self._sleep_backoff(attempt, response)
+                    continue
             return response
         return response
 

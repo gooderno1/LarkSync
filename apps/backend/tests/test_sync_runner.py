@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -175,6 +176,56 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     assert (tmp_path / "子目录" / "note.md").exists()
     assert (tmp_path / "快捷方式文件").exists()
     assert downloader.calls[-1][0] == "file-target"
+
+
+@pytest.mark.asyncio
+async def test_bidirectional_skips_download_when_local_file_is_newer(tmp_path: Path) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="doc-1",
+                name="设计文档",
+                type="docx",
+                modified_time="1000",
+            )
+        ],
+    )
+    local_file = tmp_path / "设计文档.md"
+    local_file.write_text("# local newer", encoding="utf-8")
+    os.utime(local_file, (2000.0, 2000.0))
+
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(),
+    )
+
+    task = SyncTaskItem(
+        id="task-2",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+    await runner._run_download(task, status)
+
+    assert local_file.read_text(encoding="utf-8") == "# local newer"
+    assert status.total_files == 1
+    assert status.completed_files == 0
+    assert status.skipped_files == 1
+    assert status.last_files[-1].message == "本地较新，跳过下载"
 
 
 def test_parse_mtime_supports_iso8601() -> None:

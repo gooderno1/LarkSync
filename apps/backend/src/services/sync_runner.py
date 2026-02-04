@@ -214,6 +214,32 @@ class SyncTaskRunner:
                 effective_token, effective_type = _resolve_target(node)
                 target_dir = Path(task.local_path) / relative_dir
                 mtime = _parse_mtime(node.modified_time)
+                target_path = (
+                    target_dir / _docx_filename(node.name)
+                    if effective_type in {"docx", "doc"}
+                    else target_dir / node.name
+                )
+                if self._should_skip_download_for_local_newer(
+                    task=task,
+                    local_path=target_path,
+                    cloud_mtime=mtime,
+                ):
+                    status.skipped_files += 1
+                    status.record_event(
+                        SyncFileEvent(
+                            path=str(target_path),
+                            status="skipped",
+                            message="本地较新，跳过下载",
+                        )
+                    )
+                    logger.info(
+                        "检测到本地较新文件，跳过下载: task_id={} path={} cloud_mtime={} local_mtime={}",
+                        task.id,
+                        target_path,
+                        mtime,
+                        target_path.stat().st_mtime,
+                    )
+                    continue
                 try:
                     if effective_type in {"docx", "doc"}:
                         markdown = await self._download_docx(
@@ -306,6 +332,23 @@ class SyncTaskRunner:
                 close = getattr(service, "close", None)
                 if close:
                     await close()
+
+    @staticmethod
+    def _should_skip_download_for_local_newer(
+        *,
+        task: SyncTaskItem,
+        local_path: Path,
+        cloud_mtime: float,
+    ) -> bool:
+        if task.sync_mode != "bidirectional":
+            return False
+        if not local_path.exists() or not local_path.is_file():
+            return False
+        try:
+            local_mtime = local_path.stat().st_mtime
+        except OSError:
+            return False
+        return local_mtime > (cloud_mtime + 1.0)
 
     async def _download_docx(
         self,
@@ -432,35 +475,10 @@ class SyncTaskRunner:
         import_task_service: ImportTaskService,
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
-        created_doc = False
         if link and link.cloud_type == "file":
-            status.record_event(
-                SyncFileEvent(
-                    path=str(path),
-                    status="migrating",
-                    message="检测到历史文件映射，正在迁移为云端文档",
-                )
-            )
-            migrated = await self._create_cloud_doc_for_markdown(
-                task=task,
-                status=status,
-                path=path,
-                file_uploader=file_uploader,
-                drive_service=drive_service,
-                import_task_service=import_task_service,
-            )
-            if not migrated:
-                status.failed_files += 1
-                status.record_event(
-                    SyncFileEvent(
-                        path=str(path),
-                        status="failed",
-                        message="文件映射迁移为文档失败",
-                    )
-                )
-                return
-            link = migrated
-            created_doc = True
+            await self._upload_file(task, status, path, file_uploader)
+            return
+        created_doc = False
         if not link:
             link = await self._create_cloud_doc_for_markdown(
                 task=task,
@@ -519,12 +537,6 @@ class SyncTaskRunner:
                 link.cloud_token,
             )
             if created_doc:
-                logger.info(
-                    "云端文档由导入创建，跳过覆盖: task_id={} path={} token={}",
-                    task.id,
-                    path,
-                    link.cloud_token,
-                )
                 await self._rebuild_block_state(
                     task=task,
                     docx_service=docx_service,
@@ -548,22 +560,12 @@ class SyncTaskRunner:
                             file_path=path,
                             force=update_mode == "partial",
                         )
-                    except Exception as exc:
-                        logger.warning(
-                            "局部更新失败，回退全量覆盖: task_id={} path={} token={} error={}",
-                            task.id,
-                            path,
-                            link.cloud_token,
-                            exc,
-                        )
-                        status.record_event(
-                            SyncFileEvent(
-                                path=str(path),
-                                status="fallback",
-                                message=f"局部更新失败，已回退全量覆盖: {exc}",
-                            )
-                        )
+                    except RuntimeError:
+                        if update_mode == "partial":
+                            raise
                 if not applied:
+                    if update_mode == "partial":
+                        raise RuntimeError("partial 模式要求块级更新，但未产生可应用差异")
                     await docx_service.replace_document_content(
                         link.cloud_token,
                         markdown,
@@ -612,16 +614,6 @@ class SyncTaskRunner:
                     path=str(path),
                     status="failed",
                     message=f"云端类型不支持文件上传: {link.cloud_type}",
-                )
-            )
-            return
-        if link:
-            status.failed_files += 1
-            status.record_event(
-                SyncFileEvent(
-                    path=str(path),
-                    status="failed",
-                    message="暂不支持更新已有文件，请提供更新接口样例",
                 )
             )
             return

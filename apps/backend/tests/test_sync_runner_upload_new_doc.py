@@ -145,16 +145,9 @@ async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_markdown_migrates_file_link_to_docx(tmp_path: Path) -> None:
-    markdown_path = tmp_path / "迁移测试.md"
+async def test_upload_markdown_with_file_link_uses_file_upload(tmp_path: Path) -> None:
+    markdown_path = tmp_path / "文件模式.md"
     markdown_path.write_text("# Title", encoding="utf-8")
-
-    new_doc = DriveFile(token="doc-migrated", name="迁移测试", type="docx")
-    responses = [
-        DriveFileList(files=[], has_more=False, next_page_token=None),
-        DriveFileList(files=[], has_more=False, next_page_token=None),
-        DriveFileList(files=[new_doc], has_more=False, next_page_token=None),
-    ]
 
     link_service = FakeLinkService()
     link_service.links[str(markdown_path)] = SyncLinkItem(
@@ -168,13 +161,11 @@ async def test_upload_markdown_migrates_file_link_to_docx(tmp_path: Path) -> Non
     runner = SyncTaskRunner(
         docx_service=FakeDocxService(),
         file_uploader=FakeFileUploader(),
-        drive_service=FakeDriveService(responses),
+        drive_service=FakeDriveService([]),
         link_service=link_service,
         import_task_service=FakeImportTaskService(),
     )
     runner._block_service = FakeBlockService()
-    runner._import_poll_attempts = 3
-    runner._import_poll_interval = 0.0
 
     task = SyncTaskItem(
         id="task-1",
@@ -183,7 +174,7 @@ async def test_upload_markdown_migrates_file_link_to_docx(tmp_path: Path) -> Non
         cloud_folder_token="fld-1",
         base_path=None,
         sync_mode="upload_only",
-        update_mode="auto",
+        update_mode="partial",
         enabled=True,
         created_at=0,
         updated_at=0,
@@ -203,12 +194,14 @@ async def test_upload_markdown_migrates_file_link_to_docx(tmp_path: Path) -> Non
     assert status.failed_files == 0
     assert status.completed_files == 1
     assert runner._docx_service.replace_calls == []
-    assert runner._block_service.replace_calls == 1
-    assert link_service.links[str(markdown_path)].cloud_type == "docx"
+    assert runner._block_service.replace_calls == 0
+    assert runner._file_uploader.calls[0][1] == "fld-1"
+    assert link_service.links[str(markdown_path)].cloud_type == "file"
+    assert link_service.links[str(markdown_path)].cloud_token == "file-token"
 
 
 @pytest.mark.asyncio
-async def test_upload_markdown_partial_fallback_to_full_replace(tmp_path: Path) -> None:
+async def test_upload_markdown_partial_mode_raises_without_block_state(tmp_path: Path) -> None:
     markdown_path = tmp_path / "局部回退测试.md"
     markdown_path.write_text("# Title", encoding="utf-8")
 
@@ -249,16 +242,13 @@ async def test_upload_markdown_partial_fallback_to_full_replace(tmp_path: Path) 
     )
     status = SyncTaskStatus(task_id=task.id)
 
-    await runner._upload_markdown(
-        task,
-        status,
-        markdown_path,
-        runner._docx_service,
-        runner._file_uploader,
-        runner._drive_service,
-        runner._import_task_service,
-    )
-
-    assert status.failed_files == 0
-    assert status.completed_files == 1
-    assert runner._docx_service.replace_calls[0][0] == "doc-existing"
+    with pytest.raises(RuntimeError, match="缺少块级状态，无法局部更新"):
+        await runner._upload_markdown(
+            task,
+            status,
+            markdown_path,
+            runner._docx_service,
+            runner._file_uploader,
+            runner._drive_service,
+            runner._import_task_service,
+        )

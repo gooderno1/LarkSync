@@ -16,7 +16,7 @@
 - 非文档下载：提供 Drive 文件下载器，直接写入本地目录
 - 本地监听：Watchdog 防抖监听 + WebSocket 实时事件推送
 - Markdown 转 Docx：调用 Docx Block 接口执行全量覆盖（含 429 指数退避重试）
-- Markdown 上行局部更新：基于 block 差异仅更新变更段落（支持 fallback 全量覆盖）
+- Markdown 上行局部更新：基于 block 差异仅更新变更段落（partial 模式失败直接报错，避免静默全量覆盖）
 - 同步任务支持更新模式：自动/局部/全量
 - Markdown 图片上传：本地图片自动上传为 Docx 图片块并插入文档
 - 通用文件上传：支持 upload_all / 分片上传，并在本地状态库记录 file_hash 与云端 token
@@ -25,14 +25,16 @@
 - 下载型同步任务：支持立即同步、状态展示与删除
 - 双向/上传任务：本地变更上传（已映射 Docx 全量覆盖，普通文件新增上传）
 - Markdown 新建 Docx：缺少映射时自动创建云端文档并覆盖内容
-- Markdown 映射自愈：历史误映射为 file 的 `.md` 会自动迁移为 Docx 后再上传
+- Markdown file 映射直传：历史为 `file` 的 `.md` 继续按文件上传，不再强制迁移为 Docx
 - 手动上传 Markdown：用于快速验证 Docx 全量覆盖与图片上传链路
 - 文档链接本地化：已同步且本地存在的云端链接自动改写为本地相对路径，未同步链接保持云端地址；附件落盘至 attachments
 - 日志系统：后端运行日志写入 `data/logs/larksync.log`
 - 开发控制台日志：`npm run dev` 输出同时写入 `data/logs/dev-console.log`
 - 同步日志：前端按时间展示任务与文件同步事件
+- 双向下载保护：bidirectional 模式下检测到本地文件较新时跳过下载，避免覆盖本地修改
 - 块级更新：Markdown 变更按块检测与更新，记录每块更新时间
 - 上行一致性优化：列表续行/附件挂载/文本子块渲染优化，减少云端回写后的结构偏差
+- 飞书频控重试：新增对 `99991400(request trigger frequency limit)` 的指数退避重试
 - 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
 
 ## 本地开发
