@@ -1,7 +1,7 @@
 {
   "name": "larksync-root",
   "private": true,
-  "version": "v0.1.36-dev.27",
+  "version": "v0.1.36-dev.28",
   "scripts": {
     "dev": "node scripts/dev.js",
     "sync:feishu-docs": "python scripts/sync_feishu_docs.py"

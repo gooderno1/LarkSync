@@ -433,6 +433,34 @@ class SyncTaskRunner:
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
         created_doc = False
+        if link and link.cloud_type == "file":
+            status.record_event(
+                SyncFileEvent(
+                    path=str(path),
+                    status="migrating",
+                    message="检测到历史文件映射，正在迁移为云端文档",
+                )
+            )
+            migrated = await self._create_cloud_doc_for_markdown(
+                task=task,
+                status=status,
+                path=path,
+                file_uploader=file_uploader,
+                drive_service=drive_service,
+                import_task_service=import_task_service,
+            )
+            if not migrated:
+                status.failed_files += 1
+                status.record_event(
+                    SyncFileEvent(
+                        path=str(path),
+                        status="failed",
+                        message="文件映射迁移为文档失败",
+                    )
+                )
+                return
+            link = migrated
+            created_doc = True
         if not link:
             link = await self._create_cloud_doc_for_markdown(
                 task=task,

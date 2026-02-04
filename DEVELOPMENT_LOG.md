@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.28 (2026-02-04)
+- 目标：解决“任务仍有失败 + 本地 Markdown 改动无法同步到云端”。
+- 结果：
+  - 从状态与日志定位根因：多个 `.md` 被历史错误映射为 `cloud_type=file`，导致上传阶段报 `云端类型不支持 Markdown 覆盖: file`。
+  - 上传逻辑新增映射自愈：遇到 `.md -> file` 映射时，自动走导入任务创建 Docx，并重绑映射后继续上传，不再直接失败。
+  - 新增单测覆盖迁移链路，验证旧映射可自动恢复为 `docx` 并成功覆盖内容。
+- 测试：
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py tests/test_sync_runner.py`（apps/backend，7 passed）。
+  - `python -m pytest`（apps/backend，107 passed）。
+- 问题：无阻塞问题。
+
 ## v0.1.36-dev.27 (2026-02-04)
 - 目标：修复“本地监听触发上传时报参数缺失”的失败问题。
 - 结果：

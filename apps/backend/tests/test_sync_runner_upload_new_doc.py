@@ -141,3 +141,65 @@ async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
     assert runner._docx_service.replace_calls[0][0] == "doc-new"
     assert runner._file_uploader.calls[0][1] == "fld-1"
     assert runner._import_task_service.calls[0]["file_extension"] == "md"
+
+
+@pytest.mark.asyncio
+async def test_upload_markdown_migrates_file_link_to_docx(tmp_path: Path) -> None:
+    markdown_path = tmp_path / "迁移测试.md"
+    markdown_path.write_text("# Title", encoding="utf-8")
+
+    new_doc = DriveFile(token="doc-migrated", name="迁移测试", type="docx")
+    responses = [
+        DriveFileList(files=[], has_more=False, next_page_token=None),
+        DriveFileList(files=[], has_more=False, next_page_token=None),
+        DriveFileList(files=[new_doc], has_more=False, next_page_token=None),
+    ]
+
+    link_service = FakeLinkService()
+    link_service.links[str(markdown_path)] = SyncLinkItem(
+        local_path=str(markdown_path),
+        cloud_token="file-legacy-token",
+        cloud_type="file",
+        task_id="task-1",
+        updated_at=0.0,
+    )
+
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService(responses),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+    )
+    runner._block_service = FakeBlockService()
+    runner._import_poll_attempts = 3
+    runner._import_poll_interval = 0.0
+
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.failed_files == 0
+    assert status.completed_files == 1
+    assert runner._docx_service.replace_calls[0][0] == "doc-migrated"
+    assert link_service.links[str(markdown_path)].cloud_type == "docx"
