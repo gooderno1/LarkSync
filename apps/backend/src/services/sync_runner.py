@@ -55,6 +55,17 @@ class SyncTaskStatus:
             self.last_files = self.last_files[-limit:]
 
 
+@dataclass(frozen=True)
+class DownloadCandidate:
+    node: DriveNode
+    relative_dir: Path
+    effective_token: str
+    effective_type: str
+    target_dir: Path
+    target_path: Path
+    mtime: float
+
+
 class SyncTaskRunner:
     def __init__(
         self,
@@ -208,17 +219,44 @@ class SyncTaskRunner:
             link_map = _build_link_map(files, task.local_path)
             persisted_links = await link_service.list_all()
             link_map = _merge_synced_link_map(link_map, persisted_links)
-            status.total_files = len(files)
+            persisted_by_path = {item.local_path: item for item in persisted_links}
+            candidates = [
+                self._build_download_candidate(task, node, relative_dir)
+                for node, relative_dir in files
+            ]
+            selected_candidates, duplicated_candidates = self._select_download_candidates(
+                candidates,
+                persisted_by_path,
+            )
+            status.total_files = len(selected_candidates) + len(duplicated_candidates)
 
-            for node, relative_dir in files:
-                effective_token, effective_type = _resolve_target(node)
-                target_dir = Path(task.local_path) / relative_dir
-                mtime = _parse_mtime(node.modified_time)
-                target_path = (
-                    target_dir / _docx_filename(node.name)
-                    if effective_type in {"docx", "doc"}
-                    else target_dir / node.name
+            for duplicated in duplicated_candidates:
+                status.skipped_files += 1
+                status.record_event(
+                    SyncFileEvent(
+                        path=str(duplicated.target_path),
+                        status="skipped",
+                        message=(
+                            "云端存在同名文件，已跳过重复项: "
+                            f"type={duplicated.effective_type} token={duplicated.effective_token}"
+                        ),
+                    )
                 )
+                logger.info(
+                    "跳过重复同名云端文件: task_id={} path={} type={} token={}",
+                    task.id,
+                    duplicated.target_path,
+                    duplicated.effective_type,
+                    duplicated.effective_token,
+                )
+
+            for candidate in selected_candidates:
+                node = candidate.node
+                effective_token = candidate.effective_token
+                effective_type = candidate.effective_type
+                target_dir = candidate.target_dir
+                target_path = candidate.target_path
+                mtime = candidate.mtime
                 if self._should_skip_download_for_local_newer(
                     task=task,
                     local_path=target_path,
@@ -276,7 +314,7 @@ class SyncTaskRunner:
                         status.completed_files += 1
                         status.record_event(
                             SyncFileEvent(
-                                path=str(target_dir / filename), status="downloaded"
+                                path=str(target_path), status="downloaded"
                             )
                         )
                     elif effective_type == "file":
@@ -287,24 +325,24 @@ class SyncTaskRunner:
                             mtime=mtime,
                         )
                         await link_service.upsert_link(
-                            local_path=str(target_dir / node.name),
+                            local_path=str(target_path),
                             cloud_token=effective_token,
                             cloud_type=effective_type,
                             task_id=task.id,
                             updated_at=mtime,
                         )
-                        self._silence_path(task.id, target_dir / node.name)
+                        self._silence_path(task.id, target_path)
                         status.completed_files += 1
                         status.record_event(
                             SyncFileEvent(
-                                path=str(target_dir / node.name), status="downloaded"
+                                path=str(target_path), status="downloaded"
                             )
                         )
                     else:
                         status.skipped_files += 1
                         status.record_event(
                             SyncFileEvent(
-                                path=str(target_dir / node.name),
+                                path=str(target_path),
                                 status="skipped",
                                 message=f"暂不支持类型: {effective_type}",
                             )
@@ -314,7 +352,7 @@ class SyncTaskRunner:
                     status.last_error = str(exc)
                     status.record_event(
                         SyncFileEvent(
-                            path=str(target_dir / node.name),
+                            path=str(target_path),
                             status="failed",
                             message=f"type={effective_type} token={effective_token} error={exc}",
                         )
@@ -322,7 +360,7 @@ class SyncTaskRunner:
                     logger.error(
                         "下载失败: task_id={} path={} type={} token={} error={}",
                         task.id,
-                        target_dir / node.name,
+                        target_path,
                         effective_type,
                         effective_token,
                         exc,
@@ -349,6 +387,80 @@ class SyncTaskRunner:
         except OSError:
             return False
         return local_mtime > (cloud_mtime + 1.0)
+
+    @staticmethod
+    def _build_download_candidate(
+        task: SyncTaskItem,
+        node: DriveNode,
+        relative_dir: Path,
+    ) -> DownloadCandidate:
+        effective_token, effective_type = _resolve_target(node)
+        target_dir = Path(task.local_path) / relative_dir
+        target_path = (
+            target_dir / _docx_filename(node.name)
+            if effective_type in {"docx", "doc"}
+            else target_dir / node.name
+        )
+        return DownloadCandidate(
+            node=node,
+            relative_dir=relative_dir,
+            effective_token=effective_token,
+            effective_type=effective_type,
+            target_dir=target_dir,
+            target_path=target_path,
+            mtime=_parse_mtime(node.modified_time),
+        )
+
+    @staticmethod
+    def _select_download_candidates(
+        candidates: list[DownloadCandidate],
+        persisted_by_path: dict[str, SyncLinkItem],
+    ) -> tuple[list[DownloadCandidate], list[DownloadCandidate]]:
+        selected: dict[str, DownloadCandidate] = {}
+        duplicated: list[DownloadCandidate] = []
+        for candidate in candidates:
+            key = str(candidate.target_path).lower()
+            current = selected.get(key)
+            if current is None:
+                selected[key] = candidate
+                continue
+            persisted = persisted_by_path.get(str(candidate.target_path))
+            chosen = SyncTaskRunner._choose_download_candidate(
+                current=current,
+                candidate=candidate,
+                persisted=persisted,
+            )
+            if chosen is candidate:
+                duplicated.append(current)
+                selected[key] = candidate
+            else:
+                duplicated.append(candidate)
+        return list(selected.values()), duplicated
+
+    @staticmethod
+    def _choose_download_candidate(
+        *,
+        current: DownloadCandidate,
+        candidate: DownloadCandidate,
+        persisted: SyncLinkItem | None,
+    ) -> DownloadCandidate:
+        if persisted:
+            current_match = current.effective_token == persisted.cloud_token
+            candidate_match = candidate.effective_token == persisted.cloud_token
+            if candidate_match and not current_match:
+                return candidate
+            if current_match and not candidate_match:
+                return current
+        if candidate.mtime > current.mtime:
+            return candidate
+        if candidate.mtime < current.mtime:
+            return current
+        type_priority = {"docx": 3, "doc": 3, "file": 2}
+        candidate_rank = type_priority.get(candidate.effective_type, 1)
+        current_rank = type_priority.get(current.effective_type, 1)
+        if candidate_rank > current_rank:
+            return candidate
+        return current
 
     async def _download_docx(
         self,
@@ -478,9 +590,9 @@ class SyncTaskRunner:
         if link and link.cloud_type == "file":
             await self._upload_file(task, status, path, file_uploader)
             return
-        created_doc = False
+        imported_doc = False
         if not link:
-            link = await self._create_cloud_doc_for_markdown(
+            link, imported_doc = await self._create_cloud_doc_for_markdown(
                 task=task,
                 status=status,
                 path=path,
@@ -498,7 +610,6 @@ class SyncTaskRunner:
                     )
                 )
                 return
-            created_doc = True
         base_path = path.parent.as_posix()
         mtime = path.stat().st_mtime
         file_hash = calculate_file_hash(path)
@@ -517,6 +628,7 @@ class SyncTaskRunner:
                     SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
                 )
                 return
+        update_mode = task.update_mode or "auto"
         if link.cloud_type not in {"docx", "doc"}:
             status.failed_files += 1
             status.record_event(
@@ -527,6 +639,13 @@ class SyncTaskRunner:
                 )
             )
             return
+        if (not imported_doc) and (not block_states) and update_mode in {"auto", "partial"}:
+            await self._bootstrap_block_state(
+                path=path,
+                cloud_token=link.cloud_token,
+                docx_service=docx_service,
+                status=status,
+            )
         lock = self._doc_locks.setdefault(link.cloud_token, asyncio.Lock())
         async with lock:
             markdown = path.read_text(encoding="utf-8")
@@ -536,7 +655,7 @@ class SyncTaskRunner:
                 path,
                 link.cloud_token,
             )
-            if created_doc:
+            if imported_doc:
                 await self._rebuild_block_state(
                     task=task,
                     docx_service=docx_service,
@@ -547,7 +666,6 @@ class SyncTaskRunner:
                     user_id_type="open_id",
                 )
             else:
-                update_mode = task.update_mode or "auto"
                 applied = False
                 if update_mode in {"auto", "partial"}:
                     try:
@@ -633,6 +751,47 @@ class SyncTaskRunner:
         status.completed_files += 1
         status.record_event(SyncFileEvent(path=str(path), status="uploaded"))
 
+    async def _bootstrap_block_state(
+        self,
+        *,
+        path: Path,
+        cloud_token: str,
+        docx_service: DocxService,
+        status: SyncTaskStatus,
+    ) -> None:
+        root_block, _ = await docx_service.get_root_block(cloud_token)
+        children = root_block.get("children") or []
+        now = time.time()
+        await self._block_service.replace_blocks(
+            str(path),
+            cloud_token,
+            [
+                BlockStateItem(
+                    file_hash="__bootstrap__",
+                    local_path=str(path),
+                    cloud_token=cloud_token,
+                    block_index=0,
+                    block_hash=f"__bootstrap__:{len(children)}",
+                    block_count=len(children),
+                    updated_at=now,
+                    created_at=now,
+                )
+            ],
+        )
+        status.record_event(
+            SyncFileEvent(
+                path=str(path),
+                status="bootstrapped",
+                message=f"缺少块级状态，已自动初始化（children={len(children)}）",
+            )
+        )
+        logger.info(
+            "块级状态自动初始化: path={} token={} children={}",
+            path,
+            cloud_token,
+            len(children),
+        )
+
     async def _create_cloud_doc_for_markdown(
         self,
         *,
@@ -642,7 +801,7 @@ class SyncTaskRunner:
         file_uploader: FileUploader,
         drive_service: DriveService,
         import_task_service: ImportTaskService,
-    ) -> SyncLinkItem | None:
+    ) -> tuple[SyncLinkItem | None, bool]:
         suffix = path.suffix.lower().lstrip(".")
         if not suffix:
             status.record_event(
@@ -652,7 +811,28 @@ class SyncTaskRunner:
                     message="Markdown 文件缺少扩展名",
                 )
             )
-            return None
+            return None, False
+        existing_doc_token = await self._find_existing_doc_by_name(
+            drive_service=drive_service,
+            folder_token=task.cloud_folder_token,
+            expected_name=path.stem,
+        )
+        if existing_doc_token:
+            link = await self._link_service.upsert_link(
+                local_path=str(path),
+                cloud_token=existing_doc_token,
+                cloud_type="docx",
+                task_id=task.id,
+                updated_at=0.0,
+            )
+            status.record_event(
+                SyncFileEvent(
+                    path=str(path),
+                    status="linked",
+                    message="复用云端同名文档",
+                )
+            )
+            return link, False
         status.record_event(
             SyncFileEvent(path=str(path), status="creating", message="创建云端文档")
         )
@@ -677,12 +857,12 @@ class SyncTaskRunner:
             status.record_event(
                 SyncFileEvent(path=str(path), status="failed", message=str(exc))
             )
-            return None
+            return None, False
         except Exception as exc:
             status.record_event(
                 SyncFileEvent(path=str(path), status="failed", message=str(exc))
             )
-            return None
+            return None, False
 
         doc_token = await self._wait_for_imported_doc(
             drive_service=drive_service,
@@ -698,7 +878,7 @@ class SyncTaskRunner:
                     message="导入任务完成但未找到新文档",
                 )
             )
-            return None
+            return None, False
 
         link = await self._link_service.upsert_link(
             local_path=str(path),
@@ -710,7 +890,7 @@ class SyncTaskRunner:
         status.record_event(
             SyncFileEvent(path=str(path), status="created", message="云端文档已创建")
         )
-        return link
+        return link, True
 
     def _iter_local_files(self, task: SyncTaskItem) -> Iterable[Path]:
         root = Path(task.local_path)
@@ -777,6 +957,24 @@ class SyncTaskRunner:
                 break
             page_token = result.next_page_token
         return files
+
+    async def _find_existing_doc_by_name(
+        self,
+        *,
+        drive_service: DriveService,
+        folder_token: str,
+        expected_name: str,
+    ) -> str | None:
+        items = await self._list_files_all(drive_service, folder_token)
+        matched = [
+            item
+            for item in items
+            if item.type in {"docx", "doc"} and item.name == expected_name
+        ]
+        if not matched:
+            return None
+        matched.sort(key=lambda item: _parse_mtime(item.modified_time), reverse=True)
+        return matched[0].token
 
     async def _wait_for_imported_doc(
         self,

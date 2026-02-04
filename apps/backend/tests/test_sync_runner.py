@@ -72,8 +72,9 @@ class FakeImportTaskService:
 
 
 class FakeLinkService:
-    def __init__(self) -> None:
+    def __init__(self, persisted: list[SyncLinkItem] | None = None) -> None:
         self.calls: list[tuple[str, str, str, str]] = []
+        self._persisted = persisted or []
 
     async def upsert_link(
         self, local_path: str, cloud_token: str, cloud_type: str, task_id: str, updated_at=None
@@ -85,7 +86,7 @@ class FakeLinkService:
         return None
 
     async def list_all(self):
-        return []
+        return list(self._persisted)
 
 
 @pytest.mark.asyncio
@@ -176,6 +177,64 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     assert (tmp_path / "子目录" / "note.md").exists()
     assert (tmp_path / "快捷方式文件").exists()
     assert downloader.calls[-1][0] == "file-target"
+
+
+@pytest.mark.asyncio
+async def test_runner_download_prefers_persisted_link_when_cloud_has_duplicates(tmp_path: Path) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="doc-old",
+                name="重复文档",
+                type="docx",
+                modified_time="1700000000",
+            ),
+            DriveNode(
+                token="doc-new",
+                name="重复文档",
+                type="docx",
+                modified_time="1800000000",
+            ),
+        ],
+    )
+    local_path = tmp_path / "重复文档.md"
+    persisted_link = SyncLinkItem(
+        local_path=str(local_path),
+        cloud_token="doc-old",
+        cloud_type="docx",
+        task_id="task-dup",
+        updated_at=0.0,
+    )
+    link_service = FakeLinkService([persisted_link])
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=link_service,
+    )
+
+    task = SyncTaskItem(
+        id="task-dup",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner.run_task(task)
+
+    assert local_path.read_text(encoding="utf-8") == "# doc-old"
+    assert any(call[1] == "doc-old" for call in link_service.calls)
 
 
 @pytest.mark.asyncio

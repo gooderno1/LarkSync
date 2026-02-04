@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.30 (2026-02-04)
+- 目标：修复“本地较新但未上云”与云端同名文件导致映射漂移/重复处理问题。
+- 结果：
+  - partial 上行新增块状态自愈：当 `sync_block_states` 缺失时，自动基于云端根块 children 初始化占位块状态，避免直接报 `缺少块级状态，无法局部更新`。
+  - 下载阶段新增同名去重策略：同一路径的多个云端节点仅保留一个候选；优先复用已持久化映射 token，其次选最新修改时间，避免 link 被重复文件反复覆盖。
+  - 新建 Markdown 云端文档前先查同名 doc/docx，命中后复用而非再次创建，减少同名文档继续膨胀。
+- 测试：
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py -q`（apps/backend，12 passed）。
+  - `python -m pytest -q`（apps/backend，全量通过）。
+- 问题：历史已经产生的同名云端文件不会自动删除；当前版本仅阻止继续漂移与重复创建。
+
 ## v0.1.36-dev.29 (2026-02-04)
 - 目标：修复“本地改动未上云”与 partial 上行中频控导致的失败。
 - 结果：
