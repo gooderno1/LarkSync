@@ -268,13 +268,13 @@ class DocxParser:
             return ""
         children = cell.get("children") or []
         if not children:
-            return self.collect_text(cell_id)
+            return _normalize_table_cell_text(self.collect_text(cell_id))
         parts: list[str] = []
         for child_id in children:
             text = self.collect_text(child_id)
             if text:
                 parts.append(text)
-        return "<br>".join(parts).strip()
+        return _normalize_table_cell_text("<br>".join(parts).strip())
 
 
 class _LineBuffer:
@@ -444,28 +444,44 @@ class DocxTranscoder:
     ) -> list[str]:
         marker = "- "
         if list_type == BLOCK_TYPE_ORDERED:
-            marker = "1. "
+            marker = ""
         elif list_type == BLOCK_TYPE_TODO:
             marker = "- [ ] "
 
         prefix = f"{quote_prefix}{base_indent}"
         keep_blank = bool(quote_prefix)
         lines: list[str] = []
+        ordered_index: int | None = None
         for block_id in block_ids:
             block = parser.get_block(block_id)
             if not block:
                 continue
-            text = parser.text_from_block(block)
+            text = parser.text_from_block(block, strip=False)
             effective_marker = marker
             if list_type == BLOCK_TYPE_TODO:
                 todo = block.get("todo") or {}
                 style = todo.get("style") or {}
                 if style.get("done"):
                     effective_marker = "- [x] "
-            line = f"{effective_marker}{text}".rstrip()
-            lines.append(self._line_with_prefix(prefix, line, keep_blank=keep_blank))
+            elif list_type == BLOCK_TYPE_ORDERED:
+                ordered = block.get("ordered") or {}
+                style = ordered.get("style") or {}
+                sequence = style.get("sequence")
+                ordered_index = _resolve_ordered_index(ordered_index, sequence)
+                effective_marker = f"{ordered_index}. "
+            text_lines = self._split_multiline_text(text)
+            first_line = f"{effective_marker}{text_lines[0]}".rstrip()
+            lines.append(self._line_with_prefix(prefix, first_line, keep_blank=keep_blank))
+            continuation_prefix = f"{prefix}{' ' * len(effective_marker)}"
+            for continuation in text_lines[1:]:
+                lines.append(
+                    self._line_with_prefix(
+                        continuation_prefix, continuation, keep_blank=keep_blank
+                    )
+                )
             children = parser.children_ids(block_id)
             if children:
+                indent_step = "   " if list_type == BLOCK_TYPE_ORDERED else "  "
                 child_lines = self._render_block_ids(
                     children,
                     parser,
@@ -474,7 +490,7 @@ class DocxTranscoder:
                     attachments,
                     base_dir=base_dir,
                     link_map=link_map,
-                    base_indent=f"{base_indent}  ",
+                    base_indent=f"{base_indent}{indent_step}",
                     quote_prefix=quote_prefix,
                 )
                 lines.extend(child_lines)
@@ -525,10 +541,33 @@ class DocxTranscoder:
             return [self._line_with_prefix(prefix, line, keep_blank=keep_blank)]
 
         if block_type == BLOCK_TYPE_TEXT:
-            text = parser.text_from_block(block)
-            if not text:
-                return []
-            return [self._line_with_prefix(prefix, text, keep_blank=keep_blank)]
+            text = parser.text_from_block(block, strip=False)
+            lines: list[str] = []
+            if text:
+                lines.extend(
+                    self._prefix_lines(
+                        prefix,
+                        self._split_multiline_text(text),
+                        keep_blank=keep_blank,
+                    )
+                )
+            children = parser.children_ids(block.get("block_id", ""))
+            if children:
+                child_lines = self._render_block_ids(
+                    children,
+                    parser,
+                    document_id,
+                    images,
+                    attachments,
+                    base_dir=base_dir,
+                    link_map=link_map,
+                    base_indent=base_indent,
+                    quote_prefix=quote_prefix,
+                )
+                if lines and child_lines and lines[-1] != "":
+                    lines.append("")
+                lines.extend(child_lines)
+            return lines
 
         if block_type == BLOCK_TYPE_CODE:
             text = parser.text_from_block(block, strip=False)
@@ -625,9 +664,13 @@ class DocxTranscoder:
                 quote_prefix=quote_prefix,
             )
 
-        fallback_text = parser.text_from_block(block)
+        fallback_text = parser.text_from_block(block, strip=False)
         if fallback_text:
-            return [self._line_with_prefix(prefix, fallback_text, keep_blank=keep_blank)]
+            return self._prefix_lines(
+                prefix,
+                self._split_multiline_text(fallback_text),
+                keep_blank=keep_blank,
+            )
 
         return []
 
@@ -740,6 +783,12 @@ class DocxTranscoder:
         blank_value = prefix.rstrip() if keep_blank else ""
         return [prefix + line if line else blank_value for line in lines]
 
+    @staticmethod
+    def _split_multiline_text(text: str) -> list[str]:
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        lines = [line.rstrip() for line in normalized.split("\n")]
+        return lines if lines else [""]
+
     async def close(self) -> None:
         close = getattr(self._downloader, "close", None)
         if close:
@@ -764,6 +813,27 @@ def _format_reminder(reminder: dict) -> str:
     except (OSError, ValueError):
         return "提醒"
     return f"提醒({dt:%Y-%m-%d %H:%M})"
+
+
+def _normalize_table_cell_text(text: str) -> str:
+    if not text:
+        return ""
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if "\n" in normalized:
+        normalized = "<br>".join(normalized.split("\n"))
+    return normalized
+
+
+def _resolve_ordered_index(current: int | None, sequence: object) -> int:
+    if isinstance(sequence, str):
+        value = sequence.strip().lower()
+        if value == "auto":
+            return 1 if current is None else current + 1
+        if value.isdigit():
+            return max(1, int(value))
+    if current is None:
+        return 1
+    return current + 1
 
 
 __all__ = ["DocxParser", "DocxTranscoder", "MediaDownloader"]

@@ -12,6 +12,7 @@ from typing import Any, Iterable
 from loguru import logger
 
 from src.services.feishu_client import FeishuClient
+from src.services.file_uploader import FileUploadError, FileUploader
 from src.services.media_uploader import MediaUploadError, MediaUploader
 from src.services.transcoder import (
     DocxParser,
@@ -31,6 +32,7 @@ class ConvertResult:
     first_level_block_ids: list[str]
     blocks: list[dict[str, Any]]
     image_paths: dict[str, Path] = field(default_factory=dict)
+    file_paths: dict[str, Path] = field(default_factory=dict)
 
 
 @dataclass
@@ -40,6 +42,18 @@ class MarkdownSegment:
 
 
 _IMAGE_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
+_LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]*]\(([^)]+)\)")
+_LIST_PREFIX_PATTERN = re.compile(
+    r"^(?P<quote>(?:>\s*)*)(?P<indent>[ \t]+)(?P<body>(?:[-*+]\s+|\d+[.)]\s+).+)$"
+)
+_LIST_LINE_PATTERN = re.compile(r"^(?:>\s*)*(?:\t+| +)?(?:[-*+]\s+|\d+[.)]\s+).+")
+_INDENTED_IMAGE_LINE_PATTERN = re.compile(
+    r"^(?P<quote>(?:>\s*)*)(?P<indent>[ \t]+)(?P<image>!\[[^\]]*]\([^)]+\))\s*$"
+)
+_INDENTED_TEXT_LINE_PATTERN = re.compile(
+    r"^(?P<quote>(?:>\s*)*)(?P<indent>[ \t]+)(?P<body>\S.*)$"
+)
+_CONTINUATION_PLACEHOLDER = "[[LARKSYNC_CONTINUATION]]"
 
 
 class DocxService:
@@ -48,15 +62,22 @@ class DocxService:
         client: FeishuClient | None = None,
         base_url: str = "https://open.feishu.cn",
         media_uploader: MediaUploader | None = None,
+        file_uploader: FileUploader | None = None,
         image_parent_type: str = "docx_image",
+        file_parent_type: str = "docx_file",
     ) -> None:
         self._client = client or FeishuClient()
         self._base_url = base_url.rstrip("/")
         self._image_parent_type = image_parent_type
+        self._file_parent_type = file_parent_type
         self._media_uploader = media_uploader or MediaUploader(
             client=self._client,
             base_url=self._base_url,
             default_parent_type=image_parent_type,
+        )
+        self._file_uploader = file_uploader or FileUploader(
+            client=self._client,
+            base_url=self._base_url,
         )
 
     async def replace_document_content(
@@ -171,24 +192,32 @@ class DocxService:
         user_id_type: str = "open_id",
         base_path: str | Path | None = None,
     ) -> ConvertResult:
+        normalized_markdown = _normalize_markdown_for_convert(markdown)
         processed_markdown, placeholders, image_paths = self._build_image_placeholders(
-            markdown, base_path
+            normalized_markdown, base_path
+        )
+        processed_markdown, file_placeholders, file_paths = self._build_file_placeholders(
+            processed_markdown, base_path
         )
         logger.info(
-            "解析 Markdown 图片: document_id={} placeholders={}",
+            "解析 Markdown 资源: document_id={} image_placeholders={} file_placeholders={}",
             document_id,
             len(placeholders),
+            len(file_placeholders),
         )
         convert = await self.convert_markdown(
             processed_markdown, user_id_type=user_id_type
         )
-        if not placeholders:
+        convert = _replace_continuation_placeholders(convert)
+        if not placeholders and not file_placeholders:
             return _patch_table_properties(convert, processed_markdown)
 
         convert = self._replace_placeholders_with_images(
             convert,
             placeholders=placeholders,
             image_paths=image_paths,
+            file_placeholders=file_placeholders,
+            file_paths=file_paths,
         )
         return _patch_table_properties(convert, processed_markdown)
 
@@ -222,13 +251,20 @@ class DocxService:
     async def delete_children(
         self, document_id: str, block_id: str, start_index: int, end_index: int
     ) -> None:
-        payload = {"start_index": start_index, "end_index": end_index}
-        await self._request_json(
-            "DELETE",
-            f"{self._base_url}/open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children/batch_delete",
-            params={"client_token": str(uuid.uuid4()), "document_revision_id": -1},
-            json=payload,
-        )
+        if end_index <= start_index:
+            return
+        chunk_size = 50
+        current_end = end_index
+        while current_end > start_index:
+            current_start = max(start_index, current_end - chunk_size)
+            payload = {"start_index": current_start, "end_index": current_end}
+            await self._request_json(
+                "DELETE",
+                f"{self._base_url}/open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children/batch_delete",
+                params={"client_token": str(uuid.uuid4()), "document_revision_id": -1},
+                json=payload,
+            )
+            current_end = current_start
 
     async def get_root_block(
         self, document_id: str, user_id_type: str = "open_id"
@@ -262,6 +298,7 @@ class DocxService:
             user_id_type=user_id_type,
             insert_index=insert_index,
             image_paths=convert.image_paths,
+            file_paths=convert.file_paths,
             error_flag=error_flag,
         )
         return not error_flag["error"]
@@ -304,10 +341,17 @@ class DocxService:
         user_id_type: str,
         insert_index: int = -1,
         image_paths: dict[str, Path] | None = None,
+        file_paths: dict[str, Path] | None = None,
         error_flag: dict[str, bool] | None = None,
     ) -> None:
         next_index = insert_index
-        for chunk in _chunked(child_ids, 50):
+        create_chunks = _build_create_chunks(
+            child_ids=child_ids,
+            children_map=children_map,
+            image_paths=image_paths,
+            file_paths=file_paths,
+        )
+        for chunk in create_chunks:
             logger.info(
                 "创建子块: document_id={} parent={} size={} types={}",
                 document_id,
@@ -321,11 +365,17 @@ class DocxService:
             if next_index >= 0:
                 payload["index"] = next_index
             image_uploads: list[tuple[int, Path]] = []
+            file_uploads: list[tuple[int, Path]] = []
             if image_paths:
                 for idx, child_id in enumerate(chunk):
                     image_path = image_paths.get(child_id)
                     if image_path:
                         image_uploads.append((idx, image_path))
+            if file_paths:
+                for idx, child_id in enumerate(chunk):
+                    file_path = file_paths.get(child_id)
+                    if file_path:
+                        file_uploads.append((idx, file_path))
             if next_index >= 0:
                 next_index += len(chunk)
             try:
@@ -349,6 +399,7 @@ class DocxService:
                     children_map=children_map,
                     user_id_type=user_id_type,
                     image_paths=image_paths,
+                    file_paths=file_paths,
                     insert_index=insert_index,
                     error_flag=error_flag,
                 )
@@ -366,10 +417,16 @@ class DocxService:
                     if not new_id:
                         continue
                     try:
-                        await self._media_uploader.upload_image(
+                        token = await self._media_uploader.upload_image(
                             image_path,
                             parent_node=new_id,
                             parent_type=self._image_parent_type,
+                        )
+                        await self._replace_image_block(
+                            document_id=document_id,
+                            block_id=new_id,
+                            token=token,
+                            user_id_type=user_id_type,
                         )
                     except MediaUploadError as exc:
                         logger.error(
@@ -379,11 +436,77 @@ class DocxService:
                             image_path,
                             exc,
                         )
+                    except Exception as exc:
+                        logger.error(
+                            "图片块回填失败: document_id={} block_id={} path={} error={}",
+                            document_id,
+                            new_id,
+                            image_path,
+                            exc,
+                        )
+
+            if file_uploads:
+                for idx, file_path in file_uploads:
+                    if idx >= len(created):
+                        continue
+                    new_block = created[idx]
+                    target_file_block_id = self._extract_file_block_id(new_block)
+                    if not target_file_block_id:
+                        logger.error(
+                            "附件块回填失败: document_id={} reason=missing_file_block path={} block={}",
+                            document_id,
+                            file_path,
+                            _truncate_payload(new_block),
+                        )
+                        continue
+                    try:
+                        upload = await self._file_uploader.upload_file(
+                            file_path=file_path,
+                            parent_node=target_file_block_id,
+                            parent_type=self._file_parent_type,
+                            record_db=False,
+                        )
+                        await self._replace_file_block(
+                            document_id=document_id,
+                            block_id=target_file_block_id,
+                            token=upload.file_token,
+                            user_id_type=user_id_type,
+                        )
+                    except FileUploadError as exc:
+                        logger.error(
+                            "附件上传失败: document_id={} block_id={} path={} error={}",
+                            document_id,
+                            target_file_block_id,
+                            file_path,
+                            exc,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "附件块回填失败: document_id={} block_id={} path={} error={}",
+                            document_id,
+                            target_file_block_id,
+                            file_path,
+                            exc,
+                        )
 
             for old_id, new_block in zip(chunk, created):
                 new_id = new_block.get("block_id")
                 if not new_id:
                     raise DocxServiceError("创建块响应缺少 block_id")
+                old_block = block_map.get(old_id, {})
+                if old_block.get("block_type") == BLOCK_TYPE_TABLE:
+                    await self._populate_table_cells(
+                        document_id=document_id,
+                        table_block=new_block,
+                        source_table_block=old_block,
+                        block_map=block_map,
+                        children_map=children_map,
+                        user_id_type=user_id_type,
+                        image_paths=image_paths,
+                        file_paths=file_paths,
+                        error_flag=error_flag,
+                    )
+                    continue
                 old_children = children_map.get(old_id, [])
                 if old_children:
                     await self._create_children_recursive(
@@ -395,6 +518,7 @@ class DocxService:
                         user_id_type=user_id_type,
                         insert_index=-1,
                         image_paths=image_paths,
+                        file_paths=file_paths,
                         error_flag=error_flag,
                     )
 
@@ -409,6 +533,7 @@ class DocxService:
         children_map: dict[str, list[str]],
         user_id_type: str,
         image_paths: dict[str, Path] | None = None,
+        file_paths: dict[str, Path] | None = None,
         insert_index: int = -1,
         error_flag: dict[str, bool] | None = None,
     ) -> None:
@@ -446,6 +571,7 @@ class DocxService:
             user_id_type=user_id_type,
             insert_index=insert_index,
             image_paths=image_paths,
+            file_paths=file_paths,
             error_flag=error_flag,
         )
         await self._create_children_recursive(
@@ -457,8 +583,85 @@ class DocxService:
             user_id_type=user_id_type,
             insert_index=insert_index if insert_index < 0 else insert_index + mid,
             image_paths=image_paths,
+            file_paths=file_paths,
             error_flag=error_flag,
         )
+
+    async def _populate_table_cells(
+        self,
+        *,
+        document_id: str,
+        table_block: dict[str, Any],
+        source_table_block: dict[str, Any],
+        block_map: dict[str, dict[str, Any]],
+        children_map: dict[str, list[str]],
+        user_id_type: str,
+        image_paths: dict[str, Path] | None,
+        file_paths: dict[str, Path] | None,
+        error_flag: dict[str, bool] | None = None,
+    ) -> None:
+        source_cells = _extract_children_ids(source_table_block)
+        if not source_cells:
+            return
+        target_cells = _extract_children_ids(table_block)
+        if not target_cells:
+            table = table_block.get("table") or {}
+            target_cells = _flatten_table_cells(table.get("cells") or [])
+        if not target_cells:
+            try:
+                items = await self.list_blocks(document_id, user_id_type=user_id_type)
+            except Exception as exc:
+                logger.warning(
+                    "获取表格单元格失败: document_id={} table_id={} error={}",
+                    document_id,
+                    table_block.get("block_id"),
+                    exc,
+                )
+                if error_flag is not None:
+                    error_flag["error"] = True
+                return
+            for item in items:
+                if item.get("block_id") == table_block.get("block_id"):
+                    target_cells = _extract_children_ids(item)
+                    if not target_cells:
+                        table = item.get("table") or {}
+                        target_cells = _flatten_table_cells(table.get("cells") or [])
+                    break
+        if not target_cells:
+            logger.warning(
+                "表格单元格为空，跳过填充: document_id={} table_id={}",
+                document_id,
+                table_block.get("block_id"),
+            )
+            return
+
+        if len(target_cells) != len(source_cells):
+            logger.warning(
+                "表格单元格数量不一致: document_id={} table_id={} source={} target={}",
+                document_id,
+                table_block.get("block_id"),
+                len(source_cells),
+                len(target_cells),
+            )
+        limit = min(len(source_cells), len(target_cells))
+        for idx in range(limit):
+            source_cell_id = source_cells[idx]
+            target_cell_id = target_cells[idx]
+            content_ids = children_map.get(source_cell_id, [])
+            if not content_ids:
+                continue
+            await self._create_children_recursive(
+                document_id=document_id,
+                parent_block_id=target_cell_id,
+                child_ids=content_ids,
+                block_map=block_map,
+                children_map=children_map,
+                user_id_type=user_id_type,
+                insert_index=-1,
+                image_paths=image_paths,
+                file_paths=file_paths,
+                error_flag=error_flag,
+            )
 
     async def _apply_partial_update(
         self,
@@ -569,6 +772,8 @@ class DocxService:
                     children_map=children_map,
                     user_id_type=user_id_type,
                     insert_index=start,
+                    image_paths=convert.image_paths,
+                    file_paths=convert.file_paths,
                 )
                 offset += (j2 - j1)
         logger.info("局部更新完成: document_id={}", document_id)
@@ -585,6 +790,11 @@ class DocxService:
             if isinstance(table, dict):
                 table = dict(table)
                 table.pop("cells", None)
+                prop = table.get("property")
+                if isinstance(prop, dict):
+                    prop = dict(prop)
+                    prop.pop("merge_info", None)
+                    table["property"] = prop
                 cleaned["table"] = table
         return cleaned
 
@@ -627,6 +837,48 @@ class DocxService:
             raise DocxServiceError("飞书 API 响应格式错误")
         return payload
 
+    async def _replace_image_block(
+        self,
+        *,
+        document_id: str,
+        block_id: str,
+        token: str,
+        user_id_type: str,
+    ) -> None:
+        await self._request_json(
+            "PATCH",
+            f"{self._base_url}/open-apis/docx/v1/documents/{document_id}/blocks/{block_id}",
+            params={"document_revision_id": -1, "user_id_type": user_id_type},
+            json={"replace_image": {"token": token}},
+        )
+
+    async def _replace_file_block(
+        self,
+        *,
+        document_id: str,
+        block_id: str,
+        token: str,
+        user_id_type: str,
+    ) -> None:
+        await self._request_json(
+            "PATCH",
+            f"{self._base_url}/open-apis/docx/v1/documents/{document_id}/blocks/{block_id}",
+            params={"document_revision_id": -1, "user_id_type": user_id_type},
+            json={"replace_file": {"token": token}},
+        )
+
+    @staticmethod
+    def _extract_file_block_id(created_block: dict[str, Any]) -> str | None:
+        block_id = created_block.get("block_id")
+        if created_block.get("block_type") == BLOCK_TYPE_FILE and isinstance(block_id, str):
+            return block_id
+        children = created_block.get("children") or []
+        if children and isinstance(children[0], str):
+            return children[0]
+        if isinstance(block_id, str):
+            return block_id
+        return None
+
     @staticmethod
     def _normalize_convert(convert: ConvertResult) -> ConvertResult:
         block_map = {block.get("block_id"): block for block in convert.blocks}
@@ -650,6 +902,7 @@ class DocxService:
                 first_level_block_ids=new_first_level,
                 blocks=new_blocks,
                 image_paths=dict(convert.image_paths),
+                file_paths=dict(convert.file_paths),
             )
         return convert
 
@@ -701,56 +954,206 @@ class DocxService:
             processed = processed.replace(raw, placeholder)
         return processed, placeholders, image_paths
 
+    def _build_file_placeholders(
+        self, markdown: str, base_path: str | Path | None
+    ) -> tuple[str, dict[str, str], dict[str, Path]]:
+        processed = markdown
+        placeholders: dict[str, str] = {}
+        file_paths: dict[str, Path] = {}
+        for match in _LINK_PATTERN.finditer(markdown):
+            raw = match.group(0)
+            ref = _normalize_image_ref(match.group(1))
+            if _is_remote_link(ref):
+                continue
+            file_path = self._resolve_image_path(ref, base_path)
+            if (
+                not file_path.exists()
+                or not file_path.is_file()
+                or file_path.suffix.lower() == ".md"
+            ):
+                continue
+            placeholder = f"[[LARKSYNC_FILE:{_hash_text(str(file_path))}]]"
+            placeholders[placeholder] = ref
+            file_paths[placeholder] = file_path
+            processed = processed.replace(raw, placeholder)
+        return processed, placeholders, file_paths
+
     def _replace_placeholders_with_images(
         self,
         convert: ConvertResult,
         *,
         placeholders: dict[str, str],
         image_paths: dict[str, Path],
+        file_placeholders: dict[str, str] | None = None,
+        file_paths: dict[str, Path] | None = None,
     ) -> ConvertResult:
-        if not placeholders:
+        file_placeholders = file_placeholders or {}
+        file_paths = file_paths or {}
+        if not placeholders and not file_placeholders:
             return convert
-        block_map = {block.get("block_id"): block for block in convert.blocks}
-        parser = DocxParser(convert.blocks)
-        new_blocks: list[dict[str, Any]] = []
-        replaced: dict[str, str] = {}
-        image_block_paths: dict[str, Path] = {}
-        for block_id in convert.first_level_block_ids:
-            block = block_map.get(block_id)
-            if not block:
+        blocks: list[dict[str, Any]] = [dict(block) for block in convert.blocks]
+        parser = DocxParser(blocks)
+        first_level_ids = list(convert.first_level_block_ids)
+        block_map = {
+            block_id: block
+            for block in blocks
+            if isinstance((block_id := block.get("block_id")), str)
+        }
+        parent_map: dict[str, str] = {}
+        for parent in blocks:
+            parent_id = parent.get("block_id")
+            if not isinstance(parent_id, str):
                 continue
-            text = parser.text_from_block(block).strip()
-            if (
-                block.get("block_type") == BLOCK_TYPE_TEXT
-                and text in placeholders
-            ):
-                image_block_id = f"img_{uuid.uuid4().hex}"
-                replaced[block_id] = image_block_id
-                image_block_paths[image_block_id] = image_paths[text]
-                new_blocks.append(
-                    {"block_id": image_block_id, "block_type": 27, "image": {}}
+            for child_id in parent.get("children") or []:
+                if isinstance(child_id, str):
+                    parent_map[child_id] = parent_id
+
+        image_pattern = _compile_placeholder_pattern(placeholders.keys())
+        file_pattern = _compile_placeholder_pattern(file_placeholders.keys())
+        placeholder_pattern = _compile_placeholder_pattern(
+            list(placeholders.keys()) + list(file_placeholders.keys())
+        )
+        if placeholder_pattern is None:
+            return convert
+
+        def _resolve_placeholder_type(token: str) -> str | None:
+            if image_pattern and image_pattern.fullmatch(token):
+                return "image"
+            if file_pattern and file_pattern.fullmatch(token):
+                return "file"
+            return None
+
+        def _path_for_placeholder(token: str) -> Path | None:
+            if token in image_paths:
+                return image_paths[token]
+            return file_paths.get(token)
+
+        def _build_asset_block(block_id: str, token: str) -> tuple[dict[str, Any], Path] | None:
+            asset_type = _resolve_placeholder_type(token)
+            asset_path = _path_for_placeholder(token)
+            if asset_type is None or asset_path is None:
+                return None
+            if asset_type == "image":
+                return (
+                    {"block_id": block_id, "block_type": BLOCK_TYPE_IMAGE, "image": {}},
+                    asset_path,
                 )
+            return (
+                {"block_id": block_id, "block_type": BLOCK_TYPE_FILE, "file": {}},
+                asset_path,
+            )
+
+        def insert_siblings_after(after_block_id: str, sibling_ids: list[str]) -> None:
+            if not sibling_ids:
+                return
+            if after_block_id in first_level_ids:
+                insert_at = first_level_ids.index(after_block_id) + 1
+                first_level_ids[insert_at:insert_at] = sibling_ids
+                return
+            parent_id = parent_map.get(after_block_id)
+            if not parent_id:
+                first_level_ids.extend(sibling_ids)
+                return
+            parent_block = block_map.get(parent_id)
+            if parent_block is None:
+                first_level_ids.extend(sibling_ids)
+                return
+            parent_children = list(parent_block.get("children") or [])
+            insert_at = (
+                parent_children.index(after_block_id) + 1
+                if after_block_id in parent_children
+                else len(parent_children)
+            )
+            parent_children[insert_at:insert_at] = sibling_ids
+            parent_block["children"] = parent_children
+            for sibling_id in sibling_ids:
+                parent_map[sibling_id] = parent_id
+
+        appended_blocks: list[dict[str, Any]] = []
+        image_block_paths: dict[str, Path] = {}
+        file_block_paths: dict[str, Path] = {}
+        replaced = False
+
+        for block in blocks:
+            block_id = block.get("block_id")
+            if not isinstance(block_id, str):
+                continue
+            text = parser.text_from_block(block, strip=False)
+            if not text or "[[LARKSYNC_" not in text:
+                continue
+            matched = _find_placeholders(text, placeholder_pattern)
+            if not matched:
+                continue
+            replaced = True
+
+            if not _strip_placeholders_from_block(block, placeholder_pattern):
+                fallback_text = placeholder_pattern.sub("", text).strip()
+                _set_block_plain_text(block, fallback_text)
+
+            cleaned_text = parser.text_from_block(block, strip=True)
+            block_type = block.get("block_type")
+            existing_children = list(block.get("children") or [])
+            sibling_placeholders = list(matched)
+            if (
+                block_type in {BLOCK_TYPE_TEXT, 12, 13, 17}
+                and not cleaned_text
+                and not existing_children
+            ):
+                first = sibling_placeholders.pop(0)
+                built = _build_asset_block(block_id, first)
+                if built is not None:
+                    block.clear()
+                    asset_block, asset_path = built
+                    block.update(asset_block)
+                    if block.get("block_type") == BLOCK_TYPE_IMAGE:
+                        image_block_paths[block_id] = asset_path
+                    else:
+                        file_block_paths[block_id] = asset_path
+            elif block_type in {12, 13, 17} and not _has_text_elements(block):
+                # 飞书列表块不接受空 elements；保留一个空白占位防止 400。
+                _set_block_plain_text(block, " ")
+
+            sibling_ids: list[str] = []
+            for placeholder in sibling_placeholders:
+                asset_type = _resolve_placeholder_type(placeholder)
+                if asset_type is None:
+                    continue
+                asset_prefix = "img" if asset_type == "image" else "file"
+                asset_block_id = f"{asset_prefix}_{uuid.uuid4().hex}"
+                built = _build_asset_block(asset_block_id, placeholder)
+                if built is None:
+                    continue
+                asset_block, asset_path = built
+                sibling_ids.append(asset_block_id)
+                appended_blocks.append(asset_block)
+                if asset_block.get("block_type") == BLOCK_TYPE_IMAGE:
+                    image_block_paths[asset_block_id] = asset_path
+                else:
+                    file_block_paths[asset_block_id] = asset_path
+            if (
+                sibling_ids
+                and block_type in {12, 13, 17}
+                and cleaned_text
+            ):
+                children = list(block.get("children") or [])
+                children.extend(sibling_ids)
+                block["children"] = children
+                for sibling_id in sibling_ids:
+                    parent_map[sibling_id] = block_id
             else:
-                new_blocks.append(block)
+                insert_siblings_after(block_id, sibling_ids)
 
         if not replaced:
-            convert.image_paths.update(image_block_paths)
             return convert
 
-        new_first_level = [
-            replaced.get(block_id, block_id) for block_id in convert.first_level_block_ids
-        ]
-        filtered_blocks = [
-            block for block in convert.blocks if block.get("block_id") not in replaced
-        ]
-        filtered_blocks.extend(
-            block for block in new_blocks if block.get("block_id") in replaced.values()
-        )
+        blocks.extend(appended_blocks)
         convert.image_paths.update(image_block_paths)
+        convert.file_paths.update(file_block_paths)
         return ConvertResult(
-            first_level_block_ids=new_first_level,
-            blocks=filtered_blocks,
+            first_level_block_ids=first_level_ids,
+            blocks=blocks,
             image_paths=convert.image_paths,
+            file_paths=convert.file_paths,
         )
 
     @staticmethod
@@ -773,6 +1176,35 @@ def _chunked(values: list[str], size: int) -> Iterable[list[str]]:
         yield values[index : index + size]
 
 
+def _build_create_chunks(
+    *,
+    child_ids: list[str],
+    children_map: dict[str, list[str]],
+    image_paths: dict[str, Path] | None,
+    file_paths: dict[str, Path] | None,
+    batch_size: int = 50,
+) -> list[list[str]]:
+    chunks: list[list[str]] = []
+    buffered: list[str] = []
+    for child_id in child_ids:
+        has_nested = bool(children_map.get(child_id))
+        has_asset = bool(
+            (image_paths and child_id in image_paths)
+            or (file_paths and child_id in file_paths)
+        )
+        if has_nested or has_asset:
+            if buffered:
+                chunks.extend(list(_chunked(buffered, batch_size)))
+                buffered = []
+            chunks.append([child_id])
+            continue
+        buffered.append(child_id)
+
+    if buffered:
+        chunks.extend(list(_chunked(buffered, batch_size)))
+    return chunks
+
+
 def _append_text_segment(segments: list[MarkdownSegment], text: str) -> None:
     if segments and segments[-1].kind == "text":
         segments[-1].value += text
@@ -791,9 +1223,349 @@ def _normalize_image_ref(raw: str) -> str:
 
 def _is_remote_image(ref: str) -> bool:
     lowered = ref.lower()
-    return lowered.startswith("http://") or lowered.startswith("https://") or lowered.startswith(
-        "data:"
+    return _is_remote_link(ref) or lowered.startswith("data:")
+
+
+def _is_remote_link(ref: str) -> bool:
+    lowered = ref.lower()
+    return (
+        lowered.startswith("http://")
+        or lowered.startswith("https://")
+        or lowered.startswith("mailto:")
+        or lowered.startswith("tel:")
+        or lowered.startswith("#")
     )
+
+
+def _is_list_line(line: str) -> bool:
+    return bool(_LIST_LINE_PATTERN.match(line))
+
+
+def _normalize_markdown_for_convert(markdown: str) -> str:
+    lines = markdown.splitlines(keepends=True)
+    if not lines:
+        return markdown
+    normalized: list[str] = []
+    in_fence = False
+    in_list_context = False
+    for line in lines:
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            normalized.append(line)
+            if stripped.strip():
+                text = line.rstrip("\r\n")
+                in_list_context = _is_list_line(text)
+            continue
+        if in_fence:
+            normalized.append(line)
+            if stripped.strip():
+                text = line.rstrip("\r\n")
+                in_list_context = _is_list_line(text)
+            continue
+        raw_line = line.rstrip("\r\n")
+        image_line = _INDENTED_IMAGE_LINE_PATTERN.match(raw_line)
+        if image_line and in_list_context:
+            quote = image_line.group("quote")
+            indent = _normalize_indent_for_list(image_line.group("indent"))
+            image = image_line.group("image")
+            newline = "\n"
+            if line.endswith("\r\n"):
+                newline = "\r\n"
+            elif line.endswith("\n"):
+                newline = "\n"
+            else:
+                newline = ""
+            line = f"{quote}{indent}- {image}{newline}"
+            stripped = line.lstrip()
+            raw_line = line.rstrip("\r\n")
+        matched = _LIST_PREFIX_PATTERN.match(raw_line)
+        if matched:
+            indent = matched.group("indent")
+            normalized_indent = _normalize_indent_for_list(indent)
+            quote = matched.group("quote")
+            body = matched.group("body")
+            newline = "\n"
+            if line.endswith("\r\n"):
+                newline = "\r\n"
+            elif line.endswith("\n"):
+                newline = "\n"
+            else:
+                newline = ""
+            new_line = f"{quote}{normalized_indent}{body}{newline}"
+            normalized.append(new_line)
+            in_list_context = True
+            continue
+        if in_list_context:
+            text_line = _INDENTED_TEXT_LINE_PATTERN.match(raw_line)
+            if text_line:
+                quote = text_line.group("quote")
+                base_indent = _normalize_indent_for_list(text_line.group("indent"))
+                indent = base_indent + ("\t" if base_indent.count("\t") <= 1 else "")
+                body = text_line.group("body")
+                newline = "\n"
+                if line.endswith("\r\n"):
+                    newline = "\r\n"
+                elif line.endswith("\n"):
+                    newline = "\n"
+                else:
+                    newline = ""
+                line = f"{quote}{indent}{_CONTINUATION_PLACEHOLDER}{body}{newline}"
+                stripped = line.lstrip()
+                in_list_context = True
+        normalized.append(line)
+        if stripped.strip():
+            text = line.rstrip("\r\n")
+            if _is_list_line(text):
+                in_list_context = True
+            elif text.startswith((" ", "\t")) and in_list_context:
+                in_list_context = True
+            else:
+                in_list_context = False
+    return "".join(normalized)
+
+
+def _normalize_indent_for_list(indent: str) -> str:
+    if not indent:
+        return ""
+    tab_count = indent.count("\t")
+    space_count = indent.count(" ")
+    if space_count <= 0:
+        return "\t" * tab_count
+    # Downloader emits odd-space list indents (3/5/7/9...), map them to stable tab depth.
+    space_level = max(1, int((space_count - 1) // 2))
+    level = tab_count + space_level
+    return "\t" * level
+
+
+def _compile_placeholder_pattern(placeholders: Iterable[str]) -> re.Pattern[str] | None:
+    tokens = sorted({token for token in placeholders if token}, key=len, reverse=True)
+    if not tokens:
+        return None
+    return re.compile("|".join(re.escape(token) for token in tokens))
+
+
+def _find_placeholders(text: str, pattern: re.Pattern[str]) -> list[str]:
+    return [match.group(0) for match in pattern.finditer(text)]
+
+
+def _strip_placeholders_from_block(block: dict[str, Any], pattern: re.Pattern[str]) -> bool:
+    updated = False
+    for value in block.values():
+        if not isinstance(value, dict):
+            continue
+        elements = value.get("elements")
+        if not isinstance(elements, list):
+            continue
+        next_elements: list[Any] = []
+        for element in elements:
+            if not isinstance(element, dict):
+                next_elements.append(element)
+                continue
+            text_run = element.get("text_run")
+            if not isinstance(text_run, dict):
+                next_elements.append(element)
+                continue
+            content = text_run.get("content")
+            if not isinstance(content, str) or "[[LARKSYNC_IMAGE:" not in content:
+                next_elements.append(element)
+                continue
+            cleaned = pattern.sub("", content)
+            if cleaned != content:
+                updated = True
+            if not cleaned:
+                continue
+            patched_run = dict(text_run)
+            patched_run["content"] = cleaned
+            patched_element = dict(element)
+            patched_element["text_run"] = patched_run
+            next_elements.append(patched_element)
+        value["elements"] = next_elements
+    return updated
+
+
+def _set_block_plain_text(block: dict[str, Any], text: str) -> None:
+    element = (
+        []
+        if not text
+        else [
+            {
+                "text_run": {
+                    "content": text,
+                    "text_element_style": {
+                        "bold": False,
+                        "inline_code": False,
+                        "italic": False,
+                        "strikethrough": False,
+                        "underline": False,
+                    },
+                }
+            }
+        ]
+    )
+    for key, value in block.items():
+        if not isinstance(value, dict):
+            continue
+        if isinstance(value.get("elements"), list):
+            value["elements"] = element
+            return
+    block["text"] = {"elements": element}
+
+
+def _replace_continuation_placeholders(convert: ConvertResult) -> ConvertResult:
+    if not convert.blocks:
+        return convert
+
+    converted_continuation_ids: set[str] = set()
+    for block in convert.blocks:
+        block_id = block.get("block_id")
+        if not isinstance(block_id, str):
+            continue
+        block_has_placeholder = False
+        placeholder_prefix_only = True
+        combined_text_parts: list[str] = []
+        preferred_elements: list[Any] | None = None
+
+        for key, value in list(block.items()):
+            if not isinstance(value, dict):
+                continue
+            elements = value.get("elements")
+            if not isinstance(elements, list):
+                continue
+
+            next_elements: list[Any] = []
+            element_updated = False
+            local_placeholder = False
+            for element in elements:
+                if not isinstance(element, dict):
+                    next_elements.append(element)
+                    continue
+                text_run = element.get("text_run")
+                if not isinstance(text_run, dict):
+                    next_elements.append(element)
+                    continue
+                content = text_run.get("content")
+                if isinstance(content, str):
+                    combined_text_parts.append(content)
+                if not isinstance(content, str) or _CONTINUATION_PLACEHOLDER not in content:
+                    next_elements.append(element)
+                    continue
+                local_placeholder = True
+                element_updated = True
+                cleaned = content.replace(_CONTINUATION_PLACEHOLDER, "")
+                patched_run = dict(text_run)
+                patched_run["content"] = cleaned
+                patched_element = dict(element)
+                patched_element["text_run"] = patched_run
+                next_elements.append(patched_element)
+
+            if local_placeholder:
+                block_has_placeholder = True
+                preferred_elements = next_elements
+            if element_updated:
+                patched_value = dict(value)
+                patched_value["elements"] = next_elements
+                block[key] = patched_value
+
+        if not block_has_placeholder:
+            continue
+        combined_text = "".join(combined_text_parts)
+        if combined_text.split(_CONTINUATION_PLACEHOLDER, 1)[0].strip():
+            placeholder_prefix_only = False
+
+        if block.get("block_type") in {12, 13, 17} and placeholder_prefix_only:
+            new_block: dict[str, Any] = {
+                "block_id": block_id,
+                "block_type": BLOCK_TYPE_TEXT,
+                "text": {"elements": preferred_elements or []},
+            }
+            children = block.get("children")
+            if isinstance(children, list) and children:
+                new_block["children"] = children
+            block.clear()
+            block.update(new_block)
+            converted_continuation_ids.add(block_id)
+
+    if converted_continuation_ids:
+        _reparent_converted_continuations(convert.blocks, converted_continuation_ids)
+
+    return convert
+
+
+def _reparent_converted_continuations(
+    blocks: list[dict[str, Any]], continuation_ids: set[str]
+) -> None:
+    if not blocks or not continuation_ids:
+        return
+    block_map = {
+        block_id: block
+        for block in blocks
+        if isinstance((block_id := block.get("block_id")), str)
+    }
+    list_types = {12, 13, 17}
+    for parent in blocks:
+        children = list(parent.get("children") or [])
+        if len(children) < 2:
+            continue
+        new_children: list[str] = []
+        previous_kept: str | None = None
+        moved = False
+        for child_id in children:
+            if child_id in continuation_ids and previous_kept:
+                previous_block = block_map.get(previous_kept)
+                if (
+                    previous_block
+                    and previous_block.get("block_type") in list_types
+                    and _should_attach_continuation_to_previous_list(previous_block)
+                ):
+                    previous_children = list(previous_block.get("children") or [])
+                    previous_children.append(child_id)
+                    previous_block["children"] = previous_children
+                    moved = True
+                    continue
+            new_children.append(child_id)
+            previous_kept = child_id
+        if moved:
+            parent["children"] = new_children
+
+
+def _should_attach_continuation_to_previous_list(block: dict[str, Any]) -> bool:
+    text = _extract_block_text_content(block).strip()
+    if not text:
+        return False
+    if "\n" in text:
+        return True
+    return text.endswith((":", "："))
+
+
+def _extract_block_text_content(block: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for value in block.values():
+        if not isinstance(value, dict):
+            continue
+        elements = value.get("elements")
+        if not isinstance(elements, list):
+            continue
+        for element in elements:
+            if not isinstance(element, dict):
+                continue
+            text_run = element.get("text_run")
+            if not isinstance(text_run, dict):
+                continue
+            content = text_run.get("content")
+            if isinstance(content, str):
+                parts.append(content)
+    return "".join(parts)
+
+
+def _has_text_elements(block: dict[str, Any]) -> bool:
+    for value in block.values():
+        if not isinstance(value, dict):
+            continue
+        elements = value.get("elements")
+        if isinstance(elements, list) and len(elements) > 0:
+            return True
+    return False
 
 
 def _summarize_block_types(blocks: Iterable[dict[str, Any]]) -> dict[int | None, int]:
@@ -902,8 +1674,6 @@ def _unique_anchor_pairs(
 
 def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertResult:
     specs = _extract_markdown_table_specs(markdown)
-    if not specs:
-        return convert
     spec_index = 0
     for block in convert.blocks:
         if block.get("block_type") != BLOCK_TYPE_TABLE:
@@ -912,22 +1682,76 @@ def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertRes
         prop = table.get("property") or {}
         row_size = _safe_int(prop.get("row_size"))
         col_size = _safe_int(prop.get("column_size"))
+        updated = False
+
+        if (row_size <= 0 or col_size <= 0) and spec_index < len(specs):
+            rows, cols = specs[spec_index]
+            spec_index += 1
+            prop = dict(prop)
+            if row_size <= 0:
+                prop["row_size"] = rows
+                row_size = rows
+                updated = True
+            if col_size <= 0:
+                prop["column_size"] = cols
+                col_size = cols
+                updated = True
+            logger.info("补齐表格属性: rows={} cols={}", rows, cols)
+
+        cells = table.get("cells")
+        if isinstance(cells, list) and cells:
+            if row_size > 0 and col_size > 0 and all(isinstance(cell, str) for cell in cells):
+                if len(cells) >= row_size * col_size:
+                    matrix: list[list[str]] = []
+                    for r in range(row_size):
+                        start = r * col_size
+                        matrix.append(cells[start:start + col_size])
+                    table = dict(table)
+                    table["cells"] = matrix
+                    updated = True
+            elif all(isinstance(cell, str) for cell in cells):
+                matrix = _group_cells_by_row_token(cells)
+                if matrix:
+                    table = dict(table)
+                    table["cells"] = matrix
+                    row_size = len(matrix)
+                    col_size = max((len(row) for row in matrix), default=0)
+                    prop = dict(prop)
+                    if row_size > 0 and not prop.get("row_size"):
+                        prop["row_size"] = row_size
+                        updated = True
+                    if col_size > 0 and not prop.get("column_size"):
+                        prop["column_size"] = col_size
+                        updated = True
+
         if row_size > 0 and col_size > 0:
-            continue
-        if spec_index >= len(specs):
-            continue
-        rows, cols = specs[spec_index]
-        spec_index += 1
-        prop = dict(prop)
-        if row_size <= 0:
-            prop["row_size"] = rows
-        if col_size <= 0:
-            prop["column_size"] = cols
-        table = dict(table)
-        table["property"] = prop
-        block["table"] = table
-        logger.info("补齐表格属性: rows={} cols={}", rows, cols)
+            prop = dict(prop)
+            if not prop.get("column_width"):
+                prop["column_width"] = [183 for _ in range(col_size)]
+                updated = True
+
+        if updated:
+            table = dict(table)
+            table["property"] = prop
+            block["table"] = table
     return convert
+
+
+def _group_cells_by_row_token(cells: list[str]) -> list[list[str]]:
+    row_order: list[str] = []
+    rows: dict[str, list[str]] = {}
+    for cell in cells:
+        if not cell.startswith("row") or "col" not in cell:
+            return []
+        try:
+            row_token, col_token = cell[3:].split("col", 1)
+        except ValueError:
+            return []
+        if row_token not in rows:
+            row_order.append(row_token)
+            rows[row_token] = []
+        rows[row_token].append(f"row{row_token}col{col_token}")
+    return [rows[row] for row in row_order]
 
 
 def _extract_markdown_table_specs(markdown: str) -> list[tuple[int, int]]:

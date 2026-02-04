@@ -62,3 +62,4 @@
 [2026-01-27] v0.1.1-dev.1 feat(config-db): 新增配置中心与 SyncMapping 模型
 [2026-01-27] v0.1.0-dev.2 fix(repo): 添加 .gitignore 并移除误提交的缓存文件
 [2026-01-27] v0.1.0-dev.1 feat(scaffold): 初始化 monorepo 结构与前后端脚手架
+[2026-02-04] v0.1.36-dev.25 fix(sync-upload): 修复 Markdown 上行的列表续行/附件挂载与多行渲染，云端回归差异显著收敛

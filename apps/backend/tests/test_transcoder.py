@@ -275,7 +275,7 @@ async def test_transcoder_handles_lists_quotes_code_and_todo(tmp_path: Path) -> 
     assert "  - 子项" in markdown
     assert "- 列表二" in markdown
     assert "1. 步骤一" in markdown
-    assert "1. 步骤二" in markdown
+    assert "2. 步骤二" in markdown
     assert "- [ ] 待办任务" in markdown
     assert "```" in markdown
     assert "print('hi')" in markdown
@@ -373,6 +373,137 @@ async def test_transcoder_table_supports_nested_cell_matrix(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_transcoder_table_cell_newlines_render_as_br(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["tbl"]},
+        {
+            "block_id": "tbl",
+            "block_type": 31,
+            "parent_id": "root",
+            "table": {"cells": ["cell1"], "property": {"row_size": 1, "column_size": 1}},
+        },
+        {"block_id": "cell1", "block_type": 32, "parent_id": "tbl", "children": ["t1"]},
+        {
+            "block_id": "t1",
+            "block_type": 2,
+            "parent_id": "cell1",
+            "text": {"elements": [{"text_run": {"content": "A\nB"}}]},
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-table", blocks)
+
+    assert "| A<br>B |" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_ordered_list_keeps_sequence_and_nested_indent(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["o1", "o2"]},
+        {
+            "block_id": "o1",
+            "block_type": 13,
+            "parent_id": "root",
+            "ordered": {
+                "style": {"sequence": "1"},
+                "elements": [{"text_run": {"content": "主项"}}],
+            },
+            "children": ["b1"],
+        },
+        {
+            "block_id": "b1",
+            "block_type": 12,
+            "parent_id": "o1",
+            "bullet": {
+                "style": {},
+                "elements": [{"text_run": {"content": "子项"}}],
+            },
+            "children": ["b1_1"],
+        },
+        {
+            "block_id": "b1_1",
+            "block_type": 12,
+            "parent_id": "b1",
+            "bullet": {
+                "style": {},
+                "elements": [{"text_run": {"content": "孙项"}}],
+            },
+        },
+        {
+            "block_id": "o2",
+            "block_type": 13,
+            "parent_id": "root",
+            "ordered": {
+                "style": {"sequence": "auto"},
+                "elements": [{"text_run": {"content": "次项"}}],
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-ordered", blocks)
+
+    assert "1. 主项" in markdown
+    assert "2. 次项" in markdown
+    assert "   - 子项" in markdown
+    assert "     - 孙项" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_list_item_multiline_text_keeps_continuation_indent(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["o1"]},
+        {
+            "block_id": "o1",
+            "block_type": 13,
+            "parent_id": "root",
+            "ordered": {"style": {"sequence": "1"}, "elements": [{"text_run": {"content": "条目"}}]},
+            "children": ["b1"],
+        },
+        {
+            "block_id": "b1",
+            "block_type": 12,
+            "parent_id": "o1",
+            "bullet": {"style": {}, "elements": [{"text_run": {"content": "建设方案\n附件.docx"}}]},
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-list-multiline", blocks)
+
+    assert "1. 条目" in markdown
+    assert "   - 建设方案" in markdown
+    assert "     附件.docx" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_text_block_multiline_keeps_prefix(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["o1", "t1"]},
+        {
+            "block_id": "o1",
+            "block_type": 13,
+            "parent_id": "root",
+            "ordered": {"style": {"sequence": "1"}, "elements": [{"text_run": {"content": "条目"}}]},
+            "children": ["t1"],
+        },
+        {
+            "block_id": "t1",
+            "block_type": 2,
+            "parent_id": "o1",
+            "text": {"style": {}, "elements": [{"text_run": {"content": "第一行\n第二行"}}]},
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-text-multiline", blocks)
+
+    assert "   第一行" in markdown
+    assert "   第二行" in markdown
+
+
+@pytest.mark.asyncio
 async def test_transcoder_renders_mentions_and_reminders(tmp_path: Path) -> None:
     blocks = [
         {"block_id": "root", "block_type": 1, "children": ["p1"]},
@@ -463,6 +594,33 @@ async def test_transcoder_unknown_container_renders_children(tmp_path: Path) -> 
     markdown = await transcoder.to_markdown("doc-view", blocks)
 
     assert "内容" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_text_block_renders_children(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["t1"]},
+        {
+            "block_id": "t1",
+            "block_type": 2,
+            "parent_id": "root",
+            "children": ["img1"],
+            "text": {"elements": [{"text_run": {"content": "说明文本"}}]},
+        },
+        {
+            "block_id": "img1",
+            "block_type": 27,
+            "parent_id": "t1",
+            "image": {"token": "img-child"},
+        },
+    ]
+
+    downloader = StubDownloader()
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=downloader)
+    markdown = await transcoder.to_markdown("doc-child", blocks)
+
+    assert "说明文本" in markdown
+    assert "![](assets/doc-child/img-child.png)" in markdown
 
 
 @pytest.mark.asyncio
