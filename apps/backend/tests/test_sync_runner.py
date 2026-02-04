@@ -4,7 +4,8 @@ import pytest
 
 from src.services.drive_service import DriveNode
 from src.services.file_writer import FileWriter
-from src.services.sync_runner import SyncTaskRunner, _parse_mtime
+from src.services.sync_link_service import SyncLinkItem
+from src.services.sync_runner import SyncTaskRunner, _merge_synced_link_map, _parse_mtime
 from src.services.sync_task_service import SyncTaskItem
 
 
@@ -70,6 +71,9 @@ class FakeLinkService:
 
     async def get_by_local_path(self, local_path: str):
         return None
+
+    async def list_all(self):
+        return []
 
 
 @pytest.mark.asyncio
@@ -169,3 +173,42 @@ def test_parse_mtime_supports_iso8601() -> None:
 
 def test_parse_mtime_supports_ms_string() -> None:
     assert _parse_mtime("1700000000000") == 1700000000.0
+
+
+def test_merge_synced_link_map_only_uses_existing_paths(tmp_path: Path) -> None:
+    tree_target = tmp_path / "tree.md"
+    tree_target.write_text("# tree", encoding="utf-8")
+    synced_target = tmp_path / "external.md"
+    synced_target.write_text("# external", encoding="utf-8")
+    missing_target = tmp_path / "missing.md"
+
+    merged = _merge_synced_link_map(
+        {"doccn-in-tree": tree_target},
+        [
+            SyncLinkItem(
+                local_path=str(synced_target),
+                cloud_token="doccn-external",
+                cloud_type="docx",
+                task_id="task-a",
+                updated_at=0.0,
+            ),
+            SyncLinkItem(
+                local_path=str(missing_target),
+                cloud_token="doccn-missing",
+                cloud_type="docx",
+                task_id="task-a",
+                updated_at=0.0,
+            ),
+            SyncLinkItem(
+                local_path=str(tmp_path / "override.md"),
+                cloud_token="doccn-in-tree",
+                cloud_type="docx",
+                task_id="task-a",
+                updated_at=0.0,
+            ),
+        ],
+    )
+
+    assert merged["doccn-in-tree"] == tree_target
+    assert merged["doccn-external"] == synced_target
+    assert "doccn-missing" not in merged

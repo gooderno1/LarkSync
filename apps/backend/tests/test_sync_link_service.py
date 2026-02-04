@@ -35,3 +35,29 @@ async def test_upsert_and_get_link(tmp_path) -> None:
     assert updated is not None
     assert updated.cloud_token == "doccn456"
     assert updated.updated_at == 456.0
+
+
+@pytest.mark.asyncio
+async def test_list_all_links(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'test.db').as_posix()}"
+    await init_db(db_url)
+    service = SyncLinkService(session_maker=get_session_maker(db_url))
+
+    await service.upsert_link(
+        local_path="C:/docs/a.md",
+        cloud_token="doccn123",
+        cloud_type="docx",
+        task_id="task-1",
+        updated_at=123.0,
+    )
+    await service.upsert_link(
+        local_path="C:/docs/b.pdf",
+        cloud_token="filecn456",
+        cloud_type="file",
+        task_id="task-2",
+        updated_at=456.0,
+    )
+
+    items = await service.list_all()
+    tokens = {item.cloud_token for item in items}
+    assert tokens == {"doccn123", "filecn456"}

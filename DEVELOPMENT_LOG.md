@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.26 (2026-02-04)
+- 目标：实现“链接按同步状态本地化”——仅已同步且本地存在的目标改写为本地相对路径，未同步保持云端链接。
+- 结果：
+  - `SyncLinkService` 新增 `list_all()`，支持读取全量已同步映射。
+  - 下载阶段在目录扫描映射外，额外合并历史映射；仅当本地文件真实存在时纳入改写，避免生成失效本地链接。
+  - 增加 `_merge_synced_link_map` 逻辑和对应单测，确保不覆盖当前任务树内映射、不引入缺失文件路径。
+- 测试：
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_link_service.py`（apps/backend，6 passed）。
+  - `python -m pytest`（apps/backend，105 passed）。
+- 问题：无阻塞问题。
+
 ## v0.1.36-dev.25 (2026-02-04)
 - 目标：继续收敛 Markdown 上行与云端回写的一致性，重点修复列表续行、附件挂载和文本子块丢失问题。
 - 结果：

@@ -206,6 +206,8 @@ class SyncTaskRunner:
                 "下载阶段: task_id={} files={}", task.id, len(files)
             )
             link_map = _build_link_map(files, task.local_path)
+            persisted_links = await link_service.list_all()
+            link_map = _merge_synced_link_map(link_map, persisted_links)
             status.total_files = len(files)
 
             for node, relative_dir in files:
@@ -1055,6 +1057,20 @@ def _build_link_map(
         elif node_type == "file":
             mapping[token] = target_dir / node.name
     return mapping
+
+
+def _merge_synced_link_map(
+    mapping: dict[str, Path], synced_links: Iterable[SyncLinkItem]
+) -> dict[str, Path]:
+    merged = dict(mapping)
+    for item in synced_links:
+        token = (item.cloud_token or "").strip()
+        if not token or token in merged:
+            continue
+        local_path = Path(item.local_path)
+        if local_path.exists() and local_path.is_file():
+            merged[token] = local_path
+    return merged
 
 
 __all__ = ["SyncTaskRunner", "SyncTaskStatus", "SyncFileEvent"]

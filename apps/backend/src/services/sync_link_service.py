@@ -76,6 +76,13 @@ class SyncLinkService:
             result = await session.execute(stmt)
             return [self._to_item(row) for row in result.scalars().all()]
 
+    async def list_all(self) -> list[SyncLinkItem]:
+        session_maker = self._session_maker or get_session_maker()
+        async with session_maker() as session:
+            stmt = select(SyncLink)
+            result = await session.execute(stmt)
+            return [self._to_item(row) for row in result.scalars().all()]
+
     @staticmethod
     def _to_item(record: SyncLink) -> SyncLinkItem:
         return SyncLinkItem(
