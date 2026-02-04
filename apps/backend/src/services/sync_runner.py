@@ -519,11 +519,11 @@ class SyncTaskRunner:
                 link.cloud_token,
             )
             if created_doc:
-                await docx_service.replace_document_content(
+                logger.info(
+                    "云端文档由导入创建，跳过覆盖: task_id={} path={} token={}",
+                    task.id,
+                    path,
                     link.cloud_token,
-                    markdown,
-                    base_path=base_path,
-                    update_mode="full",
                 )
                 await self._rebuild_block_state(
                     task=task,
@@ -538,15 +538,31 @@ class SyncTaskRunner:
                 update_mode = task.update_mode or "auto"
                 applied = False
                 if update_mode in {"auto", "partial"}:
-                    applied = await self._apply_block_update(
-                        task=task,
-                        docx_service=docx_service,
-                        document_id=link.cloud_token,
-                        markdown=markdown,
-                        base_path=base_path,
-                        file_path=path,
-                        force=update_mode == "partial",
-                    )
+                    try:
+                        applied = await self._apply_block_update(
+                            task=task,
+                            docx_service=docx_service,
+                            document_id=link.cloud_token,
+                            markdown=markdown,
+                            base_path=base_path,
+                            file_path=path,
+                            force=update_mode == "partial",
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "局部更新失败，回退全量覆盖: task_id={} path={} token={} error={}",
+                            task.id,
+                            path,
+                            link.cloud_token,
+                            exc,
+                        )
+                        status.record_event(
+                            SyncFileEvent(
+                                path=str(path),
+                                status="fallback",
+                                message=f"局部更新失败，已回退全量覆盖: {exc}",
+                            )
+                        )
                 if not applied:
                     await docx_service.replace_document_content(
                         link.cloud_token,

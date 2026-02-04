@@ -65,4 +65,4 @@
 [2026-02-04] v0.1.36-dev.25 fix(sync-upload): 修复 Markdown 上行的列表续行/附件挂载与多行渲染，云端回归差异显著收敛
 [2026-02-04] v0.1.36-dev.26 fix(sync-link): 下载链路合并已同步映射，链接仅在本地文件存在时改写为相对路径
 [2026-02-04] v0.1.36-dev.27 fix(sync-watcher): 修复本地监听上传参数缺失导致的批量 failed
-[2026-02-04] v0.1.36-dev.28 fix(sync-upload): 自动迁移 Markdown 的历史 file 映射为 Docx，修复本地改动无法上行
+[2026-02-04] v0.1.36-dev.28 fix(sync-upload): 自动迁移 Markdown 的历史 file 映射为 Docx，并在 partial 失败时回退全量覆盖

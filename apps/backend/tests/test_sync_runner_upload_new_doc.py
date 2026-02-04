@@ -138,7 +138,8 @@ async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
 
     assert status.failed_files == 0
     assert status.completed_files == 1
-    assert runner._docx_service.replace_calls[0][0] == "doc-new"
+    assert runner._docx_service.replace_calls == []
+    assert runner._block_service.replace_calls == 1
     assert runner._file_uploader.calls[0][1] == "fld-1"
     assert runner._import_task_service.calls[0]["file_extension"] == "md"
 
@@ -201,5 +202,63 @@ async def test_upload_markdown_migrates_file_link_to_docx(tmp_path: Path) -> Non
 
     assert status.failed_files == 0
     assert status.completed_files == 1
-    assert runner._docx_service.replace_calls[0][0] == "doc-migrated"
+    assert runner._docx_service.replace_calls == []
+    assert runner._block_service.replace_calls == 1
     assert link_service.links[str(markdown_path)].cloud_type == "docx"
+
+
+@pytest.mark.asyncio
+async def test_upload_markdown_partial_fallback_to_full_replace(tmp_path: Path) -> None:
+    markdown_path = tmp_path / "局部回退测试.md"
+    markdown_path.write_text("# Title", encoding="utf-8")
+
+    link_service = FakeLinkService()
+    link_service.links[str(markdown_path)] = SyncLinkItem(
+        local_path=str(markdown_path),
+        cloud_token="doc-existing",
+        cloud_type="docx",
+        task_id="task-1",
+        updated_at=0.0,
+    )
+
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService([]),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+    )
+    runner._block_service = FakeBlockService()
+
+    async def _raise_partial(*args, **kwargs):
+        raise RuntimeError("缺少块级状态，无法局部更新")
+
+    runner._apply_block_update = _raise_partial  # type: ignore[method-assign]
+
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="partial",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.failed_files == 0
+    assert status.completed_files == 1
+    assert runner._docx_service.replace_calls[0][0] == "doc-existing"
