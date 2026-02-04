@@ -18,7 +18,9 @@
   - 若根目录再次出现产品定义文档，必须先迁回 `docs/local_specs/` 再继续开发。
 - 飞书开发文档维护规范：
   - 统一从 `https://project.feishu.cn/b/helpcenter/1p8d7djs/qcw96ljx` 获取最新下载入口。
-  - 开发前先检查本地 `docs/feishu/` 是否为最新版本；若更新则重新下载并记录更新时间与版本来源。
+  - 开发前必须先执行：`python scripts/sync_feishu_docs.py`。
+  - 脚本会将最新 zip 文档下载到 `docs/feishu/`，并生成 `docs/feishu/_manifest.json`（记录检查时间、来源、文档列表）。
+  - 若页面结构变化导致脚本无法解析，必须优先修复脚本，再继续业务开发。
 - 发现信息缺失或冲突时：以 SSOT 为准；若需要具体 API 字段定义但文档未给出，必须向用户索取 JSON 样例，严禁猜测。
 - 角色定位：高级全栈工程师 + DevOps；强类型、工程化、测试优先。
 - 标准工作流：读取任务 → 写测试 → 写代码 → 更新文档 → Git 提交与同步。

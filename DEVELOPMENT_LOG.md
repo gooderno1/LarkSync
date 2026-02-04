@@ -1,5 +1,11 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.24 (2026-02-04)
+- 目标：把飞书开发文档“自动检查并下载”的动作固化为可执行规范。
+- 结果：新增 `scripts/sync_feishu_docs.py`，可从飞书帮助中心页解析 zip 下载地址并同步到 `docs/feishu/`，同时生成 `_manifest.json` 记录检查结果；AGENTS 新增“开发前必须执行脚本”的要求；README 增补开发文档更新说明。
+- 测试：`python scripts/sync_feishu_docs.py`（本次识别 3 个文档，均已存在，生成清单成功）。
+- 问题：无。
+
 ## v0.1.36-dev.23 (2026-01-31)
 - 目标：将飞书开发文档下载与更新入口写入协作规范。
 - 结果：AGENTS 规范新增下载入口与本地文档更新流程（docs/feishu/）。

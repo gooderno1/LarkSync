@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-04] v0.1.36-dev.24 chore(docs): 新增飞书文档同步脚本并固化到协作规范
 [2026-01-31] v0.1.36-dev.23 docs(agents): 增加飞书开发文档下载/更新规范
 [2026-01-31] v0.1.36-dev.22 feat(sync): Markdown 新建 Docx 自动创建云端文档
 [2026-01-30] v0.1.36-dev.21 fix(transcoder): 任务/提及/提醒渲染 + 容器块 children 透传

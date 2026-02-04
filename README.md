@@ -31,10 +31,13 @@
 - 开发控制台日志：`npm run dev` 输出同时写入 `data/logs/dev-console.log`
 - 同步日志：前端按时间展示任务与文件同步事件
 - 块级更新：Markdown 变更按块检测与更新，记录每块更新时间
+- 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
 
 ## 本地开发
 ### 使用教程
 - 完整使用步骤见 `docs/USAGE.md`，后续功能变更会同步更新。
+### 开发文档更新
+- 执行 `npm run sync:feishu-docs`（或 `python scripts/sync_feishu_docs.py`）同步飞书开发手册到 `docs/feishu/`。
 ### OAuth 配置
 - 支持在网页中通过“OAuth 配置向导”填写并保存应用参数，详细步骤见 `docs/OAUTH_GUIDE.md`。
 ### 依赖安装
