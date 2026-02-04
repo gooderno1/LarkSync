@@ -7,6 +7,7 @@ from src.services.file_writer import FileWriter
 from src.services.sync_link_service import SyncLinkItem
 from src.services.sync_runner import SyncTaskRunner, _merge_synced_link_map, _parse_mtime
 from src.services.sync_task_service import SyncTaskItem
+from src.services.watcher import FileChangeEvent
 
 
 class FakeDriveService:
@@ -55,6 +56,16 @@ class FakeFileDownloader:
         path = target_dir / file_name
         path.write_bytes(b"data")
 
+    async def close(self) -> None:
+        return None
+
+
+class FakeFileUploader:
+    async def close(self) -> None:
+        return None
+
+
+class FakeImportTaskService:
     async def close(self) -> None:
         return None
 
@@ -212,3 +223,53 @@ def test_merge_synced_link_map_only_uses_existing_paths(tmp_path: Path) -> None:
     assert merged["doccn-in-tree"] == tree_target
     assert merged["doccn-external"] == synced_target
     assert "doccn-missing" not in merged
+
+
+@pytest.mark.asyncio
+async def test_handle_local_event_calls_upload_with_all_dependencies(tmp_path: Path) -> None:
+    tree = DriveNode(token="root", name="root", type="folder")
+    drive_service = FakeDriveService(tree)
+    file_uploader = FakeFileUploader()
+    import_task_service = FakeImportTaskService()
+    runner = SyncTaskRunner(
+        drive_service=drive_service,
+        docx_service=FakeDocxService(),
+        file_uploader=file_uploader,
+        import_task_service=import_task_service,
+        link_service=FakeLinkService(),
+    )
+    task = SyncTaskItem(
+        id="task-evt",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    path = tmp_path / "demo.md"
+    path.write_text("# demo", encoding="utf-8")
+    event = FileChangeEvent(
+        event_type="modified",
+        src_path=str(path),
+        dest_path=None,
+        timestamp=0.0,
+    )
+    captured: dict[str, tuple] = {}
+
+    async def _capture_upload_path(*args):
+        captured["args"] = args
+
+    runner._upload_path = _capture_upload_path  # type: ignore[method-assign]
+
+    await runner._handle_local_event(task, event)
+
+    assert "args" in captured
+    assert len(captured["args"]) == 7
+    assert captured["args"][0] is task
+    assert captured["args"][2] == path
+    assert captured["args"][5] is drive_service
+    assert captured["args"][6] is import_task_service

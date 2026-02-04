@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.27 (2026-02-04)
+- 目标：修复“本地监听触发上传时报参数缺失”的失败问题。
+- 结果：
+  - 通过运行日志与状态接口定位到错误：`SyncTaskRunner._upload_path() missing 2 required positional arguments: 'drive_service' and 'import_task_service'`。
+  - 修复 `_handle_local_event` 的依赖注入与调用参数，补齐 `drive_service` / `import_task_service` 传递，并纳入生命周期关闭。
+  - 新增回归测试，确保本地事件路径调用 `_upload_path` 时参数完整。
+- 测试：
+  - `python -m pytest tests/test_sync_runner.py`（apps/backend，5 passed）。
+  - `python -m pytest`（apps/backend，106 passed）。
+- 问题：无阻塞问题。
+
 ## v0.1.36-dev.26 (2026-02-04)
 - 目标：实现“链接按同步状态本地化”——仅已同步且本地存在的目标改写为本地相对路径，未同步保持云端链接。
 - 结果：

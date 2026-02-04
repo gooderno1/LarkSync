@@ -772,13 +772,27 @@ class SyncTaskRunner:
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         docx_service = self._docx_service or DocxService()
         file_uploader = self._file_uploader or FileUploader()
+        drive_service = self._drive_service or DriveService()
+        import_task_service = self._import_task_service or ImportTaskService()
         owned_services = []
         if self._docx_service is None:
             owned_services.append(docx_service)
         if self._file_uploader is None:
             owned_services.append(file_uploader)
+        if self._drive_service is None:
+            owned_services.append(drive_service)
+        if self._import_task_service is None:
+            owned_services.append(import_task_service)
         try:
-            await self._upload_path(task, status, path, docx_service, file_uploader)
+            await self._upload_path(
+                task,
+                status,
+                path,
+                docx_service,
+                file_uploader,
+                drive_service,
+                import_task_service,
+            )
         except Exception as exc:
             status.failed_files += 1
             status.last_error = str(exc)
