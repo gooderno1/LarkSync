@@ -9,9 +9,11 @@
   2) `docs/local_specs/LarkSync 产品需求文档.md`
   3) `docs/local_specs/LarkSync 产品开发计划书.md`
   4) `docs/local_specs/LarkSync飞书云文档本地同步方案深度调研.md`
-  5) `README.md`
+  5) `docs/local_specs/LarkSync UX 交互设计说明书 (v1.0).md`
+  6) `docs/local_specs/参考代码.md`
+  7) `README.md`
 - 产品定义文档存放规范：
-  - 上述 4 份产品/方案文档统一放在 `docs/local_specs/`。
+  - 上述产品/方案/UX/参考文档统一放在 `docs/local_specs/`。
   - `docs/local_specs/` 为本地开发资料目录，禁止提交到 Git。
   - 后续所有开发任务仍必须持续参考该目录中的文档，不得因为目录迁移而跳过文档先行。
   - 提交前必须执行 `git status -- docs/local_specs`，确认该目录无待提交变更。

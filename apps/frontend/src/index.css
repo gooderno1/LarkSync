@@ -2,13 +2,82 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+  --bg: #0b0f16;
+  --bg-soft: #0f1524;
+  --panel: #121a2a;
+  --panel-strong: #182033;
+  --panel-glass: rgba(18, 24, 40, 0.72);
+  --border: rgba(148, 163, 184, 0.18);
+  --text: #e2e8f0;
+  --muted: #93a3bf;
+  --brand: #3370ff;
+  --brand-2: #6aa2ff;
+  --accent: #14b8a6;
+  --warning: #f59e0b;
+  --danger: #f43f5e;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: "Noto Serif SC", "Source Han Serif SC", "STSong", serif;
-  background: #f8fafc;
-  color: #0f172a;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(1200px 800px at 10% -10%, rgba(51, 112, 255, 0.18), transparent 60%),
+    radial-gradient(900px 700px at 90% 10%, rgba(20, 184, 166, 0.12), transparent 55%),
+    linear-gradient(180deg, #0b0f16 0%, #0a0f1c 60%, #090d16 100%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+code,
+pre,
+.font-mono {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.glass-panel {
+  background: var(--panel-glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+}
+
+.soft-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.fade-up {
+  animation: fadeUp 0.6s ease both;
+}
+
+.fade-up.stagger-1 {
+  animation-delay: 0.05s;
+}
+
+.fade-up.stagger-2 {
+  animation-delay: 0.12s;
+}
+
+.fade-up.stagger-3 {
+  animation-delay: 0.2s;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
