@@ -175,6 +175,32 @@ pre,
   border-color: rgba(225, 29, 72, 0.35) !important;
 }
 
+:root[data-theme="light"] button.border-slate-700 {
+  background-color: rgba(15, 23, 42, 0.04);
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] button.border-slate-700:hover {
+  background-color: rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme="light"] button.border-rose-400\/40 {
+  background-color: rgba(225, 29, 72, 0.08);
+  color: #be123c !important;
+}
+
+:root[data-theme="light"] button.border-rose-400\/40:hover {
+  background-color: rgba(225, 29, 72, 0.12);
+}
+
+:root[data-theme="light"] button.bg-emerald-500\/20 {
+  color: #065f46 !important;
+}
+
+:root[data-theme="light"] button.bg-amber-500\/20 {
+  color: #92400e !important;
+}
+
 .fade-up {
   animation: fadeUp 0.6s ease both;
 }

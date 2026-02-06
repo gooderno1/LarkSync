@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from src.core.config import AppConfig, ConfigManager, SyncMode
+from src.core.config import AppConfig, ConfigManager, SyncIntervalUnit, SyncMode
 
 
 class ConfigResponse(BaseModel):
@@ -18,7 +18,11 @@ class ConfigResponse(BaseModel):
     auth_scopes: list[str] = Field(default_factory=list)
     sync_mode: SyncMode = SyncMode.bidirectional
     token_store: str = "keyring"
-    upload_interval_seconds: float = 2.0
+    upload_interval_value: float = 2.0
+    upload_interval_unit: SyncIntervalUnit = SyncIntervalUnit.seconds
+    upload_daily_time: str = "01:00"
+    download_interval_value: float = 1.0
+    download_interval_unit: SyncIntervalUnit = SyncIntervalUnit.days
     download_daily_time: str = "01:00"
 
     @classmethod
@@ -32,7 +36,11 @@ class ConfigResponse(BaseModel):
             auth_scopes=list(config.auth_scopes or []),
             sync_mode=config.sync_mode,
             token_store=config.token_store,
-            upload_interval_seconds=config.upload_interval_seconds,
+            upload_interval_value=config.upload_interval_value,
+            upload_interval_unit=config.upload_interval_unit,
+            upload_daily_time=config.upload_daily_time,
+            download_interval_value=config.download_interval_value,
+            download_interval_unit=config.download_interval_unit,
             download_daily_time=config.download_daily_time,
         )
 
@@ -46,7 +54,11 @@ class ConfigUpdateRequest(BaseModel):
     auth_scopes: list[str] | None = None
     sync_mode: SyncMode | None = None
     token_store: str | None = None
-    upload_interval_seconds: float | None = None
+    upload_interval_value: float | None = None
+    upload_interval_unit: SyncIntervalUnit | None = None
+    upload_daily_time: str | None = None
+    download_interval_value: float | None = None
+    download_interval_unit: SyncIntervalUnit | None = None
     download_daily_time: str | None = None
 
 
@@ -81,8 +93,22 @@ async def update_config(payload: ConfigUpdateRequest) -> ConfigResponse:
     if payload.token_store is not None and payload.token_store.strip():
         data["token_store"] = payload.token_store.strip()
 
-    if payload.upload_interval_seconds is not None:
-        data["upload_interval_seconds"] = payload.upload_interval_seconds
+    if payload.upload_interval_value is not None and payload.upload_interval_value > 0:
+        data["upload_interval_value"] = payload.upload_interval_value
+
+    if payload.upload_interval_unit is not None:
+        data["upload_interval_unit"] = payload.upload_interval_unit.value
+
+    if payload.upload_daily_time is not None:
+        cleaned = payload.upload_daily_time.strip()
+        if cleaned and _is_time_value(cleaned):
+            data["upload_daily_time"] = cleaned
+
+    if payload.download_interval_value is not None and payload.download_interval_value > 0:
+        data["download_interval_value"] = payload.download_interval_value
+
+    if payload.download_interval_unit is not None:
+        data["download_interval_unit"] = payload.download_interval_unit.value
 
     if payload.download_daily_time is not None:
         cleaned = payload.download_daily_time.strip()

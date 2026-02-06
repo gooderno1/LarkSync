@@ -19,13 +19,6 @@ type DriveNode = {
   children?: DriveNode[];
 };
 
-type WatchEvent = {
-  event_type: string;
-  src_path: string;
-  dest_path?: string | null;
-  timestamp: number;
-};
-
 type ConflictItem = {
   id: string;
   local_path: string;
@@ -80,7 +73,7 @@ type CloudSelection = {
   path: string;
 };
 
-type NavKey = "dashboard" | "tasks" | "logcenter" | "settings" | "guide";
+type NavKey = "dashboard" | "tasks" | "logcenter" | "settings";
 
 type TreeNodeProps = {
   node: DriveNode;
@@ -119,14 +112,6 @@ const IconSettings = (props: IconProps) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
     <circle cx="12" cy="12" r="3.5" />
     <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.7l.1.1a2 2 0 0 1-1.4 3.4h-.2a1.6 1.6 0 0 0-1.6 1.1l-.1.2a2 2 0 0 1-3.6 0l-.1-.2a1.6 1.6 0 0 0-1.6-1.1H9.8a2 2 0 0 1-1.4-3.4l.1-.1a1.6 1.6 0 0 0 .3-1.7 1.6 1.6 0 0 0-1.3-1.1l-.2-.1a2 2 0 0 1 0-3.6l.2-.1a1.6 1.6 0 0 0 1.3-1.1 1.6 1.6 0 0 0-.3-1.7l-.1-.1A2 2 0 0 1 9.8 3h.2a1.6 1.6 0 0 0 1.6-1.1l.1-.2a2 2 0 0 1 3.6 0l.1.2A1.6 1.6 0 0 0 17 3h.2a2 2 0 0 1 1.4 3.4l-.1.1a1.6 1.6 0 0 0-.3 1.7 1.6 1.6 0 0 0 1.3 1.1l.2.1a2 2 0 0 1 0 3.6l-.2.1a1.6 1.6 0 0 0-1.3 1.1z" />
-  </svg>
-);
-
-const IconInfo = (props: IconProps) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 11v5" />
-    <path d="M12 7h.01" />
   </svg>
 );
 
@@ -220,6 +205,12 @@ const updateModeLabels: Record<string, string> = {
   full: "全量"
 };
 
+const intervalUnitLabels: Record<string, string> = {
+  seconds: "秒",
+  hours: "小时",
+  days: "天"
+};
+
 const statusLabelMap: Record<string, string> = {
   downloaded: "下载",
   uploaded: "上传",
@@ -260,6 +251,27 @@ const formatShortTime = (ts?: number | null) => {
   const date = new Date(ts * 1000);
   if (Number.isNaN(date.getTime())) return "--:--";
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+};
+
+const isTimeValue = (value: string) => {
+  const parts = value.split(":");
+  if (parts.length !== 2) return false;
+  const hour = Number(parts[0]);
+  const minute = Number(parts[1]);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return false;
+  if (hour < 0 || hour > 23) return false;
+  if (minute < 0 || minute > 59) return false;
+  return true;
+};
+
+const formatIntervalLabel = (value: string, unit: string, timeValue: string) => {
+  const safeValue = value || "1";
+  const unitLabel = intervalUnitLabels[unit] || unit;
+  if (unit === "days") {
+    const safeTime = timeValue || "01:00";
+    return `${safeValue} ${unitLabel} ${safeTime}`;
+  }
+  return `${safeValue} ${unitLabel}`;
 };
 
 const isSameDay = (ts: number, compare: Date) => {
@@ -419,8 +431,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavKey>("dashboard");
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [globalPaused, setGlobalPaused] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [taskView, setTaskView] = useState<"compact" | "detailed">("compact");
+  const [theme, setTheme] = useState<"dark" | "light">("light");
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
   const [logTab, setLogTab] = useState<"logs" | "conflicts">("logs");
   const [logFilterStatus, setLogFilterStatus] = useState("all");
   const [logFilterText, setLogFilterText] = useState("");
@@ -432,13 +444,6 @@ export default function App() {
   const [tree, setTree] = useState<DriveNode | null>(null);
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeError, setTreeError] = useState<string | null>(null);
-  const [watchPath, setWatchPath] = useState("");
-  const [watcherRunning, setWatcherRunning] = useState(false);
-  const [watcherError, setWatcherError] = useState<string | null>(null);
-  const [events, setEvents] = useState<WatchEvent[]>([]);
-  const [wsStatus, setWsStatus] = useState<"connecting" | "open" | "closed">(
-    "connecting"
-  );
   const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
   const [conflictLoading, setConflictLoading] = useState(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
@@ -458,26 +463,20 @@ export default function App() {
   const [taskSyncModeMap, setTaskSyncModeMap] = useState<Record<string, string>>(
     {}
   );
-  const [uploadDocumentId, setUploadDocumentId] = useState("");
-  const [uploadMarkdownPath, setUploadMarkdownPath] = useState("");
-  const [uploadTaskId, setUploadTaskId] = useState("");
-  const [uploadBasePath, setUploadBasePath] = useState("");
-  const [uploadUpdateMode, setUploadUpdateMode] = useState("auto");
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [configAuthorizeUrl, setConfigAuthorizeUrl] = useState("");
   const [configTokenUrl, setConfigTokenUrl] = useState("");
   const [configClientId, setConfigClientId] = useState("");
   const [configClientSecret, setConfigClientSecret] = useState("");
   const [configRedirectUri, setConfigRedirectUri] = useState("");
-  const [configScopes, setConfigScopes] = useState("");
   const [configSyncMode, setConfigSyncMode] = useState("bidirectional");
   const [configTokenStore, setConfigTokenStore] = useState("keyring");
-  const [configUploadInterval, setConfigUploadInterval] = useState("2");
+  const [configUploadValue, setConfigUploadValue] = useState("2");
+  const [configUploadUnit, setConfigUploadUnit] = useState("seconds");
+  const [configUploadTime, setConfigUploadTime] = useState("01:00");
+  const [configDownloadValue, setConfigDownloadValue] = useState("1");
+  const [configDownloadUnit, setConfigDownloadUnit] = useState("days");
   const [configDownloadTime, setConfigDownloadTime] = useState("01:00");
   const [showAuthAdvanced, setShowAuthAdvanced] = useState(false);
-  const [showAdvancedTools, setShowAdvancedTools] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [configStatus, setConfigStatus] = useState<string | null>(null);
@@ -528,44 +527,6 @@ export default function App() {
       // ignore storage errors
     }
   }, [theme]);
-
-  useEffect(() => {
-    fetch(apiUrl("/watcher/status"))
-      .then((res) => res.json())
-      .then((data) => {
-        setWatcherRunning(Boolean(data.running));
-        if (data.path) {
-          setWatchPath(data.path);
-        }
-      })
-      .catch(() => {
-        setWatcherRunning(false);
-      });
-  }, []);
-
-  useEffect(() => {
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(
-      `${protocol}://${window.location.host}${apiUrl("/ws/events")}`
-    );
-    setWsStatus("connecting");
-
-    socket.onopen = () => setWsStatus("open");
-    socket.onclose = () => setWsStatus("closed");
-    socket.onerror = () => setWsStatus("closed");
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data) as WatchEvent;
-        setEvents((prev) => [payload, ...prev].slice(0, 50));
-      } catch {
-        // ignore malformed payload
-      }
-    };
-
-    return () => {
-      socket.close();
-    };
-  }, []);
 
   const loadTasks = () => {
     setTaskLoading(true);
@@ -791,41 +752,66 @@ export default function App() {
         }
         return res.json();
       })
-      .then((data) => {
-        setConfigAuthorizeUrl(data.auth_authorize_url || "");
-        setConfigTokenUrl(data.auth_token_url || "");
-        setConfigClientId(data.auth_client_id || "");
-        setConfigRedirectUri(data.auth_redirect_uri || "");
-        setConfigScopes(Array.isArray(data.auth_scopes) ? data.auth_scopes.join(", ") : "");
-        setConfigSyncMode(data.sync_mode || "bidirectional");
-        setConfigTokenStore(data.token_store || "keyring");
-        if (typeof data.upload_interval_seconds === "number") {
-          setConfigUploadInterval(String(data.upload_interval_seconds));
-        }
-        if (typeof data.download_daily_time === "string") {
-          setConfigDownloadTime(data.download_daily_time);
-        }
-      })
-      .catch((err: Error) => setConfigError(err.message))
-      .finally(() => setConfigLoading(false));
-  };
+        .then((data) => {
+          setConfigAuthorizeUrl(data.auth_authorize_url || "");
+          setConfigTokenUrl(data.auth_token_url || "");
+          setConfigClientId(data.auth_client_id || "");
+          setConfigRedirectUri(data.auth_redirect_uri || "");
+          setConfigSyncMode(data.sync_mode || "bidirectional");
+          setConfigTokenStore(data.token_store || "keyring");
+          if (typeof data.upload_interval_value === "number") {
+            setConfigUploadValue(String(data.upload_interval_value));
+          }
+          if (typeof data.upload_interval_unit === "string") {
+            setConfigUploadUnit(data.upload_interval_unit);
+          }
+          if (typeof data.upload_daily_time === "string") {
+            setConfigUploadTime(data.upload_daily_time);
+          }
+          if (typeof data.download_interval_value === "number") {
+            setConfigDownloadValue(String(data.download_interval_value));
+          }
+          if (typeof data.download_interval_unit === "string") {
+            setConfigDownloadUnit(data.download_interval_unit);
+          }
+          if (typeof data.download_daily_time === "string") {
+            setConfigDownloadTime(data.download_daily_time);
+          }
+        })
+        .catch((err: Error) => setConfigError(err.message))
+        .finally(() => setConfigLoading(false));
+    };
 
   const saveConfig = () => {
     setConfigLoading(true);
     setConfigError(null);
     setConfigStatus(null);
-    const scopes = configScopes
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const uploadIntervalRaw = configUploadInterval.trim();
-    const uploadInterval = uploadIntervalRaw ? Number.parseFloat(uploadIntervalRaw) : null;
-    if (uploadIntervalRaw && (Number.isNaN(uploadInterval) || uploadInterval <= 0)) {
+    const uploadValueRaw = configUploadValue.trim();
+    const uploadValue = uploadValueRaw ? Number.parseFloat(uploadValueRaw) : null;
+    if (uploadValueRaw && (Number.isNaN(uploadValue) || uploadValue <= 0)) {
       setConfigLoading(false);
-      setConfigError("上传间隔必须是大于 0 的数值（秒）。");
+      setConfigError("本地上行间隔必须是大于 0 的数值。");
+      return;
+    }
+    const downloadValueRaw = configDownloadValue.trim();
+    const downloadValue = downloadValueRaw ? Number.parseFloat(downloadValueRaw) : null;
+    if (downloadValueRaw && (Number.isNaN(downloadValue) || downloadValue <= 0)) {
+      setConfigLoading(false);
+      setConfigError("云端下行间隔必须是大于 0 的数值。");
+      return;
+    }
+    const uploadTime = configUploadTime.trim();
+    if (configUploadUnit === "days" && !isTimeValue(uploadTime)) {
+      setConfigLoading(false);
+      setConfigError("本地上行设置为按天时必须填写有效时间（HH:MM）。");
       return;
     }
     const downloadTime = configDownloadTime.trim();
+    if (configDownloadUnit === "days" && !isTimeValue(downloadTime)) {
+      setConfigLoading(false);
+      setConfigError("云端下行设置为按天时必须填写有效时间（HH:MM）。");
+      return;
+    }
     fetch(apiUrl("/config"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -835,11 +821,14 @@ export default function App() {
         auth_client_id: configClientId.trim() || null,
         auth_client_secret: configClientSecret.trim() || null,
         auth_redirect_uri: configRedirectUri.trim() || null,
-        auth_scopes: scopes.length > 0 ? scopes : null,
         sync_mode: configSyncMode,
         token_store: configTokenStore,
-        upload_interval_seconds: uploadInterval,
-        download_daily_time: downloadTime || null
+        upload_interval_value: uploadValue,
+        upload_interval_unit: configUploadUnit,
+        upload_daily_time: configUploadUnit === "days" ? uploadTime || null : null,
+        download_interval_value: downloadValue,
+        download_interval_unit: configDownloadUnit,
+        download_daily_time: configDownloadUnit === "days" ? downloadTime || null : null
       })
     })
       .then(async (res) => {
@@ -856,39 +845,6 @@ export default function App() {
       })
       .catch((err: Error) => setConfigError(err.message))
       .finally(() => setConfigLoading(false));
-  };
-
-  const uploadMarkdown = () => {
-    if (!uploadDocumentId.trim() || !uploadMarkdownPath.trim()) {
-      setUploadError("请填写文档 token 与 Markdown 路径。");
-      return;
-    }
-    setUploadLoading(true);
-    setUploadError(null);
-    setUploadStatus(null);
-    fetch(apiUrl("/sync/markdown/replace"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        document_id: uploadDocumentId.trim(),
-        markdown_path: uploadMarkdownPath.trim(),
-        task_id: uploadTaskId.trim() || null,
-        base_path: uploadBasePath.trim() || null,
-        update_mode: uploadUpdateMode
-      })
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.detail || "上传失败");
-        }
-        return res.json();
-      })
-      .then(() => {
-        setUploadStatus("上传完成");
-      })
-      .catch((err: Error) => setUploadError(err.message))
-      .finally(() => setUploadLoading(false));
   };
 
   const loadTree = () => {
@@ -951,42 +907,6 @@ export default function App() {
       })
       .then(() => loadConflicts())
       .catch((err: Error) => setConflictError(err.message));
-  };
-
-  const startWatcher = () => {
-    if (!watchPath.trim()) {
-      setWatcherError("请先填写需要监听的本地路径。");
-      return;
-    }
-    setWatcherError(null);
-    fetch(apiUrl("/watcher/start"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: watchPath.trim() })
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.detail || "启动监听失败");
-        }
-        return res.json();
-      })
-      .then(() => {
-        setWatcherRunning(true);
-      })
-      .catch((err: Error) => {
-        setWatcherError(err.message);
-      });
-  };
-
-  const stopWatcher = () => {
-    fetch(apiUrl("/watcher/stop"), { method: "POST" })
-      .then(() => {
-        setWatcherRunning(false);
-      })
-      .catch(() => {
-        setWatcherError("停止监听失败");
-      });
   };
 
   const logout = () => {
@@ -1091,21 +1011,12 @@ export default function App() {
   const runningTasks = tasks.filter((task) => taskStatusMap[task.id]?.state === "running").length;
   const unresolvedConflicts = conflicts.filter((conflict) => !conflict.resolved).length;
 
-  const navItems: Array<{ id: NavKey; label: string; icon: (props: IconProps) => JSX.Element; badge?: number }> = [
-    { id: "dashboard", label: "仪表盘", icon: IconDashboard },
-    { id: "tasks", label: "同步任务", icon: IconTasks },
-    { id: "logcenter", label: "日志中心", icon: IconConflicts, badge: unresolvedConflicts || undefined },
-    { id: "settings", label: "设置", icon: IconSettings },
-    { id: "guide", label: "配置指南", icon: IconInfo }
-  ];
-
-  const tabMeta: Record<NavKey, { title: string; desc: string }> = {
-    dashboard: { title: "仪表盘", desc: "同步概览、实时日志与快捷操作" },
-    tasks: { title: "同步任务", desc: "创建任务、管理模式与同步状态" },
-    logcenter: { title: "日志中心", desc: "集中查看同步日志与冲突管理" },
-    settings: { title: "设置", desc: "OAuth 配置、调度策略与高级工具" },
-    guide: { title: "配置指南", desc: "一步步完成 OAuth 与授权配置" }
-  };
+    const navItems: Array<{ id: NavKey; label: string; icon: (props: IconProps) => JSX.Element; badge?: number }> = [
+      { id: "dashboard", label: "仪表盘", icon: IconDashboard },
+      { id: "tasks", label: "同步任务", icon: IconTasks },
+      { id: "logcenter", label: "日志中心", icon: IconConflicts, badge: unresolvedConflicts || undefined },
+      { id: "settings", label: "设置", icon: IconSettings }
+    ];
 
   const renderModeIcon = (mode: string) => {
     if (mode === "download_only") {
@@ -1190,26 +1101,26 @@ export default function App() {
           </div>
 
           <div className="soft-panel rounded-2xl p-4 text-xs text-slate-400">
-            <p className="font-semibold text-slate-200">当前策略</p>
-            <ul className="mt-3 space-y-2">
-              <li>本地 {"->"} 云端：{configUploadInterval || "2"} 秒</li>
-              <li>云端 {"->"} 本地：每日 {configDownloadTime || "01:00"}</li>
-              <li>默认同步：{modeLabels[configSyncMode] || configSyncMode}</li>
-            </ul>
-          </div>
+              <p className="font-semibold text-slate-200">当前策略</p>
+              <ul className="mt-3 space-y-2">
+                <li>
+                  本地 {"->"} 云端：每 {formatIntervalLabel(configUploadValue || "2", configUploadUnit, configUploadTime)}
+                </li>
+                <li>
+                  云端 {"->"} 本地：每 {formatIntervalLabel(configDownloadValue || "1", configDownloadUnit, configDownloadTime)}
+                </li>
+                <li>默认同步：{modeLabels[configSyncMode] || configSyncMode}</li>
+              </ul>
+            </div>
         </aside>
 
         <main className="flex-1 space-y-6">
           <header className="glass-panel flex flex-wrap items-center justify-between gap-4 rounded-3xl p-6">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                {tabMeta[activeTab].title}
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold text-slate-50">
-                {tabMeta[activeTab].title}
-              </h1>
-              <p className="mt-2 text-sm text-slate-400">
-                {tabMeta[activeTab].desc}
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">LarkSync 控制台</p>
+              <p className="text-xl font-semibold text-slate-50">保持本地与云端一致的同步节奏</p>
+              <p className="text-sm text-slate-400">
+                连接状态、任务调度与日志都集中在这里，随时掌握同步进度。
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -1461,25 +1372,12 @@ export default function App() {
               <div className="soft-panel rounded-3xl p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold text-slate-50">同步任务列表</h2>
+                    <h2 className="text-lg font-semibold text-slate-50">同步任务</h2>
                     <p className="mt-1 text-xs text-slate-400">
                       管理任务的同步模式、更新策略与执行状态。
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span>管理选项</span>
-                      <select
-                        className="rounded-full border border-slate-700 bg-transparent px-3 py-1 text-xs text-slate-200"
-                        value={taskView}
-                        onChange={(event) =>
-                          setTaskView(event.target.value === "detailed" ? "detailed" : "compact")
-                        }
-                      >
-                        <option value="compact">简洁视图</option>
-                        <option value="detailed">详细视图</option>
-                      </select>
-                    </div>
                     <button
                       className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
                       onClick={loadTasks}
@@ -1517,7 +1415,8 @@ export default function App() {
                         ? Math.round((status.completed_files / status.total_files) * 100)
                         : null;
                     const isRunning = status?.state === "running";
-                    const showDetails = taskView === "detailed";
+                    const isExpanded = Boolean(expandedTasks[task.id]);
+                    const lastSyncTime = status?.finished_at ?? status?.started_at ?? null;
                     return (
                       <div
                         key={task.id}
@@ -1525,147 +1424,97 @@ export default function App() {
                       >
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div className="space-y-2">
-                            <p className="text-lg font-semibold text-slate-50">
-                              {task.name || "未命名任务"}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-                              <span className="inline-flex items-center gap-2">
-                                <IconFolder className="h-3.5 w-3.5" />
-                                {task.local_path}
-                              </span>
-                              <span className="text-slate-600">|</span>
-                              <span className="inline-flex items-center gap-2">
-                                <IconCloud className="h-3.5 w-3.5" />
-                                {task.cloud_folder_token}
-                              </span>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <StatusPill
+                                label={stateLabels[stateKey] || stateKey}
+                                tone={stateTones[stateKey] || "neutral"}
+                                dot
+                              />
+                              <p className="text-lg font-semibold text-slate-50">
+                                {task.name || "未命名任务"}
+                              </p>
                             </div>
-                            {task.base_path ? (
-                              <p className="text-xs text-slate-500">base_path：{task.base_path}</p>
-                            ) : null}
+                            <p className="text-xs text-slate-400">任务 ID：{task.id}</p>
                           </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <StatusPill
-                              label={stateLabels[stateKey] || stateKey}
-                              tone={stateTones[stateKey] || "neutral"}
-                              dot
-                            />
-                            {status?.last_error ? (
-                              <span className="text-xs text-rose-300">{status.last_error}</span>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        {showDetails ? (
-                          <>
-                            <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                              <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">同步模式</p>
-                                <div className="mt-2 flex items-center gap-2 text-sm text-slate-200">
-                                  {renderModeIcon(task.sync_mode)}
-                                  <span>{modeLabels[task.sync_mode] || task.sync_mode}</span>
-                                </div>
-                                <p className="mt-3 text-xs text-slate-400">
-                                  更新模式：{updateModeLabels[task.update_mode || "auto"]}
-                                </p>
-                              </div>
-                              <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">同步进度</p>
-                                {progress !== null ? (
-                                  <>
-                                    <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
-                                      <span>{progress}%</span>
-                                      <span>
-                                        {status?.completed_files ?? 0}/{status?.total_files ?? 0}
-                                      </span>
-                                    </div>
-                                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                                      <div
-                                        className="h-full rounded-full bg-emerald-400"
-                                        style={{ width: `${progress}%` }}
-                                      />
-                                    </div>
-                                  </>
-                                ) : (
-                                  <p className="mt-2 text-xs text-slate-500">暂无进度数据</p>
-                                )}
-                              </div>
-                              <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">统计</p>
-                                <div className="mt-2 space-y-1 text-xs text-slate-300">
-                                  <p>完成：{status?.completed_files ?? 0}</p>
-                                  <p>失败：{status?.failed_files ?? 0}</p>
-                                  <p>跳过：{status?.skipped_files ?? 0}</p>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="mt-4 flex flex-wrap gap-3">
-                              <select
-                                className="rounded-full border border-slate-700 bg-transparent px-4 py-2 text-xs text-slate-200"
-                                value={taskSyncModeMap[task.id] || task.sync_mode}
-                                onChange={(event) =>
-                                  setTaskSyncModeMap((prev) => ({
-                                    ...prev,
-                                    [task.id]: event.target.value
-                                  }))
-                                }
-                              >
-                                <option value="bidirectional">双向同步</option>
-                                <option value="download_only">仅下载</option>
-                                <option value="upload_only">仅上传</option>
-                              </select>
-                              <button
-                                className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
-                                onClick={() => updateTaskSyncMode(task, taskSyncModeMap[task.id] || task.sync_mode)}
-                                type="button"
-                              >
-                                应用同步模式
-                              </button>
-                              <select
-                                className="rounded-full border border-slate-700 bg-transparent px-4 py-2 text-xs text-slate-200"
-                                value={taskUpdateModeMap[task.id] || task.update_mode || "auto"}
-                                onChange={(event) =>
-                                  setTaskUpdateModeMap((prev) => ({
-                                    ...prev,
-                                    [task.id]: event.target.value
-                                  }))
-                                }
-                              >
-                                <option value="auto">自动更新</option>
-                                <option value="partial">局部更新</option>
-                                <option value="full">全量覆盖</option>
-                              </select>
-                              <button
-                                className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
-                                onClick={() =>
-                                  updateTaskMode(task, taskUpdateModeMap[task.id] || task.update_mode || "auto")
-                                }
-                                type="button"
-                              >
-                                应用更新模式
-                              </button>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
-                            <span className="inline-flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                            <span className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-3 py-1">
                               {renderModeIcon(task.sync_mode)}
                               {modeLabels[task.sync_mode] || task.sync_mode}
                             </span>
-                            <span className="text-slate-500">|</span>
-                            <span>更新：{updateModeLabels[task.update_mode || "auto"]}</span>
-                            {progress !== null ? <span>进度：{progress}%</span> : null}
-                            <button
-                              className="rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-slate-500"
-                              onClick={() => setTaskView("detailed")}
-                              type="button"
-                            >
-                              更多管理选项
-                            </button>
+                            <span className="rounded-full border border-slate-700 px-3 py-1">
+                              更新：{updateModeLabels[task.update_mode || "auto"]}
+                            </span>
                           </div>
-                        )}
+                        </div>
 
-                        <div className="mt-4 flex flex-wrap gap-3">
+                        <div className="mt-4 rounded-2xl border border-slate-800 bg-white/5 p-4">
+                          <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
+                            <div className="flex items-center gap-3">
+                              <div className="rounded-2xl bg-emerald-500/20 p-2 text-emerald-200">
+                                <IconFolder className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
+                                  本地目录
+                                </p>
+                                <p className="mt-1 truncate font-mono text-sm text-slate-200">
+                                  {task.local_path}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-center">
+                              <span className="rounded-full border border-slate-700 bg-white/5 p-2 text-slate-300">
+                                {renderModeIcon(task.sync_mode)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-end gap-3 text-right">
+                              <div className="min-w-0">
+                                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">
+                                  云端目录
+                                </p>
+                                <p className="mt-1 truncate font-mono text-sm text-slate-200">
+                                  {task.cloud_folder_token}
+                                </p>
+                              </div>
+                              <div className="rounded-2xl bg-blue-500/15 p-2 text-blue-200">
+                                <IconCloud className="h-4 w-4" />
+                              </div>
+                            </div>
+                          </div>
+                          {task.base_path ? (
+                            <p className="mt-3 text-xs text-slate-500">
+                              base_path：{task.base_path}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                          <span>最近同步：{lastSyncTime ? formatTimestamp(lastSyncTime) : "暂无"}</span>
+                          {status ? (
+                            <span>
+                              完成 {status.completed_files}/{status.total_files}，失败{" "}
+                              {status.failed_files}，跳过 {status.skipped_files}
+                            </span>
+                          ) : null}
+                          {progress !== null ? <span>完成率：{progress}%</span> : null}
+                        </div>
+
+                        {status?.last_error ? (
+                          <p className="mt-2 text-xs text-rose-300">
+                            错误：{status.last_error}
+                          </p>
+                        ) : null}
+
+                        {progress !== null ? (
+                          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                            <div
+                              className="h-full rounded-full bg-emerald-400"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        ) : null}
+
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
                           <button
                             className="inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => runTask(task)}
@@ -1680,29 +1529,86 @@ export default function App() {
                             onClick={() => toggleTask(task)}
                             type="button"
                           >
-                            {task.enabled ? (
-                              <>
-                                <IconPause className="h-3.5 w-3.5" />
-                                停用
-                              </>
-                            ) : (
-                              <>
-                                <IconPlay className="h-3.5 w-3.5" />
-                                启用
-                              </>
-                            )}
+                            {task.enabled ? "停用" : "启用"}
                           </button>
-                          {showDetails ? (
-                            <button
-                              className="inline-flex items-center gap-2 rounded-full border border-rose-400/40 px-4 py-2 text-xs font-semibold text-rose-200 transition hover:border-rose-400"
-                              onClick={() => deleteTask(task)}
-                              type="button"
-                            >
-                              <IconTrash className="h-3.5 w-3.5" />
-                              删除
-                            </button>
-                          ) : null}
+                          <button
+                            className="inline-flex items-center gap-2 rounded-full border border-rose-400/40 px-4 py-2 text-xs font-semibold text-rose-200 transition hover:border-rose-400"
+                            onClick={() => deleteTask(task)}
+                            type="button"
+                          >
+                            <IconTrash className="h-3.5 w-3.5" />
+                            删除
+                          </button>
+                          <button
+                            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                            onClick={() =>
+                              setExpandedTasks((prev) => ({
+                                ...prev,
+                                [task.id]: !prev[task.id]
+                              }))
+                            }
+                            type="button"
+                          >
+                            {isExpanded ? "收起管理" : "任务管理"}
+                          </button>
                         </div>
+
+                        {isExpanded ? (
+                          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                            <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
+                              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">同步模式</p>
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <select
+                                  className="rounded-full border border-slate-700 bg-transparent px-4 py-2 text-xs text-slate-200"
+                                  value={taskSyncModeMap[task.id] || task.sync_mode}
+                                  onChange={(event) =>
+                                    setTaskSyncModeMap((prev) => ({
+                                      ...prev,
+                                      [task.id]: event.target.value
+                                    }))
+                                  }
+                                >
+                                  <option value="bidirectional">双向同步</option>
+                                  <option value="download_only">仅下载</option>
+                                  <option value="upload_only">仅上传</option>
+                                </select>
+                                <button
+                                  className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                                  onClick={() => updateTaskSyncMode(task, taskSyncModeMap[task.id] || task.sync_mode)}
+                                  type="button"
+                                >
+                                  应用同步模式
+                                </button>
+                              </div>
+                            </div>
+                            <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
+                              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">更新模式</p>
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <select
+                                  className="rounded-full border border-slate-700 bg-transparent px-4 py-2 text-xs text-slate-200"
+                                  value={taskUpdateModeMap[task.id] || task.update_mode || "auto"}
+                                  onChange={(event) =>
+                                    setTaskUpdateModeMap((prev) => ({
+                                      ...prev,
+                                      [task.id]: event.target.value
+                                    }))
+                                  }
+                                >
+                                  <option value="auto">自动更新</option>
+                                  <option value="partial">局部更新</option>
+                                  <option value="full">全量覆盖</option>
+                                </select>
+                                <button
+                                  className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                                  onClick={() => updateTaskMode(task, taskUpdateModeMap[task.id] || task.update_mode || "auto")}
+                                  type="button"
+                                >
+                                  应用更新模式
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })
@@ -1710,7 +1616,6 @@ export default function App() {
               </div>
             </section>
           ) : null}
-
           {activeTab === "logcenter" ? (
             <section className="space-y-6 fade-up">
               <div className="soft-panel rounded-3xl p-6">
@@ -1945,13 +1850,6 @@ export default function App() {
                       仅填写 App ID / Secret / Redirect URI 即可完成授权。
                     </p>
                   </div>
-                  <button
-                    className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
-                    onClick={() => setActiveTab("guide")}
-                    type="button"
-                  >
-                    打开配置指南
-                  </button>
                 </div>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <input
@@ -1973,12 +1871,6 @@ export default function App() {
                     value={configRedirectUri}
                     onChange={(event) => setConfigRedirectUri(event.target.value)}
                   />
-                  <textarea
-                    className="min-h-[90px] w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200 md:col-span-2"
-                    placeholder="Scopes（逗号分隔，可从配置指南复制）"
-                    value={configScopes}
-                    onChange={(event) => setConfigScopes(event.target.value)}
-                  />
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <button
@@ -1994,7 +1886,7 @@ export default function App() {
                     onClick={() => setShowAuthAdvanced((prev) => !prev)}
                     type="button"
                   >
-                    {showAuthAdvanced ? "收起高级设置" : "展开高级设置"}
+                    {showAuthAdvanced ? "收起可选设置" : "展开可选设置"}
                   </button>
                   {configStatus ? <span className="text-sm text-emerald-300">{configStatus}</span> : null}
                   {configError ? <span className="text-sm text-rose-300">错误：{configError}</span> : null}
@@ -2029,35 +1921,77 @@ export default function App() {
                 <div>
                   <h2 className="text-lg font-semibold text-slate-50">同步策略</h2>
                   <p className="mt-1 text-xs text-slate-400">
-                    默认：本地变更每 {configUploadInterval || "2"} 秒上行，云端每日 {configDownloadTime || "01:00"} 下行。
+                    默认：本地上行每 {formatIntervalLabel(configUploadValue || "2", configUploadUnit, configUploadTime)}，云端下行每{" "}
+                    {formatIntervalLabel(configDownloadValue || "1", configDownloadUnit, configDownloadTime)}。
                   </p>
                 </div>
-                <div className="mt-5 grid gap-4 md:grid-cols-3">
-                  <div>
+                <div className="mt-5 grid gap-4 lg:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
                     <p className="text-xs uppercase tracking-[0.3em] text-slate-400">本地上行</p>
-                    <input
-                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      placeholder="上传间隔（秒）"
-                      value={configUploadInterval}
-                      onChange={(event) => setConfigUploadInterval(event.target.value)}
-                    />
+                    <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+                      <input
+                        className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="间隔值"
+                        value={configUploadValue}
+                        onChange={(event) => setConfigUploadValue(event.target.value)}
+                      />
+                      <select
+                        className="rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                        value={configUploadUnit}
+                        onChange={(event) => setConfigUploadUnit(event.target.value)}
+                      >
+                        <option value="seconds">秒</option>
+                        <option value="hours">小时</option>
+                        <option value="days">天</option>
+                      </select>
+                    </div>
+                    {configUploadUnit === "days" ? (
+                      <input
+                        className="mt-3 w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                        type="time"
+                        value={configUploadTime}
+                        onChange={(event) => setConfigUploadTime(event.target.value)}
+                      />
+                    ) : null}
                   </div>
-                  <div>
+                  <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
                     <p className="text-xs uppercase tracking-[0.3em] text-slate-400">云端下行</p>
-                    <input
-                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                      type="time"
-                      value={configDownloadTime}
-                      onChange={(event) => setConfigDownloadTime(event.target.value)}
-                    />
+                    <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+                      <input
+                        className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="间隔值"
+                        value={configDownloadValue}
+                        onChange={(event) => setConfigDownloadValue(event.target.value)}
+                      />
+                      <select
+                        className="rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                        value={configDownloadUnit}
+                        onChange={(event) => setConfigDownloadUnit(event.target.value)}
+                      >
+                        <option value="seconds">秒</option>
+                        <option value="hours">小时</option>
+                        <option value="days">天</option>
+                      </select>
+                    </div>
+                    {configDownloadUnit === "days" ? (
+                      <input
+                        className="mt-3 w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                        type="time"
+                        value={configDownloadTime}
+                        onChange={(event) => setConfigDownloadTime(event.target.value)}
+                      />
+                    ) : null}
                   </div>
-                  <div>
+                  <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
                     <p className="text-xs uppercase tracking-[0.3em] text-slate-400">默认同步模式</p>
                     <select
-                      className="mt-2 w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                      className="mt-3 w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
                       value={configSyncMode}
                       onChange={(event) => setConfigSyncMode(event.target.value)}
                     >
@@ -2069,201 +2003,10 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="soft-panel rounded-3xl p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold text-slate-50">高级工具</h2>
-                    <p className="mt-1 text-xs text-slate-400">
-                      手动上传与本地监听仅用于诊断或调试场景。
-                    </p>
-                  </div>
-                  <button
-                    className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
-                    onClick={() => setShowAdvancedTools((prev) => !prev)}
-                    type="button"
-                  >
-                    {showAdvancedTools ? "收起" : "展开"}
-                  </button>
-                </div>
-                {showAdvancedTools ? (
-                  <div className="mt-4 grid gap-6 lg:grid-cols-2">
-                    <div className="rounded-3xl border border-slate-800 bg-white/5 p-5">
-                      <h3 className="text-base font-semibold text-slate-50">手动上传 Markdown</h3>
-                      <p className="mt-1 text-xs text-slate-400">
-                        用于快速验证 Docx 全量覆盖与图片上传链路。
-                      </p>
-                      <div className="mt-4 space-y-3">
-                        <input
-                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                          placeholder="Docx 文档 token"
-                          value={uploadDocumentId}
-                          onChange={(event) => setUploadDocumentId(event.target.value)}
-                        />
-                        <input
-                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                          placeholder="Markdown 文件路径，例如 D:\\Docs\\note.md"
-                          value={uploadMarkdownPath}
-                          onChange={(event) => setUploadMarkdownPath(event.target.value)}
-                        />
-                        <select
-                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                          value={uploadTaskId}
-                          onChange={(event) => setUploadTaskId(event.target.value)}
-                        >
-                          <option value="">选择任务（可选）</option>
-                          {tasks.map((task) => (
-                            <option key={task.id} value={task.id}>
-                              {task.name || task.local_path}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                          placeholder="base_path（可选）"
-                          value={uploadBasePath}
-                          onChange={(event) => setUploadBasePath(event.target.value)}
-                        />
-                        <select
-                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                          value={uploadUpdateMode}
-                          onChange={(event) => setUploadUpdateMode(event.target.value)}
-                        >
-                          <option value="auto">更新模式：自动</option>
-                          <option value="partial">更新模式：局部</option>
-                          <option value="full">更新模式：全量</option>
-                        </select>
-                        <button
-                          className="rounded-full bg-emerald-500/20 px-5 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                          onClick={uploadMarkdown}
-                          disabled={uploadLoading}
-                          type="button"
-                        >
-                          {uploadLoading ? "上传中..." : "开始上传"}
-                        </button>
-                        {uploadStatus ? <p className="text-sm text-emerald-300">{uploadStatus}</p> : null}
-                        {uploadError ? <p className="text-sm text-rose-300">错误：{uploadError}</p> : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-3xl border border-slate-800 bg-white/5 p-5">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-base font-semibold text-slate-50">本地监听</h3>
-                        <StatusPill
-                          label={`WS ${wsStatus}`}
-                          tone={wsStatus === "open" ? "success" : "warning"}
-                        />
-                      </div>
-                      <p className="mt-1 text-xs text-slate-400">
-                        监听本地目录变更并推送事件。
-                      </p>
-                      <div className="mt-4 space-y-3">
-                        <input
-                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                          placeholder="输入需要监听的本地路径"
-                          value={watchPath}
-                          onChange={(event) => setWatchPath(event.target.value)}
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            className="rounded-full bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={watcherRunning}
-                            onClick={startWatcher}
-                            type="button"
-                          >
-                            启动监听
-                          </button>
-                          <button
-                            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={!watcherRunning}
-                            onClick={stopWatcher}
-                            type="button"
-                          >
-                            停止监听
-                          </button>
-                          <span className="self-center text-xs text-slate-400">
-                            状态：{watcherRunning ? "运行中" : "未启动"}
-                          </span>
-                        </div>
-                        {watcherError ? <p className="text-sm text-rose-300">错误：{watcherError}</p> : null}
-                      </div>
-                      <div className="mt-4 max-h-40 space-y-2 overflow-auto rounded-2xl border border-slate-800 bg-black/30 p-3 text-xs text-slate-300">
-                        {events.length === 0 ? (
-                          <p className="text-slate-500">暂无监听事件。</p>
-                        ) : (
-                          events.map((evt, index) => (
-                            <div key={`${evt.timestamp}-${index}`}>
-                              <p className="text-slate-400">{evt.event_type}</p>
-                              <p className="break-all">{evt.src_path}</p>
-                              {evt.dest_path ? (
-                                <p className="text-slate-500">
-                                  {"->"} {evt.dest_path}
-                                </p>
-                              ) : null}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              
             </section>
           ) : null}
 
-          {activeTab === "guide" ? (
-            <section className="space-y-6 fade-up">
-              <div className="soft-panel rounded-3xl p-6">
-                <h2 className="text-lg font-semibold text-slate-50">配置指南</h2>
-                <p className="mt-2 text-sm text-slate-400">
-                  请按照以下步骤完成飞书应用配置与授权（详细说明见 docs/OAUTH_GUIDE.md）。
-                </p>
-                <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">步骤 1</p>
-                    <p className="mt-2 text-sm font-semibold text-slate-200">创建应用</p>
-                    <p className="mt-2 text-xs text-slate-400">
-                      在飞书开放平台创建自建应用，获取 App ID 与 App Secret。
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">步骤 2</p>
-                    <p className="mt-2 text-sm font-semibold text-slate-200">配置回调</p>
-                    <p className="mt-2 text-xs text-slate-400">
-                      将本地回调地址填入 Redirect URI，并开启 OAuth 权限。
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">步骤 3</p>
-                    <p className="mt-2 text-sm font-semibold text-slate-200">申请权限</p>
-                    <p className="mt-2 text-xs text-slate-400">
-                      复制必要 scopes 并提交审核，确保用户授权通过。
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <button
-                    className="rounded-full bg-blue-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-400"
-                    onClick={() => setActiveTab("settings")}
-                    type="button"
-                  >
-                    前往配置页面
-                  </button>
-                  <div className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200">
-                    参考文档：docs/OAUTH_GUIDE.md
-                  </div>
-                </div>
-              </div>
-
-              <div className="soft-panel rounded-3xl p-6">
-                <h3 className="text-base font-semibold text-slate-50">常见检查项</h3>
-                <ul className="mt-3 space-y-2 text-sm text-slate-200">
-                  <li>确认已启用用户身份权限与 Drive/Docx 相关 scope。</li>
-                  <li>Redirect URI 与本地端口保持一致（默认 3666/8000）。</li>
-                  <li>保存配置后重新授权，确保 access_token 已刷新。</li>
-                </ul>
-              </div>
-            </section>
-          ) : null}
         </main>
       </div>
 

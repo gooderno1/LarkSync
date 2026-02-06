@@ -6,14 +6,18 @@ from datetime import datetime, time as dt_time, timedelta
 
 from loguru import logger
 
-from src.core.config import ConfigManager
+from src.core.config import ConfigManager, SyncIntervalUnit
 from src.services.sync_runner import SyncTaskRunner
 from src.services.sync_task_service import SyncTaskService, SyncTaskItem
 
 
 @dataclass
 class ScheduleSnapshot:
-    upload_interval_seconds: float
+    upload_interval_value: float
+    upload_interval_unit: SyncIntervalUnit
+    upload_daily_time: str
+    download_interval_value: float
+    download_interval_unit: SyncIntervalUnit
     download_daily_time: str
 
 
@@ -30,6 +34,10 @@ class SyncScheduler:
         self._stop_event = asyncio.Event()
         self._upload_task: asyncio.Task[None] | None = None
         self._download_task: asyncio.Task[None] | None = None
+        self._upload_schedule_key: tuple[object, ...] | None = None
+        self._download_schedule_key: tuple[object, ...] | None = None
+        self._last_upload_daily_run: datetime | None = None
+        self._last_download_daily_run: datetime | None = None
 
     async def start(self) -> None:
         if self._upload_task or self._download_task:
@@ -58,7 +66,11 @@ class SyncScheduler:
     def _snapshot(self) -> ScheduleSnapshot:
         config = self._config_manager.config
         return ScheduleSnapshot(
-            upload_interval_seconds=_safe_interval(config.upload_interval_seconds),
+            upload_interval_value=_safe_interval(config.upload_interval_value),
+            upload_interval_unit=config.upload_interval_unit,
+            upload_daily_time=config.upload_daily_time,
+            download_interval_value=_safe_interval(config.download_interval_value),
+            download_interval_unit=config.download_interval_unit,
             download_daily_time=config.download_daily_time,
         )
 
@@ -73,13 +85,53 @@ class SyncScheduler:
     async def _upload_loop(self) -> None:
         while not self._stop_event.is_set():
             snapshot = self._snapshot()
-            await self._trigger_uploads()
-            try:
-                await asyncio.wait_for(
-                    self._stop_event.wait(), timeout=snapshot.upload_interval_seconds
+            key = (
+                snapshot.upload_interval_unit,
+                snapshot.upload_interval_value,
+                snapshot.upload_daily_time
+            )
+            if key != self._upload_schedule_key:
+                self._upload_schedule_key = key
+                self._last_upload_daily_run = None
+            if snapshot.upload_interval_unit in {
+                SyncIntervalUnit.seconds,
+                SyncIntervalUnit.hours
+            }:
+                await self._trigger_uploads()
+                interval_seconds = _interval_to_seconds(
+                    snapshot.upload_interval_value, snapshot.upload_interval_unit
                 )
-            except asyncio.TimeoutError:
-                continue
+                try:
+                    await asyncio.wait_for(
+                        self._stop_event.wait(), timeout=interval_seconds
+                    )
+                except asyncio.TimeoutError:
+                    continue
+            else:
+                next_run = _next_daily_run(
+                    snapshot.upload_daily_time,
+                    interval_days=_safe_days(snapshot.upload_interval_value),
+                    last_run=self._last_upload_daily_run
+                )
+                wait_seconds = max(
+                    0.0, (next_run - datetime.now()).total_seconds()
+                )
+                logger.info(
+                    "下一次本地上传计划: {} ({}s)",
+                    next_run.strftime("%Y-%m-%d %H:%M:%S"),
+                    int(wait_seconds),
+                )
+                try:
+                    await asyncio.wait_for(
+                        self._stop_event.wait(), timeout=wait_seconds
+                    )
+                    continue
+                except asyncio.TimeoutError:
+                    pass
+                if self._stop_event.is_set():
+                    break
+                await self._trigger_uploads()
+                self._last_upload_daily_run = next_run
 
     async def _trigger_uploads(self) -> None:
         tasks = await self._task_service.list_tasks()
@@ -92,23 +144,51 @@ class SyncScheduler:
     async def _download_loop(self) -> None:
         while not self._stop_event.is_set():
             snapshot = self._snapshot()
-            next_run = _next_daily_run(snapshot.download_daily_time)
-            wait_seconds = max(
-                0.0, (next_run - datetime.now()).total_seconds()
+            key = (
+                snapshot.download_interval_unit,
+                snapshot.download_interval_value,
+                snapshot.download_daily_time
             )
-            logger.info(
-                "下一次云端下载计划: {} ({}s)",
-                next_run.strftime("%Y-%m-%d %H:%M:%S"),
-                int(wait_seconds),
-            )
-            try:
-                await asyncio.wait_for(self._stop_event.wait(), timeout=wait_seconds)
-                continue
-            except asyncio.TimeoutError:
-                pass
-            if self._stop_event.is_set():
-                break
-            await self._trigger_downloads()
+            if key != self._download_schedule_key:
+                self._download_schedule_key = key
+                self._last_download_daily_run = None
+            if snapshot.download_interval_unit in {
+                SyncIntervalUnit.seconds,
+                SyncIntervalUnit.hours
+            }:
+                await self._trigger_downloads()
+                interval_seconds = _interval_to_seconds(
+                    snapshot.download_interval_value, snapshot.download_interval_unit
+                )
+                try:
+                    await asyncio.wait_for(
+                        self._stop_event.wait(), timeout=interval_seconds
+                    )
+                except asyncio.TimeoutError:
+                    continue
+            else:
+                next_run = _next_daily_run(
+                    snapshot.download_daily_time,
+                    interval_days=_safe_days(snapshot.download_interval_value),
+                    last_run=self._last_download_daily_run
+                )
+                wait_seconds = max(
+                    0.0, (next_run - datetime.now()).total_seconds()
+                )
+                logger.info(
+                    "下一次云端下载计划: {} ({}s)",
+                    next_run.strftime("%Y-%m-%d %H:%M:%S"),
+                    int(wait_seconds),
+                )
+                try:
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=wait_seconds)
+                    continue
+                except asyncio.TimeoutError:
+                    pass
+                if self._stop_event.is_set():
+                    break
+                await self._trigger_downloads()
+                self._last_download_daily_run = next_run
 
     async def _trigger_downloads(self) -> None:
         tasks = await self._task_service.list_tasks()
@@ -136,6 +216,22 @@ def _safe_interval(value: float | int | None) -> float:
     return max(0.5, interval)
 
 
+def _safe_days(value: float | int | None) -> int:
+    try:
+        days = int(float(value))
+    except (TypeError, ValueError):
+        return 1
+    if days <= 0:
+        return 1
+    return days
+
+
+def _interval_to_seconds(value: float, unit: SyncIntervalUnit) -> float:
+    if unit == SyncIntervalUnit.hours:
+        return max(1.0, value * 3600)
+    return max(1.0, value)
+
+
 def _parse_daily_time(value: str | None) -> dt_time:
     if not value:
         return dt_time(hour=1, minute=0)
@@ -152,9 +248,24 @@ def _parse_daily_time(value: str | None) -> dt_time:
     return dt_time(hour=hour, minute=minute)
 
 
-def _next_daily_run(value: str | None, now: datetime | None = None) -> datetime:
+def _next_daily_run(
+    value: str | None,
+    interval_days: int = 1,
+    last_run: datetime | None = None,
+    now: datetime | None = None
+) -> datetime:
     now = now or datetime.now()
     target_time = _parse_daily_time(value)
+    if last_run:
+        candidate = last_run.replace(
+            hour=target_time.hour,
+            minute=target_time.minute,
+            second=0,
+            microsecond=0,
+        ) + timedelta(days=interval_days)
+        while candidate <= now:
+            candidate = candidate + timedelta(days=interval_days)
+        return candidate
     target = now.replace(
         hour=target_time.hour,
         minute=target_time.minute,

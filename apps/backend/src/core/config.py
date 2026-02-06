@@ -15,6 +15,12 @@ class SyncMode(str, Enum):
     upload_only = "upload_only"
 
 
+class SyncIntervalUnit(str, Enum):
+    seconds = "seconds"
+    hours = "hours"
+    days = "days"
+
+
 def _repo_root() -> Path:
     env_root = os.getenv("LARKSYNC_ROOT")
     if env_root:
@@ -46,7 +52,11 @@ def _default_scopes() -> list[str]:
 class AppConfig(BaseModel):
     database_url: str = Field(default_factory=_default_database_url)
     sync_mode: SyncMode = SyncMode.bidirectional
-    upload_interval_seconds: float = 2.0
+    upload_interval_value: float = 2.0
+    upload_interval_unit: SyncIntervalUnit = SyncIntervalUnit.seconds
+    upload_daily_time: str = "01:00"
+    download_interval_value: float = 1.0
+    download_interval_unit: SyncIntervalUnit = SyncIntervalUnit.days
     download_daily_time: str = "01:00"
 
     auth_authorize_url: str = ""
@@ -109,9 +119,36 @@ class ConfigManager:
         env_upload_interval = os.getenv("LARKSYNC_UPLOAD_INTERVAL_SECONDS")
         if env_upload_interval:
             try:
-                data["upload_interval_seconds"] = float(env_upload_interval)
+                data["upload_interval_value"] = float(env_upload_interval)
+                data.setdefault("upload_interval_unit", SyncIntervalUnit.seconds.value)
             except ValueError:
                 pass
+
+        env_upload_value = os.getenv("LARKSYNC_UPLOAD_INTERVAL_VALUE")
+        if env_upload_value:
+            try:
+                data["upload_interval_value"] = float(env_upload_value)
+            except ValueError:
+                pass
+
+        env_upload_unit = os.getenv("LARKSYNC_UPLOAD_INTERVAL_UNIT")
+        if env_upload_unit:
+            data["upload_interval_unit"] = env_upload_unit
+
+        env_upload_time = os.getenv("LARKSYNC_UPLOAD_DAILY_TIME")
+        if env_upload_time:
+            data["upload_daily_time"] = env_upload_time
+
+        env_download_value = os.getenv("LARKSYNC_DOWNLOAD_INTERVAL_VALUE")
+        if env_download_value:
+            try:
+                data["download_interval_value"] = float(env_download_value)
+            except ValueError:
+                pass
+
+        env_download_unit = os.getenv("LARKSYNC_DOWNLOAD_INTERVAL_UNIT")
+        if env_download_unit:
+            data["download_interval_unit"] = env_download_unit
 
         env_download_time = os.getenv("LARKSYNC_DOWNLOAD_DAILY_TIME")
         if env_download_time:
@@ -134,6 +171,13 @@ class ConfigManager:
             env_value = os.getenv(env_name)
             if env_value:
                 data[key] = env_value
+
+        if "upload_interval_value" not in data and "upload_interval_seconds" in data:
+            try:
+                data["upload_interval_value"] = float(data["upload_interval_seconds"])
+                data.setdefault("upload_interval_unit", SyncIntervalUnit.seconds.value)
+            except (TypeError, ValueError):
+                pass
 
         return AppConfig.model_validate(data)
 

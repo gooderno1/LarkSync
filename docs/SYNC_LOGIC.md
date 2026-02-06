@@ -4,11 +4,13 @@
 
 ## 1. 触发方式与时间戳确认频率
 
-- **云端 -> 本地**：每天 **01:00** 触发一次下载（本地时区），也支持手动“立即同步”。
-- **本地 -> 云端**：每 **2 秒**触发一次上传周期（仅处理本地变更队列），并由 Watcher 负责捕获变更。
+- **云端 -> 本地**：默认每天 **01:00** 触发一次下载（本地时区），也支持手动“立即同步”。
+- **本地 -> 云端**：默认每 **2 秒**触发一次上传周期（仅处理本地变更队列），并由 Watcher 负责捕获变更。
 - **触发频率可配置**：
-  - `upload_interval_seconds`：默认 2 秒。
-  - `download_daily_time`：默认 `01:00`（24 小时制）。
+  - `upload_interval_value` + `upload_interval_unit`：可选 `seconds` / `hours` / `days`。
+  - `upload_daily_time`：当单位为 `days` 时生效（默认 `01:00`）。
+  - `download_interval_value` + `download_interval_unit`：可选 `seconds` / `hours` / `days`。
+  - `download_daily_time`：当单位为 `days` 时生效（默认 `01:00`）。
 - **时间戳确认频率**：
   - 每次下载/上传周期都会对本地/云端 mtime 进行一次比较。
   - Watcher 捕获到变动后，将路径加入“待上传队列”，待下一个周期处理。
@@ -136,3 +138,6 @@
 - Watcher ignore（静默期）：5 秒
 - import_task 轮询：最多 10 次，每次 1 秒
 - Docx list_blocks page_size：500
+- 默认调度：
+  - 上传：`upload_interval_value=2`, `upload_interval_unit=seconds`
+  - 下载：`download_interval_value=1`, `download_interval_unit=days`, `download_daily_time=01:00`

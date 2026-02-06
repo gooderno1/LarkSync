@@ -15,7 +15,7 @@
 - 表格单元格增强：表格内列表/换行保留层级缩进，兼容嵌套待办文本容器
 - 本地写入器：写入文件后强制同步云端 mtime
 - 非文档下载：提供 Drive 文件下载器，直接写入本地目录
-- 本地监听：Watchdog 防抖监听 + WebSocket 实时事件推送
+- 本地变更监听：Watchdog 防抖监听驱动上传队列
 - Markdown 转 Docx：调用 Docx Block 接口执行全量覆盖（含 429 指数退避重试）
 - Markdown 上行局部更新：基于 block 差异仅更新变更段落（partial 模式失败直接报错，避免静默全量覆盖）
 - 同步任务支持更新模式：自动/局部/全量
@@ -25,14 +25,12 @@
 - 同步任务配置向导：支持云端目录选择器、本地文件夹选择器与任务状态
 - 下载型同步任务：支持立即同步、状态展示与删除
 - 全新侧边栏仪表盘 UI：任务/冲突/设置分区与实时日志面板
-- 明暗主题切换：支持深色/明亮主题快速切换
+- 明暗主题切换：默认明亮主题，可切换深色
 - 日志中心：支持日志筛选/搜索/加载更多，冲突管理作为子模块
-- 同步任务简洁视图：减少默认展示内容，按需展开高级管理
-- OAuth 配置指南页面：单独页面查看配置步骤并跳转设置
+- 同步任务管理：默认简洁视图，按需展开管理选项
 - 双向/上传任务：本地变更上传（已映射 Docx 全量覆盖，普通文件新增上传）
 - Markdown 新建 Docx：缺少映射时自动创建云端文档并覆盖内容
 - Markdown file 映射直传：历史为 `file` 的 `.md` 继续按文件上传，不再强制迁移为 Docx
-- 手动上传 Markdown：用于快速验证 Docx 全量覆盖与图片上传链路
 - 文档链接本地化：已同步且本地存在的云端链接自动改写为本地相对路径，未同步链接保持云端地址；附件落盘至 attachments
 - 日志系统：后端运行日志写入 `data/logs/larksync.log`
 - 开发控制台日志：`npm run dev` 输出同时写入 `data/logs/dev-console.log`
@@ -44,7 +42,7 @@
 - 上行一致性优化：列表续行/附件挂载/文本子块渲染优化，减少云端回写后的结构偏差
 - 飞书频控重试：新增对 `99991400(request trigger frequency limit)` 的指数退避重试
 - 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
-- 定时调度：本地变更队列每 2 秒触发上传；云端下载每日 01:00 触发（支持配置）
+- 定时调度：本地变更队列按秒/小时/天触发上传；云端下载支持按秒/小时/天或每日定时（可配置）
 
 ## 本地开发
 ### 使用教程
@@ -52,7 +50,7 @@
 ### 开发文档更新
 - 执行 `npm run sync:feishu-docs`（或 `python scripts/sync_feishu_docs.py`）同步飞书开发手册到 `docs/feishu/`。
 ### OAuth 配置
-- 支持在网页中通过“OAuth 配置向导”填写并保存应用参数，详细步骤见 `docs/OAUTH_GUIDE.md`。
+- 支持在设置页填写 App ID / Secret / Redirect URI，详细步骤见 `docs/OAUTH_GUIDE.md`。
 ### 依赖安装
 - 根目录：`npm install`（用于并行启动前后端）
 - 前端：`cd apps/frontend` 后执行 `npm install`
@@ -75,8 +73,12 @@
   - `LARKSYNC_AUTH_REDIRECT_URI`
   - `LARKSYNC_AUTH_SCOPES`（逗号分隔）
   - `LARKSYNC_TOKEN_STORE`（`keyring` / `memory`）
-  - `LARKSYNC_UPLOAD_INTERVAL_SECONDS`（默认 2 秒）
-  - `LARKSYNC_DOWNLOAD_DAILY_TIME`（默认 `01:00`，24 小时制）
+  - `LARKSYNC_UPLOAD_INTERVAL_VALUE`
+  - `LARKSYNC_UPLOAD_INTERVAL_UNIT`
+  - `LARKSYNC_UPLOAD_DAILY_TIME`
+  - `LARKSYNC_DOWNLOAD_INTERVAL_VALUE`
+  - `LARKSYNC_DOWNLOAD_INTERVAL_UNIT`
+  - `LARKSYNC_DOWNLOAD_DAILY_TIME`
 
 ## 生产部署（Docker）
 - 构建与启动：
