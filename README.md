@@ -39,6 +39,7 @@
 - 上行一致性优化：列表续行/附件挂载/文本子块渲染优化，减少云端回写后的结构偏差
 - 飞书频控重试：新增对 `99991400(request trigger frequency limit)` 的指数退避重试
 - 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
+- 定时调度：本地变更队列每 2 秒触发上传；云端下载每日 01:00 触发（支持配置）
 
 ## 本地开发
 ### 使用教程
@@ -69,6 +70,8 @@
   - `LARKSYNC_AUTH_REDIRECT_URI`
   - `LARKSYNC_AUTH_SCOPES`（逗号分隔）
   - `LARKSYNC_TOKEN_STORE`（`keyring` / `memory`）
+  - `LARKSYNC_UPLOAD_INTERVAL_SECONDS`（默认 2 秒）
+  - `LARKSYNC_DOWNLOAD_DAILY_TIME`（默认 `01:00`，24 小时制）
 
 ## 生产部署（Docker）
 - 构建与启动：

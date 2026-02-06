@@ -19,8 +19,11 @@ from src.api import (
 from src.core.logging import init_logging
 from src.db.session import init_db
 from src.api.watcher import watcher_manager
+from src.api.sync_tasks import runner as sync_runner, service as sync_task_service
+from src.services.sync_scheduler import SyncScheduler
 
 app = FastAPI(title="LarkSync API")
+sync_scheduler = SyncScheduler(runner=sync_runner, task_service=sync_task_service)
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +67,12 @@ async def startup_event() -> None:
     init_logging()
     watcher_manager.set_loop(asyncio.get_running_loop())
     await init_db()
+    await sync_scheduler.start()
+
+
+@app.on_event("shutdown")
+async def shutdown_event() -> None:
+    await sync_scheduler.stop()
 
 
 @app.get("/health", tags=["health"])

@@ -96,7 +96,17 @@ const shutdown = (signal) => {
     if (child.killed) {
       continue;
     }
-    child.kill(signal);
+    if (isWindows) {
+      if (child.pid) {
+        spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+          shell: true,
+          windowsHide: true,
+          stdio: "ignore",
+        });
+      }
+    } else {
+      child.kill(signal);
+    }
   }
   setTimeout(() => {
     logStream.end();

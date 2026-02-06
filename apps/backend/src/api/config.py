@@ -18,6 +18,8 @@ class ConfigResponse(BaseModel):
     auth_scopes: list[str] = Field(default_factory=list)
     sync_mode: SyncMode = SyncMode.bidirectional
     token_store: str = "keyring"
+    upload_interval_seconds: float = 2.0
+    download_daily_time: str = "01:00"
 
     @classmethod
     def from_config(cls, config: AppConfig, mask_secret: bool = True) -> "ConfigResponse":
@@ -30,6 +32,8 @@ class ConfigResponse(BaseModel):
             auth_scopes=list(config.auth_scopes or []),
             sync_mode=config.sync_mode,
             token_store=config.token_store,
+            upload_interval_seconds=config.upload_interval_seconds,
+            download_daily_time=config.download_daily_time,
         )
 
 
@@ -42,6 +46,8 @@ class ConfigUpdateRequest(BaseModel):
     auth_scopes: list[str] | None = None
     sync_mode: SyncMode | None = None
     token_store: str | None = None
+    upload_interval_seconds: float | None = None
+    download_daily_time: str | None = None
 
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -75,6 +81,15 @@ async def update_config(payload: ConfigUpdateRequest) -> ConfigResponse:
     if payload.token_store is not None and payload.token_store.strip():
         data["token_store"] = payload.token_store.strip()
 
+    if payload.upload_interval_seconds is not None:
+        data["upload_interval_seconds"] = payload.upload_interval_seconds
+
+    if payload.download_daily_time is not None:
+        cleaned = payload.download_daily_time.strip()
+        if cleaned:
+            if _is_time_value(cleaned):
+                data["download_daily_time"] = cleaned
+
     config = manager.save_config(data)
     return ConfigResponse.from_config(config, mask_secret=True)
 
@@ -95,3 +110,18 @@ def _apply_str(data: dict[str, object], key: str, value: str | None) -> None:
     if cleaned:
         data[key] = cleaned
 
+
+def _is_time_value(value: str) -> bool:
+    parts = value.split(":")
+    if len(parts) != 2:
+        return False
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError:
+        return False
+    if hour < 0 or hour > 23:
+        return False
+    if minute < 0 or minute > 59:
+        return False
+    return True

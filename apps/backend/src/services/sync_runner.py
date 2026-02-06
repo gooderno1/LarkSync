@@ -97,6 +97,8 @@ class SyncTaskRunner:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._uploading_paths: set[str] = set()
         self._doc_locks: dict[str, asyncio.Lock] = {}
+        self._pending_uploads: dict[str, set[str]] = {}
+        self._running_tasks: set[str] = set()
 
     def get_status(self, task_id: str) -> SyncTaskStatus:
         return self._statuses.get(task_id) or SyncTaskStatus(task_id=task_id)
@@ -104,32 +106,38 @@ class SyncTaskRunner:
     def list_statuses(self) -> dict[str, SyncTaskStatus]:
         return dict(self._statuses)
 
+    def ensure_watcher(self, task: SyncTaskItem) -> None:
+        self._ensure_watcher(task)
+
+    def stop_watcher(self, task_id: str) -> None:
+        self._stop_watcher(task_id)
+
     def start_task(self, task: SyncTaskItem) -> SyncTaskStatus:
         current = self._statuses.get(task.id)
         if current and current.state == "running":
             return current
+        if task.id in self._running_tasks:
+            status = current or SyncTaskStatus(task_id=task.id)
+            status.record_event(
+                SyncFileEvent(
+                    path=task.local_path,
+                    status="skipped",
+                    message="任务运行中，跳过重复启动",
+                )
+            )
+            return status
         if self._loop is None:
             try:
                 self._loop = asyncio.get_running_loop()
             except RuntimeError:
                 self._loop = None
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
-        status.state = "running"
-        status.started_at = time.time()
-        status.finished_at = None
-        status.total_files = 0
-        status.completed_files = 0
-        status.failed_files = 0
-        status.skipped_files = 0
-        status.last_error = None
-        status.last_files = []
-        status.record_event(
-            SyncFileEvent(
-                path=task.local_path,
-                status="started",
-                message=f"任务启动: mode={task.sync_mode} update={task.update_mode or 'auto'}",
-            )
+        self._reset_status(
+            task,
+            status,
+            message=f"任务启动: mode={task.sync_mode} update={task.update_mode or 'auto'}",
         )
+        self._running_tasks.add(task.id)
         if task.sync_mode in {"bidirectional", "upload_only"}:
             self._ensure_watcher(task)
         logger.info(
@@ -146,7 +154,93 @@ class SyncTaskRunner:
         task = self._tasks.get(task_id)
         if task and not task.done():
             task.cancel()
+        self._running_tasks.discard(task_id)
         self._stop_watcher(task_id)
+
+    def queue_local_change(self, task_id: str, path: Path) -> None:
+        pending = self._pending_uploads.setdefault(task_id, set())
+        pending.add(str(path))
+
+    async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
+        pending = self._pending_uploads.get(task.id)
+        if not pending:
+            return
+        if task.id in self._running_tasks:
+            return
+        self._running_tasks.add(task.id)
+        status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
+        self._reset_status(task, status, message="周期上传触发")
+        paths = [Path(path) for path in sorted(pending)]
+        self._pending_uploads[task.id] = set()
+        try:
+            await self._run_upload_paths(task, status, paths)
+            status.state = "failed" if status.failed_files > 0 else "success"
+            status.finished_at = time.time()
+        except Exception as exc:
+            status.state = "failed"
+            status.last_error = str(exc)
+            status.finished_at = time.time()
+        finally:
+            status.record_event(
+                SyncFileEvent(
+                    path=task.local_path,
+                    status=status.state,
+                    message=(
+                        f"完成: total={status.total_files} "
+                        f"ok={status.completed_files} "
+                        f"failed={status.failed_files} "
+                        f"skipped={status.skipped_files}"
+                    ),
+                )
+            )
+            self._running_tasks.discard(task.id)
+
+    async def run_scheduled_download(self, task: SyncTaskItem) -> None:
+        if task.id in self._running_tasks:
+            return
+        self._running_tasks.add(task.id)
+        status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
+        self._reset_status(task, status, message="定时下载触发")
+        try:
+            await self._run_download(task, status)
+            status.state = "failed" if status.failed_files > 0 else "success"
+            status.finished_at = time.time()
+        except Exception as exc:
+            status.state = "failed"
+            status.last_error = str(exc)
+            status.finished_at = time.time()
+        finally:
+            status.record_event(
+                SyncFileEvent(
+                    path=task.local_path,
+                    status=status.state,
+                    message=(
+                        f"完成: total={status.total_files} "
+                        f"ok={status.completed_files} "
+                        f"failed={status.failed_files} "
+                        f"skipped={status.skipped_files}"
+                    ),
+                )
+            )
+            self._running_tasks.discard(task.id)
+
+    def _reset_status(self, task: SyncTaskItem, status: SyncTaskStatus, message: str) -> None:
+        status.state = "running"
+        status.started_at = time.time()
+        status.finished_at = None
+        status.total_files = 0
+        status.completed_files = 0
+        status.failed_files = 0
+        status.skipped_files = 0
+        status.last_error = None
+        status.last_files = []
+        status.record_event(
+            SyncFileEvent(
+                path=task.local_path,
+                status="started",
+                message=message,
+            )
+        )
 
     async def run_task(self, task: SyncTaskItem) -> None:
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
@@ -191,6 +285,7 @@ class SyncTaskRunner:
                 )
             )
             self._tasks.pop(task.id, None)
+            self._running_tasks.discard(task.id)
 
     async def _run_download(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
         drive_service = self._drive_service or DriveService()
@@ -500,6 +595,64 @@ class SyncTaskRunner:
             )
             status.total_files += len(files)
             for path in files:
+                try:
+                    await self._upload_path(
+                        task,
+                        status,
+                        path,
+                        docx_service,
+                        file_uploader,
+                        drive_service,
+                        import_task_service,
+                    )
+                except Exception as exc:
+                    status.failed_files += 1
+                    status.last_error = str(exc)
+                    status.record_event(
+                        SyncFileEvent(
+                            path=str(path),
+                            status="failed",
+                            message=str(exc),
+                        )
+                    )
+                    logger.error(
+                        "上传失败: task_id={} path={} error={}",
+                        task.id,
+                        path,
+                        exc,
+                    )
+        finally:
+            for service in owned_services:
+                close = getattr(service, "close", None)
+                if close:
+                    await close()
+
+    async def _run_upload_paths(
+        self,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        paths: Iterable[Path],
+    ) -> None:
+        docx_service = self._docx_service or DocxService()
+        file_uploader = self._file_uploader or FileUploader()
+        drive_service = self._drive_service or DriveService()
+        import_task_service = self._import_task_service or ImportTaskService()
+        owned_services = []
+        if self._docx_service is None:
+            owned_services.append(docx_service)
+        if self._file_uploader is None:
+            owned_services.append(file_uploader)
+        if self._drive_service is None:
+            owned_services.append(drive_service)
+        if self._import_task_service is None:
+            owned_services.append(import_task_service)
+
+        try:
+            if task.sync_mode == "upload_only":
+                await self._prefill_links_from_cloud(task, drive_service)
+            path_list = list(paths)
+            status.total_files += len(path_list)
+            for path in path_list:
                 try:
                     await self._upload_path(
                         task,
@@ -1007,40 +1160,12 @@ class SyncTaskRunner:
             return
         path = Path(event.dest_path or event.src_path)
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
-        docx_service = self._docx_service or DocxService()
-        file_uploader = self._file_uploader or FileUploader()
-        drive_service = self._drive_service or DriveService()
-        import_task_service = self._import_task_service or ImportTaskService()
-        owned_services = []
-        if self._docx_service is None:
-            owned_services.append(docx_service)
-        if self._file_uploader is None:
-            owned_services.append(file_uploader)
-        if self._drive_service is None:
-            owned_services.append(drive_service)
-        if self._import_task_service is None:
-            owned_services.append(import_task_service)
-        try:
-            await self._upload_path(
-                task,
-                status,
-                path,
-                docx_service,
-                file_uploader,
-                drive_service,
-                import_task_service,
-            )
-        except Exception as exc:
-            status.failed_files += 1
-            status.last_error = str(exc)
-            status.record_event(
-                SyncFileEvent(path=str(path), status="failed", message=str(exc))
-            )
-        finally:
-            for service in owned_services:
-                close = getattr(service, "close", None)
-                if close:
-                    await close()
+        if self._should_ignore_path(task, path):
+            return
+        self.queue_local_change(task.id, path)
+        status.record_event(
+            SyncFileEvent(path=str(path), status="queued", message="等待周期上传")
+        )
 
     async def _apply_block_update(
         self,

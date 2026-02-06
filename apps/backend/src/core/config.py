@@ -46,6 +46,8 @@ def _default_scopes() -> list[str]:
 class AppConfig(BaseModel):
     database_url: str = Field(default_factory=_default_database_url)
     sync_mode: SyncMode = SyncMode.bidirectional
+    upload_interval_seconds: float = 2.0
+    download_daily_time: str = "01:00"
 
     auth_authorize_url: str = ""
     auth_token_url: str = ""
@@ -103,6 +105,17 @@ class ConfigManager:
         env_sync_mode = os.getenv("LARKSYNC_SYNC_MODE")
         if env_sync_mode:
             data["sync_mode"] = env_sync_mode
+
+        env_upload_interval = os.getenv("LARKSYNC_UPLOAD_INTERVAL_SECONDS")
+        if env_upload_interval:
+            try:
+                data["upload_interval_seconds"] = float(env_upload_interval)
+            except ValueError:
+                pass
+
+        env_download_time = os.getenv("LARKSYNC_DOWNLOAD_DAILY_TIME")
+        if env_download_time:
+            data["download_daily_time"] = env_download_time
 
         env_scopes = os.getenv("LARKSYNC_AUTH_SCOPES")
         if env_scopes:

@@ -51,7 +51,9 @@
     "contact:contact.base:readonly"
   ],
   "sync_mode": "bidirectional",
-  "token_store": "keyring"
+  "token_store": "keyring",
+  "upload_interval_seconds": 2,
+  "download_daily_time": "01:00"
 }
 ```
 
@@ -70,6 +72,8 @@
 - `LARKSYNC_AUTH_REDIRECT_URI`
 - `LARKSYNC_AUTH_SCOPES`
 - `LARKSYNC_TOKEN_STORE`
+- `LARKSYNC_UPLOAD_INTERVAL_SECONDS`
+- `LARKSYNC_DOWNLOAD_DAILY_TIME`
 
 ## 4. 本地开发启动
 ### 4.1 一键启动
@@ -92,7 +96,7 @@
 - 支持“选择本地文件夹”按钮调用系统对话框（若不可用可手动输入路径）。
 - 支持云端目录选择器，点击文件夹即可自动填充 token。
 - 下载模式任务在保存后会自动触发一次同步，也可点击“立即同步”手动触发。
-- 双向/仅上传任务在保存后会自动启动上传监听，并在“立即同步”时执行一次上传扫描。
+- 双向/仅上传任务在保存后会自动启动上传监听，并由定时调度每 2 秒处理变更队列；也可点击“立即同步”执行一次上传扫描。
 - 支持停用/启用与删除任务。
 - 任务卡片显示状态、进度与最近文件列表。
 - 下载侧支持 Docx 与普通文件类型；Sheet/Bitable 等类型会显示为“跳过”。

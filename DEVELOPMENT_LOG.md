@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.35 (2026-02-06)
+- 目标：落实默认同步调度策略；修复 Ctrl+C 后端口占用问题。
+- 结果：
+  - 新增同步调度器：本地变更队列每 2 秒上传一次，云端每日 01:00 下载一次（可配置）。
+  - Watcher 仅入队，上传由调度器统一触发，避免频繁扫描。
+  - 新增配置项 `upload_interval_seconds` 与 `download_daily_time`，并开放配置接口与文档说明。
+  - dev 脚本在 Windows 下使用 taskkill 清理子进程，Ctrl+C 后端口可释放。
+- 测试：
+  - `python -m pytest tests/test_sync_scheduler.py -q`（apps/backend）。
+- 问题：当前上传周期仅处理本地变更队列；如需强制全量扫描，请使用“立即同步”。
+
 ## v0.1.36-dev.34 (2026-02-06)
 - 目标：修复本地改动在“原子保存/重命名”场景下未触发上传；输出当前同步逻辑说明文档。
 - 结果：
