@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.34 (2026-02-06)
+- 目标：修复本地改动在“原子保存/重命名”场景下未触发上传；输出当前同步逻辑说明文档。
+- 结果：
+  - Watcher 去抖/静默以 dest_path 为准，避免 moved 事件丢失真实变更。
+  - 新增 Watcher 单测覆盖“dest_path 去抖/忽略”场景。
+  - 新增 `docs/SYNC_LOGIC.md`，详细说明时间戳判断、接口调用与本地状态落库。
+- 测试：
+  - `python -m pytest tests/test_watcher.py -q`（apps/backend，2 passed）。
+- 问题：当前仍无定时轮询，云端变更需手动触发同步任务。
+
 ## v0.1.36-dev.33 (2026-02-06)
 - 目标：修复块级映射不一致导致 partial 失败；避免端口被占用时自动飘到 3667。
 - 结果：

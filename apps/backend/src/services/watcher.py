@@ -67,18 +67,24 @@ class FileEventHandler(FileSystemEventHandler):
     def on_any_event(self, event) -> None:
         if event.is_directory:
             return
-        src_path = str(getattr(event, "src_path", ""))
-        if not src_path:
-            return
-        if self._ignore.is_ignored(src_path):
-            return
-        if not self._debounce.should_emit(src_path):
-            return
+        src_path = str(getattr(event, "src_path", "")) or ""
         dest_path = getattr(event, "dest_path", None)
+        dest_path_str = str(dest_path) if dest_path else ""
+        primary_path = dest_path_str or src_path
+        if not primary_path:
+            return
+        if (
+            (src_path and self._ignore.is_ignored(src_path))
+            or (dest_path_str and self._ignore.is_ignored(dest_path_str))
+            or self._ignore.is_ignored(primary_path)
+        ):
+            return
+        if not self._debounce.should_emit(primary_path):
+            return
         payload = FileChangeEvent(
             event_type=str(getattr(event, "event_type", "unknown")),
             src_path=src_path,
-            dest_path=str(dest_path) if dest_path else None,
+            dest_path=dest_path_str if dest_path_str else None,
             timestamp=time.time(),
         )
         self._on_event(payload)
