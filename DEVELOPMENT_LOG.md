@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.31 (2026-02-06)
+- 目标：修复“催办”任务与列表换行同步缺失问题，完善表格单元格内列表层级显示；前端端口固定为 3666。
+- 结果：
+  - Docx 解析增强：支持 line_break/hard_break 元素换行，补齐嵌套文本容器解析（如 todo.text）。
+  - 表格单元格改用块渲染：保留列表换行与层级缩进，缩进使用 `&nbsp;` 保留显示。
+  - 前端 dev/preview 端口改为 3666，同步更新 `docs/USAGE.md`。
+  - 新增转码单测：line_break 列表续行、嵌套 todo 文本容器、表格单元格列表缩进。
+- 测试：
+  - `python -m pytest tests/test_transcoder.py -q`（apps/backend，18 passed）。
+  - `python -m pytest tests/test_state_store.py -q`（apps/backend，2 passed）。
+  - `python -m pytest apps/backend/tests/test_transcoder.py -q`（根目录仍会报 `ModuleNotFoundError: No module named 'src'`，需在 apps/backend 下运行）。
+- 问题：若“催办”仍缺失请提供该段 Docx Block JSON 样例（含 block_type 与 todo/task 字段）。
+
 ## v0.1.36-dev.30 (2026-02-04)
 - 目标：修复“本地较新但未上云”与云端同名文件导致映射漂移/重复处理问题。
 - 结果：

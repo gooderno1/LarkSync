@@ -148,22 +148,55 @@ class DocxParser:
         block_type = block.get("block_type")
         heading_field = self._heading_field(block_type)
         if heading_field and heading_field in block:
-            return block.get(heading_field)
+            return self._extract_text_container(block.get(heading_field))
         field = _TEXT_BLOCK_FIELDS.get(block_type)
         if field and field in block:
-            return block.get(field)
+            container = self._extract_text_container(block.get(field))
+            if container:
+                return container
         if "text" in block:
-            return block.get("text")
-        for value in block.values():
-            if isinstance(value, dict) and isinstance(value.get("elements"), list):
-                return value
-        return None
+            container = self._extract_text_container(block.get("text"))
+            if container:
+                return container
+        return self._find_text_container(block, max_depth=3)
 
     def _heading_field(self, block_type: int | None) -> str | None:
         if not block_type:
             return None
         if BLOCK_TYPE_HEADING_MIN <= block_type <= BLOCK_TYPE_HEADING_MAX:
             return f"heading{block_type - 2}"
+        return None
+
+    @classmethod
+    def _find_text_container(cls, value: object, max_depth: int) -> dict | None:
+        if max_depth < 0:
+            return None
+        if isinstance(value, dict):
+            direct = cls._extract_text_container(value)
+            if direct:
+                return direct
+            for nested in value.values():
+                found = cls._find_text_container(nested, max_depth - 1)
+                if found:
+                    return found
+            return None
+        if isinstance(value, list):
+            for item in value:
+                found = cls._find_text_container(item, max_depth - 1)
+                if found:
+                    return found
+        return None
+
+    @staticmethod
+    def _extract_text_container(value: object) -> dict | None:
+        if not isinstance(value, dict):
+            return None
+        if isinstance(value.get("elements"), list):
+            return value
+        for key in ("text", "content", "title"):
+            nested = value.get(key)
+            if isinstance(nested, dict) and isinstance(nested.get("elements"), list):
+                return nested
         return None
 
     def _format_text_run(self, text_run: dict) -> str:
@@ -205,6 +238,10 @@ class DocxParser:
             style = reminder.get("text_element_style") or {}
             text = _format_reminder(reminder)
             return self._apply_text_style(text, style)
+        if element.get("line_break") is not None or element.get("linebreak") is not None:
+            return "\n"
+        if element.get("hard_break") is not None:
+            return "\n"
         return ""
 
     @staticmethod
@@ -582,10 +619,18 @@ class DocxTranscoder:
             return self._prefix_lines(prefix, raw_lines, keep_blank=keep_blank)
 
         if block_type == BLOCK_TYPE_TABLE:
-            table_md = parser.table_markdown(block)
-            if not table_md:
+            table_lines = self._render_table(
+                block,
+                parser,
+                document_id,
+                images,
+                attachments,
+                base_dir=base_dir,
+                link_map=link_map,
+            )
+            if not table_lines:
                 return []
-            return self._prefix_lines(prefix, table_md.splitlines(), keep_blank=keep_blank)
+            return self._prefix_lines(prefix, table_lines, keep_blank=keep_blank)
 
         if block_type == BLOCK_TYPE_IMAGE:
             image = block.get("image") or {}
@@ -713,6 +758,108 @@ class DocxTranscoder:
 
         return buffer.lines
 
+    def _render_table(
+        self,
+        block: dict,
+        parser: DocxParser,
+        document_id: str,
+        images: list[tuple[str, Path]],
+        attachments: list[tuple[str, str, Path]],
+        *,
+        base_dir: Path | None,
+        link_map: dict[str, Path],
+    ) -> list[str]:
+        table = block.get("table") or {}
+        raw_cells = table.get("cells") or []
+        cells = self._flatten_table_cells(raw_cells)
+        if not cells:
+            cells = block.get("children") or []
+        prop = table.get("property") or {}
+        rows = int(prop.get("row_size") or 0)
+        cols = int(prop.get("column_size") or 0)
+        if rows <= 0 or cols <= 0:
+            return []
+
+        matrix = [["" for _ in range(cols)] for _ in range(rows)]
+        for idx, cell_id in enumerate(cells):
+            row_index = idx // cols
+            col_index = idx % cols
+            if row_index >= rows:
+                continue
+            matrix[row_index][col_index] = self._render_table_cell(
+                cell_id,
+                parser,
+                document_id,
+                images,
+                attachments,
+                base_dir=base_dir,
+                link_map=link_map,
+            )
+
+        header = "| " + " | ".join(matrix[0]) + " |"
+        separator = "| " + " | ".join(["---"] * cols) + " |"
+        body = ["| " + " | ".join(row) + " |" for row in matrix[1:]]
+        return [header, separator, *body]
+
+    def _render_table_cell(
+        self,
+        cell_id: str,
+        parser: DocxParser,
+        document_id: str,
+        images: list[tuple[str, Path]],
+        attachments: list[tuple[str, str, Path]],
+        *,
+        base_dir: Path | None,
+        link_map: dict[str, Path],
+    ) -> str:
+        cell = parser.get_block(cell_id)
+        if not cell:
+            return ""
+        children = cell.get("children") or []
+        if children:
+            lines = self._render_block_ids(
+                children,
+                parser,
+                document_id,
+                images,
+                attachments,
+                base_dir=base_dir,
+                link_map=link_map,
+                base_indent="",
+                quote_prefix="",
+            )
+            visible = [line for line in lines if line != ""]
+            if not visible:
+                return ""
+            formatted = [self._format_table_cell_line(line) for line in visible]
+            return "<br>".join(formatted)
+        text = parser.collect_text(cell_id)
+        return _normalize_table_cell_text(text)
+
+    @staticmethod
+    def _flatten_table_cells(cells: object) -> list[str]:
+        if not isinstance(cells, list):
+            return []
+        flattened: list[str] = []
+        for cell in cells:
+            if isinstance(cell, list):
+                for inner in cell:
+                    if isinstance(inner, str):
+                        flattened.append(inner)
+            elif isinstance(cell, str):
+                flattened.append(cell)
+        return flattened
+
+    @staticmethod
+    def _format_table_cell_line(line: str) -> str:
+        if not line:
+            return ""
+        stripped = line.lstrip(" ")
+        if stripped == line:
+            return line
+        leading = len(line) - len(stripped)
+        return f"{'&nbsp;' * leading}{stripped}"
+
     def _build_link_rewriter(
         self, base_dir: Path | None, link_map: dict[str, Path]
     ) -> Callable[[str], str] | None:
@@ -785,7 +932,13 @@ class DocxTranscoder:
 
     @staticmethod
     def _split_multiline_text(text: str) -> list[str]:
-        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        normalized = (
+            text.replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .replace("\u2028", "\n")
+            .replace("\u2029", "\n")
+            .replace("\u000b", "\n")
+        )
         lines = [line.rstrip() for line in normalized.split("\n")]
         return lines if lines else [""]
 

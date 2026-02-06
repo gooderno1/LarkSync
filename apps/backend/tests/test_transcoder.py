@@ -319,7 +319,7 @@ async def test_transcoder_table_cell_collects_nested_text(tmp_path: Path) -> Non
     transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
     markdown = await transcoder.to_markdown("doc-table", blocks)
 
-    assert "| 列表项 子项 |" in markdown
+    assert "| - 列表项<br>&nbsp;&nbsp;- 子项 |" in markdown
 
 
 @pytest.mark.asyncio
@@ -478,6 +478,32 @@ async def test_transcoder_list_item_multiline_text_keeps_continuation_indent(tmp
 
 
 @pytest.mark.asyncio
+async def test_transcoder_list_item_line_break_elements(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["b1"]},
+        {
+            "block_id": "b1",
+            "block_type": 12,
+            "parent_id": "root",
+            "bullet": {
+                "style": {},
+                "elements": [
+                    {"text_run": {"content": "第一行"}},
+                    {"line_break": {}},
+                    {"text_run": {"content": "第二行"}},
+                ],
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-linebreak", blocks)
+
+    assert "- 第一行" in markdown
+    assert "  第二行" in markdown
+
+
+@pytest.mark.asyncio
 async def test_transcoder_text_block_multiline_keeps_prefix(tmp_path: Path) -> None:
     blocks = [
         {"block_id": "root", "block_type": 1, "children": ["o1", "t1"]},
@@ -575,6 +601,27 @@ async def test_transcoder_todo_done_marker(tmp_path: Path) -> None:
 
     assert "- [x] 完成事项" in markdown
     assert "- [ ] 未完成事项" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_nested_text_container_in_todo(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["t1"]},
+        {
+            "block_id": "t1",
+            "block_type": 17,
+            "parent_id": "root",
+            "todo": {
+                "style": {"done": False},
+                "text": {"elements": [{"text_run": {"content": "催办事项"}}]},
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-nested-todo", blocks)
+
+    assert "- [ ] 催办事项" in markdown
 
 
 @pytest.mark.asyncio

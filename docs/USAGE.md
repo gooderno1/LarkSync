@@ -77,7 +77,7 @@
 - `npm run dev`
 
 默认端口：
-- 前端：`http://localhost:3000`
+- 前端：`http://localhost:3666`
 - 后端：`http://localhost:8000`
 日志输出：
 - 前后端控制台输出会写入 `data/logs/dev-console.log`

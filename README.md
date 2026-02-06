@@ -12,6 +12,7 @@
 - OAuth 登录：后端提供 `/auth/login`、`/auth/callback`、`/auth/status`、`/auth/logout`
 - 云端目录树：后端提供 `/drive/tree`，前端可展示云空间层级
 - Docx 转 Markdown：支持标题/加粗/列表/引用/代码块/待办(含完成态)/表格/图片块解析与图片落盘，支持提及与提醒渲染
+- 表格单元格增强：表格内列表/换行保留层级缩进，兼容嵌套待办文本容器
 - 本地写入器：写入文件后强制同步云端 mtime
 - 非文档下载：提供 Drive 文件下载器，直接写入本地目录
 - 本地监听：Watchdog 防抖监听 + WebSocket 实时事件推送
