@@ -419,6 +419,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavKey>("dashboard");
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [globalPaused, setGlobalPaused] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -502,6 +503,24 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("larksync-theme");
+    if (saved === "light" || saved === "dark") {
+      setTheme(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem("larksync-theme", theme);
+    } catch {
+      // ignore storage errors
+    }
+  }, [theme]);
 
   useEffect(() => {
     fetch(apiUrl("/watcher/status"))
@@ -1147,8 +1166,8 @@ export default function App() {
           <div className="soft-panel rounded-2xl p-4 text-xs text-slate-400">
             <p className="font-semibold text-slate-200">当前策略</p>
             <ul className="mt-3 space-y-2">
-              <li>本地 -> 云端：{configUploadInterval || "2"} 秒</li>
-              <li>云端 -> 本地：每日 {configDownloadTime || "01:00"}</li>
+              <li>本地 {"->"} 云端：{configUploadInterval || "2"} 秒</li>
+              <li>云端 {"->"} 本地：每日 {configDownloadTime || "01:00"}</li>
               <li>默认同步：{modeLabels[configSyncMode] || configSyncMode}</li>
             </ul>
           </div>
@@ -1188,6 +1207,13 @@ export default function App() {
                   <IconPause className="h-3.5 w-3.5" />
                 )}
                 {globalPaused ? "已暂停" : "运行中"}
+              </button>
+              <button
+                className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+                type="button"
+              >
+                {theme === "dark" ? "明亮模式" : "深色模式"}
               </button>
             </div>
           </header>
@@ -1932,7 +1958,11 @@ export default function App() {
                         <div key={`${evt.timestamp}-${index}`}>
                           <p className="text-slate-400">{evt.event_type}</p>
                           <p className="break-all">{evt.src_path}</p>
-                          {evt.dest_path ? <p className="text-slate-500">-> {evt.dest_path}</p> : null}
+                          {evt.dest_path ? (
+                            <p className="text-slate-500">
+                              {"->"} {evt.dest_path}
+                            </p>
+                          ) : null}
                         </div>
                       ))
                     )}
@@ -1983,8 +2013,8 @@ export default function App() {
                   <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
                     <p className="text-xs uppercase tracking-[0.3em] text-slate-400">默认策略</p>
                     <ul className="mt-3 space-y-2 text-sm text-slate-200">
-                      <li>本地 -> 云端：每 2 秒触发上传队列</li>
-                      <li>云端 -> 本地：每日 01:00 自动下载</li>
+                      <li>本地 {"->"} 云端：每 2 秒触发上传队列</li>
+                      <li>云端 {"->"} 本地：每日 01:00 自动下载</li>
                       <li>支持手动触发与任务级别配置</li>
                     </ul>
                   </div>
@@ -2004,8 +2034,8 @@ export default function App() {
       </div>
 
       {showTaskModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6">
-          <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl bg-[#0f1524] p-6 text-slate-100 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--overlay)] px-4 py-6">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl bg-[color:var(--panel-strong)] p-6 text-slate-100 shadow-2xl">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold">新建同步任务</h2>
