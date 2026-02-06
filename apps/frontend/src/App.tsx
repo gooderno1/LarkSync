@@ -80,7 +80,7 @@ type CloudSelection = {
   path: string;
 };
 
-type NavKey = "dashboard" | "tasks" | "conflicts" | "settings" | "about";
+type NavKey = "dashboard" | "tasks" | "logcenter" | "settings" | "guide";
 
 type TreeNodeProps = {
   node: DriveNode;
@@ -420,6 +420,11 @@ export default function App() {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [globalPaused, setGlobalPaused] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [taskView, setTaskView] = useState<"compact" | "detailed">("compact");
+  const [logTab, setLogTab] = useState<"logs" | "conflicts">("logs");
+  const [logFilterStatus, setLogFilterStatus] = useState("all");
+  const [logFilterText, setLogFilterText] = useState("");
+  const [logLimit, setLogLimit] = useState(60);
 
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -471,6 +476,8 @@ export default function App() {
   const [configTokenStore, setConfigTokenStore] = useState("keyring");
   const [configUploadInterval, setConfigUploadInterval] = useState("2");
   const [configDownloadTime, setConfigDownloadTime] = useState("01:00");
+  const [showAuthAdvanced, setShowAuthAdvanced] = useState(false);
+  const [showAdvancedTools, setShowAdvancedTools] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [configStatus, setConfigStatus] = useState<string | null>(null);
@@ -1058,6 +1065,25 @@ export default function App() {
       .slice(0, 200);
   }, [taskStatusMap, tasks]);
 
+  const filteredLogs = useMemo(() => {
+    const text = logFilterText.trim().toLowerCase();
+    return syncLogEntries.filter((entry) => {
+      if (logFilterStatus !== "all" && entry.status !== logFilterStatus) {
+        return false;
+      }
+      if (!text) return true;
+      return (
+        entry.path.toLowerCase().includes(text) ||
+        entry.taskName.toLowerCase().includes(text) ||
+        (entry.message || "").toLowerCase().includes(text)
+      );
+    });
+  }, [syncLogEntries, logFilterStatus, logFilterText]);
+
+  useEffect(() => {
+    setLogLimit(60);
+  }, [logFilterStatus, logFilterText]);
+
   const today = new Date();
   const todayCount = syncLogEntries.filter((entry) => isSameDay(entry.timestamp, today)).length;
   const lastSync = syncLogEntries[0];
@@ -1068,17 +1094,17 @@ export default function App() {
   const navItems: Array<{ id: NavKey; label: string; icon: (props: IconProps) => JSX.Element; badge?: number }> = [
     { id: "dashboard", label: "仪表盘", icon: IconDashboard },
     { id: "tasks", label: "同步任务", icon: IconTasks },
-    { id: "conflicts", label: "冲突中心", icon: IconConflicts, badge: unresolvedConflicts || undefined },
+    { id: "logcenter", label: "日志中心", icon: IconConflicts, badge: unresolvedConflicts || undefined },
     { id: "settings", label: "设置", icon: IconSettings },
-    { id: "about", label: "关于", icon: IconInfo }
+    { id: "guide", label: "配置指南", icon: IconInfo }
   ];
 
   const tabMeta: Record<NavKey, { title: string; desc: string }> = {
     dashboard: { title: "仪表盘", desc: "同步概览、实时日志与快捷操作" },
     tasks: { title: "同步任务", desc: "创建任务、管理模式与同步状态" },
-    conflicts: { title: "冲突中心", desc: "云端与本地冲突处理" },
+    logcenter: { title: "日志中心", desc: "集中查看同步日志与冲突管理" },
     settings: { title: "设置", desc: "OAuth 配置、调度策略与高级工具" },
-    about: { title: "关于", desc: "产品信息与默认策略说明" }
+    guide: { title: "配置指南", desc: "一步步完成 OAuth 与授权配置" }
   };
 
   const renderModeIcon = (mode: string) => {
@@ -1440,7 +1466,20 @@ export default function App() {
                       管理任务的同步模式、更新策略与执行状态。
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <span>管理选项</span>
+                      <select
+                        className="rounded-full border border-slate-700 bg-transparent px-3 py-1 text-xs text-slate-200"
+                        value={taskView}
+                        onChange={(event) =>
+                          setTaskView(event.target.value === "detailed" ? "detailed" : "compact")
+                        }
+                      >
+                        <option value="compact">简洁视图</option>
+                        <option value="detailed">详细视图</option>
+                      </select>
+                    </div>
                     <button
                       className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
                       onClick={loadTasks}
@@ -1478,6 +1517,7 @@ export default function App() {
                         ? Math.round((status.completed_files / status.total_files) * 100)
                         : null;
                     const isRunning = status?.state === "running";
+                    const showDetails = taskView === "detailed";
                     return (
                       <div
                         key={task.id}
@@ -1515,92 +1555,115 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                          <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">同步模式</p>
-                            <div className="mt-2 flex items-center gap-2 text-sm text-slate-200">
-                              {renderModeIcon(task.sync_mode)}
-                              <span>{modeLabels[task.sync_mode] || task.sync_mode}</span>
-                            </div>
-                            <p className="mt-3 text-xs text-slate-400">更新模式：{updateModeLabels[task.update_mode || "auto"]}</p>
-                          </div>
-                          <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">同步进度</p>
-                            {progress !== null ? (
-                              <>
-                                <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
-                                  <span>{progress}%</span>
-                                  <span>
-                                    {status?.completed_files ?? 0}/{status?.total_files ?? 0}
-                                  </span>
+                        {showDetails ? (
+                          <>
+                            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                              <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
+                                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">同步模式</p>
+                                <div className="mt-2 flex items-center gap-2 text-sm text-slate-200">
+                                  {renderModeIcon(task.sync_mode)}
+                                  <span>{modeLabels[task.sync_mode] || task.sync_mode}</span>
                                 </div>
-                                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800">
-                                  <div
-                                    className="h-full rounded-full bg-emerald-400"
-                                    style={{ width: `${progress}%` }}
-                                  />
+                                <p className="mt-3 text-xs text-slate-400">
+                                  更新模式：{updateModeLabels[task.update_mode || "auto"]}
+                                </p>
+                              </div>
+                              <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
+                                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">同步进度</p>
+                                {progress !== null ? (
+                                  <>
+                                    <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                                      <span>{progress}%</span>
+                                      <span>
+                                        {status?.completed_files ?? 0}/{status?.total_files ?? 0}
+                                      </span>
+                                    </div>
+                                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                                      <div
+                                        className="h-full rounded-full bg-emerald-400"
+                                        style={{ width: `${progress}%` }}
+                                      />
+                                    </div>
+                                  </>
+                                ) : (
+                                  <p className="mt-2 text-xs text-slate-500">暂无进度数据</p>
+                                )}
+                              </div>
+                              <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
+                                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">统计</p>
+                                <div className="mt-2 space-y-1 text-xs text-slate-300">
+                                  <p>完成：{status?.completed_files ?? 0}</p>
+                                  <p>失败：{status?.failed_files ?? 0}</p>
+                                  <p>跳过：{status?.skipped_files ?? 0}</p>
                                 </div>
-                              </>
-                            ) : (
-                              <p className="mt-2 text-xs text-slate-500">暂无进度数据</p>
-                            )}
-                          </div>
-                          <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">统计</p>
-                            <div className="mt-2 space-y-1 text-xs text-slate-300">
-                              <p>完成：{status?.completed_files ?? 0}</p>
-                              <p>失败：{status?.failed_files ?? 0}</p>
-                              <p>跳过：{status?.skipped_files ?? 0}</p>
+                              </div>
                             </div>
-                          </div>
-                        </div>
 
-                        <div className="mt-4 flex flex-wrap gap-3">
-                          <select
-                            className="rounded-full border border-slate-700 bg-transparent px-4 py-2 text-xs text-slate-200"
-                            value={taskSyncModeMap[task.id] || task.sync_mode}
-                            onChange={(event) =>
-                              setTaskSyncModeMap((prev) => ({
-                                ...prev,
-                                [task.id]: event.target.value
-                              }))
-                            }
-                          >
-                            <option value="bidirectional">双向同步</option>
-                            <option value="download_only">仅下载</option>
-                            <option value="upload_only">仅上传</option>
-                          </select>
-                          <button
-                            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
-                            onClick={() => updateTaskSyncMode(task, taskSyncModeMap[task.id] || task.sync_mode)}
-                            type="button"
-                          >
-                            应用同步模式
-                          </button>
-                          <select
-                            className="rounded-full border border-slate-700 bg-transparent px-4 py-2 text-xs text-slate-200"
-                            value={taskUpdateModeMap[task.id] || task.update_mode || "auto"}
-                            onChange={(event) =>
-                              setTaskUpdateModeMap((prev) => ({
-                                ...prev,
-                                [task.id]: event.target.value
-                              }))
-                            }
-                          >
-                            <option value="auto">自动更新</option>
-                            <option value="partial">局部更新</option>
-                            <option value="full">全量覆盖</option>
-                          </select>
-                          <button
-                            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
-                            onClick={() =>
-                              updateTaskMode(task, taskUpdateModeMap[task.id] || task.update_mode || "auto")
-                            }
-                            type="button"
-                          >
-                            应用更新模式
-                          </button>
-                        </div>
+                            <div className="mt-4 flex flex-wrap gap-3">
+                              <select
+                                className="rounded-full border border-slate-700 bg-transparent px-4 py-2 text-xs text-slate-200"
+                                value={taskSyncModeMap[task.id] || task.sync_mode}
+                                onChange={(event) =>
+                                  setTaskSyncModeMap((prev) => ({
+                                    ...prev,
+                                    [task.id]: event.target.value
+                                  }))
+                                }
+                              >
+                                <option value="bidirectional">双向同步</option>
+                                <option value="download_only">仅下载</option>
+                                <option value="upload_only">仅上传</option>
+                              </select>
+                              <button
+                                className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                                onClick={() => updateTaskSyncMode(task, taskSyncModeMap[task.id] || task.sync_mode)}
+                                type="button"
+                              >
+                                应用同步模式
+                              </button>
+                              <select
+                                className="rounded-full border border-slate-700 bg-transparent px-4 py-2 text-xs text-slate-200"
+                                value={taskUpdateModeMap[task.id] || task.update_mode || "auto"}
+                                onChange={(event) =>
+                                  setTaskUpdateModeMap((prev) => ({
+                                    ...prev,
+                                    [task.id]: event.target.value
+                                  }))
+                                }
+                              >
+                                <option value="auto">自动更新</option>
+                                <option value="partial">局部更新</option>
+                                <option value="full">全量覆盖</option>
+                              </select>
+                              <button
+                                className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                                onClick={() =>
+                                  updateTaskMode(task, taskUpdateModeMap[task.id] || task.update_mode || "auto")
+                                }
+                                type="button"
+                              >
+                                应用更新模式
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                            <span className="inline-flex items-center gap-2">
+                              {renderModeIcon(task.sync_mode)}
+                              {modeLabels[task.sync_mode] || task.sync_mode}
+                            </span>
+                            <span className="text-slate-500">|</span>
+                            <span>更新：{updateModeLabels[task.update_mode || "auto"]}</span>
+                            {progress !== null ? <span>进度：{progress}%</span> : null}
+                            <button
+                              className="rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-slate-500"
+                              onClick={() => setTaskView("detailed")}
+                              type="button"
+                            >
+                              更多管理选项
+                            </button>
+                          </div>
+                        )}
 
                         <div className="mt-4 flex flex-wrap gap-3">
                           <button
@@ -1629,14 +1692,16 @@ export default function App() {
                               </>
                             )}
                           </button>
-                          <button
-                            className="inline-flex items-center gap-2 rounded-full border border-rose-400/40 px-4 py-2 text-xs font-semibold text-rose-200 transition hover:border-rose-400"
-                            onClick={() => deleteTask(task)}
-                            type="button"
-                          >
-                            <IconTrash className="h-3.5 w-3.5" />
-                            删除
-                          </button>
+                          {showDetails ? (
+                            <button
+                              className="inline-flex items-center gap-2 rounded-full border border-rose-400/40 px-4 py-2 text-xs font-semibold text-rose-200 transition hover:border-rose-400"
+                              onClick={() => deleteTask(task)}
+                              type="button"
+                            >
+                              <IconTrash className="h-3.5 w-3.5" />
+                              删除
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     );
@@ -1646,119 +1711,249 @@ export default function App() {
             </section>
           ) : null}
 
-          {activeTab === "conflicts" ? (
+          {activeTab === "logcenter" ? (
             <section className="space-y-6 fade-up">
               <div className="soft-panel rounded-3xl p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold text-slate-50">冲突中心</h2>
+                    <h2 className="text-lg font-semibold text-slate-50">日志中心</h2>
                     <p className="mt-1 text-xs text-slate-400">
-                      处理云端与本地同时修改产生的冲突。
+                      同步日志与冲突处理统一管理。
                     </p>
                   </div>
-                  <button
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
-                    onClick={loadConflicts}
-                    disabled={conflictLoading}
-                    type="button"
-                  >
-                    <IconRefresh className="h-3.5 w-3.5" />
-                    {conflictLoading ? "加载中..." : "刷新"}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                        logTab === "logs"
+                          ? "border-blue-400/40 bg-blue-500/15 text-blue-100"
+                          : "border-slate-700 text-slate-200 hover:border-slate-500"
+                      }`}
+                      onClick={() => setLogTab("logs")}
+                      type="button"
+                    >
+                      同步日志
+                    </button>
+                    <button
+                      className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                        logTab === "conflicts"
+                          ? "border-amber-400/40 bg-amber-500/15 text-amber-200"
+                          : "border-slate-700 text-slate-200 hover:border-slate-500"
+                      }`}
+                      onClick={() => setLogTab("conflicts")}
+                      type="button"
+                    >
+                      冲突管理
+                    </button>
+                  </div>
                 </div>
-                {conflictError ? (
-                  <p className="mt-4 text-sm text-rose-300">加载失败：{conflictError}</p>
-                ) : null}
               </div>
 
-              <div className="space-y-4">
-                {conflicts.length === 0 ? (
-                  <p className="text-sm text-slate-400">暂无冲突记录。</p>
-                ) : (
-                  conflicts.map((conflict) => (
-                    <div
-                      key={conflict.id}
-                      className="soft-panel rounded-3xl border border-slate-800/60 p-6"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="space-y-1">
-                          <p className="text-xs uppercase tracking-[0.3em] text-slate-400">本地路径</p>
-                          <p className="text-sm text-slate-200">{conflict.local_path}</p>
-                          <p className="text-xs text-slate-500">云端 token：{conflict.cloud_token}</p>
-                          <p className="text-xs text-slate-500">
-                            哈希：{conflict.local_hash.slice(0, 8)} / {conflict.db_hash.slice(0, 8)}
-                          </p>
-                        </div>
-                        <StatusPill
-                          label={conflict.resolved ? "已处理" : "待处理"}
-                          tone={conflict.resolved ? "success" : "warning"}
-                        />
-                      </div>
-                      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.3em] text-slate-400">本地版本</p>
-                          <pre className="mt-2 max-h-56 overflow-auto rounded-2xl border border-slate-800 bg-black/30 p-3 text-xs text-slate-300">
-                            {conflict.local_preview || "暂无本地预览。"}
-                          </pre>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.3em] text-slate-400">云端版本</p>
-                          <pre className="mt-2 max-h-56 overflow-auto rounded-2xl border border-slate-800 bg-black/30 p-3 text-xs text-slate-300">
-                            {conflict.cloud_preview || "暂无云端预览。"}
-                          </pre>
-                        </div>
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-3">
-                        <button
-                          className="rounded-full bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={conflict.resolved}
-                          onClick={() => resolveConflict(conflict.id, "use_local")}
-                          type="button"
-                        >
-                          使用本地
-                        </button>
-                        <button
-                          className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={conflict.resolved}
-                          onClick={() => resolveConflict(conflict.id, "use_cloud")}
-                          type="button"
-                        >
-                          使用云端
-                        </button>
-                        {conflict.resolved ? (
-                          <span className="self-center text-xs text-slate-400">
-                            已处理：{conflict.resolved_action}
-                          </span>
-                        ) : null}
-                      </div>
+              {logTab === "logs" ? (
+                <div className="soft-panel rounded-3xl p-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-50">同步日志流</h3>
+                      <p className="mt-1 text-xs text-slate-400">
+                        支持筛选、搜索与批量查看。
+                      </p>
                     </div>
-                  ))
-                )}
-              </div>
+                    <button
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                      onClick={loadTaskStatus}
+                      type="button"
+                    >
+                      <IconRefresh className="h-3.5 w-3.5" />
+                      刷新日志
+                    </button>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.6fr_0.6fr]">
+                    <input
+                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                      placeholder="搜索任务名、路径或错误信息"
+                      value={logFilterText}
+                      onChange={(event) => setLogFilterText(event.target.value)}
+                    />
+                    <select
+                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                      value={logFilterStatus}
+                      onChange={(event) => setLogFilterStatus(event.target.value)}
+                    >
+                      <option value="all">全部状态</option>
+                      <option value="downloaded">下载</option>
+                      <option value="uploaded">上传</option>
+                      <option value="success">成功</option>
+                      <option value="failed">失败</option>
+                      <option value="skipped">跳过</option>
+                      <option value="started">开始</option>
+                    </select>
+                    <button
+                      className="rounded-full border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-500"
+                      onClick={() => setLogLimit(60)}
+                      type="button"
+                    >
+                      重置视图
+                    </button>
+                  </div>
+                  <div className="mt-5 space-y-3">
+                    {filteredLogs.length === 0 ? (
+                      <p className="text-sm text-slate-400">暂无匹配日志。</p>
+                    ) : (
+                      filteredLogs.slice(0, logLimit).map((entry, index) => (
+                        <div
+                          key={`${entry.taskId}-${entry.timestamp}-${index}`}
+                          className="rounded-2xl border border-slate-800 bg-white/5 p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="text-xs text-slate-400">
+                                {formatTimestamp(entry.timestamp)}
+                              </p>
+                              <p className="text-sm font-semibold text-slate-200">
+                                {entry.taskName}
+                              </p>
+                              <p className="text-xs text-slate-400 break-all">{entry.path}</p>
+                            </div>
+                            <StatusPill
+                              label={statusLabelMap[entry.status] || entry.status}
+                              tone={
+                                entry.status === "failed"
+                                  ? "danger"
+                                  : entry.status === "skipped"
+                                    ? "warning"
+                                    : "success"
+                              }
+                            />
+                          </div>
+                          {entry.message ? (
+                            <p className="mt-3 text-xs text-slate-500">{entry.message}</p>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {filteredLogs.length > logLimit ? (
+                    <div className="mt-4 flex justify-center">
+                      <button
+                        className="rounded-full border border-slate-700 px-5 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                        onClick={() => setLogLimit((prev) => prev + 60)}
+                        type="button"
+                      >
+                        加载更多
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="soft-panel rounded-3xl p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-50">冲突管理</h3>
+                        <p className="mt-1 text-xs text-slate-400">
+                          处理云端与本地同时修改产生的冲突。
+                        </p>
+                      </div>
+                      <button
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                        onClick={loadConflicts}
+                        disabled={conflictLoading}
+                        type="button"
+                      >
+                        <IconRefresh className="h-3.5 w-3.5" />
+                        {conflictLoading ? "加载中..." : "刷新"}
+                      </button>
+                    </div>
+                    {conflictError ? (
+                      <p className="mt-4 text-sm text-rose-300">加载失败：{conflictError}</p>
+                    ) : null}
+                  </div>
+
+                  {conflicts.length === 0 ? (
+                    <p className="text-sm text-slate-400">暂无冲突记录。</p>
+                  ) : (
+                    conflicts.map((conflict) => (
+                      <div
+                        key={conflict.id}
+                        className="soft-panel rounded-3xl border border-slate-800/60 p-6"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="space-y-1">
+                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">本地路径</p>
+                            <p className="text-sm text-slate-200">{conflict.local_path}</p>
+                            <p className="text-xs text-slate-500">云端 token：{conflict.cloud_token}</p>
+                            <p className="text-xs text-slate-500">
+                              哈希：{conflict.local_hash.slice(0, 8)} / {conflict.db_hash.slice(0, 8)}
+                            </p>
+                          </div>
+                          <StatusPill
+                            label={conflict.resolved ? "已处理" : "待处理"}
+                            tone={conflict.resolved ? "success" : "warning"}
+                          />
+                        </div>
+                        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">本地版本</p>
+                            <pre className="mt-2 max-h-56 overflow-auto rounded-2xl border border-slate-800 bg-black/30 p-3 text-xs text-slate-300">
+                              {conflict.local_preview || "暂无本地预览。"}
+                            </pre>
+                          </div>
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">云端版本</p>
+                            <pre className="mt-2 max-h-56 overflow-auto rounded-2xl border border-slate-800 bg-black/30 p-3 text-xs text-slate-300">
+                              {conflict.cloud_preview || "暂无云端预览。"}
+                            </pre>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          <button
+                            className="rounded-full bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={conflict.resolved}
+                            onClick={() => resolveConflict(conflict.id, "use_local")}
+                            type="button"
+                          >
+                            使用本地
+                          </button>
+                          <button
+                            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={conflict.resolved}
+                            onClick={() => resolveConflict(conflict.id, "use_cloud")}
+                            type="button"
+                          >
+                            使用云端
+                          </button>
+                          {conflict.resolved ? (
+                            <span className="self-center text-xs text-slate-400">
+                              已处理：{conflict.resolved_action}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </section>
           ) : null}
+          
           {activeTab === "settings" ? (
             <section className="space-y-6 fade-up">
               <div className="soft-panel rounded-3xl p-6">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-50">OAuth 配置</h2>
-                  <p className="mt-1 text-xs text-slate-400">
-                    参考 docs/OAUTH_GUIDE.md 获取参数，并确保保存成功。
-                  </p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-50">OAuth 配置</h2>
+                    <p className="mt-1 text-xs text-slate-400">
+                      仅填写 App ID / Secret / Redirect URI 即可完成授权。
+                    </p>
+                  </div>
+                  <button
+                    className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                    onClick={() => setActiveTab("guide")}
+                    type="button"
+                  >
+                    打开配置指南
+                  </button>
                 </div>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <input
-                    className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                    placeholder="授权地址 auth_authorize_url"
-                    value={configAuthorizeUrl}
-                    onChange={(event) => setConfigAuthorizeUrl(event.target.value)}
-                  />
-                  <input
-                    className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                    placeholder="Token 地址 auth_token_url"
-                    value={configTokenUrl}
-                    onChange={(event) => setConfigTokenUrl(event.target.value)}
-                  />
                   <input
                     className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
                     placeholder="App ID"
@@ -1778,22 +1973,12 @@ export default function App() {
                     value={configRedirectUri}
                     onChange={(event) => setConfigRedirectUri(event.target.value)}
                   />
-                </div>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <textarea
                     className="min-h-[90px] w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200 md:col-span-2"
-                    placeholder="Scopes（逗号分隔）"
+                    placeholder="Scopes（逗号分隔，可从配置指南复制）"
                     value={configScopes}
                     onChange={(event) => setConfigScopes(event.target.value)}
                   />
-                  <select
-                    className="rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                    value={configTokenStore}
-                    onChange={(event) => setConfigTokenStore(event.target.value)}
-                  >
-                    <option value="keyring">密钥库存储</option>
-                    <option value="file">文件存储</option>
-                  </select>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <button
@@ -1804,9 +1989,40 @@ export default function App() {
                   >
                     {configLoading ? "保存中..." : "保存配置"}
                   </button>
+                  <button
+                    className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                    onClick={() => setShowAuthAdvanced((prev) => !prev)}
+                    type="button"
+                  >
+                    {showAuthAdvanced ? "收起高级设置" : "展开高级设置"}
+                  </button>
                   {configStatus ? <span className="text-sm text-emerald-300">{configStatus}</span> : null}
                   {configError ? <span className="text-sm text-rose-300">错误：{configError}</span> : null}
                 </div>
+                {showAuthAdvanced ? (
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <input
+                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                      placeholder="授权地址 auth_authorize_url（默认可空）"
+                      value={configAuthorizeUrl}
+                      onChange={(event) => setConfigAuthorizeUrl(event.target.value)}
+                    />
+                    <input
+                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                      placeholder="Token 地址 auth_token_url（默认可空）"
+                      value={configTokenUrl}
+                      onChange={(event) => setConfigTokenUrl(event.target.value)}
+                    />
+                    <select
+                      className="rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                      value={configTokenStore}
+                      onChange={(event) => setConfigTokenStore(event.target.value)}
+                    >
+                      <option value="keyring">密钥库存储</option>
+                      <option value="file">文件存储</option>
+                    </select>
+                  </div>
+                ) : null}
               </div>
 
               <div className="soft-panel rounded-3xl p-6">
@@ -1853,180 +2069,198 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="grid gap-6 lg:grid-cols-2">
-                <div className="soft-panel rounded-3xl p-6">
-                  <h2 className="text-lg font-semibold text-slate-50">手动上传 Markdown</h2>
-                  <p className="mt-1 text-xs text-slate-400">
-                    用于快速验证 Docx 全量覆盖与图片上传链路。
-                  </p>
-                  <div className="mt-4 space-y-3">
-                    <input
-                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                      placeholder="Docx 文档 token"
-                      value={uploadDocumentId}
-                      onChange={(event) => setUploadDocumentId(event.target.value)}
-                    />
-                    <input
-                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                      placeholder="Markdown 文件路径，例如 D:\\Docs\\note.md"
-                      value={uploadMarkdownPath}
-                      onChange={(event) => setUploadMarkdownPath(event.target.value)}
-                    />
-                    <select
-                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                      value={uploadTaskId}
-                      onChange={(event) => setUploadTaskId(event.target.value)}
-                    >
-                      <option value="">选择任务（可选）</option>
-                      {tasks.map((task) => (
-                        <option key={task.id} value={task.id}>
-                          {task.name || task.local_path}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                      placeholder="base_path（可选）"
-                      value={uploadBasePath}
-                      onChange={(event) => setUploadBasePath(event.target.value)}
-                    />
-                    <select
-                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                      value={uploadUpdateMode}
-                      onChange={(event) => setUploadUpdateMode(event.target.value)}
-                    >
-                      <option value="auto">更新模式：自动</option>
-                      <option value="partial">更新模式：局部</option>
-                      <option value="full">更新模式：全量</option>
-                    </select>
-                    <button
-                      className="rounded-full bg-emerald-500/20 px-5 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={uploadMarkdown}
-                      disabled={uploadLoading}
-                      type="button"
-                    >
-                      {uploadLoading ? "上传中..." : "开始上传"}
-                    </button>
-                    {uploadStatus ? <p className="text-sm text-emerald-300">{uploadStatus}</p> : null}
-                    {uploadError ? <p className="text-sm text-rose-300">错误：{uploadError}</p> : null}
-                  </div>
-                </div>
-
-                <div className="soft-panel rounded-3xl p-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-slate-50">本地监听</h2>
-                    <StatusPill label={`WS ${wsStatus}`} tone={wsStatus === "open" ? "success" : "warning"} />
-                  </div>
-                  <p className="mt-1 text-xs text-slate-400">
-                    监听本地目录变更并推送事件。
-                  </p>
-                  <div className="mt-4 space-y-3">
-                    <input
-                      className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
-                      placeholder="输入需要监听的本地路径"
-                      value={watchPath}
-                      onChange={(event) => setWatchPath(event.target.value)}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        className="rounded-full bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={watcherRunning}
-                        onClick={startWatcher}
-                        type="button"
-                      >
-                        启动监听
-                      </button>
-                      <button
-                        className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={!watcherRunning}
-                        onClick={stopWatcher}
-                        type="button"
-                      >
-                        停止监听
-                      </button>
-                      <span className="self-center text-xs text-slate-400">
-                        状态：{watcherRunning ? "运行中" : "未启动"}
-                      </span>
-                    </div>
-                    {watcherError ? <p className="text-sm text-rose-300">错误：{watcherError}</p> : null}
-                  </div>
-                  <div className="mt-4 max-h-40 space-y-2 overflow-auto rounded-2xl border border-slate-800 bg-black/30 p-3 text-xs text-slate-300">
-                    {events.length === 0 ? (
-                      <p className="text-slate-500">暂无监听事件。</p>
-                    ) : (
-                      events.map((evt, index) => (
-                        <div key={`${evt.timestamp}-${index}`}>
-                          <p className="text-slate-400">{evt.event_type}</p>
-                          <p className="break-all">{evt.src_path}</p>
-                          {evt.dest_path ? (
-                            <p className="text-slate-500">
-                              {"->"} {evt.dest_path}
-                            </p>
-                          ) : null}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
               <div className="soft-panel rounded-3xl p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-lg font-semibold text-slate-50">云端目录预览</h2>
-                    <p className="mt-1 text-xs text-slate-400">用于校验云端目录结构与选择范围。</p>
+                    <h2 className="text-lg font-semibold text-slate-50">高级工具</h2>
+                    <p className="mt-1 text-xs text-slate-400">
+                      手动上传与本地监听仅用于诊断或调试场景。
+                    </p>
                   </div>
                   <button
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
-                    onClick={loadTree}
+                    className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500"
+                    onClick={() => setShowAdvancedTools((prev) => !prev)}
                     type="button"
                   >
-                    <IconRefresh className="h-3.5 w-3.5" />
-                    刷新目录
+                    {showAdvancedTools ? "收起" : "展开"}
                   </button>
                 </div>
-                <div className="mt-4 rounded-2xl border border-slate-800 bg-black/30 p-4">
-                  {treeLoading ? (
-                    <p className="text-sm text-slate-400">目录加载中...</p>
-                  ) : treeError ? (
-                    <p className="text-sm text-rose-300">{treeError}</p>
-                  ) : tree ? (
-                    <ul className="space-y-3">
-                      <TreeNode node={tree} />
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-slate-400">尚未加载目录树。</p>
-                  )}
-                </div>
+                {showAdvancedTools ? (
+                  <div className="mt-4 grid gap-6 lg:grid-cols-2">
+                    <div className="rounded-3xl border border-slate-800 bg-white/5 p-5">
+                      <h3 className="text-base font-semibold text-slate-50">手动上传 Markdown</h3>
+                      <p className="mt-1 text-xs text-slate-400">
+                        用于快速验证 Docx 全量覆盖与图片上传链路。
+                      </p>
+                      <div className="mt-4 space-y-3">
+                        <input
+                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                          placeholder="Docx 文档 token"
+                          value={uploadDocumentId}
+                          onChange={(event) => setUploadDocumentId(event.target.value)}
+                        />
+                        <input
+                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                          placeholder="Markdown 文件路径，例如 D:\\Docs\\note.md"
+                          value={uploadMarkdownPath}
+                          onChange={(event) => setUploadMarkdownPath(event.target.value)}
+                        />
+                        <select
+                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                          value={uploadTaskId}
+                          onChange={(event) => setUploadTaskId(event.target.value)}
+                        >
+                          <option value="">选择任务（可选）</option>
+                          {tasks.map((task) => (
+                            <option key={task.id} value={task.id}>
+                              {task.name || task.local_path}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                          placeholder="base_path（可选）"
+                          value={uploadBasePath}
+                          onChange={(event) => setUploadBasePath(event.target.value)}
+                        />
+                        <select
+                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                          value={uploadUpdateMode}
+                          onChange={(event) => setUploadUpdateMode(event.target.value)}
+                        >
+                          <option value="auto">更新模式：自动</option>
+                          <option value="partial">更新模式：局部</option>
+                          <option value="full">更新模式：全量</option>
+                        </select>
+                        <button
+                          className="rounded-full bg-emerald-500/20 px-5 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={uploadMarkdown}
+                          disabled={uploadLoading}
+                          type="button"
+                        >
+                          {uploadLoading ? "上传中..." : "开始上传"}
+                        </button>
+                        {uploadStatus ? <p className="text-sm text-emerald-300">{uploadStatus}</p> : null}
+                        {uploadError ? <p className="text-sm text-rose-300">错误：{uploadError}</p> : null}
+                      </div>
+                    </div>
+
+                    <div className="rounded-3xl border border-slate-800 bg-white/5 p-5">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-base font-semibold text-slate-50">本地监听</h3>
+                        <StatusPill
+                          label={`WS ${wsStatus}`}
+                          tone={wsStatus === "open" ? "success" : "warning"}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">
+                        监听本地目录变更并推送事件。
+                      </p>
+                      <div className="mt-4 space-y-3">
+                        <input
+                          className="w-full rounded-2xl border border-slate-700 bg-transparent px-4 py-2 text-sm text-slate-200"
+                          placeholder="输入需要监听的本地路径"
+                          value={watchPath}
+                          onChange={(event) => setWatchPath(event.target.value)}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className="rounded-full bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={watcherRunning}
+                            onClick={startWatcher}
+                            type="button"
+                          >
+                            启动监听
+                          </button>
+                          <button
+                            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={!watcherRunning}
+                            onClick={stopWatcher}
+                            type="button"
+                          >
+                            停止监听
+                          </button>
+                          <span className="self-center text-xs text-slate-400">
+                            状态：{watcherRunning ? "运行中" : "未启动"}
+                          </span>
+                        </div>
+                        {watcherError ? <p className="text-sm text-rose-300">错误：{watcherError}</p> : null}
+                      </div>
+                      <div className="mt-4 max-h-40 space-y-2 overflow-auto rounded-2xl border border-slate-800 bg-black/30 p-3 text-xs text-slate-300">
+                        {events.length === 0 ? (
+                          <p className="text-slate-500">暂无监听事件。</p>
+                        ) : (
+                          events.map((evt, index) => (
+                            <div key={`${evt.timestamp}-${index}`}>
+                              <p className="text-slate-400">{evt.event_type}</p>
+                              <p className="break-all">{evt.src_path}</p>
+                              {evt.dest_path ? (
+                                <p className="text-slate-500">
+                                  {"->"} {evt.dest_path}
+                                </p>
+                              ) : null}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </section>
           ) : null}
 
-          {activeTab === "about" ? (
+          {activeTab === "guide" ? (
             <section className="space-y-6 fade-up">
               <div className="soft-panel rounded-3xl p-6">
-                <h2 className="text-lg font-semibold text-slate-50">关于 LarkSync</h2>
+                <h2 className="text-lg font-semibold text-slate-50">配置指南</h2>
                 <p className="mt-2 text-sm text-slate-400">
-                  LarkSync 旨在打通飞书云端文档与本地 Markdown 的双向协作，提供可靠的同步、转码与冲突处理能力。
+                  请按照以下步骤完成飞书应用配置与授权（详细说明见 docs/OAUTH_GUIDE.md）。
                 </p>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="mt-6 grid gap-4 lg:grid-cols-3">
                   <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">默认策略</p>
-                    <ul className="mt-3 space-y-2 text-sm text-slate-200">
-                      <li>本地 {"->"} 云端：每 2 秒触发上传队列</li>
-                      <li>云端 {"->"} 本地：每日 01:00 自动下载</li>
-                      <li>支持手动触发与任务级别配置</li>
-                    </ul>
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">步骤 1</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-200">创建应用</p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      在飞书开放平台创建自建应用，获取 App ID 与 App Secret。
+                    </p>
                   </div>
                   <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">参考文档</p>
-                    <ul className="mt-3 space-y-2 text-sm text-slate-200">
-                      <li>docs/SYNC_LOGIC.md</li>
-                      <li>docs/USAGE.md</li>
-                      <li>docs/OAUTH_GUIDE.md</li>
-                    </ul>
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">步骤 2</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-200">配置回调</p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      将本地回调地址填入 Redirect URI，并开启 OAuth 权限。
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">步骤 3</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-200">申请权限</p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      复制必要 scopes 并提交审核，确保用户授权通过。
+                    </p>
                   </div>
                 </div>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <button
+                    className="rounded-full bg-blue-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-400"
+                    onClick={() => setActiveTab("settings")}
+                    type="button"
+                  >
+                    前往配置页面
+                  </button>
+                  <div className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200">
+                    参考文档：docs/OAUTH_GUIDE.md
+                  </div>
+                </div>
+              </div>
+
+              <div className="soft-panel rounded-3xl p-6">
+                <h3 className="text-base font-semibold text-slate-50">常见检查项</h3>
+                <ul className="mt-3 space-y-2 text-sm text-slate-200">
+                  <li>确认已启用用户身份权限与 Drive/Docx 相关 scope。</li>
+                  <li>Redirect URI 与本地端口保持一致（默认 3666/8000）。</li>
+                  <li>保存配置后重新授权，确保 access_token 已刷新。</li>
+                </ul>
               </div>
             </section>
           ) : null}
@@ -2048,6 +2282,24 @@ export default function App() {
               >
                 关闭
               </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">步骤 1</p>
+                <p className="mt-2 text-sm font-semibold text-slate-200">选择本地目录</p>
+                <p className="mt-2 text-xs text-slate-400">用于监听与写入文件。</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">步骤 2</p>
+                <p className="mt-2 text-sm font-semibold text-slate-200">选择云端目录</p>
+                <p className="mt-2 text-xs text-slate-400">用于同步的飞书文件夹。</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-white/5 p-4">
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">步骤 3</p>
+                <p className="mt-2 text-sm font-semibold text-slate-200">设置同步策略</p>
+                <p className="mt-2 text-xs text-slate-400">选择模式与更新策略。</p>
+              </div>
             </div>
 
             <div className="mt-6 grid gap-6 lg:grid-cols-2">
