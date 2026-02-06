@@ -575,7 +575,24 @@ class DocxTranscoder:
             if not text:
                 return []
             line = f"{'#' * level} {text}".strip()
-            return [self._line_with_prefix(prefix, line, keep_blank=keep_blank)]
+            lines = [self._line_with_prefix(prefix, line, keep_blank=keep_blank)]
+            children = parser.children_ids(block.get("block_id", ""))
+            if children:
+                child_lines = self._render_block_ids(
+                    children,
+                    parser,
+                    document_id,
+                    images,
+                    attachments,
+                    base_dir=base_dir,
+                    link_map=link_map,
+                    base_indent=base_indent,
+                    quote_prefix=quote_prefix,
+                )
+                if lines and child_lines and lines[-1] != "":
+                    lines.append("")
+                lines.extend(child_lines)
+            return lines
 
         if block_type == BLOCK_TYPE_TEXT:
             text = parser.text_from_block(block, strip=False)

@@ -530,6 +530,39 @@ async def test_transcoder_text_block_multiline_keeps_prefix(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_transcoder_heading_renders_children(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["h2"]},
+        {
+            "block_id": "h2",
+            "block_type": 4,
+            "parent_id": "root",
+            "children": ["t1", "t2"],
+            "heading2": {"elements": [{"text_run": {"content": "催办"}}]},
+        },
+        {
+            "block_id": "t1",
+            "block_type": 17,
+            "parent_id": "h2",
+            "todo": {"style": {"done": False}, "elements": [{"text_run": {"content": "事项一"}}]},
+        },
+        {
+            "block_id": "t2",
+            "block_type": 17,
+            "parent_id": "h2",
+            "todo": {"style": {"done": True}, "elements": [{"text_run": {"content": "事项二"}}]},
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-heading", blocks)
+
+    assert "## 催办" in markdown
+    assert "- [ ] 事项一" in markdown
+    assert "- [x] 事项二" in markdown
+
+
+@pytest.mark.asyncio
 async def test_transcoder_renders_mentions_and_reminders(tmp_path: Path) -> None:
     blocks = [
         {"block_id": "root", "block_type": 1, "children": ["p1"]},
