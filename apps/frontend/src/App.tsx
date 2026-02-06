@@ -1018,6 +1018,30 @@ export default function App() {
       { id: "settings", label: "设置", icon: IconSettings }
     ];
 
+    const headerCopy: Record<NavKey, { eyebrow: string; title: string; subtitle: string }> = {
+      dashboard: {
+        eyebrow: "仪表盘",
+        title: "保持本地与云端一致的同步节奏",
+        subtitle: "连接状态、任务调度与日志都集中在这里，随时掌握同步进度。"
+      },
+      tasks: {
+        eyebrow: "同步任务",
+        title: "让每个同步任务都清晰可控",
+        subtitle: "集中管理路径、状态、进度与同步策略，支持快速操作。"
+      },
+      logcenter: {
+        eyebrow: "日志中心",
+        title: "用时间线追踪每一次同步",
+        subtitle: "统一查看同步日志与冲突处理结果，快速定位问题。"
+      },
+      settings: {
+        eyebrow: "设置",
+        title: "配置授权与同步节奏",
+        subtitle: "填写应用凭证并调整同步策略，确保授权与调度一致。"
+      }
+    };
+    const activeHeader = headerCopy[activeTab];
+
   const renderModeIcon = (mode: string) => {
     if (mode === "download_only") {
       return <IconArrowDown className="h-4 w-4" />;
@@ -1117,10 +1141,10 @@ export default function App() {
         <main className="flex-1 space-y-6">
           <header className="glass-panel flex flex-wrap items-center justify-between gap-4 rounded-3xl p-6">
             <div className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">LarkSync 控制台</p>
-              <p className="text-xl font-semibold text-slate-50">保持本地与云端一致的同步节奏</p>
+              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{activeHeader.eyebrow}</p>
+              <p className="text-xl font-semibold text-slate-50">{activeHeader.title}</p>
               <p className="text-sm text-slate-400">
-                连接状态、任务调度与日志都集中在这里，随时掌握同步进度。
+                {activeHeader.subtitle}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
