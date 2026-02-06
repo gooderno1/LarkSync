@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.1.36-dev.33 (2026-02-06)
+- 目标：修复块级映射不一致导致 partial 失败；避免端口被占用时自动飘到 3667。
+- 结果：
+  - partial 更新遇到“块级映射不一致”时自动重建基线（bootstrap），再继续局部更新，避免直接失败。
+  - 前端 dev server 开启 strictPort，端口固定为 3666，不再自动递增。
+  - 新增单测覆盖映射不一致时的 bootstrap。
+- 测试：
+  - `python -m pytest tests/test_sync_runner_block_update.py -q`（apps/backend，2 passed）。
+- 问题：无阻塞问题。
+
 ## v0.1.36-dev.32 (2026-02-06)
 - 目标：修复“催办”标题下子内容未渲染问题。
 - 结果：

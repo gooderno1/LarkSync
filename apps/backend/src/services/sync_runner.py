@@ -676,6 +676,7 @@ class SyncTaskRunner:
                             markdown=markdown,
                             base_path=base_path,
                             file_path=path,
+                            status=status,
                             force=update_mode == "partial",
                         )
                     except RuntimeError:
@@ -758,9 +759,11 @@ class SyncTaskRunner:
         cloud_token: str,
         docx_service: DocxService,
         status: SyncTaskStatus,
+        children_count: int | None = None,
     ) -> None:
-        root_block, _ = await docx_service.get_root_block(cloud_token)
-        children = root_block.get("children") or []
+        if children_count is None:
+            root_block, _ = await docx_service.get_root_block(cloud_token)
+            children_count = len(root_block.get("children") or [])
         now = time.time()
         await self._block_service.replace_blocks(
             str(path),
@@ -771,8 +774,8 @@ class SyncTaskRunner:
                     local_path=str(path),
                     cloud_token=cloud_token,
                     block_index=0,
-                    block_hash=f"__bootstrap__:{len(children)}",
-                    block_count=len(children),
+                    block_hash=f"__bootstrap__:{children_count}",
+                    block_count=children_count,
                     updated_at=now,
                     created_at=now,
                 )
@@ -782,14 +785,14 @@ class SyncTaskRunner:
             SyncFileEvent(
                 path=str(path),
                 status="bootstrapped",
-                message=f"缺少块级状态，已自动初始化（children={len(children)}）",
+                message=f"缺少块级状态，已自动初始化（children={children_count}）",
             )
         )
         logger.info(
             "块级状态自动初始化: path={} token={} children={}",
             path,
             cloud_token,
-            len(children),
+            children_count,
         )
 
     async def _create_cloud_doc_for_markdown(
@@ -1048,6 +1051,7 @@ class SyncTaskRunner:
         markdown: str,
         base_path: str,
         file_path: Path,
+        status: SyncTaskStatus,
         force: bool,
     ) -> bool:
         blocks = split_markdown_blocks(markdown)
@@ -1065,9 +1069,22 @@ class SyncTaskRunner:
         root_children = root_block.get("children") or []
         if total_existing != len(root_children):
             if force:
-                raise RuntimeError("块级映射不一致，无法局部更新")
-            logger.info("块级更新跳过: 映射数量不一致")
-            return False
+                await self._bootstrap_block_state(
+                    path=file_path,
+                    cloud_token=document_id,
+                    docx_service=docx_service,
+                    status=status,
+                    children_count=len(root_children),
+                )
+                existing = await self._block_service.list_blocks(
+                    str(file_path), document_id
+                )
+                total_existing = sum(item.block_count for item in existing)
+                if total_existing != len(root_children):
+                    raise RuntimeError("块级映射不一致，无法局部更新")
+            else:
+                logger.info("块级更新跳过: 映射数量不一致")
+                return False
 
         matcher = difflib.SequenceMatcher(
             a=[item.block_hash for item in existing], b=block_hashes
