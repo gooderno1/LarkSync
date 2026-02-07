@@ -28,11 +28,11 @@ if _PROJECT_ROOT not in sys.path:
 
 from apps.tray.config import (
     BACKEND_URL,
-    DASHBOARD_URL,
-    SETTINGS_URL,
-    LOGS_URL,
     STATUS_POLL_INTERVAL,
     TRAY_STATUS_URL,
+    get_dashboard_url,
+    get_settings_url,
+    get_logs_url,
 )
 from apps.tray.backend_manager import BackendManager
 from apps.tray.icon_generator import generate_icons, get_icon_path
@@ -77,8 +77,9 @@ class LarkSyncTray:
         print("正在启动 LarkSync 后端...")
         success = self._backend.start(wait=True)
         if success:
-            print("后端已就绪，打开管理面板...")
-            webbrowser.open(DASHBOARD_URL)
+            dashboard = get_dashboard_url()
+            print(f"后端已就绪，打开管理面板: {dashboard}")
+            webbrowser.open(dashboard)
         else:
             print("警告：后端启动失败，请检查日志。")
 
@@ -155,13 +156,13 @@ class LarkSyncTray:
     # ---- 菜单回调 ----
 
     def _on_open_dashboard(self, icon=None, item=None) -> None:
-        webbrowser.open(DASHBOARD_URL)
+        webbrowser.open(get_dashboard_url())
 
     def _on_open_settings(self, icon=None, item=None) -> None:
-        webbrowser.open(SETTINGS_URL)
+        webbrowser.open(get_settings_url())
 
     def _on_open_logs(self, icon=None, item=None) -> None:
-        webbrowser.open(LOGS_URL)
+        webbrowser.open(get_logs_url())
 
     def _on_sync_now(self, icon=None, item=None) -> None:
         """触发所有启用任务立即运行。"""
