@@ -90,7 +90,11 @@ class LarkSyncTray:
         print(f"正在启动 LarkSync 后端（{mode_label}模式）...")
         success = self._backend.start(wait=True)
         if success:
-            dashboard = get_dashboard_url()
+            # dev 模式直接打开 3666（Vite），无需端口检测
+            if self._dev_mode:
+                dashboard = f"{VITE_DEV_URL}/"
+            else:
+                dashboard = get_dashboard_url()
             print(f"后端已就绪，打开管理面板: {dashboard}")
             webbrowser.open(dashboard)
         else:
