@@ -147,7 +147,16 @@ if _FRONTEND_DIST.is_dir() and _INDEX_HTML.is_file():
             return FileResponse(str(favicon))
         return HTMLResponse("", status_code=204)
 
-    # SPA Fallback：所有未匹配的 GET 请求返回 index.html
+    # MIME 类型映射（常见静态资源）
+    _MIME_MAP = {
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".gif": "image/gif", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+        ".webp": "image/webp", ".css": "text/css", ".js": "application/javascript",
+        ".json": "application/json", ".woff": "font/woff", ".woff2": "font/woff2",
+        ".ttf": "font/ttf", ".html": "text/html", ".txt": "text/plain",
+    }
+
+    # SPA Fallback：优先检查 dist 目录下的静态文件，否则返回 index.html
     # 注意：这必须放在所有路由之后
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str):
@@ -156,4 +165,13 @@ if _FRONTEND_DIST.is_dir() and _INDEX_HTML.is_file():
                                   "sync/", "watcher/", "system/", "ws/",
                                   "health", "tray/", "docs", "openapi")):
             return HTMLResponse("Not found", status_code=404)
+
+        # 先检查 dist 目录下是否有对应的静态文件
+        static_file = _FRONTEND_DIST / full_path
+        if static_file.is_file() and _FRONTEND_DIST in static_file.resolve().parents:
+            suffix = static_file.suffix.lower()
+            media_type = _MIME_MAP.get(suffix)
+            return FileResponse(str(static_file), media_type=media_type)
+
+        # 不存在的路径 → SPA fallback（返回 index.html，由前端路由处理）
         return FileResponse(str(_INDEX_HTML), media_type="text/html")

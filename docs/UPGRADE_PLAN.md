@@ -36,35 +36,26 @@ v1.0.0  正式发布
 
 > 设计文档：[`docs/design/v0.4.0-desktop-tray-design.md`](design/v0.4.0-desktop-tray-design.md)
 
-### v0.4.0-dev.1 — FastAPI 静态文件服务 + 构建脚本
-- [ ] `main.py` 增加静态文件服务（检测 dist/ 目录，挂载 + SPA fallback）
-- [ ] `scripts/build.py` 构建脚本（调用 npm build + 验证 dist/）
-- [ ] 前端 `vite.config.ts` 确认 base 路径配置正确
-- [ ] 验证：单独运行 `uvicorn` 可访问完整应用
+### v0.4.0-dev.1 — FastAPI 静态文件服务 + 构建脚本 ✅
+- [x] `main.py` 增加静态文件服务（检测 dist/ 目录，挂载 + SPA fallback）
+- [x] `scripts/build.py` 构建脚本（调用 npm build + 验证 dist/）
+- [x] 前端 `api.ts` 基址改为 `VITE_API_BASE` 环境变量配置
+- [x] 验证：单独运行 `uvicorn` 可访问完整应用
+- [x] 托盘应用核心：`apps/tray/` 目录结构 + tray_app + backend_manager + config
+- [x] 一键启动器：LarkSync.pyw / .command / .bat
+- [x] 状态轮询 + 图标动态变色（5 秒轮询 /tray/status）
+- [x] 后端新增 `GET /tray/status` 聚合状态接口
+- [x] 系统通知：notifier.py（plyer + 60 秒去重 + PowerShell fallback）
+- [x] 开机自启动：autostart.py（Windows Startup / macOS LaunchAgent）
+- [x] PyInstaller 打包配置：build_installer.py + spec 自动生成
 
-### v0.4.0-dev.2 — 托盘应用核心
-- [ ] 创建 `apps/tray/` 目录结构
-- [ ] `tray_app.py`：pystray 托盘主程序 + 右键菜单
-- [ ] `backend_manager.py`：后端进程启动/停止/健康检查/自动重启
-- [ ] `config.py`：托盘配置（端口、超时等）
-- [ ] 托盘图标资源（4 种状态 PNG）
-- [ ] 验证：运行 tray_app.py，托盘出现 → 后端自动启动 → 菜单可打开浏览器
-
-### v0.4.0-dev.3 — 一键启动器 + 状态轮询 + 图标动态变色
-- [ ] `LarkSync.pyw`（Windows 无终端启动器）
-- [ ] `LarkSync.command`（macOS 启动器）
-- [ ] `status_poller.py`：定期查询 /health + /sync/tasks/status
-- [ ] 托盘图标根据状态动态切换颜色
-- [ ] 后端新增 `GET /api/tray/status` 聚合状态接口
-- [ ] 验证：双击 .pyw 启动 → 图标随同步状态变色
-
-### v0.4.0-dev.4 — 系统通知 + 开机自启动
-- [ ] `notifier.py`：plyer 系统通知（同步完成/冲突/错误）
-- [ ] 通知去重（60s 内同类不重复）
-- [ ] `autostart.py`：Windows 快捷方式 / macOS LaunchAgent
-- [ ] 托盘菜单"开机自启动"选项可切换
-- [ ] 后端新增 `POST /api/tray/pause-all` / `resume-all` 接口
-- [ ] 验证：冲突时弹出通知 → 开机自启功能正常
+### v0.4.0-dev.2 — 修复 + 品牌集成 ✅
+- [x] 端口冲突修复：智能检测已有后端并复用
+- [x] 单实例锁：防止多次启动（端口锁 48901）
+- [x] BAT 启动器清理旧进程
+- [x] SPA fallback 修复：dist 根目录静态文件正确服务
+- [x] 品牌 Logo 集成：托盘 4 状态变体 + favicon + 侧边栏横版 Logo
+- [x] 开发/生产 URL 自动检测（有 dist → 8000，无 dist → 3666）
 
 ---
 
@@ -110,4 +101,5 @@ v1.0.0  正式发布
 
 | 日期 | 变更 |
 |------|------|
-| 2026-02-07 | 初始创建，v0.3.x 已完成，v0.4.x 开始规划 |
+| 2026-02-08 | v0.4.0-dev.2 完成：修复 + 品牌集成 |
+| 2026-02-07 | 初始创建，v0.3.x 已完成，v0.4.0-dev.1 完成 |

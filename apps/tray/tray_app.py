@@ -282,8 +282,33 @@ class LarkSyncTray:
         notifier.notify(title, message, category=category)
 
 
+def _acquire_lock() -> bool:
+    """
+    单实例锁：防止多个托盘同时运行。
+    使用端口绑定方式实现跨平台锁。
+    """
+    import socket
+    lock_port = 48901  # 用一个不常见端口作为锁
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind(("127.0.0.1", lock_port))
+        sock.listen(1)
+        # 不关闭 sock — 进程退出时自动释放
+        return True
+    except OSError:
+        return False
+
+
 def main() -> None:
     """入口函数。"""
+    if not _acquire_lock():
+        print("LarkSync 已在运行中，请勿重复启动。")
+        # 尝试打开浏览器让用户看到现有实例
+        from apps.tray.config import get_dashboard_url
+        import webbrowser
+        webbrowser.open(get_dashboard_url())
+        return
+
     app = LarkSyncTray()
     try:
         app.run()
