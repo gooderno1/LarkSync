@@ -11,6 +11,7 @@ import { StatusPill } from "../components/StatusPill";
 import { IconRefresh, IconConflicts, IconCopy } from "../components/Icons";
 import { useToast } from "../components/ui/toast";
 import { cn } from "../lib/utils";
+import { ThemeToggle } from "../components/ThemeToggle";
 import type { SyncLogEntry } from "../types";
 
 export function LogCenterPage() {
@@ -56,7 +57,7 @@ export function LogCenterPage() {
           <h2 className="text-lg font-semibold text-zinc-50">日志中心</h2>
           <p className="mt-1 text-xs text-zinc-400">同步日志与冲突处理统一管理。</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <button
             className={cn("rounded-lg border px-4 py-2 text-xs font-medium transition", logTab === "logs" ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]" : "border-zinc-700 text-zinc-300 hover:bg-zinc-800")}
             onClick={() => setLogTab("logs")}
@@ -71,6 +72,7 @@ export function LogCenterPage() {
           >
             冲突管理 {conflicts.filter((c) => !c.resolved).length > 0 ? `(${conflicts.filter((c) => !c.resolved).length})` : ""}
           </button>
+          <ThemeToggle />
         </div>
       </div>
 

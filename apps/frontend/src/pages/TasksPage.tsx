@@ -11,6 +11,7 @@ import { ModeIcon, IconRefresh, IconPlus, IconPlay, IconTrash, IconFolder, IconC
 import { NewTaskModal } from "../components/NewTaskModal";
 import { confirm } from "../components/ui/confirm-dialog";
 import { useToast } from "../components/ui/toast";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export function TasksPage() {
   const { tasks, taskLoading, taskError, statusMap, refreshTasks, toggleTask, updateSyncMode, updateMode, runTask, deleteTask } = useTasks();
@@ -41,13 +42,14 @@ export function TasksPage() {
           <h2 className="text-lg font-semibold text-zinc-50">同步任务</h2>
           <p className="mt-1 text-xs text-zinc-400">管理任务的同步模式、更新策略与执行状态。</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={refreshTasks} type="button">
             <IconRefresh className="h-3.5 w-3.5" /> 刷新
           </button>
           <button className="inline-flex items-center gap-2 rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white hover:bg-[#3370FF]/80" onClick={() => setShowModal(true)} type="button">
             <IconPlus className="h-3.5 w-3.5" /> 新建任务
           </button>
+          <ThemeToggle />
         </div>
       </div>
 

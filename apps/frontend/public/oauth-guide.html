@@ -5,16 +5,42 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OAuth 配置指南 — LarkSync</title>
   <style>
+    /* ---- Dark theme (default) ---- */
     :root {
       --bg: #09090b;
       --surface: #18181b;
       --border: rgba(63, 63, 70, 0.45);
       --text: #fafafa;
+      --text-body: #d4d4d8;
       --muted: #a1a1aa;
       --brand: #3370ff;
-      --accent: #10b981;
+      --brand-soft: rgba(51, 112, 255, 0.15);
       --code-bg: #27272a;
+      --code-text: #e4e4e7;
+      --warn-bg: rgba(245, 158, 11, 0.08);
+      --warn-border: rgba(245, 158, 11, 0.25);
+      --warn-text: #fbbf24;
+      --quote-bg: rgba(51, 112, 255, 0.06);
     }
+
+    /* ---- Light theme ---- */
+    :root[data-theme="light"] {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --border: rgba(39, 39, 42, 0.12);
+      --text: #09090b;
+      --text-body: #3f3f46;
+      --muted: #71717a;
+      --brand: #2563eb;
+      --brand-soft: rgba(37, 99, 235, 0.1);
+      --code-bg: #f4f4f5;
+      --code-text: #18181b;
+      --warn-bg: rgba(245, 158, 11, 0.06);
+      --warn-border: rgba(217, 119, 6, 0.25);
+      --warn-text: #92400e;
+      --quote-bg: rgba(37, 99, 235, 0.05);
+    }
+
     *, *::before, *::after { box-sizing: border-box; }
     body {
       margin: 0;
@@ -29,9 +55,37 @@
       margin: 0 auto;
       padding: 3rem 1.5rem 5rem;
     }
+    /* top bar */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--brand);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .back-link:hover { text-decoration: underline; }
+    .theme-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.4rem 0.75rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: var(--muted);
+      transition: background 0.15s, color 0.15s;
+    }
+    .theme-btn:hover { background: var(--border); color: var(--text); }
     .badge {
       display: inline-block;
-      background: rgba(51, 112, 255, 0.15);
+      background: var(--brand-soft);
       color: var(--brand);
       font-size: 0.7rem;
       font-weight: 600;
@@ -55,12 +109,13 @@
       border-bottom: 1px solid var(--border);
     }
     h3 { font-size: 1.05rem; font-weight: 600; margin: 1.5rem 0 0.5rem; }
-    p, li { font-size: 0.92rem; color: #d4d4d8; }
+    p, li { font-size: 0.92rem; color: var(--text-body); }
+    strong { color: var(--text); }
     ul, ol { padding-left: 1.25rem; }
     li { margin-bottom: 0.4rem; }
     code {
       background: var(--code-bg);
-      color: #e4e4e7;
+      color: var(--code-text);
       padding: 0.15em 0.45em;
       border-radius: 4px;
       font-size: 0.85em;
@@ -75,12 +130,12 @@
       font-size: 0.85rem;
       line-height: 1.6;
     }
-    pre code { background: none; padding: 0; }
+    pre code { background: none; padding: 0; color: var(--code-text); }
     blockquote {
       margin: 1rem 0;
       padding: 0.75rem 1rem;
       border-left: 3px solid var(--brand);
-      background: rgba(51, 112, 255, 0.06);
+      background: var(--quote-bg);
       border-radius: 0 8px 8px 0;
     }
     blockquote p { color: var(--muted); margin: 0; }
@@ -91,7 +146,6 @@
       padding: 1.25rem 1.5rem;
       margin: 1rem 0;
     }
-    .card-title { font-weight: 600; font-size: 0.95rem; color: var(--text); margin: 0 0 0.5rem; }
     .step-num {
       display: inline-flex;
       align-items: center;
@@ -132,32 +186,25 @@
     }
     .perm-table td code { font-size: 0.8em; }
     .warn-box {
-      background: rgba(245, 158, 11, 0.08);
-      border: 1px solid rgba(245, 158, 11, 0.25);
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
       border-radius: 8px;
       padding: 0.75rem 1rem;
       margin: 1rem 0;
       font-size: 0.88rem;
-      color: #fbbf24;
+      color: var(--warn-text);
     }
-    .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      color: var(--brand);
-      text-decoration: none;
-      font-size: 0.85rem;
-      font-weight: 500;
-      margin-bottom: 1.5rem;
-    }
-    .back-link:hover { text-decoration: underline; }
     a { color: var(--brand); text-decoration: none; }
     a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="container">
-    <a class="back-link" href="/" onclick="window.close(); return false;">← 返回 LarkSync</a>
+    <div class="top-bar">
+      <a class="back-link" href="/" onclick="window.close(); return false;">← 返回 LarkSync</a>
+      <button class="theme-btn" id="themeToggle" type="button">切换主题</button>
+    </div>
+
     <span class="badge">配置指南</span>
     <h1>飞书 OAuth 授权配置</h1>
     <p>按以下步骤在飞书开放平台创建应用并完成 LarkSync 授权，全程约 5 分钟。</p>
@@ -261,5 +308,33 @@ http://localhost:8080/api/auth/callback</code></pre>
       <li><a href="https://open.feishu.cn/document/server-docs/getting-started/app-permission-scopes" target="_blank" rel="noopener">权限管理 (Scopes)</a></li>
     </ul>
   </div>
+
+  <script>
+    // 跟随主应用主题，并支持手动切换
+    (function () {
+      var root = document.documentElement;
+      var btn = document.getElementById('themeToggle');
+      var stored = localStorage.getItem('larksync-theme');
+      if (stored === 'light') root.setAttribute('data-theme', 'light');
+
+      function update() {
+        var isLight = root.getAttribute('data-theme') === 'light';
+        btn.textContent = isLight ? '切换深色' : '切换明亮';
+      }
+      update();
+
+      btn.addEventListener('click', function () {
+        var isLight = root.getAttribute('data-theme') === 'light';
+        if (isLight) {
+          root.removeAttribute('data-theme');
+          localStorage.setItem('larksync-theme', 'dark');
+        } else {
+          root.setAttribute('data-theme', 'light');
+          localStorage.setItem('larksync-theme', 'light');
+        }
+        update();
+      });
+    })();
+  </script>
 </body>
 </html>

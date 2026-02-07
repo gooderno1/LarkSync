@@ -31,14 +31,15 @@ export default function App() {
 
         {/* Main content */}
         <main className="flex-1 space-y-6">
-          <Header
-            activeTab={activeTab}
-            globalPaused={globalPaused}
-            onTogglePause={() => setGlobalPaused((prev) => !prev)}
-          />
-
+          {/* 仅仪表盘渲染完整 Header banner */}
           {activeTab === "dashboard" ? (
-            <DashboardPage onNavigate={setActiveTab} />
+            <>
+              <Header
+                globalPaused={globalPaused}
+                onTogglePause={() => setGlobalPaused((prev) => !prev)}
+              />
+              <DashboardPage onNavigate={setActiveTab} />
+            </>
           ) : null}
           {activeTab === "tasks" ? <TasksPage /> : null}
           {activeTab === "logcenter" ? <LogCenterPage /> : null}

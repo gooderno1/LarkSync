@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.3.0-dev.4 (2026-02-07)
+- 目标：彻底消除非仪表盘页面的双重 Header；OAuth 教程页支持明亮模式。
+- 结果：
+  - 非仪表盘页面不再渲染 Header 组件——各页面（Tasks/LogCenter/Settings）自带头部卡片已包含标题，只需在其操作按钮区域融入 ThemeToggle 即可。
+  - 新增 `ThemeToggle` 独立组件，供各页面复用。
+  - Header 简化为仅服务仪表盘的 banner（不再有 NavKey / 多页逻辑）。
+  - OAuth 教程页 `oauth-guide.html` 新增 light theme CSS 变量 + "切换主题"按钮，跟随主应用 localStorage 记忆。
+- 测试：`npx tsc --noEmit`（零错误）。
+- 问题：暂无阻塞问题。
+
 ## v0.3.0-dev.3 (2026-02-07)
 - 目标：修复 Header 双重冗余、弹窗虚化、明亮模式策略配色、新增 OAuth 教程页。
 - 结果：
