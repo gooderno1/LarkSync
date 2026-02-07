@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-07] v0.4.0-dev.1 feat(desktop): 系统托盘桌面化 — pystray 托盘应用（启动/停止/菜单/状态轮询/图标变色）；FastAPI 静态文件服务（前后端一体化）；一键启动器 LarkSync.pyw/command；系统通知 plyer；开机自启动（Windows Startup/macOS LaunchAgent）；PyInstaller 打包配置；构建脚本 build.py/build_installer.py；后端新增 /tray/status 聚合接口
 [2026-02-07] v0.3.0-dev.6 feat(ui): 日志中心页码分页重构（同步日志+系统日志）；新建 Pagination 通用分页组件；仪表盘日志面板增加条数+总数+查看全部入口；后端 /sync/logs/file 接口改为分页返回（offset+total）；自定义滚动条适配明/暗主题；docx_service 频率限制（99991400）增加指数退避延迟重试
 [2026-02-07] v0.3.0-dev.5 feat: SyncTask 增加 cloud_folder_name 字段显示云端目录名；新增 /sync/logs/file API 读取 loguru 日志文件；日志中心新增「系统日志」标签展示完整历史日志
 [2026-02-07] v0.3.0-dev.4 fix(ui): 非仪表盘页面移除独立 Header，主题切换融入各页面头部区域；OAuth 教程页支持明亮/深色主题切换

@@ -1,5 +1,33 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.1 (2026-02-07)
+- 目标：实现系统托盘桌面化，让 LarkSync 成为一个后台静默运行的桌面应用。
+- 设计文档：`docs/design/v0.4.0-desktop-tray-design.md`
+- 升级计划：`docs/UPGRADE_PLAN.md`
+- 结果：
+  - **FastAPI 静态文件服务**（`main.py`）：检测 `apps/frontend/dist/` 目录，自动挂载 `/assets` 静态资源 + SPA fallback（非 API 路径返回 `index.html`）。一个 uvicorn 进程即可提供完整服务。CORS 增加 `localhost:8000`。
+  - **前端 API 基址可配**（`api.ts`）：`apiBase` 改为通过 `VITE_API_BASE` 环境变量配置，默认空字符串（同源服务无需前缀）。Docker/Nginx 部署时可设 `/api`。
+  - **构建脚本**（`scripts/build.py`）：自动构建前端 + 验证产物 + 打印单进程启动指南。
+  - **系统托盘应用**（`apps/tray/`）：
+    - `tray_app.py`：pystray 主程序，右键菜单（打开面板/立即同步/暂停恢复/设置/日志/自启动/退出），双击图标默认打开浏览器。
+    - `backend_manager.py`：后端进程管理器（subprocess 启动 uvicorn、健康检查、优雅关闭、异常自动重启最多 3 次）。Windows 使用 `CREATE_NO_WINDOW` 避免弹出终端。
+    - `icon_generator.py`：Pillow 程序化生成 4 种状态图标（idle/syncing/error/paused），64px 带抗锯齿圆形。
+    - `status_poller.py`（内置于 tray_app）：每 5 秒轮询 `/tray/status` 更新图标颜色。
+    - `notifier.py`：plyer 跨平台通知 + 60 秒去重 + Windows PowerShell toast fallback。
+    - `autostart.py`：Windows Startup 快捷方式（PowerShell/win32com）/ macOS LaunchAgent plist。
+    - `config.py`：端口、超时、URL 等集中配置。
+  - **一键启动器**：
+    - `LarkSync.pyw`（Windows）：双击无终端启动托盘 → 自动拉起后端 → 打开浏览器。
+    - `LarkSync.command`（macOS）：同上。
+  - **后端新增接口**：`GET /tray/status` 返回任务/运行/错误聚合状态，供托盘轮询。
+  - **打包支持**（`scripts/build_installer.py`）：
+    - PyInstaller spec 自动生成 + 打包（`--windowed`，无终端）。
+    - Windows NSIS 安装包 / macOS DMG 预留接口。
+  - **依赖更新**：`requirements.txt` 新增 pystray、Pillow、plyer。
+  - **`.gitignore`**：排除 `build/`、`dist/`、`*.spec`、`apps/tray/icons/`。
+- 测试：`npx tsc --noEmit`（零错误）；Python 编译检查全部通过（11 个模块）。
+- 问题：首次使用需 `pip install pystray Pillow plyer`。PyInstaller 打包需要在目标平台上执行（Windows 打 .exe，macOS 打 .app）。
+
 ## v0.3.0-dev.6 (2026-02-07)
 - 目标：日志展示全面改造——页码分页、滚动优化、后端分页接口；飞书频率限制智能重试。
 - 结果：

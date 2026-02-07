@@ -24,6 +24,14 @@ docs/feishu/
 # Product definition docs (local only)
 docs/local_specs/
 
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Tray generated icons (auto-generated)
+apps/tray/icons/
+
 # Legacy root spec docs (local only)
 /LarkSync Vibe Coding 开发执行计划.md
 /LarkSync 产品需求文档.md

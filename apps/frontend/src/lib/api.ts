@@ -2,7 +2,9 @@
 /*  API 请求封装                                                       */
 /* ------------------------------------------------------------------ */
 
-const apiBase = import.meta.env.PROD ? "/api" : "";
+// 默认无前缀（开发模式由 Vite 代理，生产模式由 FastAPI 同源服务）
+// Docker/Nginx 部署时可通过 VITE_API_BASE=/api 设置前缀
+const apiBase: string = import.meta.env.VITE_API_BASE ?? "";
 
 export function apiUrl(path: string): string {
   return `${apiBase}${path}`;

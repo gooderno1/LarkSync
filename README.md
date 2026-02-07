@@ -50,7 +50,36 @@
 - 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
 - 定时调度：本地变更队列按秒/小时/天触发上传；云端下载支持按秒/小时/天或每日定时（可配置）
 
-## 本地开发
+## 桌面模式（推荐）
+
+LarkSync 支持以系统托盘应用方式后台运行，无需保持终端或浏览器打开。
+
+### 安装依赖
+```bash
+cd apps/backend && pip install -r requirements.txt
+cd apps/frontend && npm install
+```
+
+### 构建前端
+```bash
+python scripts/build.py
+```
+
+### 启动
+- **Windows**：双击 `LarkSync.pyw`
+- **macOS**：双击 `LarkSync.command`
+- **通用**：`python apps/tray/tray_app.py`
+
+启动后托盘区域出现 LarkSync 图标，右键菜单可打开管理面板、暂停/恢复同步、查看日志、配置开机自启动等。
+
+### 打包为安装包
+```bash
+python scripts/build_installer.py          # PyInstaller 打包
+python scripts/build_installer.py --nsis   # Windows: 额外生成安装包
+python scripts/build_installer.py --dmg    # macOS: 额外生成 DMG
+```
+
+## 开发模式
 ### 使用教程
 - 完整使用步骤见 `docs/USAGE.md`，后续功能变更会同步更新。
 ### 开发文档更新

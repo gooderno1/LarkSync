@@ -1,0 +1,1 @@
+# LarkSync System Tray Application
