@@ -37,12 +37,23 @@ RESTART_COOLDOWN = 5  # 秒
 PYTHON_EXE = sys.executable
 
 
+def _is_port_active(port: int) -> bool:
+    """检测本地端口是否有服务在监听。"""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1)
+        return s.connect_ex((BACKEND_HOST, port)) == 0
+
+
 def _detect_frontend_url() -> str:
     """
-    自动检测前端 URL：
-    - 如果 dist/ 目录存在 → 生产模式，用 FastAPI 端口 (8000)
-    - 否则 → 开发模式，用 Vite 开发服务器端口 (3666)
+    自动检测前端 URL（优先级）：
+    1. Vite 开发服务器在 3666 运行 → 开发模式，用 3666（最新代码 + HMR）
+    2. dist/ 存在且 Vite 未运行 → 生产模式，用 FastAPI 8000
+    3. 都没有 → 默认 3666（等用户启动 npm run dev）
     """
+    if _is_port_active(VITE_DEV_PORT):
+        return VITE_DEV_URL
     if FRONTEND_DIST.is_dir() and (FRONTEND_DIST / "index.html").is_file():
         return BACKEND_URL
     return VITE_DEV_URL
