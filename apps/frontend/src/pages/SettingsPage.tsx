@@ -91,8 +91,20 @@ export function SettingsPage() {
     <section className="space-y-6 animate-fade-up">
       {/* OAuth */}
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-        <h2 className="text-lg font-semibold text-zinc-50">OAuth 配置</h2>
-        <p className="mt-1 text-xs text-zinc-400">填写飞书开放平台的 App ID 和 App Secret 即可完成授权。</p>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-50">OAuth 配置</h2>
+            <p className="mt-1 text-xs text-zinc-400">填写飞书开放平台的 App ID 和 App Secret 即可完成授权。</p>
+          </div>
+          <a
+            href="/oauth-guide.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded-lg border border-[#3370FF]/30 bg-[#3370FF]/10 px-3 py-1.5 text-xs font-medium text-[#3370FF] transition hover:bg-[#3370FF]/20"
+          >
+            查看配置教程 ↗
+          </a>
+        </div>
 
         <div className="mt-5 space-y-4">
           {/* App ID */}

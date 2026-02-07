@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OAuth 配置指南 — LarkSync</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --surface: #18181b;
+      --border: rgba(63, 63, 70, 0.45);
+      --text: #fafafa;
+      --muted: #a1a1aa;
+      --brand: #3370ff;
+      --accent: #10b981;
+      --code-bg: #27272a;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 5rem;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(51, 112, 255, 0.15);
+      color: var(--brand);
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+    }
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin: 0.75rem 0 0.25rem;
+      letter-spacing: -0.02em;
+    }
+    h1 + p { color: var(--muted); font-size: 0.95rem; margin: 0 0 2rem; }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 2.5rem 0 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 { font-size: 1.05rem; font-weight: 600; margin: 1.5rem 0 0.5rem; }
+    p, li { font-size: 0.92rem; color: #d4d4d8; }
+    ul, ol { padding-left: 1.25rem; }
+    li { margin-bottom: 0.4rem; }
+    code {
+      background: var(--code-bg);
+      color: #e4e4e7;
+      padding: 0.15em 0.45em;
+      border-radius: 4px;
+      font-size: 0.85em;
+      font-family: "JetBrains Mono", "SF Mono", monospace;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    pre code { background: none; padding: 0; }
+    blockquote {
+      margin: 1rem 0;
+      padding: 0.75rem 1rem;
+      border-left: 3px solid var(--brand);
+      background: rgba(51, 112, 255, 0.06);
+      border-radius: 0 8px 8px 0;
+    }
+    blockquote p { color: var(--muted); margin: 0; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin: 1rem 0;
+    }
+    .card-title { font-weight: 600; font-size: 0.95rem; color: var(--text); margin: 0 0 0.5rem; }
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.6rem;
+      height: 1.6rem;
+      border-radius: 50%;
+      background: var(--brand);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-right: 0.6rem;
+      flex-shrink: 0;
+    }
+    .step-row {
+      display: flex;
+      align-items: flex-start;
+      margin-bottom: 0.75rem;
+    }
+    .step-row p { margin: 0; }
+    .perm-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      margin: 0.75rem 0;
+    }
+    .perm-table th, .perm-table td {
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .perm-table th {
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .perm-table td code { font-size: 0.8em; }
+    .warn-box {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin: 1rem 0;
+      font-size: 0.88rem;
+      color: #fbbf24;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--brand);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-bottom: 1.5rem;
+    }
+    .back-link:hover { text-decoration: underline; }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a class="back-link" href="/" onclick="window.close(); return false;">← 返回 LarkSync</a>
+    <span class="badge">配置指南</span>
+    <h1>飞书 OAuth 授权配置</h1>
+    <p>按以下步骤在飞书开放平台创建应用并完成 LarkSync 授权，全程约 5 分钟。</p>
+
+    <h2>1. 创建飞书应用</h2>
+    <div class="card">
+      <div class="step-row">
+        <span class="step-num">1</span>
+        <p>进入 <a href="https://open.feishu.cn/app" target="_blank" rel="noopener">飞书开放平台控制台</a>，点击「创建企业自建应用」。</p>
+      </div>
+      <div class="step-row">
+        <span class="step-num">2</span>
+        <p>填写应用名称（如 <code>LarkSync</code>）和描述，完成创建。</p>
+      </div>
+    </div>
+
+    <h2>2. 获取 App ID 和 App Secret</h2>
+    <div class="card">
+      <div class="step-row">
+        <span class="step-num">1</span>
+        <p>打开刚创建的应用详情页。</p>
+      </div>
+      <div class="step-row">
+        <span class="step-num">2</span>
+        <p>在左侧「凭证与基础信息」页面，复制 <strong>App ID</strong> 和 <strong>App Secret</strong>。</p>
+      </div>
+    </div>
+
+    <h2>3. 配置 OAuth 回调地址</h2>
+    <div class="card">
+      <div class="step-row">
+        <span class="step-num">1</span>
+        <p>在应用详情页，进入「安全设置」。</p>
+      </div>
+      <div class="step-row">
+        <span class="step-num">2</span>
+        <p>在「重定向 URL」中添加回调地址。</p>
+      </div>
+    </div>
+    <blockquote>
+      <p><strong>提示</strong>：LarkSync 设置页中已自动生成 Redirect URI，点击「复制」按钮即可获取，粘贴到飞书后台即可。</p>
+    </blockquote>
+
+    <p>常见的回调地址格式：</p>
+    <pre><code># 开发环境
+http://localhost:8000/auth/callback
+
+# 生产环境（Docker 部署）
+http://localhost:8080/api/auth/callback</code></pre>
+
+    <h2>4. 配置权限 (Scopes)</h2>
+    <p>在应用详情页「权限管理」中添加以下权限（以<strong>用户身份</strong>申请）：</p>
+
+    <table class="perm-table">
+      <thead><tr><th>权限标识</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>drive:drive</code></td><td>读写云空间文件</td></tr>
+        <tr><td><code>docs:doc</code></td><td>读写云文档</td></tr>
+        <tr><td><code>drive:drive.metadata:readonly</code></td><td>只读查看云空间元信息</td></tr>
+        <tr><td><code>contact:contact.base:readonly</code></td><td>只读获取用户基础信息</td></tr>
+      </tbody>
+    </table>
+
+    <div class="warn-box">
+      ⚠ 如平台需要审核，请等待权限审核通过后再进行授权。权限变更后必须<strong>重新授权</strong>才能生效。
+    </div>
+
+    <h2>5. 回到 LarkSync 完成配置</h2>
+    <div class="card">
+      <div class="step-row">
+        <span class="step-num">1</span>
+        <p>打开 LarkSync → 设置页，填入 <strong>App ID</strong> 和 <strong>App Secret</strong>。</p>
+      </div>
+      <div class="step-row">
+        <span class="step-num">2</span>
+        <p>点击「保存配置」。</p>
+      </div>
+      <div class="step-row">
+        <span class="step-num">3</span>
+        <p>在左侧边栏点击「连接飞书」完成授权。</p>
+      </div>
+    </div>
+
+    <h2>6. 常见问题</h2>
+
+    <h3>Access denied / 缺少权限</h3>
+    <p>确认飞书控制台中已添加上述权限，且类型为<strong>用户身份权限</strong>。保存权限后需要退出登录，重新点击「连接飞书」进行授权。</p>
+
+    <h3>回调地址不匹配</h3>
+    <p>请确保飞书后台填写的 URL 与 LarkSync 设置页显示的 Redirect URI <strong>完全一致</strong>（包含协议、端口、路径）。</p>
+
+    <h3>安全提示</h3>
+    <div class="warn-box">
+      ⚠ App Secret 为敏感信息，保存后写入本地 <code>data/config.json</code>，请勿提交到公开仓库。
+    </div>
+
+    <h2>7. 官方文档</h2>
+    <ul>
+      <li><a href="https://open.feishu.cn/document/home/index" target="_blank" rel="noopener">飞书开放平台首页</a></li>
+      <li><a href="https://open.feishu.cn/document/common-capabilities/sso/api/get-access_token" target="_blank" rel="noopener">OAuth2 授权码与 Token</a></li>
+      <li><a href="https://open.feishu.cn/document/server-docs/getting-started/app-permission-scopes" target="_blank" rel="noopener">权限管理 (Scopes)</a></li>
+    </ul>
+  </div>
+</body>
+</html>

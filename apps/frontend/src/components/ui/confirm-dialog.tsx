@@ -45,7 +45,7 @@ export function ConfirmDialogProvider() {
   if (!dialog) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 px-4">
       <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
         <h3 className="text-lg font-semibold text-zinc-100">{dialog.title}</h3>
         {dialog.description ? (

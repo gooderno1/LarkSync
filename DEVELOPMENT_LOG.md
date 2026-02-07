@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.3.0-dev.3 (2026-02-07)
+- 目标：修复 Header 双重冗余、弹窗虚化、明亮模式策略配色、新增 OAuth 教程页。
+- 结果：
+  - Header 重设计：仪表盘保留完整 banner（标题+描述+状态+暂停+主题切换）；其他页改为轻量工具栏（页名+主题切换图标按钮），消除"双 header"冗余。
+  - 弹窗遮罩：NewTaskModal 和 ConfirmDialog 去除 `backdrop-blur-sm`，改为纯暗色遮罩 `bg-black/50`。
+  - 明亮模式修复：补齐 `bg-emerald-500/15`、`bg-[#3370FF]/15`、`bg-zinc-950/40`、`hover:border-zinc-700` 在 light theme 下的覆盖规则。
+  - OAuth 教程页：新增 `public/oauth-guide.html` 静态页面，暗色主题、分步卡片、权限表格、常见问题；设置页 OAuth 区域添加"查看配置教程 ↗"链接，新标签打开。
+  - 侧边栏移除主题切换按钮（已在 Header 中统一提供）。
+- 测试：`npx tsc --noEmit`（零错误）。
+- 问题：暂无阻塞问题。
+
 ## v0.3.0-dev.2 (2026-02-07)
 - 目标：修复明亮模式交互缺陷，精简冗余 UI，优化设置与新建任务视觉。
 - 结果：

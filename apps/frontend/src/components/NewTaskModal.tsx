@@ -113,7 +113,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 py-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
       <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-5">

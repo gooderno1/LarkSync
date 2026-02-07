@@ -208,6 +208,23 @@ select option {
   border-color: rgba(37, 99, 235, 0.3);
 }
 
+/* ---- Light theme: icon badge / card backgrounds ---- */
+:root[data-theme="light"] .bg-emerald-500\/15 {
+  background-color: rgba(5, 150, 105, 0.1);
+}
+
+:root[data-theme="light"] .bg-\[\#3370FF\]\/15 {
+  background-color: rgba(37, 99, 235, 0.1);
+}
+
+:root[data-theme="light"] .bg-zinc-950\/40 {
+  background-color: var(--bg-soft);
+}
+
+:root[data-theme="light"] .hover\:border-zinc-700:hover {
+  border-color: var(--border);
+}
+
 /* ---- Animations ---- */
 .animate-fade-up {
   animation: fadeUp 0.5s ease both;
