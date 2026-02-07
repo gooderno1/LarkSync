@@ -19,7 +19,7 @@ export default function App() {
   const { conflicts } = useConflicts();
   const unresolvedConflicts = conflicts.filter((c) => !c.resolved).length;
 
-  return (
+      return (
     <div className="min-h-screen text-zinc-100">
       <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 lg:flex-row">
         {/* Sidebar */}
@@ -40,7 +40,7 @@ export default function App() {
               />
               <DashboardPage onNavigate={setActiveTab} />
             </>
-          ) : null}
+                            ) : null}
           {activeTab === "tasks" ? <TasksPage /> : null}
           {activeTab === "logcenter" ? <LogCenterPage /> : null}
           {activeTab === "settings" ? <SettingsPage /> : null}
