@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.core.config import SyncMode
@@ -16,6 +17,7 @@ class SyncTaskCreateRequest(BaseModel):
     name: str | None = Field(default=None, description="任务名称")
     local_path: str = Field(..., description="本地同步根目录")
     cloud_folder_token: str = Field(..., description="云端文件夹 token")
+    cloud_folder_name: str | None = Field(default=None, description="云端文件夹显示名称/路径")
     base_path: str | None = Field(default=None, description="Markdown 基准路径")
     sync_mode: SyncMode = Field(default=SyncMode.bidirectional, description="同步模式")
     update_mode: Literal["auto", "partial", "full"] = Field(
@@ -28,6 +30,7 @@ class SyncTaskUpdateRequest(BaseModel):
     name: str | None = None
     local_path: str | None = None
     cloud_folder_token: str | None = None
+    cloud_folder_name: str | None = None
     base_path: str | None = None
     sync_mode: SyncMode | None = None
     update_mode: Literal["auto", "partial", "full"] | None = None
@@ -39,6 +42,7 @@ class SyncTaskResponse(BaseModel):
     name: str | None
     local_path: str
     cloud_folder_token: str
+    cloud_folder_name: str | None
     base_path: str | None
     sync_mode: str
     update_mode: str
@@ -131,6 +135,7 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
         name=payload.name,
         local_path=payload.local_path,
         cloud_folder_token=payload.cloud_folder_token,
+        cloud_folder_name=payload.cloud_folder_name,
         base_path=payload.base_path,
         sync_mode=payload.sync_mode.value,
         update_mode=payload.update_mode,
@@ -148,6 +153,7 @@ async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskR
         name=payload.name,
         local_path=payload.local_path,
         cloud_folder_token=payload.cloud_folder_token,
+        cloud_folder_name=payload.cloud_folder_name,
         base_path=payload.base_path,
         sync_mode=payload.sync_mode.value if payload.sync_mode else None,
         update_mode=payload.update_mode,
@@ -217,3 +223,58 @@ async def replace_markdown(payload: MarkdownReplaceRequest) -> dict:
     finally:
         await docx_service.close()
     return {"status": "ok"}
+
+
+# ---- Log file reader API ----
+
+_LOG_LINE_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+\|\s+(\w+)\s+\|\s+(.+)$"
+)
+
+
+class LogFileEntry(BaseModel):
+    timestamp: str
+    level: str
+    message: str
+
+
+@router.get("/logs/file", response_model=list[LogFileEntry])
+async def read_log_file(
+    limit: int = Query(default=200, ge=1, le=2000, description="返回最近N条日志"),
+    level: str = Query(default="", description="按级别筛选 (INFO/WARNING/ERROR)"),
+    search: str = Query(default="", description="关键词搜索"),
+) -> list[LogFileEntry]:
+    """读取 loguru 日志文件，返回最近的日志条目。"""
+    root = Path(__file__).resolve().parents[3]
+    log_file = root / "data" / "logs" / "larksync.log"
+    if not log_file.exists():
+        return []
+
+    raw_lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+
+    # 合并多行日志（续行无时间戳前缀）
+    merged: list[str] = []
+    for line in raw_lines:
+        if _LOG_LINE_RE.match(line):
+            merged.append(line)
+        elif merged:
+            merged[-1] += "\n" + line
+
+    entries: list[LogFileEntry] = []
+    level_upper = level.strip().upper()
+    search_lower = search.strip().lower()
+
+    for raw in reversed(merged):
+        m = _LOG_LINE_RE.match(raw)
+        if not m:
+            continue
+        ts, lvl, msg = m.group(1), m.group(2), m.group(3)
+        if level_upper and lvl != level_upper:
+            continue
+        if search_lower and search_lower not in raw.lower():
+            continue
+        entries.append(LogFileEntry(timestamp=ts, level=lvl, message=msg))
+        if len(entries) >= limit:
+            break
+
+    return entries

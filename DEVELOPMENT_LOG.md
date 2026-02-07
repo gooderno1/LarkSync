@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.3.0-dev.5 (2026-02-07)
+- 目标：云端目录显示文件夹名称；补齐完整历史日志查看能力。
+- 结果：
+  - 后端：SyncTask 模型新增 `cloud_folder_name` 字段，DB 迁移自动添加列；API 创建/更新/查询均支持。
+  - 后端：新增 `GET /sync/logs/file` API，读取 loguru 日志文件，支持 limit/level/search 参数筛选。
+  - 前端：新建任务时自动将 `selectedCloud.path`（如 "云盘/个人记录/"）存入 `cloud_folder_name`。
+  - 前端：任务列表与仪表盘显示 `cloud_folder_name`，fallback 到 token。
+  - 前端：日志中心新增「系统日志」标签页，直接展示 loguru 文件日志（含时间戳、级别、完整消息），支持级别筛选与关键词搜索，可查看 403/400 等历史错误。
+- 测试：`npx tsc --noEmit`（零错误）；Python ast.parse 全部通过。
+- 问题：已有任务的 `cloud_folder_name` 为空（旧数据），需要用户重新编辑或创建新任务才会有值。
+
 ## v0.3.0-dev.4 (2026-02-07)
 - 目标：彻底消除非仪表盘页面的双重 Header；OAuth 教程页支持明亮模式。
 - 结果：

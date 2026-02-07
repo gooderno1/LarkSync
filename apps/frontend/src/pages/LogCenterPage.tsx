@@ -1,12 +1,14 @@
 /* ------------------------------------------------------------------ */
-/*  日志中心页面                                                         */
+/*  日志中心页面 — 同步日志(文件API) + 冲突管理                           */
 /* ------------------------------------------------------------------ */
 
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTasks } from "../hooks/useTasks";
 import { useConflicts } from "../hooks/useConflicts";
 import { formatTimestamp } from "../lib/formatters";
 import { statusLabelMap } from "../lib/constants";
+import { apiFetch } from "../lib/api";
 import { StatusPill } from "../components/StatusPill";
 import { IconRefresh, IconConflicts, IconCopy } from "../components/Icons";
 import { useToast } from "../components/ui/toast";
@@ -14,16 +16,29 @@ import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type { SyncLogEntry } from "../types";
 
+/* 文件日志条目类型 */
+type FileLogEntry = {
+  timestamp: string;
+  level: string;
+  message: string;
+};
+
 export function LogCenterPage() {
   const { tasks, statusMap, refreshStatus } = useTasks();
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflict } = useConflicts();
   const { toast } = useToast();
 
-  const [logTab, setLogTab] = useState<"logs" | "conflicts">("logs");
+  const [logTab, setLogTab] = useState<"logs" | "file-logs" | "conflicts">("logs");
   const [logFilterStatus, setLogFilterStatus] = useState("all");
   const [logFilterText, setLogFilterText] = useState("");
   const [logLimit, setLogLimit] = useState(60);
 
+  // File log filters
+  const [fileLogLevel, setFileLogLevel] = useState("");
+  const [fileLogSearch, setFileLogSearch] = useState("");
+  const [fileLogLimit, setFileLogLimit] = useState(100);
+
+  // In-memory sync log entries (from task status polling)
   const syncLogEntries: SyncLogEntry[] = useMemo(() => {
     return Object.values(statusMap)
       .flatMap((st) =>
@@ -49,13 +64,40 @@ export function LogCenterPage() {
     });
   }, [syncLogEntries, logFilterStatus, logFilterText]);
 
+  // File-based log query
+  const fileLogsQuery = useQuery<FileLogEntry[]>({
+    queryKey: ["file-logs", fileLogLevel, fileLogSearch, fileLogLimit],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set("limit", String(fileLogLimit));
+      if (fileLogLevel) params.set("level", fileLogLevel);
+      if (fileLogSearch) params.set("search", fileLogSearch);
+      return apiFetch<FileLogEntry[]>(`/sync/logs/file?${params.toString()}`);
+    },
+    enabled: logTab === "file-logs",
+    staleTime: 5_000,
+    placeholderData: [],
+  });
+
+  const fileLogs = fileLogsQuery.data || [];
+
+  const levelColor = (level: string) => {
+    switch (level) {
+      case "ERROR": return "text-rose-400";
+      case "WARNING": return "text-amber-400";
+      case "INFO": return "text-zinc-400";
+      case "DEBUG": return "text-zinc-600";
+      default: return "text-zinc-400";
+    }
+  };
+
   return (
     <section className="space-y-6 animate-fade-up">
       {/* Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
         <div>
           <h2 className="text-lg font-semibold text-zinc-50">日志中心</h2>
-          <p className="mt-1 text-xs text-zinc-400">同步日志与冲突处理统一管理。</p>
+          <p className="mt-1 text-xs text-zinc-400">同步日志、系统日志与冲突处理统一管理。</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -64,6 +106,13 @@ export function LogCenterPage() {
             type="button"
           >
             同步日志
+          </button>
+          <button
+            className={cn("rounded-lg border px-4 py-2 text-xs font-medium transition", logTab === "file-logs" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-zinc-700 text-zinc-300 hover:bg-zinc-800")}
+            onClick={() => setLogTab("file-logs")}
+            type="button"
+          >
+            系统日志
           </button>
           <button
             className={cn("rounded-lg border px-4 py-2 text-xs font-medium transition", logTab === "conflicts" ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : "border-zinc-700 text-zinc-300 hover:bg-zinc-800")}
@@ -76,13 +125,13 @@ export function LogCenterPage() {
         </div>
       </div>
 
-      {/* Logs tab */}
+      {/* Sync Logs tab (in-memory) */}
       {logTab === "logs" ? (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold text-zinc-50">同步日志流</h3>
-              <p className="mt-1 text-xs text-zinc-400">支持筛选、搜索与批量查看。</p>
+              <p className="mt-1 text-xs text-zinc-400">来自当前运行的任务状态（内存中），重启后清空。</p>
             </div>
             <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={refreshStatus} type="button">
               <IconRefresh className="h-3.5 w-3.5" /> 刷新日志
@@ -116,7 +165,7 @@ export function LogCenterPage() {
             {filteredLogs.length === 0 ? (
               <div className="py-8 text-center">
                 <IconConflicts className="mx-auto h-10 w-10 text-zinc-700" />
-                <p className="mt-3 text-sm text-zinc-500">暂无匹配日志。</p>
+                <p className="mt-3 text-sm text-zinc-500">暂无匹配日志。如需查看完整历史，请切换到「系统日志」标签。</p>
               </div>
             ) : (
               filteredLogs.slice(0, logLimit).map((entry, i) => (
@@ -142,8 +191,81 @@ export function LogCenterPage() {
             </div>
           ) : null}
         </div>
-      ) : (
-        /* Conflicts tab */
+      ) : null}
+
+      {/* File Logs tab (persistent) */}
+      {logTab === "file-logs" ? (
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-zinc-50">系统日志</h3>
+              <p className="mt-1 text-xs text-zinc-400">来自 loguru 日志文件，包含完整历史记录（含错误详情）。</p>
+            </div>
+            <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => fileLogsQuery.refetch()} type="button">
+              <IconRefresh className="h-3.5 w-3.5" /> 刷新
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.6fr_0.6fr]">
+            <input
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
+              placeholder="搜索日志内容（如 403、error、token）"
+              value={fileLogSearch}
+              onChange={(e) => setFileLogSearch(e.target.value)}
+            />
+            <select
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
+              value={fileLogLevel}
+              onChange={(e) => setFileLogLevel(e.target.value)}
+            >
+              <option value="">全部级别</option>
+              <option value="ERROR">ERROR</option>
+              <option value="WARNING">WARNING</option>
+              <option value="INFO">INFO</option>
+            </select>
+            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setFileLogLevel(""); setFileLogSearch(""); setFileLogLimit(100); }} type="button">
+              重置
+            </button>
+          </div>
+          <div className="mt-5 space-y-2">
+            {fileLogsQuery.isLoading ? (
+              <div className="space-y-2">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-zinc-800/50" />)}</div>
+            ) : fileLogs.length === 0 ? (
+              <div className="py-8 text-center">
+                <IconConflicts className="mx-auto h-10 w-10 text-zinc-700" />
+                <p className="mt-3 text-sm text-zinc-500">暂无匹配的系统日志。</p>
+              </div>
+            ) : (
+              fileLogs.map((entry, i) => (
+                <div key={`${entry.timestamp}-${i}`} className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="shrink-0 text-[11px] font-mono text-zinc-500">{entry.timestamp}</span>
+                        <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold", levelColor(entry.level),
+                          entry.level === "ERROR" ? "bg-rose-500/15" : entry.level === "WARNING" ? "bg-amber-500/15" : "bg-zinc-800/50"
+                        )}>
+                          {entry.level}
+                        </span>
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap break-all font-mono text-xs text-zinc-300">{entry.message}</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          {fileLogs.length >= fileLogLimit ? (
+            <div className="mt-4 flex justify-center">
+              <button className="rounded-lg border border-zinc-700 px-5 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => setFileLogLimit((prev) => prev + 100)} type="button">
+                加载更多（当前 {fileLogLimit} 条）
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Conflicts tab */}
+      {logTab === "conflicts" ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
             <div>
@@ -187,7 +309,7 @@ export function LogCenterPage() {
                     </pre>
                   </div>
                 </div>
-                {/* Resolve buttons — now includes Keep Both */}
+                {/* Resolve buttons */}
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     className="rounded-lg bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50"
@@ -221,7 +343,7 @@ export function LogCenterPage() {
             ))
           )}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

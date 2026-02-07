@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-07] v0.3.0-dev.5 feat: SyncTask 增加 cloud_folder_name 字段显示云端目录名；新增 /sync/logs/file API 读取 loguru 日志文件；日志中心新增「系统日志」标签展示完整历史日志
 [2026-02-07] v0.3.0-dev.4 fix(ui): 非仪表盘页面移除独立 Header，主题切换融入各页面头部区域；OAuth 教程页支持明亮/深色主题切换
 [2026-02-07] v0.3.0-dev.3 fix(ui): Header 改为仪表盘完整banner+其他页轻量工具栏；弹窗去掉 backdrop-blur；明亮模式同步策略卡片配色修复；新增 OAuth 配置教程页面（静态 HTML + 新标签打开）
 [2026-02-07] v0.3.0-dev.2 fix(ui): Header 精简非仪表盘页面冗余信息；明亮模式按钮悬浮色修复；同步策略页面卡片化重设计；新建任务弹窗分步指示器优化；Redirect URI 改为自动生成+复制；云端 token 显示截短；主题切换移至侧边栏

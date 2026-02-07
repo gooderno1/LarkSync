@@ -17,6 +17,7 @@ class SyncTaskItem:
     name: str | None
     local_path: str
     cloud_folder_token: str
+    cloud_folder_name: str | None
     base_path: str | None
     sync_mode: str
     update_mode: str
@@ -37,6 +38,7 @@ class SyncTaskService:
         name: str | None,
         local_path: str,
         cloud_folder_token: str,
+        cloud_folder_name: str | None = None,
         base_path: str | None,
         sync_mode: str,
         update_mode: str = "auto",
@@ -48,6 +50,7 @@ class SyncTaskService:
             name=name,
             local_path=local_path,
             cloud_folder_token=cloud_folder_token,
+            cloud_folder_name=cloud_folder_name,
             base_path=base_path,
             sync_mode=sync_mode,
             update_mode=update_mode,
@@ -81,6 +84,7 @@ class SyncTaskService:
         name: str | None = None,
         local_path: str | None = None,
         cloud_folder_token: str | None = None,
+        cloud_folder_name: str | None = None,
         base_path: str | None = None,
         sync_mode: str | None = None,
         update_mode: str | None = None,
@@ -96,6 +100,8 @@ class SyncTaskService:
                 record.local_path = local_path
             if cloud_folder_token is not None:
                 record.cloud_folder_token = cloud_folder_token
+            if cloud_folder_name is not None:
+                record.cloud_folder_name = cloud_folder_name
             if base_path is not None:
                 record.base_path = base_path
             if sync_mode is not None:
@@ -124,6 +130,7 @@ class SyncTaskService:
             name=record.name,
             local_path=record.local_path,
             cloud_folder_token=record.cloud_folder_token,
+            cloud_folder_name=record.cloud_folder_name,
             base_path=record.base_path,
             sync_mode=record.sync_mode,
             update_mode=record.update_mode,

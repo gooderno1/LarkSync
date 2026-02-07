@@ -72,6 +72,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
           name: taskName.trim() || null,
           local_path: taskLocalPath.trim(),
           cloud_folder_token: taskCloudToken.trim(),
+          cloud_folder_name: selectedCloud?.path || null,
           base_path: taskBasePath.trim() || null,
           sync_mode: taskSyncMode,
           update_mode: taskUpdateMode,

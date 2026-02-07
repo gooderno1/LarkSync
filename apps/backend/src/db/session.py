@@ -33,6 +33,13 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
             column_type="TEXT",
             default_value="auto",
         )
+        await _ensure_column(
+            conn,
+            table="sync_tasks",
+            column="cloud_folder_name",
+            column_type="TEXT",
+            default_value=None,
+        )
     return engine
 
 

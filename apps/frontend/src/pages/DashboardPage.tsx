@@ -130,7 +130,7 @@ export function DashboardPage({ onNavigate }: Props) {
                       <div className="space-y-1">
                         <p className="text-sm font-semibold text-zinc-100">{task.name || task.local_path}</p>
                         <p className="text-xs text-zinc-400">本地：{task.local_path}</p>
-                        <p className="text-xs text-zinc-500" title={task.cloud_folder_token}>云端：{task.cloud_folder_token.length > 16 ? `...${task.cloud_folder_token.slice(-12)}` : task.cloud_folder_token}</p>
+                        <p className="text-xs text-zinc-500" title={task.cloud_folder_token}>云端：{task.cloud_folder_name || task.cloud_folder_token}</p>
                       </div>
                       <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
                     </div>

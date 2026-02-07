@@ -40,6 +40,7 @@ export type SyncTask = {
   name?: string | null;
   local_path: string;
   cloud_folder_token: string;
+  cloud_folder_name?: string | null;
   base_path?: string | null;
   sync_mode: string;
   update_mode?: string | null;

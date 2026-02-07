@@ -113,7 +113,7 @@ export function TasksPage() {
                     <div className="flex items-center justify-end gap-3 text-right">
                       <div className="min-w-0">
                         <p className="text-[11px] uppercase tracking-widest text-zinc-500">云端目录</p>
-                        <p className="mt-1 truncate text-sm text-zinc-200" title={task.cloud_folder_token}>{task.cloud_folder_token.length > 16 ? `...${task.cloud_folder_token.slice(-12)}` : task.cloud_folder_token}</p>
+                        <p className="mt-1 truncate text-sm text-zinc-200" title={task.cloud_folder_token}>{task.cloud_folder_name || task.cloud_folder_token}</p>
                       </div>
                       <div className="rounded-xl bg-[#3370FF]/15 p-2 text-[#3370FF]"><IconCloud className="h-4 w-4" /></div>
                     </div>
