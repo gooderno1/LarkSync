@@ -166,7 +166,12 @@ export function DashboardPage({ onNavigate }: Props) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-zinc-50">同步日志</h2>
-              <p className="mt-1 text-xs text-zinc-400">实时记录任务与文件动作。</p>
+              <p className="mt-1 text-xs text-zinc-400">
+                实时记录任务与文件动作。
+                {syncLogEntries.length > 0 ? (
+                  <span className="ml-1 text-zinc-600">共 {syncLogEntries.length} 条</span>
+                ) : null}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               {wsStatus === "connected" ? (
@@ -180,14 +185,14 @@ export function DashboardPage({ onNavigate }: Props) {
               </button>
             </div>
           </div>
-          <div className="mt-5 max-h-96 space-y-3 overflow-auto pr-2">
+          <div className="mt-5 max-h-[480px] space-y-3 overflow-auto pr-2 log-scroll-area">
             {syncLogEntries.length === 0 ? (
               <div className="py-8 text-center">
                 <IconConflicts className="mx-auto h-10 w-10 text-zinc-700" />
                 <p className="mt-3 text-sm text-zinc-500">暂无同步日志。</p>
               </div>
             ) : (
-              syncLogEntries.slice(0, 12).map((entry, i) => (
+              syncLogEntries.slice(0, 20).map((entry, i) => (
                 <div key={`${entry.taskId}-${entry.timestamp}-${i}`} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-1">
@@ -202,6 +207,28 @@ export function DashboardPage({ onNavigate }: Props) {
               ))
             )}
           </div>
+          {/* 查看全部链接 */}
+          {syncLogEntries.length > 20 ? (
+            <div className="mt-3 flex justify-center">
+              <button
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-[#3370FF] transition hover:text-[#3370FF]/80"
+                onClick={() => onNavigate("logcenter")}
+                type="button"
+              >
+                查看全部 {syncLogEntries.length} 条日志 →
+              </button>
+            </div>
+          ) : syncLogEntries.length > 0 ? (
+            <div className="mt-3 flex justify-center">
+              <button
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 transition hover:text-zinc-300"
+                onClick={() => onNavigate("logcenter")}
+                type="button"
+              >
+                前往日志中心 →
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

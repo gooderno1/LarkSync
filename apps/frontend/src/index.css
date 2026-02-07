@@ -269,7 +269,7 @@ select option {
   }
 }
 
-/* ---- Scrollbar styling (dark) ---- */
+/* ---- Scrollbar styling ---- */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -286,4 +286,42 @@ select option {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(161, 161, 170, 0.4);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(161, 161, 170, 0.25) transparent;
+}
+
+/* Light theme scrollbar overrides */
+:root[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(63, 63, 70, 0.2);
+}
+
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(63, 63, 70, 0.35);
+}
+
+:root[data-theme="light"] * {
+  scrollbar-color: rgba(63, 63, 70, 0.2) transparent;
+}
+
+/* 日志面板专用滚动区域 */
+.log-scroll-area {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Light theme: pagination active button */
+:root[data-theme="light"] .bg-\[\#3370FF\]\/15 {
+  background-color: rgba(37, 99, 235, 0.1);
+}
+
+:root[data-theme="light"] .border-\[\#3370FF\]\/50 {
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+:root[data-theme="light"] .border-zinc-800 {
+  border-color: var(--border);
 }

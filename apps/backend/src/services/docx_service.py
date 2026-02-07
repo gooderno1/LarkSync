@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import difflib
 import hashlib
 import re
@@ -536,7 +537,54 @@ class DocxService:
         file_paths: dict[str, Path] | None = None,
         insert_index: int = -1,
         error_flag: dict[str, bool] | None = None,
+        _rate_limit_retry: int = 0,
     ) -> None:
+        # 检测是否为频率限制错误（99991400 / frequency limit）
+        exc_str = str(exc).lower()
+        is_rate_limit = "frequency limit" in exc_str or "99991400" in exc_str
+
+        if is_rate_limit and _rate_limit_retry < 3:
+            # 频率限制：先延迟再整体重试（不拆分），最多重试 3 次
+            delay = 2.0 * (2 ** _rate_limit_retry)  # 2s, 4s, 8s
+            logger.warning(
+                "频率限制，延迟 {:.0f}s 后整体重试: document_id={} parent={} size={} attempt={}",
+                delay,
+                document_id,
+                parent_block_id,
+                len(chunk),
+                _rate_limit_retry + 1,
+            )
+            await asyncio.sleep(delay)
+            try:
+                await self._create_children_recursive(
+                    document_id=document_id,
+                    parent_block_id=parent_block_id,
+                    child_ids=chunk,
+                    block_map=block_map,
+                    children_map=children_map,
+                    user_id_type=user_id_type,
+                    insert_index=insert_index,
+                    image_paths=image_paths,
+                    file_paths=file_paths,
+                    error_flag=error_flag,
+                )
+            except Exception as retry_exc:
+                await self._handle_create_children_error(
+                    retry_exc,
+                    document_id=document_id,
+                    parent_block_id=parent_block_id,
+                    chunk=chunk,
+                    block_map=block_map,
+                    children_map=children_map,
+                    user_id_type=user_id_type,
+                    image_paths=image_paths,
+                    file_paths=file_paths,
+                    insert_index=insert_index,
+                    error_flag=error_flag,
+                    _rate_limit_retry=_rate_limit_retry + 1,
+                )
+            return
+
         logger.warning(
             "创建子块失败，准备拆分重试: document_id={} parent={} size={} error={}",
             document_id,

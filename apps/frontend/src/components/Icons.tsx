@@ -125,6 +125,20 @@ export const IconChevronRight = (p: P) => (
   </svg>
 );
 
+export const IconChevronLeft = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M15 6l-6 6 6 6" />
+  </svg>
+);
+
+export const IconExternalLink = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <path d="M15 3h6v6" />
+    <path d="M10 14L21 3" />
+  </svg>
+);
+
 export const IconCopy = (p: P) => (
   <svg {...base} {...p}>
     <rect x="9" y="9" width="13" height="13" rx="2" />

@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/*  日志中心页面 — 同步日志(文件API) + 冲突管理                           */
+/*  日志中心页面 — 同步日志(内存) + 系统日志(文件) + 冲突管理             */
 /* ------------------------------------------------------------------ */
 
 import { useMemo, useState } from "react";
@@ -10,6 +10,7 @@ import { formatTimestamp } from "../lib/formatters";
 import { statusLabelMap } from "../lib/constants";
 import { apiFetch } from "../lib/api";
 import { StatusPill } from "../components/StatusPill";
+import { Pagination } from "../components/Pagination";
 import { IconRefresh, IconConflicts, IconCopy } from "../components/Icons";
 import { useToast } from "../components/ui/toast";
 import { cn } from "../lib/utils";
@@ -23,22 +24,32 @@ type FileLogEntry = {
   message: string;
 };
 
+/* 文件日志分页响应 */
+type FileLogResponse = {
+  total: number;
+  items: FileLogEntry[];
+};
+
 export function LogCenterPage() {
   const { tasks, statusMap, refreshStatus } = useTasks();
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflict } = useConflicts();
   const { toast } = useToast();
 
   const [logTab, setLogTab] = useState<"logs" | "file-logs" | "conflicts">("logs");
+
+  // ---- 同步日志 (内存) 状态 ----
   const [logFilterStatus, setLogFilterStatus] = useState("all");
   const [logFilterText, setLogFilterText] = useState("");
-  const [logLimit, setLogLimit] = useState(60);
+  const [logPage, setLogPage] = useState(1);
+  const [logPageSize, setLogPageSize] = useState(20);
 
-  // File log filters
+  // ---- 系统日志 (文件) 状态 ----
   const [fileLogLevel, setFileLogLevel] = useState("");
   const [fileLogSearch, setFileLogSearch] = useState("");
-  const [fileLogLimit, setFileLogLimit] = useState(100);
+  const [fileLogPage, setFileLogPage] = useState(1);
+  const [fileLogPageSize, setFileLogPageSize] = useState(50);
 
-  // In-memory sync log entries (from task status polling)
+  // ---- 同步日志数据 (内存) ----
   const syncLogEntries: SyncLogEntry[] = useMemo(() => {
     return Object.values(statusMap)
       .flatMap((st) =>
@@ -52,7 +63,7 @@ export function LogCenterPage() {
         }))
       )
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 200);
+      .slice(0, 500);
   }, [statusMap, tasks]);
 
   const filteredLogs = useMemo(() => {
@@ -64,22 +75,30 @@ export function LogCenterPage() {
     });
   }, [syncLogEntries, logFilterStatus, logFilterText]);
 
-  // File-based log query
-  const fileLogsQuery = useQuery<FileLogEntry[]>({
-    queryKey: ["file-logs", fileLogLevel, fileLogSearch, fileLogLimit],
+  const logTotalPages = Math.max(1, Math.ceil(filteredLogs.length / logPageSize));
+  const paginatedLogs = useMemo(() => {
+    const start = (logPage - 1) * logPageSize;
+    return filteredLogs.slice(start, start + logPageSize);
+  }, [filteredLogs, logPage, logPageSize]);
+
+  // ---- 系统日志数据 (文件 API) ----
+  const fileLogsQuery = useQuery<FileLogResponse>({
+    queryKey: ["file-logs", fileLogLevel, fileLogSearch, fileLogPage, fileLogPageSize],
     queryFn: () => {
       const params = new URLSearchParams();
-      params.set("limit", String(fileLogLimit));
+      params.set("limit", String(fileLogPageSize));
+      params.set("offset", String((fileLogPage - 1) * fileLogPageSize));
       if (fileLogLevel) params.set("level", fileLogLevel);
       if (fileLogSearch) params.set("search", fileLogSearch);
-      return apiFetch<FileLogEntry[]>(`/sync/logs/file?${params.toString()}`);
+      return apiFetch<FileLogResponse>(`/sync/logs/file?${params.toString()}`);
     },
     enabled: logTab === "file-logs",
     staleTime: 5_000,
-    placeholderData: [],
+    placeholderData: { total: 0, items: [] },
   });
 
-  const fileLogs = fileLogsQuery.data || [];
+  const fileLogs = fileLogsQuery.data?.items || [];
+  const fileLogTotal = fileLogsQuery.data?.total || 0;
 
   const levelColor = (level: string) => {
     switch (level) {
@@ -90,6 +109,10 @@ export function LogCenterPage() {
       default: return "text-zinc-400";
     }
   };
+
+  // 筛选器变更时重置页码
+  const resetLogPage = () => setLogPage(1);
+  const resetFileLogPage = () => setFileLogPage(1);
 
   return (
     <section className="space-y-6 animate-fade-up">
@@ -125,7 +148,7 @@ export function LogCenterPage() {
         </div>
       </div>
 
-      {/* Sync Logs tab (in-memory) */}
+      {/* ============ 同步日志 tab (内存) ============ */}
       {logTab === "logs" ? (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -137,17 +160,19 @@ export function LogCenterPage() {
               <IconRefresh className="h-3.5 w-3.5" /> 刷新日志
             </button>
           </div>
+
+          {/* 筛选器 */}
           <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.6fr_0.6fr]">
             <input
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
               placeholder="搜索任务名、路径或错误信息"
               value={logFilterText}
-              onChange={(e) => { setLogFilterText(e.target.value); setLogLimit(60); }}
+              onChange={(e) => { setLogFilterText(e.target.value); resetLogPage(); }}
             />
             <select
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
               value={logFilterStatus}
-              onChange={(e) => { setLogFilterStatus(e.target.value); setLogLimit(60); }}
+              onChange={(e) => { setLogFilterStatus(e.target.value); resetLogPage(); }}
             >
               <option value="all">全部状态</option>
               <option value="downloaded">下载</option>
@@ -157,18 +182,20 @@ export function LogCenterPage() {
               <option value="skipped">跳过</option>
               <option value="started">开始</option>
             </select>
-            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setLogFilterStatus("all"); setLogFilterText(""); setLogLimit(60); }} type="button">
+            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setLogFilterStatus("all"); setLogFilterText(""); resetLogPage(); }} type="button">
               重置
             </button>
           </div>
-          <div className="mt-5 space-y-3">
+
+          {/* 日志列表 */}
+          <div className="mt-5 max-h-[520px] space-y-3 overflow-auto pr-1 log-scroll-area">
             {filteredLogs.length === 0 ? (
               <div className="py-8 text-center">
                 <IconConflicts className="mx-auto h-10 w-10 text-zinc-700" />
                 <p className="mt-3 text-sm text-zinc-500">暂无匹配日志。如需查看完整历史，请切换到「系统日志」标签。</p>
               </div>
             ) : (
-              filteredLogs.slice(0, logLimit).map((entry, i) => (
+              paginatedLogs.map((entry, i) => (
                 <div key={`${entry.taskId}-${entry.timestamp}-${i}`} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">
@@ -183,17 +210,24 @@ export function LogCenterPage() {
               ))
             )}
           </div>
-          {filteredLogs.length > logLimit ? (
-            <div className="mt-4 flex justify-center">
-              <button className="rounded-lg border border-zinc-700 px-5 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => setLogLimit((prev) => prev + 60)} type="button">
-                加载更多
-              </button>
+
+          {/* 分页 */}
+          {filteredLogs.length > 0 ? (
+            <div className="mt-4 border-t border-zinc-800 pt-4">
+              <Pagination
+                page={logPage}
+                pageSize={logPageSize}
+                total={filteredLogs.length}
+                onPageChange={setLogPage}
+                onPageSizeChange={(size) => { setLogPageSize(size); resetLogPage(); }}
+                pageSizeOptions={[20, 50, 100]}
+              />
             </div>
           ) : null}
         </div>
       ) : null}
 
-      {/* File Logs tab (persistent) */}
+      {/* ============ 系统日志 tab (文件) ============ */}
       {logTab === "file-logs" ? (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -205,28 +239,32 @@ export function LogCenterPage() {
               <IconRefresh className="h-3.5 w-3.5" /> 刷新
             </button>
           </div>
+
+          {/* 筛选器 */}
           <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.6fr_0.6fr]">
             <input
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-              placeholder="搜索日志内容（如 403、error、token）"
+              placeholder="搜索日志内容（如 error、token、频率限制）"
               value={fileLogSearch}
-              onChange={(e) => setFileLogSearch(e.target.value)}
+              onChange={(e) => { setFileLogSearch(e.target.value); resetFileLogPage(); }}
             />
             <select
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
               value={fileLogLevel}
-              onChange={(e) => setFileLogLevel(e.target.value)}
+              onChange={(e) => { setFileLogLevel(e.target.value); resetFileLogPage(); }}
             >
               <option value="">全部级别</option>
               <option value="ERROR">ERROR</option>
               <option value="WARNING">WARNING</option>
               <option value="INFO">INFO</option>
             </select>
-            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setFileLogLevel(""); setFileLogSearch(""); setFileLogLimit(100); }} type="button">
+            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setFileLogLevel(""); setFileLogSearch(""); resetFileLogPage(); }} type="button">
               重置
             </button>
           </div>
-          <div className="mt-5 space-y-2">
+
+          {/* 日志列表 */}
+          <div className="mt-5 max-h-[520px] space-y-2 overflow-auto pr-1 log-scroll-area">
             {fileLogsQuery.isLoading ? (
               <div className="space-y-2">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-zinc-800/50" />)}</div>
             ) : fileLogs.length === 0 ? (
@@ -254,17 +292,24 @@ export function LogCenterPage() {
               ))
             )}
           </div>
-          {fileLogs.length >= fileLogLimit ? (
-            <div className="mt-4 flex justify-center">
-              <button className="rounded-lg border border-zinc-700 px-5 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => setFileLogLimit((prev) => prev + 100)} type="button">
-                加载更多（当前 {fileLogLimit} 条）
-              </button>
+
+          {/* 分页 */}
+          {(fileLogTotal > 0 || fileLogs.length > 0) ? (
+            <div className="mt-4 border-t border-zinc-800 pt-4">
+              <Pagination
+                page={fileLogPage}
+                pageSize={fileLogPageSize}
+                total={fileLogTotal}
+                onPageChange={setFileLogPage}
+                onPageSizeChange={(size) => { setFileLogPageSize(size); resetFileLogPage(); }}
+                pageSizeOptions={[20, 50, 100, 200]}
+              />
             </div>
           ) : null}
         </div>
       ) : null}
 
-      {/* Conflicts tab */}
+      {/* ============ 冲突管理 tab ============ */}
       {logTab === "conflicts" ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">

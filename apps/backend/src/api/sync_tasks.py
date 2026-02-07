@@ -238,17 +238,23 @@ class LogFileEntry(BaseModel):
     message: str
 
 
-@router.get("/logs/file", response_model=list[LogFileEntry])
+class LogFileResponse(BaseModel):
+    total: int
+    items: list[LogFileEntry]
+
+
+@router.get("/logs/file", response_model=LogFileResponse)
 async def read_log_file(
-    limit: int = Query(default=200, ge=1, le=2000, description="返回最近N条日志"),
+    limit: int = Query(default=50, ge=1, le=2000, description="返回条数"),
+    offset: int = Query(default=0, ge=0, description="跳过前N条"),
     level: str = Query(default="", description="按级别筛选 (INFO/WARNING/ERROR)"),
     search: str = Query(default="", description="关键词搜索"),
-) -> list[LogFileEntry]:
-    """读取 loguru 日志文件，返回最近的日志条目。"""
+) -> LogFileResponse:
+    """读取 loguru 日志文件，支持分页返回最近的日志条目。"""
     root = Path(__file__).resolve().parents[3]
     log_file = root / "data" / "logs" / "larksync.log"
     if not log_file.exists():
-        return []
+        return LogFileResponse(total=0, items=[])
 
     raw_lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
 
@@ -260,10 +266,11 @@ async def read_log_file(
         elif merged:
             merged[-1] += "\n" + line
 
-    entries: list[LogFileEntry] = []
+    # 先过滤，再计算总数和分页
     level_upper = level.strip().upper()
     search_lower = search.strip().lower()
 
+    filtered: list[tuple[str, str, str]] = []
     for raw in reversed(merged):
         m = _LOG_LINE_RE.match(raw)
         if not m:
@@ -273,8 +280,12 @@ async def read_log_file(
             continue
         if search_lower and search_lower not in raw.lower():
             continue
-        entries.append(LogFileEntry(timestamp=ts, level=lvl, message=msg))
-        if len(entries) >= limit:
-            break
+        filtered.append((ts, lvl, msg))
 
-    return entries
+    total = len(filtered)
+
+    # 分页切片
+    page_slice = filtered[offset : offset + limit]
+    items = [LogFileEntry(timestamp=ts, level=lvl, message=msg) for ts, lvl, msg in page_slice]
+
+    return LogFileResponse(total=total, items=items)
