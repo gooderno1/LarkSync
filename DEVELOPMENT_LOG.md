@@ -1,20 +1,38 @@
 # DEVELOPMENT LOG
 
-## v0.4.0-dev.2 (2026-02-08)
+## v0.4.0-dev.3 (2026-02-07)
+- 目标：统一托盘模式为唯一运行方式；增加 `--dev` 热重载开发支持；删除 Docker 部署。
+- 结果：
+  - **统一托盘模式**：LarkSync 不再有独立的"开发模式"和"生产模式"之分，所有场景统一通过托盘应用入口。区别仅在于是否启用热重载。
+  - **`--dev` 参数**（`tray_app.py`）：
+    - 新增 `--dev` 命令行参数，启动时同时拉起 Vite 前端开发服务器（3666）+ uvicorn --reload（8000）+ 系统托盘。
+    - 前端改代码 → Vite HMR 即时生效；后端改代码 → uvicorn 自动重启。
+    - Vite 子进程随托盘退出一起关闭（Windows 使用 taskkill /T 终止进程树）。
+    - Vite 日志输出到 `data/logs/vite-dev.log`。
+  - **`backend_manager.py` 增强**：`BackendManager` 构造函数接收 `dev_mode` 参数，dev 模式下 uvicorn 命令自动追加 `--reload`。
+  - **`npm run dev` 改造**：根目录 `package.json` 的 `scripts.dev` 从 `node scripts/dev.js` 改为 `python apps/tray/tray_app.py --dev`。
+  - **删除旧开发脚本**：移除 `scripts/dev.js`（Node.js 并行启动脚本）。
+  - **删除 Docker 部署**：移除 `Dockerfile`、`docker-compose.yml`、`nginx.conf`。LarkSync 是桌面同步工具，Docker 部署不适用。
+  - **URL 检测优化**（`config.py`）：`_detect_frontend_url()` 默认 fallback 改为 8000（而非 3666），确保无 dist 且无 Vite 时指向后端。
+  - **文档全面更新**：README、USAGE.md、CHANGELOG、DEVELOPMENT_LOG、UPGRADE_PLAN 统一为托盘模式说明。
+- 测试：Python 编译检查全部通过。
+- 问题：无阻塞问题。
+
+## v0.4.0-dev.2 (2026-02-07)
 - 目标：修复托盘启动问题 + 品牌视觉集成 + 静态文件服务修复。
 - 结果：
   - **端口冲突修复**（`backend_manager.py`）：启动前检测端口占用，已有后端自动复用（设为 `_external_backend` 模式）。子进程 stderr 重定向到 `data/logs/backend-stderr.log` 便于诊断。外部后端不可达时自动切换为自启模式。
   - **单实例锁**（`tray_app.py`）：通过绑定锁端口 48901 防止多实例启动。重复启动时直接打开浏览器并退出。
-  - **BAT 清理旧进程**（`LarkSync.bat`）：启动前自动清理端口 8000 上的残留进程，确保全新启动。
+  - **BAT 简化**（`LarkSync.bat`）：移除 taskkill 进程清理（避免误杀开发环境进程），简化为纯启动器，进程管理由单实例锁负责。
   - **SPA fallback 修复**（`main.py`）：修复 dist 根目录静态文件（favicon.png、logo-horizontal.png 等）未被正确服务的问题。新逻辑：先检查 dist 下是否有对应文件，存在则直接返回（含 MIME 类型映射），不存在才走 SPA fallback。
-  - **开发/生产 URL 自动检测**（`config.py`）：`_detect_frontend_url()` 函数根据 `dist/` 是否存在自动选择端口——有 dist 返回 8000（生产），无 dist 返回 3666（Vite 开发服务器）。
+  - **开发/生产 URL 自动检测**（`config.py`）：`_detect_frontend_url()` 函数根据端口活跃状态和 `dist/` 是否存在自动选择前端地址。
   - **品牌 Logo 集成**：
     - 托盘图标：基于 `assets/branding/LarkSync_Logo_Icon_FullColor.png` 生成 4 种状态变体（idle 原色 / syncing 增强 / error 红色着色 / paused 灰度），带裁白边 + 抗锯齿缩放。
     - Favicon：`favicon.ico`（16/32/48px）+ `favicon.png`（192px）写入 `public/`，`index.html` 添加引用。
     - 侧边栏：替换 SVG 占位图标为横版品牌 Logo（`logo-horizontal.png`）。
   - **品牌资源归档**：三个 Logo 文件统一存放在 `assets/branding/` 目录（Icon / Horizontal / CompactVertical）。
 - 测试：`npx tsc --noEmit`（零错误）；Python 编译检查全部通过；`npm run build` 产物验证通过；8000 端口验证 favicon/logo/JS 均为新版。
-- 问题：旧后端进程残留会导致托盘复用旧代码。已通过 BAT 清理 + 单实例锁解决。
+- 问题：无阻塞问题。
 
 ## v0.4.0-dev.1 (2026-02-07)
 - 目标：实现系统托盘桌面化，让 LarkSync 成为一个后台静默运行的桌面应用。

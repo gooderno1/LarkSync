@@ -32,8 +32,8 @@
   - `apps/backend/`：Python 3.10+、FastAPI、SQLAlchemy 2.0 Async、Pydantic v2、Watchdog、Loguru
   - `apps/frontend/`：React 18、Vite、TypeScript、TailwindCSS、Shadcn/UI、TanStack Query
   - `data/`：SQLite 数据库、日志等运行数据（`data/larksync.db`）
-  - `scripts/`：自动化脚本（如 `release.py`）
-  - `docker-compose.yml`、`Dockerfile`
+  - `apps/tray/`：系统托盘应用（pystray、进程管理、通知、自启动）
+  - `scripts/`：自动化脚本（如 `release.py`、`build.py`）
 - 任何新增文件必须放在合理目录内。
 
 ## 2. 工作流与交付标准（DoD）

@@ -19,6 +19,48 @@ v1.0.0  正式发布
 
 ---
 
+## 使用方法
+
+LarkSync 统一采用 **系统托盘模式** 作为唯一运行方式。
+
+### 日常使用（生产级）
+
+构建前端后通过一键启动器运行，前后端由 FastAPI 统一服务于 `http://localhost:8000`。
+
+```bash
+# 1. 安装依赖（首次）
+cd apps/backend && pip install -r requirements.txt
+cd apps/frontend && npm install
+
+# 2. 构建前端
+python scripts/build.py
+
+# 3. 启动
+# Windows：双击 LarkSync.bat 或 LarkSync.pyw
+# macOS：双击 LarkSync.command
+# 通用：python apps/tray/tray_app.py
+```
+
+### 开发调试（带热重载）
+
+通过 `--dev` 参数启动，前端使用 Vite 热重载（3666），后端使用 uvicorn --reload（8000），同时启动托盘图标。
+
+```bash
+npm run dev
+# 等价于 python apps/tray/tray_app.py --dev
+```
+
+- 前端改代码 → Vite HMR 即时生效
+- 后端改代码 → uvicorn 自动重启
+- 托盘图标、菜单、通知等与生产模式完全一致
+- 退出：托盘右键"退出"或 Ctrl+C
+
+### 安装版用户（v0.5.0+）
+
+下载安装包 → 安装 → 点击桌面图标 → 托盘启动 → 浏览器打开管理面板。
+
+---
+
 ## v0.3.x — UI/UX 优化（已完成 ✅）
 
 | 版本 | 日期 | 内容 | 状态 |
@@ -36,7 +78,7 @@ v1.0.0  正式发布
 
 > 设计文档：[`docs/design/v0.4.0-desktop-tray-design.md`](design/v0.4.0-desktop-tray-design.md)
 
-### v0.4.0-dev.1 — FastAPI 静态文件服务 + 构建脚本 ✅
+### v0.4.0-dev.1 — FastAPI 静态文件服务 + 托盘应用核心 ✅
 - [x] `main.py` 增加静态文件服务（检测 dist/ 目录，挂载 + SPA fallback）
 - [x] `scripts/build.py` 构建脚本（调用 npm build + 验证 dist/）
 - [x] 前端 `api.ts` 基址改为 `VITE_API_BASE` 环境变量配置
@@ -50,12 +92,23 @@ v1.0.0  正式发布
 - [x] PyInstaller 打包配置：build_installer.py + spec 自动生成
 
 ### v0.4.0-dev.2 — 修复 + 品牌集成 ✅
-- [x] 端口冲突修复：智能检测已有后端并复用
+- [x] 端口冲突修复：BackendManager 智能检测已有后端并复用
 - [x] 单实例锁：防止多次启动（端口锁 48901）
-- [x] BAT 启动器清理旧进程
-- [x] SPA fallback 修复：dist 根目录静态文件正确服务
+- [x] SPA fallback 修复：dist 根目录静态文件正确服务（MIME 类型映射）
 - [x] 品牌 Logo 集成：托盘 4 状态变体 + favicon + 侧边栏横版 Logo
-- [x] 开发/生产 URL 自动检测（有 dist → 8000，无 dist → 3666）
+- [x] 开发/生产 URL 自动检测（config.py _detect_frontend_url）
+- [x] BAT 启动器简化为纯启动器（无进程清理，由单实例锁管理）
+
+### v0.4.0-dev.3 — 统一托盘模式 + 开发热重载（计划中）
+- [ ] `tray_app.py` 增加 `--dev` 参数
+  - dev 模式：同时启动 Vite dev server（3666）+ uvicorn --reload（8000）+ 托盘
+  - 正常模式：启动 uvicorn（8000，无 reload）+ 托盘
+- [ ] `backend_manager.py` 支持 `dev_mode` 参数（控制 --reload）
+- [ ] 托盘应用管理 Vite 子进程（随托盘退出一起关闭）
+- [ ] `npm run dev` 改为调用 `python apps/tray/tray_app.py --dev`
+- [ ] 删除旧 `scripts/dev.js` 开发脚本
+- [ ] 删除 Docker 部署文件（Dockerfile / docker-compose.yml / nginx.conf）
+- [ ] 更新全部文档（README / USAGE / CHANGELOG / DEVELOPMENT_LOG）
 
 ---
 
@@ -101,5 +154,6 @@ v1.0.0  正式发布
 
 | 日期 | 变更 |
 |------|------|
-| 2026-02-08 | v0.4.0-dev.2 完成：修复 + 品牌集成 |
+| 2026-02-07 | v0.4.0-dev.3 规划：统一托盘模式 + --dev 热重载 + 删除 Docker |
+| 2026-02-07 | v0.4.0-dev.2 完成：修复 + 品牌集成 |
 | 2026-02-07 | 初始创建，v0.3.x 已完成，v0.4.0-dev.1 完成 |

@@ -3,7 +3,7 @@
 /* ------------------------------------------------------------------ */
 
 // 默认无前缀（开发模式由 Vite 代理，生产模式由 FastAPI 同源服务）
-// Docker/Nginx 部署时可通过 VITE_API_BASE=/api 设置前缀
+// 如需自定义前缀，可通过 VITE_API_BASE 环境变量设置
 const apiBase: string = import.meta.env.VITE_API_BASE ?? "";
 
 export function apiUrl(path: string): string {

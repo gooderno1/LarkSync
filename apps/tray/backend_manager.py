@@ -40,13 +40,14 @@ from loguru import logger
 class BackendManager:
     """管理 FastAPI 后端进程的生命周期。"""
 
-    def __init__(self) -> None:
+    def __init__(self, dev_mode: bool = False) -> None:
         self._process: subprocess.Popen | None = None
         self._restart_count: int = 0
         self._lock = threading.Lock()
         self._should_run = False
         self._external_backend = False  # 是否复用外部已有后端
         self._stderr_path: Path | None = None
+        self._dev_mode = dev_mode  # 开发模式：启用 --reload
 
     @property
     def is_running(self) -> bool:
@@ -116,6 +117,10 @@ class BackendManager:
                 "--port", str(BACKEND_PORT),
                 "--log-level", "warning",
             ]
+
+            if self._dev_mode:
+                cmd.append("--reload")
+                logger.info("开发模式：后端启用 --reload 热重载")
 
             # Windows: 使用 CREATE_NO_WINDOW 避免弹出终端
             creationflags = 0

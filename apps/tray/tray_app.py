@@ -7,18 +7,22 @@ LarkSync 系统托盘应用 — 主入口
 - 右键菜单（打开面板/暂停/日志/退出）
 - 状态轮询 + 图标动态切换
 - 系统通知（冲突/错误）
+- --dev 模式：同时启动 Vite 前端热重载 + uvicorn --reload
 """
 
 from __future__ import annotations
 
 import sys
 import os
+import signal
+import subprocess
 import threading
 import time
 import webbrowser
 import json
 import urllib.request
 import urllib.error
+import argparse
 
 # 确保项目根目录在 sys.path 中
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +34,8 @@ from apps.tray.config import (
     BACKEND_URL,
     STATUS_POLL_INTERVAL,
     TRAY_STATUS_URL,
+    FRONTEND_DIR,
+    VITE_DEV_URL,
     get_dashboard_url,
     get_settings_url,
     get_logs_url,
@@ -51,8 +57,10 @@ except ImportError:
 class LarkSyncTray:
     """LarkSync 系统托盘应用。"""
 
-    def __init__(self) -> None:
-        self._backend = BackendManager()
+    def __init__(self, dev_mode: bool = False) -> None:
+        self._dev_mode = dev_mode
+        self._backend = BackendManager(dev_mode=dev_mode)
+        self._vite_process: subprocess.Popen | None = None
         self._icon: pystray.Icon | None = None
         self._current_state = "idle"
         self._global_paused = False
@@ -73,8 +81,13 @@ class LarkSyncTray:
 
         self._running = True
 
-        # 先启动后端
-        print("正在启动 LarkSync 后端...")
+        # dev 模式：先启动 Vite 前端开发服务器
+        if self._dev_mode:
+            self._start_vite()
+
+        # 启动后端
+        mode_label = "开发" if self._dev_mode else "生产"
+        print(f"正在启动 LarkSync 后端（{mode_label}模式）...")
         success = self._backend.start(wait=True)
         if success:
             dashboard = get_dashboard_url()
@@ -101,11 +114,66 @@ class LarkSyncTray:
         self._icon.run()
 
     def stop(self) -> None:
-        """退出托盘应用。"""
+        """退出托盘应用，关闭所有子进程。"""
         self._running = False
+        self._stop_vite()
         self._backend.stop()
         if self._icon:
             self._icon.stop()
+
+    # ---- Vite 前端开发服务器管理 ----
+
+    def _start_vite(self) -> None:
+        """启动 Vite 前端开发服务器（仅 dev 模式）。"""
+        npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+        frontend_dir = str(FRONTEND_DIR)
+
+        print("正在启动 Vite 前端开发服务器（端口 3666）...")
+
+        # 日志文件
+        log_dir = os.path.join(_PROJECT_ROOT, "data", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        vite_log_path = os.path.join(log_dir, "vite-dev.log")
+        vite_log = open(vite_log_path, "a", encoding="utf-8")
+
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+
+        try:
+            self._vite_process = subprocess.Popen(
+                [npm_cmd, "run", "dev"],
+                cwd=frontend_dir,
+                creationflags=creationflags,
+                stdout=vite_log,
+                stderr=vite_log,
+            )
+            print(f"Vite 已启动 (PID {self._vite_process.pid})，日志: {vite_log_path}")
+        except Exception as exc:
+            print(f"警告：Vite 启动失败: {exc}")
+            self._vite_process = None
+
+    def _stop_vite(self) -> None:
+        """停止 Vite 前端开发服务器。"""
+        if not self._vite_process:
+            return
+        try:
+            if sys.platform == "win32":
+                # Windows: 使用 taskkill 终止进程树
+                subprocess.run(
+                    ["taskkill", "/PID", str(self._vite_process.pid), "/T", "/F"],
+                    capture_output=True,
+                )
+            else:
+                os.killpg(os.getpgid(self._vite_process.pid), signal.SIGTERM)
+            self._vite_process.wait(timeout=5)
+        except Exception:
+            try:
+                self._vite_process.kill()
+            except Exception:
+                pass
+        self._vite_process = None
+        print("Vite 前端开发服务器已停止")
 
     # ---- 菜单构建 ----
 
@@ -299,20 +367,42 @@ def _acquire_lock() -> bool:
         return False
 
 
+def _parse_args() -> argparse.Namespace:
+    """解析命令行参数。"""
+    parser = argparse.ArgumentParser(
+        description="LarkSync 系统托盘应用",
+    )
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="开发模式：启动 Vite 热重载 + uvicorn --reload",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
     """入口函数。"""
+    args = _parse_args()
+
     if not _acquire_lock():
         print("LarkSync 已在运行中，请勿重复启动。")
         # 尝试打开浏览器让用户看到现有实例
-        from apps.tray.config import get_dashboard_url
-        import webbrowser
         webbrowser.open(get_dashboard_url())
         return
 
-    app = LarkSyncTray()
+    if args.dev:
+        print("=" * 50)
+        print("  LarkSync 开发模式")
+        print("  前端: http://localhost:3666 (Vite HMR)")
+        print("  后端: http://localhost:8000 (uvicorn --reload)")
+        print("  退出: 托盘右键「退出」或 Ctrl+C")
+        print("=" * 50)
+
+    app = LarkSyncTray(dev_mode=args.dev)
     try:
         app.run()
     except KeyboardInterrupt:
+        print("\n正在关闭 LarkSync...")
         app.stop()
 
 

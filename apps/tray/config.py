@@ -50,13 +50,13 @@ def _detect_frontend_url() -> str:
     自动检测前端 URL（优先级）：
     1. Vite 开发服务器在 3666 运行 → 开发模式，用 3666（最新代码 + HMR）
     2. dist/ 存在且 Vite 未运行 → 生产模式，用 FastAPI 8000
-    3. 都没有 → 默认 3666（等用户启动 npm run dev）
+    3. 都没有 → 默认 8000（等用户 build 或启动 --dev）
     """
     if _is_port_active(VITE_DEV_PORT):
         return VITE_DEV_URL
     if FRONTEND_DIST.is_dir() and (FRONTEND_DIST / "index.html").is_file():
         return BACKEND_URL
-    return VITE_DEV_URL
+    return BACKEND_URL
 
 
 # ---- 浏览器 URL（动态检测） ----

@@ -50,74 +50,75 @@
 - 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
 - 定时调度：本地变更队列按秒/小时/天触发上传；云端下载支持按秒/小时/天或每日定时（可配置）
 
-## 桌面模式（推荐）
+## 快速开始
 
-LarkSync 支持以系统托盘应用方式后台运行，无需保持终端或浏览器打开。
+LarkSync 统一采用 **系统托盘模式** 运行，启动后在系统托盘区域显示图标，右键菜单可打开管理面板、暂停/恢复同步、查看日志、配置开机自启动等。
 
-### 安装依赖
+### 依赖安装
+
 ```bash
-cd apps/backend && pip install -r requirements.txt
+# 根目录（用于 npm run dev）
+npm install
+
+# 前端
 cd apps/frontend && npm install
+
+# 后端
+cd apps/backend && pip install -r requirements.txt
 ```
 
-### 构建前端
+### 开发调试（推荐日常开发使用）
+
+一键启动：托盘 + 前端 Vite 热重载（3666）+ 后端 uvicorn --reload（8000）。
+
 ```bash
-python scripts/build.py
+npm run dev
 ```
 
-### 启动
-- **Windows**：双击 `LarkSync.pyw`
-- **macOS**：双击 `LarkSync.command`
-- **通用**：`python apps/tray/tray_app.py`
+- 前端改代码 → Vite HMR 即时生效
+- 后端改代码 → uvicorn 自动重启
+- 托盘图标、菜单、通知等与正式版完全一致
+- 退出：托盘右键"退出"或 Ctrl+C
 
-启动后托盘区域出现 LarkSync 图标，右键菜单可打开管理面板、暂停/恢复同步、查看日志、配置开机自启动等。
+### 日常使用（无需热重载）
 
-### 打包为安装包
+先构建前端，再通过一键启动器运行，前后端统一由 FastAPI 服务于 `http://localhost:8000`。
+
+```bash
+# 构建前端（仅需执行一次，代码更新后重新构建）
+python scripts/build.py
+
+# 启动
+# Windows：双击 LarkSync.bat 或 LarkSync.pyw
+# macOS：双击 LarkSync.command
+# 通用：python apps/tray/tray_app.py
+```
+
+### 打包为安装包（v0.5.0+）
+
 ```bash
 python scripts/build_installer.py          # PyInstaller 打包
 python scripts/build_installer.py --nsis   # Windows: 额外生成安装包
 python scripts/build_installer.py --dmg    # macOS: 额外生成 DMG
 ```
 
-## 开发模式
-### 使用教程
-- 完整使用步骤见 `docs/USAGE.md`，后续功能变更会同步更新。
-### 开发文档更新
-- 执行 `npm run sync:feishu-docs`（或 `python scripts/sync_feishu_docs.py`）同步飞书开发手册到 `docs/feishu/`。
 ### OAuth 配置
-- 支持在设置页填写 App ID / Secret / Redirect URI，详细步骤见 `docs/OAUTH_GUIDE.md`。
-### 依赖安装
-- 根目录：`npm install`（用于并行启动前后端）
-- 前端：`cd apps/frontend` 后执行 `npm install`
-- 后端：`cd apps/backend` 后执行 `python -m pip install -r requirements.txt`
-  - 开发依赖：`python -m pip install -r requirements-dev.txt`
 
-### 启动
-- 统一入口：根目录执行 `npm run dev`
-- `npm run dev` 会将前后端控制台输出写入 `data/logs/dev-console.log`
-- 分别启动：
-  - 后端：`cd apps/backend` 后执行 `python -m uvicorn src.main:app --reload --port 8000`
-  - 前端：`cd apps/frontend` 后执行 `npm run dev`
+支持在设置页填写 App ID / Secret / Redirect URI，详细步骤见 `docs/OAUTH_GUIDE.md`。
+
+### 开发文档更新
+
+执行 `npm run sync:feishu-docs`（或 `python scripts/sync_feishu_docs.py`）同步飞书开发手册到 `docs/feishu/`。
 
 ### 配置
-- 默认读取 `data/config.json`，可通过环境变量覆盖：
-  - `LARKSYNC_SYNC_MODE`：`bidirectional` / `download_only` / `upload_only`
-  - `LARKSYNC_DATABASE_URL` 或 `LARKSYNC_DB_PATH`
-  - `LARKSYNC_AUTH_AUTHORIZE_URL` / `LARKSYNC_AUTH_TOKEN_URL`
-  - `LARKSYNC_AUTH_CLIENT_ID` / `LARKSYNC_AUTH_CLIENT_SECRET`
-  - `LARKSYNC_AUTH_REDIRECT_URI`
-  - `LARKSYNC_AUTH_SCOPES`（逗号分隔）
-  - `LARKSYNC_TOKEN_STORE`（`keyring` / `memory`）
-  - `LARKSYNC_UPLOAD_INTERVAL_VALUE`
-  - `LARKSYNC_UPLOAD_INTERVAL_UNIT`
-  - `LARKSYNC_UPLOAD_DAILY_TIME`
-  - `LARKSYNC_DOWNLOAD_INTERVAL_VALUE`
-  - `LARKSYNC_DOWNLOAD_INTERVAL_UNIT`
-  - `LARKSYNC_DOWNLOAD_DAILY_TIME`
 
-## 生产部署（Docker）
-- 构建与启动：
-  - `docker-compose build`
-  - `docker-compose up -d`
-- 访问地址：`http://localhost:8080`
-- 说明：生产环境通过 Nginx 反向代理 `/api/*` 到后端，前端已在生产模式下自动加 `/api` 前缀。
+默认读取 `data/config.json`，可通过环境变量覆盖：
+- `LARKSYNC_SYNC_MODE`：`bidirectional` / `download_only` / `upload_only`
+- `LARKSYNC_DATABASE_URL` 或 `LARKSYNC_DB_PATH`
+- `LARKSYNC_AUTH_AUTHORIZE_URL` / `LARKSYNC_AUTH_TOKEN_URL`
+- `LARKSYNC_AUTH_CLIENT_ID` / `LARKSYNC_AUTH_CLIENT_SECRET`
+- `LARKSYNC_AUTH_REDIRECT_URI`
+- `LARKSYNC_AUTH_SCOPES`（逗号分隔）
+- `LARKSYNC_TOKEN_STORE`（`keyring` / `memory`）
+- `LARKSYNC_UPLOAD_INTERVAL_VALUE` / `LARKSYNC_UPLOAD_INTERVAL_UNIT` / `LARKSYNC_UPLOAD_DAILY_TIME`
+- `LARKSYNC_DOWNLOAD_INTERVAL_VALUE` / `LARKSYNC_DOWNLOAD_INTERVAL_UNIT` / `LARKSYNC_DOWNLOAD_DAILY_TIME`

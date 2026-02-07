@@ -1,6 +1,7 @@
 # CHANGELOG
 
-[2026-02-08] v0.4.0-dev.2 fix(tray): 端口冲突智能复用 + 单实例锁 + BAT 清理旧进程；SPA fallback 修复 dist 根目录静态文件（logo/favicon）；品牌 Logo 集成（托盘4状态变体 + favicon + 侧边栏横版Logo）；开发/生产模式 URL 自动检测
+[2026-02-07] v0.4.0-dev.3 refactor(tray): 统一托盘模式为唯一运行方式；tray_app.py 新增 --dev 参数（Vite HMR 3666 + uvicorn --reload 8000 + 托盘一体化启动）；npm run dev 改为调用 tray --dev；删除旧 scripts/dev.js 开发脚本；删除 Docker 部署文件（Dockerfile/docker-compose.yml/nginx.conf）；backend_manager 支持 dev_mode 热重载；全部文档统一为托盘模式说明
+[2026-02-07] v0.4.0-dev.2 fix(tray): 端口冲突智能复用 + 单实例锁 + BAT 简化为纯启动器；SPA fallback 修复 dist 根目录静态文件（logo/favicon）；品牌 Logo 集成（托盘4状态变体 + favicon + 侧边栏横版Logo）；开发/生产模式 URL 自动检测
 [2026-02-07] v0.4.0-dev.1 feat(desktop): 系统托盘桌面化 — pystray 托盘应用（启动/停止/菜单/状态轮询/图标变色）；FastAPI 静态文件服务（前后端一体化）；一键启动器 LarkSync.pyw/command；系统通知 plyer；开机自启动（Windows Startup/macOS LaunchAgent）；PyInstaller 打包配置；构建脚本 build.py/build_installer.py；后端新增 /tray/status 聚合接口
 [2026-02-07] v0.3.0-dev.6 feat(ui): 日志中心页码分页重构（同步日志+系统日志）；新建 Pagination 通用分页组件；仪表盘日志面板增加条数+总数+查看全部入口；后端 /sync/logs/file 接口改为分页返回（offset+total）；自定义滚动条适配明/暗主题；docx_service 频率限制（99991400）增加指数退避延迟重试
 [2026-02-07] v0.3.0-dev.5 feat: SyncTask 增加 cloud_folder_name 字段显示云端目录名；新增 /sync/logs/file API 读取 loguru 日志文件；日志中心新增「系统日志」标签展示完整历史日志
