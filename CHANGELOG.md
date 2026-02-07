@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-07] v0.3.0-dev.1 feat(ui): 前端 UI/UX 全面重构 — 架构拆分为 pages/components/hooks/lib 分层；引入 TanStack Query 替代原始 fetch；新增 Toast 通知系统与确认弹窗；新建任务改为分步向导；冲突解决添加 Keep Both 按钮；字体切换 Inter + JetBrains Mono；色板对齐 Zinc + Lark Blue；移除 CSS !important hack；新增 WebSocket 实时日志流、骨架屏与空状态引导组件
 [2026-02-06] v0.2.0-dev.2 feat(ui): 任务页重构 + 明亮主题按钮对比度优化；feat(config): 同步策略支持秒/小时/天；docs: 更新 OAuth/使用/同步逻辑说明
 [2026-02-04] v0.1.36-dev.24 chore(docs): 新增飞书文档同步脚本并固化到协作规范
 [2026-01-31] v0.1.36-dev.23 docs(agents): 增加飞书开发文档下载/更新规范

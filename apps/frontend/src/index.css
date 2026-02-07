@@ -1,53 +1,57 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+/* ================================================================== */
+/*  LarkSync — 全局样式                                                */
+/*  字体：Inter + JetBrains Mono (UX 说明书 v1.0)                       */
+/*  色板：Zinc 950 背景 + Lark Blue #3370FF 主色                        */
+/*  主题切换：仅通过 CSS 变量 + data-theme，零 !important                */
+/* ================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ---- Dark theme (default) ---- */
 :root {
   color-scheme: dark;
-  --bg: #0b0f16;
-  --bg-soft: #0f1524;
-  --panel: #121a2a;
-  --panel-strong: #182033;
-  --panel-glass: rgba(18, 24, 40, 0.72);
-  --border: rgba(148, 163, 184, 0.18);
-  --text: #e2e8f0;
-  --muted: #93a3bf;
-  --brand: #3370ff;
-  --brand-2: #6aa2ff;
-  --accent: #14b8a6;
+  --bg: #09090b;            /* zinc-950 */
+  --bg-soft: #18181b;       /* zinc-900 */
+  --panel: #18181b;         /* zinc-900 */
+  --panel-strong: #27272a;  /* zinc-800 */
+  --panel-glass: rgba(24, 24, 27, 0.78);
+  --border: rgba(63, 63, 70, 0.5);  /* zinc-700/50 */
+  --text: #fafafa;          /* zinc-50 */
+  --muted: #a1a1aa;         /* zinc-400 */
+  --brand: #3370ff;         /* Lark Blue */
+  --brand-hover: #5b8eff;
+  --accent: #10b981;        /* emerald-500 */
   --warning: #f59e0b;
   --danger: #f43f5e;
-  --overlay: rgba(2, 6, 23, 0.72);
-  --bg-gradient:
-    radial-gradient(1200px 800px at 10% -10%, rgba(51, 112, 255, 0.18), transparent 60%),
-    radial-gradient(900px 700px at 90% 10%, rgba(20, 184, 166, 0.12), transparent 55%),
-    linear-gradient(180deg, #0b0f16 0%, #0a0f1c 60%, #090d16 100%);
+  --overlay: rgba(0, 0, 0, 0.6);
+  --input-bg: #09090b;      /* zinc-950 */
 }
 
+/* ---- Light theme ---- */
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f8fafc;
-  --bg-soft: #f1f5f9;
+  --bg: #fafafa;            /* zinc-50 */
+  --bg-soft: #f4f4f5;       /* zinc-100 */
   --panel: #ffffff;
-  --panel-strong: #f8fafc;
-  --panel-glass: rgba(255, 255, 255, 0.82);
-  --border: rgba(15, 23, 42, 0.12);
-  --text: #0f172a;
-  --muted: #475569;
+  --panel-strong: #f4f4f5;  /* zinc-100 */
+  --panel-glass: rgba(255, 255, 255, 0.85);
+  --border: rgba(39, 39, 42, 0.15);
+  --text: #09090b;          /* zinc-950 */
+  --muted: #71717a;         /* zinc-500 */
   --brand: #2563eb;
-  --brand-2: #60a5fa;
-  --accent: #0ea5a4;
+  --brand-hover: #3b82f6;
+  --accent: #059669;
   --warning: #d97706;
   --danger: #e11d48;
-  --overlay: rgba(15, 23, 42, 0.22);
-  --bg-gradient:
-    radial-gradient(1200px 800px at 0% 0%, rgba(37, 99, 235, 0.12), transparent 60%),
-    radial-gradient(900px 700px at 90% 10%, rgba(14, 165, 164, 0.1), transparent 55%),
-    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 60%, #e2e8f0 100%);
+  --overlay: rgba(0, 0, 0, 0.25);
+  --input-bg: #ffffff;
 }
 
+/* ---- Base resets ---- */
 *,
 *::before,
 *::after {
@@ -56,174 +60,136 @@
 
 body {
   margin: 0;
-  font-family: "Space Grotesk", "Segoe UI", sans-serif;
-  background: var(--bg-gradient);
+  font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
   background-color: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 code,
 pre,
 .font-mono {
-  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", monospace;
 }
 
-.glass-panel {
-  background: var(--panel-glass);
-  backdrop-filter: blur(14px);
-  border: 1px solid var(--border);
+/* ---- Light theme overrides for Tailwind utility classes ---- */
+/* Instead of !important hacks, we use data-theme selectors to    */
+/* swap semantic values on the exact elements that need it.       */
+
+:root[data-theme="light"] .text-zinc-50,
+:root[data-theme="light"] .text-zinc-100,
+:root[data-theme="light"] .text-zinc-200 {
+  color: var(--text);
 }
 
-.soft-panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
+:root[data-theme="light"] .text-zinc-300,
+:root[data-theme="light"] .text-zinc-400 {
+  color: #3f3f46; /* zinc-700 */
 }
 
-:root[data-theme="light"] .text-slate-50,
-:root[data-theme="light"] .text-slate-100,
-:root[data-theme="light"] .text-slate-200 {
-  color: #0f172a !important;
+:root[data-theme="light"] .text-zinc-500 {
+  color: var(--muted);
 }
 
-:root[data-theme="light"] .text-slate-300,
-:root[data-theme="light"] .text-slate-400 {
-  color: #334155 !important;
+:root[data-theme="light"] .bg-zinc-900,
+:root[data-theme="light"] .bg-zinc-900\/70,
+:root[data-theme="light"] .bg-zinc-900\/60,
+:root[data-theme="light"] .bg-zinc-900\/50 {
+  background-color: var(--panel);
 }
 
-:root[data-theme="light"] .text-slate-500,
-:root[data-theme="light"] .text-slate-600 {
-  color: #475569 !important;
+:root[data-theme="light"] .bg-zinc-950,
+:root[data-theme="light"] .bg-zinc-950\/50 {
+  background-color: var(--bg-soft);
 }
 
-:root[data-theme="light"] .text-blue-100,
-:root[data-theme="light"] .text-blue-200 {
-  color: #1d4ed8 !important;
+:root[data-theme="light"] .bg-zinc-800,
+:root[data-theme="light"] .bg-zinc-800\/50,
+:root[data-theme="light"] .bg-zinc-800\/30 {
+  background-color: var(--panel-strong);
 }
 
-:root[data-theme="light"] .text-emerald-200,
-:root[data-theme="light"] .text-emerald-300 {
-  color: #047857 !important;
+:root[data-theme="light"] .border-zinc-700,
+:root[data-theme="light"] .border-zinc-800 {
+  border-color: var(--border);
 }
 
-:root[data-theme="light"] .text-amber-200 {
-  color: #92400e !important;
+:root[data-theme="light"] select,
+:root[data-theme="light"] input[type="number"],
+:root[data-theme="light"] input[type="text"],
+:root[data-theme="light"] input[type="password"],
+:root[data-theme="light"] input:not([type]) {
+  background-color: var(--input-bg);
+  color: var(--text);
 }
 
-:root[data-theme="light"] .text-rose-200 {
-  color: #be123c !important;
+/* select option fix for Windows Chrome */
+select option {
+  background-color: var(--panel-strong);
+  color: var(--text);
 }
 
-:root[data-theme="light"] .border-slate-500,
-:root[data-theme="light"] .border-slate-600,
-:root[data-theme="light"] .border-slate-700,
-:root[data-theme="light"] .border-slate-700\/70,
-:root[data-theme="light"] .border-slate-800,
-:root[data-theme="light"] .border-slate-800\/60 {
-  border-color: rgba(15, 23, 42, 0.18) !important;
-}
-
-:root[data-theme="light"] .bg-white\/5 {
-  background-color: rgba(15, 23, 42, 0.04) !important;
-}
-
-:root[data-theme="light"] .bg-black\/30 {
-  background-color: rgba(15, 23, 42, 0.06) !important;
-}
-
-:root[data-theme="light"] .bg-blue-500\/15 {
-  background-color: rgba(37, 99, 235, 0.12) !important;
-}
-
-:root[data-theme="light"] .bg-blue-500\/20 {
-  background-color: rgba(37, 99, 235, 0.16) !important;
-}
-
-:root[data-theme="light"] .bg-emerald-500\/20 {
-  background-color: rgba(5, 150, 105, 0.14) !important;
-}
-
-:root[data-theme="light"] .bg-emerald-500\/30 {
-  background-color: rgba(5, 150, 105, 0.2) !important;
-}
-
-:root[data-theme="light"] .bg-amber-500\/15 {
-  background-color: rgba(217, 119, 6, 0.16) !important;
-}
-
-:root[data-theme="light"] .bg-amber-500\/20 {
-  background-color: rgba(217, 119, 6, 0.2) !important;
-}
-
-:root[data-theme="light"] .bg-rose-500\/20 {
-  background-color: rgba(225, 29, 72, 0.16) !important;
-}
-
-:root[data-theme="light"] .border-blue-400\/40 {
-  border-color: rgba(37, 99, 235, 0.35) !important;
-}
-
-:root[data-theme="light"] .border-emerald-400\/40 {
-  border-color: rgba(5, 150, 105, 0.35) !important;
-}
-
-:root[data-theme="light"] .border-amber-400\/40 {
-  border-color: rgba(217, 119, 6, 0.35) !important;
-}
-
-:root[data-theme="light"] .border-rose-400\/40 {
-  border-color: rgba(225, 29, 72, 0.35) !important;
-}
-
-:root[data-theme="light"] button.border-slate-700 {
-  background-color: rgba(15, 23, 42, 0.04);
-  color: #0f172a !important;
-}
-
-:root[data-theme="light"] button.border-slate-700:hover {
-  background-color: rgba(15, 23, 42, 0.08);
-}
-
-:root[data-theme="light"] button.border-rose-400\/40 {
-  background-color: rgba(225, 29, 72, 0.08);
-  color: #be123c !important;
-}
-
-:root[data-theme="light"] button.border-rose-400\/40:hover {
-  background-color: rgba(225, 29, 72, 0.12);
-}
-
-:root[data-theme="light"] button.bg-emerald-500\/20 {
-  color: #065f46 !important;
-}
-
-:root[data-theme="light"] button.bg-amber-500\/20 {
-  color: #92400e !important;
-}
-
-.fade-up {
-  animation: fadeUp 0.6s ease both;
-}
-
-.fade-up.stagger-1 {
-  animation-delay: 0.05s;
-}
-
-.fade-up.stagger-2 {
-  animation-delay: 0.12s;
-}
-
-.fade-up.stagger-3 {
-  animation-delay: 0.2s;
+/* ---- Animations ---- */
+.animate-fade-up {
+  animation: fadeUp 0.5s ease both;
 }
 
 @keyframes fadeUp {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.35s ease both;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-pulse {
+  animation: pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ---- Scrollbar styling (dark) ---- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.25);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.4);
 }
