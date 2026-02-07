@@ -1,12 +1,11 @@
 /* ------------------------------------------------------------------ */
-/*  全局 Header                                                        */
+/*  全局 Header — 仪表盘显示完整信息，其他页面仅标题+描述               */
 /* ------------------------------------------------------------------ */
 
 import type { NavKey } from "../types";
 import { useAuth } from "../hooks/useAuth";
-import { useTheme } from "../hooks/useTheme";
 import { StatusPill } from "./StatusPill";
-import { IconPlay, IconPause, IconSun, IconMoon } from "./Icons";
+import { IconPlay, IconPause } from "./Icons";
 import { cn } from "../lib/utils";
 
 type HeaderProps = {
@@ -40,8 +39,8 @@ const headerCopy: Record<NavKey, { eyebrow: string; title: string; subtitle: str
 
 export function Header({ activeTab, globalPaused, onTogglePause }: HeaderProps) {
   const { connected, loading } = useAuth();
-  const { theme, toggle } = useTheme();
   const h = headerCopy[activeTab];
+  const isDashboard = activeTab === "dashboard";
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6">
@@ -50,34 +49,29 @@ export function Header({ activeTab, globalPaused, onTogglePause }: HeaderProps) 
         <p className="text-xl font-semibold text-zinc-50">{h.title}</p>
         <p className="text-sm text-zinc-400">{h.subtitle}</p>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <StatusPill
-          label={connected ? "已连接" : loading ? "检测中" : "未连接"}
-          tone={connected ? "success" : loading ? "info" : "danger"}
-          dot
-        />
-        <button
-          className={cn(
-            "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition",
-            globalPaused
-              ? "bg-amber-500/20 text-amber-300"
-              : "bg-emerald-500/20 text-emerald-300"
-          )}
-          onClick={onTogglePause}
-          type="button"
-        >
-          {globalPaused ? <IconPlay className="h-3.5 w-3.5" /> : <IconPause className="h-3.5 w-3.5" />}
-          {globalPaused ? "已暂停" : "运行中"}
-        </button>
-        <button
-          className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-semibold text-zinc-300 transition hover:bg-zinc-800"
-          onClick={toggle}
-          type="button"
-        >
-          {theme === "dark" ? <IconSun className="h-3.5 w-3.5" /> : <IconMoon className="h-3.5 w-3.5" />}
-          {theme === "dark" ? "明亮" : "深色"}
-        </button>
-      </div>
+      {/* 仅仪表盘显示连接状态和暂停控制 */}
+      {isDashboard ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusPill
+            label={connected ? "已连接" : loading ? "检测中" : "未连接"}
+            tone={connected ? "success" : loading ? "info" : "danger"}
+            dot
+          />
+          <button
+            className={cn(
+              "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition",
+              globalPaused
+                ? "bg-amber-500/20 text-amber-300"
+                : "bg-emerald-500/20 text-emerald-300"
+            )}
+            onClick={onTogglePause}
+            type="button"
+          >
+            {globalPaused ? <IconPlay className="h-3.5 w-3.5" /> : <IconPause className="h-3.5 w-3.5" />}
+            {globalPaused ? "已暂停" : "运行中"}
+          </button>
+        </div>
+      ) : null}
     </header>
   );
 }

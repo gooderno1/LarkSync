@@ -131,6 +131,83 @@ select option {
   color: var(--text);
 }
 
+/* ---- Light theme: semantic color text ---- */
+:root[data-theme="light"] .text-emerald-300,
+:root[data-theme="light"] .text-emerald-400 {
+  color: #047857; /* emerald-700 */
+}
+
+:root[data-theme="light"] .text-amber-300 {
+  color: #92400e; /* amber-800 */
+}
+
+:root[data-theme="light"] .text-rose-300,
+:root[data-theme="light"] .text-rose-400 {
+  color: #be123c; /* rose-700 */
+}
+
+:root[data-theme="light"] .text-\[\#3370FF\] {
+  color: #2563eb;
+}
+
+/* ---- Light theme: button hover backgrounds ---- */
+:root[data-theme="light"] .hover\:bg-zinc-800:hover {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="light"] .hover\:bg-zinc-800\/60:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+:root[data-theme="light"] .hover\:bg-zinc-700:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme="light"] .bg-emerald-500\/20 {
+  background-color: rgba(5, 150, 105, 0.12);
+}
+
+:root[data-theme="light"] .hover\:bg-emerald-500\/30:hover {
+  background-color: rgba(5, 150, 105, 0.18);
+}
+
+:root[data-theme="light"] .bg-amber-500\/20 {
+  background-color: rgba(217, 119, 6, 0.12);
+}
+
+:root[data-theme="light"] .bg-rose-500\/20 {
+  background-color: rgba(225, 29, 72, 0.1);
+}
+
+:root[data-theme="light"] .hover\:bg-rose-500\/10:hover {
+  background-color: rgba(225, 29, 72, 0.08);
+}
+
+:root[data-theme="light"] .bg-\[\#3370FF\]\/10 {
+  background-color: rgba(37, 99, 235, 0.08);
+}
+
+:root[data-theme="light"] .bg-\[\#3370FF\]\/20 {
+  background-color: rgba(37, 99, 235, 0.12);
+}
+
+:root[data-theme="light"] .border-rose-500\/40 {
+  border-color: rgba(225, 29, 72, 0.25);
+}
+
+:root[data-theme="light"] .border-emerald-500\/40,
+:root[data-theme="light"] .border-emerald-500\/30 {
+  border-color: rgba(5, 150, 105, 0.25);
+}
+
+:root[data-theme="light"] .border-amber-500\/40 {
+  border-color: rgba(217, 119, 6, 0.25);
+}
+
+:root[data-theme="light"] .border-\[\#3370FF\]\/50 {
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
 /* ---- Animations ---- */
 .animate-fade-up {
   animation: fadeUp 0.5s ease both;

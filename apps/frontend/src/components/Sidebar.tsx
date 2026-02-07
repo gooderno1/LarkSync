@@ -9,7 +9,8 @@ import { getLoginUrl } from "../lib/api";
 import { formatTimestamp, formatIntervalLabel } from "../lib/formatters";
 import { modeLabels } from "../lib/constants";
 import { StatusPill } from "./StatusPill";
-import { IconArrowRightLeft, IconDashboard, IconTasks, IconConflicts, IconSettings } from "./Icons";
+import { useTheme } from "../hooks/useTheme";
+import { IconArrowRightLeft, IconDashboard, IconTasks, IconConflicts, IconSettings, IconSun, IconMoon } from "./Icons";
 import { cn } from "../lib/utils";
 
 type SidebarProps = {
@@ -33,6 +34,7 @@ const navItems: Array<{
 export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarProps) {
   const { connected, expiresAt, loading, logout } = useAuth();
   const { config } = useConfig();
+  const { theme, toggle: toggleTheme } = useTheme();
   const loginUrl = getLoginUrl();
 
   const uploadVal = config.upload_interval_value != null ? String(config.upload_interval_value) : "2";
@@ -126,6 +128,18 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
           <li>云端 → 本地：每 {formatIntervalLabel(downloadVal, downloadUnit, downloadTime)}</li>
           <li>默认同步：{modeLabels[syncMode] || syncMode}</li>
         </ul>
+      </div>
+
+      {/* 底部：主题切换 */}
+      <div className="mt-auto">
+        <button
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-800 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:bg-zinc-800/60 hover:text-zinc-200"
+          onClick={toggleTheme}
+          type="button"
+        >
+          {theme === "dark" ? <IconSun className="h-3.5 w-3.5" /> : <IconMoon className="h-3.5 w-3.5" />}
+          {theme === "dark" ? "切换明亮模式" : "切换深色模式"}
+        </button>
       </div>
     </aside>
   );

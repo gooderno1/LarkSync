@@ -1,11 +1,12 @@
 /* ------------------------------------------------------------------ */
-/*  新建同步任务弹窗 — 分步向导 (Step 1/2/3)                             */
+/*  新建同步任务弹窗 — 分步向导 (Step 1/2/3) 优化版                      */
 /* ------------------------------------------------------------------ */
 
 import { useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useDriveTree } from "../hooks/useDriveTree";
 import { useAuth } from "../hooks/useAuth";
+import { modeLabels, updateModeLabels } from "../lib/constants";
 import { TreeNode } from "./TreeNode";
 import { IconRefresh, IconFolder, IconCloud, IconArrowRightLeft, IconArrowDown, IconArrowUp } from "./Icons";
 import { useToast } from "./ui/toast";
@@ -103,215 +104,244 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
 
   if (!open) return null;
 
-  const stepInfo = [
-    { num: 1, label: "本地目录" },
-    { num: 2, label: "云端目录" },
-    { num: 3, label: "同步策略" },
+  const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF] placeholder:text-zinc-600";
+
+  const stepMeta = [
+    { num: 1, label: "选择本地目录", icon: IconFolder, done: !!taskLocalPath.trim() },
+    { num: 2, label: "选择云端目录", icon: IconCloud, done: !!taskCloudToken.trim() },
+    { num: 3, label: "配置与确认", icon: IconArrowRightLeft, done: false },
   ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 py-6">
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-5">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-50">新建同步任务</h2>
-            <p className="mt-1 text-xs text-zinc-400">按步骤完成配置</p>
+            <h2 className="text-lg font-semibold text-zinc-50">新建同步任务</h2>
+            <p className="mt-0.5 text-xs text-zinc-500">按步骤配置本地目录、云端目录和同步策略</p>
           </div>
-          <button className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={resetAndClose} type="button">
-            关闭
+          <button className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300" onClick={resetAndClose} type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path d="M18 6L6 18M6 6l12 12" /></svg>
           </button>
         </div>
 
         {/* Step Indicator */}
-        <div className="mt-6 flex items-center gap-2">
-          {stepInfo.map((s) => (
-            <button
-              key={s.num}
-              className={cn(
-                "flex-1 rounded-lg border p-3 text-center transition",
-                step === s.num
-                  ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                  : step > s.num
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                    : "border-zinc-800 bg-zinc-900/50 text-zinc-500"
-              )}
-              onClick={() => setStep(s.num)}
-              type="button"
-            >
-              <p className="text-xs font-bold">步骤 {s.num}</p>
-              <p className="mt-1 text-sm font-medium">{s.label}</p>
-            </button>
-          ))}
+        <div className="flex border-b border-zinc-800">
+          {stepMeta.map((s) => {
+            const Icon = s.icon;
+            const isActive = step === s.num;
+            const isPast = step > s.num;
+            return (
+              <button
+                key={s.num}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-2.5 px-4 py-3.5 text-xs font-medium transition",
+                  isActive
+                    ? "border-b-2 border-[#3370FF] text-[#3370FF] bg-[#3370FF]/5"
+                    : isPast
+                      ? "text-emerald-400"
+                      : "text-zinc-500"
+                )}
+                onClick={() => setStep(s.num)}
+                type="button"
+              >
+                <span className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold",
+                  isActive ? "bg-[#3370FF] text-white" : isPast ? "bg-emerald-500/20 text-emerald-400" : "bg-zinc-800 text-zinc-500"
+                )}>
+                  {isPast ? "✓" : s.num}
+                </span>
+                {s.label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Step 1: Local */}
-        {step === 1 ? (
-          <div className="mt-6 space-y-4">
-            <input
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-              placeholder="任务名称（可选）"
-              value={taskName}
-              onChange={(e) => setTaskName(e.target.value)}
-            />
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-zinc-400">本地目录</label>
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                  placeholder="请选择本地目录"
-                  value={taskLocalPath}
-                  onChange={(e) => setTaskLocalPath(e.target.value)}
-                />
-                <button
-                  className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-700"
-                  onClick={pickLocalFolder}
-                  type="button"
-                >
-                  {folderPickLoading ? "选择中..." : "浏览"}
-                </button>
+        {/* Content */}
+        <div className="px-6 py-5">
+          {/* Step 1: Local */}
+          {step === 1 ? (
+            <div className="space-y-5">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">任务名称 <span className="text-zinc-600">（可选）</span></label>
+                <input className={inputCls} placeholder="例如：笔记同步" value={taskName} onChange={(e) => setTaskName(e.target.value)} />
               </div>
-              {folderPickError ? <p className="mt-1 text-xs text-rose-400">{folderPickError}</p> : null}
-            </div>
-            <input
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-              placeholder="base_path（可选，默认同本地目录）"
-              value={taskBasePath}
-              onChange={(e) => setTaskBasePath(e.target.value)}
-            />
-            <div className="flex justify-end">
-              <button
-                className="rounded-lg bg-[#3370FF] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
-                onClick={() => setStep(2)}
-                disabled={!taskLocalPath.trim()}
-                type="button"
-              >
-                下一步
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Step 2: Cloud */}
-        {step === 2 ? (
-          <div className="mt-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-zinc-400">选择飞书云端目录</label>
-              <button
-                className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                onClick={refreshTree}
-                type="button"
-              >
-                <IconRefresh className="h-3.5 w-3.5" />
-                刷新
-              </button>
-            </div>
-            <div className="max-h-[360px] overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-              {treeLoading ? (
-                <p className="text-sm text-zinc-500">目录加载中...</p>
-              ) : treeError ? (
-                <p className="text-sm text-rose-400">{treeError}</p>
-              ) : tree ? (
-                <ul className="space-y-3">
-                  <TreeNode node={tree} selectable selectedToken={taskCloudToken} onSelect={selectCloudFolder} />
-                </ul>
-              ) : (
-                <p className="text-sm text-zinc-500">暂无目录数据，请先刷新。</p>
-              )}
-            </div>
-            {selectedCloud ? (
-              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
-                已选择：{selectedCloud.path} ({selectedCloud.token})
-              </div>
-            ) : null}
-            <div className="flex justify-between">
-              <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800" onClick={() => setStep(1)} type="button">
-                上一步
-              </button>
-              <button
-                className="rounded-lg bg-[#3370FF] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
-                onClick={() => setStep(3)}
-                disabled={!taskCloudToken.trim()}
-                type="button"
-              >
-                下一步
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Step 3: Strategy */}
-        {step === 3 ? (
-          <div className="mt-6 space-y-5">
-            <div>
-              <label className="mb-2 block text-xs font-medium text-zinc-400">同步模式</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { value: "bidirectional", label: "双向同步", Icon: IconArrowRightLeft },
-                  { value: "download_only", label: "仅下载", Icon: IconArrowDown },
-                  { value: "upload_only", label: "仅上传", Icon: IconArrowUp },
-                ].map(({ value, label, Icon }) => (
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">本地同步目录</label>
+                <div className="flex gap-2">
+                  <input className={`flex-1 ${inputCls}`} placeholder="点击右侧按钮选择目录" value={taskLocalPath} onChange={(e) => setTaskLocalPath(e.target.value)} />
                   <button
-                    key={value}
-                    className={cn(
-                      "flex flex-col items-center gap-2 rounded-lg border p-4 transition",
-                      taskSyncMode === value
-                        ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                        : "border-zinc-800 text-zinc-400 hover:bg-zinc-800/50"
-                    )}
-                    onClick={() => setTaskSyncMode(value)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 px-4 py-2.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-700"
+                    onClick={pickLocalFolder}
                     type="button"
                   >
-                    <Icon className="h-5 w-5" />
-                    <span className="text-xs font-medium">{label}</span>
+                    <IconFolder className="h-3.5 w-3.5" />
+                    {folderPickLoading ? "选择中..." : "浏览"}
                   </button>
-                ))}
+                </div>
+                {folderPickError ? <p className="mt-1.5 text-xs text-rose-400">{folderPickError}</p> : null}
+                {taskLocalPath ? (
+                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                    <IconFolder className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{taskLocalPath}</span>
+                  </div>
+                ) : null}
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">Base Path <span className="text-zinc-600">（可选，默认同本地目录）</span></label>
+                <input className={inputCls} placeholder="用于计算相对路径" value={taskBasePath} onChange={(e) => setTaskBasePath(e.target.value)} />
               </div>
             </div>
-            <div>
-              <label className="mb-2 block text-xs font-medium text-zinc-400">更新模式</label>
-              <select
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                value={taskUpdateMode}
-                onChange={(e) => setTaskUpdateMode(e.target.value)}
-              >
-                <option value="auto">自动</option>
-                <option value="partial">局部更新</option>
-                <option value="full">全量覆盖</option>
-              </select>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-zinc-200">
-              <input type="checkbox" checked={taskEnabled} onChange={(e) => setTaskEnabled(e.target.checked)} className="accent-[#3370FF]" />
-              创建后立即启用
-            </label>
+          ) : null}
 
-            {/* Summary */}
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-xs text-zinc-400">
-              <p className="font-semibold text-zinc-200">任务摘要</p>
-              <ul className="mt-2 space-y-1">
-                <li>本地：{taskLocalPath || "—"}</li>
-                <li>云端：{selectedCloud?.path || taskCloudToken || "—"}</li>
-                <li>模式：{taskSyncMode} / {taskUpdateMode}</li>
-              </ul>
+          {/* Step 2: Cloud */}
+          {step === 2 ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-zinc-400">选择飞书云端目录</label>
+                <button className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200" onClick={refreshTree} type="button">
+                  <IconRefresh className="h-3 w-3" /> 刷新
+                </button>
+              </div>
+              <div className="max-h-[320px] overflow-auto rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+                {treeLoading ? (
+                  <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-6 animate-pulse rounded bg-zinc-800/50" />)}</div>
+                ) : treeError ? (
+                  <p className="text-sm text-rose-400">{treeError}</p>
+                ) : tree ? (
+                  <ul className="space-y-3">
+                    <TreeNode node={tree} selectable selectedToken={taskCloudToken} onSelect={selectCloudFolder} />
+                  </ul>
+                ) : (
+                  <div className="py-6 text-center">
+                    <IconCloud className="mx-auto h-8 w-8 text-zinc-700" />
+                    <p className="mt-2 text-sm text-zinc-500">暂无目录数据，请先刷新。</p>
+                  </div>
+                )}
+              </div>
+              {selectedCloud ? (
+                <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2.5 text-xs text-emerald-300">
+                  <IconCloud className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{selectedCloud.path}</span>
+                </div>
+              ) : null}
             </div>
+          ) : null}
 
-            {error ? <p className="text-sm text-rose-400">错误：{error}</p> : null}
+          {/* Step 3: Strategy + Confirm */}
+          {step === 3 ? (
+            <div className="space-y-5">
+              {/* Sync mode cards */}
+              <div>
+                <label className="mb-2 block text-xs font-medium text-zinc-400">同步模式</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: "bidirectional", label: "双向同步", Icon: IconArrowRightLeft },
+                    { value: "download_only", label: "仅下载", Icon: IconArrowDown },
+                    { value: "upload_only", label: "仅上传", Icon: IconArrowUp },
+                  ].map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      className={cn(
+                        "flex flex-col items-center gap-1.5 rounded-xl border p-3.5 transition",
+                        taskSyncMode === value
+                          ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
+                          : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
+                      )}
+                      onClick={() => setTaskSyncMode(value)}
+                      type="button"
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span className="text-xs font-medium">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            <div className="flex justify-between">
-              <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800" onClick={() => setStep(2)} type="button">
-                上一步
-              </button>
-              <button
-                className="rounded-lg bg-[#3370FF] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
-                onClick={handleCreate}
-                disabled={creating}
-                type="button"
-              >
-                {creating ? "创建中..." : "创建任务"}
-              </button>
+              {/* Update mode */}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">更新模式</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: "auto", label: "自动", desc: "智能选择" },
+                    { value: "partial", label: "局部更新", desc: "仅更新变更块" },
+                    { value: "full", label: "全量覆盖", desc: "完整替换" },
+                  ].map(({ value, label, desc }) => (
+                    <button
+                      key={value}
+                      className={cn(
+                        "rounded-xl border p-3 text-center transition",
+                        taskUpdateMode === value
+                          ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
+                          : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
+                      )}
+                      onClick={() => setTaskUpdateMode(value)}
+                      type="button"
+                    >
+                      <p className="text-xs font-medium">{label}</p>
+                      <p className="mt-0.5 text-[10px] text-zinc-600">{desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2.5 text-sm text-zinc-200">
+                <input type="checkbox" checked={taskEnabled} onChange={(e) => setTaskEnabled(e.target.checked)} className="accent-[#3370FF] h-4 w-4" />
+                创建后立即启用
+              </label>
+
+              {/* Summary */}
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+                <p className="text-xs font-semibold text-zinc-300">任务摘要</p>
+                <div className="mt-3 grid grid-cols-2 gap-y-2 text-xs">
+                  <span className="text-zinc-500">任务名称</span>
+                  <span className="text-zinc-200 truncate">{taskName || "未命名"}</span>
+                  <span className="text-zinc-500">本地目录</span>
+                  <span className="text-zinc-200 truncate">{taskLocalPath || "—"}</span>
+                  <span className="text-zinc-500">云端目录</span>
+                  <span className="text-zinc-200 truncate">{selectedCloud?.path || "—"}</span>
+                  <span className="text-zinc-500">同步模式</span>
+                  <span className="text-zinc-200">{modeLabels[taskSyncMode]}</span>
+                  <span className="text-zinc-500">更新模式</span>
+                  <span className="text-zinc-200">{updateModeLabels[taskUpdateMode]}</span>
+                </div>
+              </div>
+
+              {error ? <p className="text-sm text-rose-400">错误：{error}</p> : null}
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between border-t border-zinc-800 px-6 py-4">
+          <button
+            className={cn("rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200", step === 1 && "invisible")}
+            onClick={() => setStep((s) => Math.max(1, s - 1))}
+            type="button"
+          >
+            上一步
+          </button>
+          {step < 3 ? (
+            <button
+              className="rounded-lg bg-[#3370FF] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
+              onClick={() => setStep((s) => s + 1)}
+              disabled={step === 1 ? !taskLocalPath.trim() : !taskCloudToken.trim()}
+              type="button"
+            >
+              下一步
+            </button>
+          ) : (
+            <button
+              className="rounded-lg bg-[#3370FF] px-6 py-2 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
+              onClick={handleCreate}
+              disabled={creating}
+              type="button"
+            >
+              {creating ? "创建中..." : "创建任务"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

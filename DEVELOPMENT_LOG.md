@@ -1,5 +1,28 @@
 # DEVELOPMENT LOG
 
+## v0.3.0-dev.2 (2026-02-07)
+- 目标：修复明亮模式交互缺陷，精简冗余 UI，优化设置与新建任务视觉。
+- 结果：
+  - Header 精简：非仪表盘页面移除连接状态/暂停控制/主题切换，仅保留标题描述；主题切换移至侧边栏底部。
+  - 明亮模式修复：补齐 `hover:bg-zinc-800`/`bg-emerald-500/20`/`bg-amber-500/20` 等语义色在 light theme 下的覆盖规则，按钮悬浮不再出现深色主题底色。
+  - 同步策略页重设计：默认同步模式改为卡片选择器；上行/下行间隔改为双列卡片布局，配图标与描述；移除拥挤的三列 grid。
+  - 新建任务弹窗优化：步骤指示器改为 tab 式（编号+标签）；表单区与导航区分离（header/body/footer 三段式）；更新模式改为卡片选择器；任务摘要改为 key-value 表格。
+  - Redirect URI 自动生成：基于 `window.location.origin + apiUrl("/auth/callback")` 计算，用户只需复制填入飞书后台，无需手动输入。
+  - 云端 token 显示截短：任务列表与仪表盘中长 token 截断显示，hover 查看完整值。
+- 测试：`npx tsc --noEmit`（零错误）。
+- 问题：暂无阻塞问题。
+
+## v0.3.0-dev.1 (2026-02-07)
+- 目标：前端 UI/UX 全面重构——架构拆分、组件化、视觉对齐与实时增强。
+- 结果：
+  - 架构拆分：App.tsx 从 ~2200 行拆为 pages/components/hooks/lib 分层结构。
+  - 数据层：引入 TanStack Query 替代原始 fetch，统一缓存与轮询。
+  - UX 增强：新增 Toast 通知、确认弹窗、分步向导、冲突 Keep Both。
+  - 视觉对齐：字体 Inter + JetBrains Mono；色板 Zinc + Lark Blue；移除 CSS !important hack。
+  - 实时增强：WebSocket 日志流、骨架屏加载、空状态引导组件。
+- 测试：`npx tsc --noEmit`（零错误）。
+- 问题：sandbox 环境 npm 离线限制，部分外部包（lucide-react/sonner）以自定义组件替代，待线上安装。
+
 ## v0.2.0-dev.2 (2026-02-06)
 - 目标：默认明亮主题；任务页按参考设计重做；同步策略支持秒/小时/天；配置指南仅保留文档。
 - 结果：
