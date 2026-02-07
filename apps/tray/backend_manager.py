@@ -164,13 +164,29 @@ class BackendManager:
             logger.info("停止后端服务 (PID {})", pid)
 
             try:
-                self._process.terminate()
-                self._process.wait(timeout=5)
+                if sys.platform == "win32":
+                    # Windows: 使用 taskkill /T /F 杀掉进程树
+                    # 这能同时杀掉 uvicorn reloader 父进程和它 fork 的子进程
+                    subprocess.run(
+                        ["taskkill", "/PID", str(pid), "/T", "/F"],
+                        capture_output=True,
+                        timeout=5,
+                    )
+                    try:
+                        self._process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        pass
+                else:
+                    self._process.terminate()
+                    self._process.wait(timeout=5)
                 logger.info("后端已正常退出")
             except subprocess.TimeoutExpired:
                 logger.warning("后端未响应 SIGTERM，强制终止")
                 self._process.kill()
-                self._process.wait(timeout=3)
+                try:
+                    self._process.wait(timeout=3)
+                except Exception:
+                    pass
             except Exception as exc:
                 logger.error("停止后端异常: {}", exc)
             finally:

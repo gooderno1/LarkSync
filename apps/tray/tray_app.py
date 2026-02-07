@@ -12,9 +12,11 @@ LarkSync 系统托盘应用 — 主入口
 
 from __future__ import annotations
 
+import atexit
 import sys
 import os
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -31,10 +33,12 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from apps.tray.config import (
+    BACKEND_HOST,
     BACKEND_URL,
     STATUS_POLL_INTERVAL,
     TRAY_STATUS_URL,
     FRONTEND_DIR,
+    VITE_DEV_PORT,
     VITE_DEV_URL,
     get_dashboard_url,
     get_settings_url,
@@ -52,6 +56,38 @@ try:
     HAS_TRAY = True
 except ImportError:
     HAS_TRAY = False
+
+
+def _is_port_active(port: int) -> bool:
+    """检测本地端口是否有服务在监听。"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(1)
+        return s.connect_ex((BACKEND_HOST, port)) == 0
+
+
+def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
+    """等待端口变为可用，返回是否成功。"""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _is_port_active(port):
+            return True
+        time.sleep(0.3)
+    return False
+
+
+def _kill_process_tree(pid: int) -> None:
+    """终止进程及其所有子进程（Windows 使用 taskkill /T，其他平台使用 SIGTERM）。"""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                capture_output=True,
+                timeout=5,
+            )
+        else:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+    except Exception:
+        pass
 
 
 class LarkSyncTray:
@@ -81,6 +117,9 @@ class LarkSyncTray:
 
         self._running = True
 
+        # 注册 atexit 确保无论如何退出都清理子进程
+        atexit.register(self._cleanup_all)
+
         # dev 模式：先启动 Vite 前端开发服务器
         if self._dev_mode:
             self._start_vite()
@@ -89,13 +128,20 @@ class LarkSyncTray:
         mode_label = "开发" if self._dev_mode else "生产"
         print(f"正在启动 LarkSync 后端（{mode_label}模式）...")
         success = self._backend.start(wait=True)
+
         if success:
-            # dev 模式直接打开 3666（Vite），无需端口检测
+            # dev 模式：等待 Vite 端口就绪后再打开浏览器
             if self._dev_mode:
-                dashboard = f"{VITE_DEV_URL}/"
+                print("等待 Vite 前端就绪...")
+                if _wait_for_port(VITE_DEV_PORT, timeout=15):
+                    dashboard = f"{VITE_DEV_URL}/"
+                    print(f"Vite 就绪，打开管理面板: {dashboard}")
+                else:
+                    print("警告：Vite 启动超时，尝试打开 3666...")
+                    dashboard = f"{VITE_DEV_URL}/"
             else:
                 dashboard = get_dashboard_url()
-            print(f"后端已就绪，打开管理面板: {dashboard}")
+                print(f"后端已就绪，打开管理面板: {dashboard}")
             webbrowser.open(dashboard)
         else:
             print("警告：后端启动失败，请检查日志。")
@@ -109,21 +155,33 @@ class LarkSyncTray:
         self._poller_thread.start()
 
         # 创建托盘图标（此调用会阻塞）
+        # 使用 try/finally 确保退出时清理
         self._icon = pystray.Icon(
             name="LarkSync",
             icon=self._load_icon("idle"),
             title="LarkSync — 同步服务",
             menu=self._build_menu(),
         )
-        self._icon.run()
+        try:
+            self._icon.run()
+        finally:
+            # pystray.run() 退出后（无论是正常退出还是异常），清理所有子进程
+            self._cleanup_all()
 
     def stop(self) -> None:
         """退出托盘应用，关闭所有子进程。"""
         self._running = False
+        if self._icon:
+            try:
+                self._icon.stop()
+            except Exception:
+                pass
+
+    def _cleanup_all(self) -> None:
+        """清理所有子进程（Vite + 后端）。确保在任何退出场景下都被调用。"""
+        self._running = False
         self._stop_vite()
         self._backend.stop()
-        if self._icon:
-            self._icon.stop()
 
     # ---- Vite 前端开发服务器管理 ----
 
@@ -161,21 +219,12 @@ class LarkSyncTray:
         """停止 Vite 前端开发服务器。"""
         if not self._vite_process:
             return
+        pid = self._vite_process.pid
+        _kill_process_tree(pid)
         try:
-            if sys.platform == "win32":
-                # Windows: 使用 taskkill 终止进程树
-                subprocess.run(
-                    ["taskkill", "/PID", str(self._vite_process.pid), "/T", "/F"],
-                    capture_output=True,
-                )
-            else:
-                os.killpg(os.getpgid(self._vite_process.pid), signal.SIGTERM)
             self._vite_process.wait(timeout=5)
         except Exception:
-            try:
-                self._vite_process.kill()
-            except Exception:
-                pass
+            pass
         self._vite_process = None
         print("Vite 前端开发服务器已停止")
 
@@ -227,14 +276,20 @@ class LarkSyncTray:
 
     # ---- 菜单回调 ----
 
+    def _get_frontend_url(self) -> str:
+        """获取当前前端 URL。dev 模式固定返回 3666。"""
+        if self._dev_mode:
+            return VITE_DEV_URL
+        return get_dashboard_url().rstrip("/")
+
     def _on_open_dashboard(self, icon=None, item=None) -> None:
-        webbrowser.open(get_dashboard_url())
+        webbrowser.open(f"{self._get_frontend_url()}/")
 
     def _on_open_settings(self, icon=None, item=None) -> None:
-        webbrowser.open(get_settings_url())
+        webbrowser.open(f"{self._get_frontend_url()}/#settings")
 
     def _on_open_logs(self, icon=None, item=None) -> None:
-        webbrowser.open(get_logs_url())
+        webbrowser.open(f"{self._get_frontend_url()}/#logcenter")
 
     def _on_sync_now(self, icon=None, item=None) -> None:
         """触发所有启用任务立即运行。"""
@@ -359,7 +414,6 @@ def _acquire_lock() -> bool:
     单实例锁：防止多个托盘同时运行。
     使用端口绑定方式实现跨平台锁。
     """
-    import socket
     lock_port = 48901  # 用一个不常见端口作为锁
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -406,8 +460,10 @@ def main() -> None:
     try:
         app.run()
     except KeyboardInterrupt:
+        pass  # run() 的 finally 会处理清理
+    finally:
         print("\n正在关闭 LarkSync...")
-        app.stop()
+        app._cleanup_all()
 
 
 if __name__ == "__main__":
