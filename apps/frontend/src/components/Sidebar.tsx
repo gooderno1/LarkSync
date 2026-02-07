@@ -9,7 +9,7 @@ import { getLoginUrl } from "../lib/api";
 import { formatTimestamp, formatIntervalLabel } from "../lib/formatters";
 import { modeLabels } from "../lib/constants";
 import { StatusPill } from "./StatusPill";
-import { IconArrowRightLeft, IconDashboard, IconTasks, IconConflicts, IconSettings } from "./Icons";
+import { IconDashboard, IconTasks, IconConflicts, IconSettings } from "./Icons";
 import { cn } from "../lib/utils";
 
 type SidebarProps = {
@@ -47,13 +47,12 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
     <aside className="flex w-full flex-col gap-5 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:w-72">
       {/* Logo */}
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#3370FF]/20 text-[#3370FF]">
-          <IconArrowRightLeft className="h-5 w-5" />
-        </div>
-        <div>
-          <p className="text-lg font-semibold text-zinc-50">LarkSync</p>
-          <p className="text-xs text-zinc-500">Sync Studio Console</p>
-        </div>
+        <img
+          src="/logo-horizontal.png"
+          alt="LarkSync"
+          className="h-9 w-auto object-contain"
+          draggable={false}
+        />
       </div>
 
       {/* Nav */}
