@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.5.0-dev.3 feat(installer): 新增 NSIS 安装脚本与打包参数
 [2026-02-08] v0.5.0-dev.2 feat(package): 补齐 PyInstaller spec 与打包资源路径，支持 bundle 前端/图标
 [2026-02-08] v0.5.0-dev.1 feat(data): 运行数据目录支持用户目录，便于安装版隔离
 [2026-02-08] v0.4.0-dev.21 docs(plan): 升级计划迁入本地文档目录并细化自动更新设计

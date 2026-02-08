@@ -15,6 +15,7 @@ LarkSync 安装包构建脚本
 """
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,8 @@ BACKEND_DIR = PROJECT_ROOT / "apps" / "backend"
 TRAY_DIR = PROJECT_ROOT / "apps" / "tray"
 OUTPUT_DIR = PROJECT_ROOT / "dist"
 SPEC_FILE = PROJECT_ROOT / "scripts" / "larksync.spec"
+NSIS_DIR = PROJECT_ROOT / "scripts" / "installer" / "nsis"
+PYPROJECT_FILE = BACKEND_DIR / "pyproject.toml"
 BRANDING_DIR = PROJECT_ROOT / "assets" / "branding"
 
 
@@ -207,13 +210,23 @@ def _build_nsis() -> None:
         print("  ✗ 未找到 makensis，请安装 NSIS：https://nsis.sourceforge.io/")
         return
 
-    nsi_script = PROJECT_ROOT / "scripts" / "installer" / "nsis" / "larksync.nsi"
+    nsi_script = NSIS_DIR / "larksync.nsi"
     if not nsi_script.is_file():
         print(f"  ✗ 未找到 NSIS 脚本: {nsi_script}")
         print("  提示：请参考 docs/design/v0.4.0-desktop-tray-design.md 创建 NSIS 脚本")
         return
+    if not (OUTPUT_DIR / "LarkSync").is_dir():
+        print("  ✗ 未找到 PyInstaller 产物，请先执行 PyInstaller 打包")
+        return
 
-    run([nsis_exe, str(nsi_script)])
+    version = _read_version()
+    project_root = PROJECT_ROOT.as_posix()
+    defines = [
+        f"/DAPP_VERSION={_quote_define(version)}",
+        f"/DPROJECT_ROOT={_quote_define(project_root)}",
+    ]
+
+    run([nsis_exe, *defines, str(nsi_script)])
     print("  ✓ NSIS 安装包已生成")
 
 
@@ -242,6 +255,22 @@ def _build_dmg() -> None:
         str(app_bundle),
     ])
     print(f"  ✓ DMG 已生成: {OUTPUT_DIR / dmg_name}")
+
+
+def _read_version() -> str:
+    if not PYPROJECT_FILE.is_file():
+        return "0.0.0"
+    content = PYPROJECT_FILE.read_text(encoding="utf-8")
+    match = re.search(r'^version\\s*=\\s*"([^"]+)"', content, re.MULTILINE)
+    if not match:
+        return "0.0.0"
+    return match.group(1)
+
+
+def _quote_define(value: str) -> str:
+    if " " in value or "\t" in value:
+        return f'"{value}"'
+    return value
 
 
 def main() -> None:

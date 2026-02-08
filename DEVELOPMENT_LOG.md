@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.5.0-dev.3 (2026-02-08)
+- 目标：补齐 Windows 安装包脚本（NSIS）。
+- 结果：
+  - 新增 `scripts/installer/nsis/larksync.nsi`，支持安装/卸载、开始菜单与桌面快捷方式。
+  - build_installer 支持传入版本号与根路径给 NSIS。
+  - 版本号升级至 v0.5.0-dev.3（backend）。
+- 测试：未执行（需 Windows 下安装/卸载验证）。
+- 问题：待你实际安装测试确认。
+
 ## v0.5.0-dev.2 (2026-02-08)
 - 目标：补齐 PyInstaller 打包配置，确保 bundle 资源可用。
 - 结果：
