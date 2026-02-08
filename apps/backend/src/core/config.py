@@ -8,7 +8,7 @@ from typing import ClassVar, Optional
 
 from pydantic import BaseModel, Field
 
-from src.core.paths import repo_root
+from src.core.paths import data_dir
 
 class SyncMode(str, Enum):
     bidirectional = "bidirectional"
@@ -22,12 +22,8 @@ class SyncIntervalUnit(str, Enum):
     days = "days"
 
 
-def _repo_root() -> Path:
-    return repo_root()
-
-
 def _default_config_path() -> Path:
-    return _repo_root() / "data" / "config.json"
+    return data_dir() / "config.json"
 
 
 def _database_url_from_path(path: Path) -> str:
@@ -35,7 +31,7 @@ def _database_url_from_path(path: Path) -> str:
 
 
 def _default_database_url() -> str:
-    return _database_url_from_path(_repo_root() / "data" / "larksync.db")
+    return _database_url_from_path(data_dir() / "larksync.db")
 
 
 def _default_scopes() -> list[str]:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -17,12 +18,42 @@ def repo_root() -> Path:
     return start.parents[4]
 
 
+def _is_dev_repo(root: Path) -> bool:
+    return (root / "apps").exists() and (root / "data").exists()
+
+
+def _default_app_data_dir() -> Path:
+    if sys.platform == "win32":
+        base = os.getenv("APPDATA")
+        if not base:
+            base = Path.home() / "AppData" / "Roaming"
+        return Path(base) / "LarkSync"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "LarkSync"
+    base = os.getenv("XDG_DATA_HOME")
+    if not base:
+        base = Path.home() / ".local" / "share"
+    return Path(base) / "LarkSync"
+
+
 def data_dir() -> Path:
-    return repo_root() / "data"
+    env_dir = os.getenv("LARKSYNC_DATA_DIR")
+    if env_dir:
+        return Path(env_dir).expanduser().resolve()
+    root = repo_root()
+    if _is_dev_repo(root):
+        return root / "data"
+    return _default_app_data_dir()
 
 
 def logs_dir() -> Path:
     return data_dir() / "logs"
 
 
-__all__ = ["repo_root", "data_dir", "logs_dir"]
+__all__ = [
+    "repo_root",
+    "data_dir",
+    "logs_dir",
+    "_default_app_data_dir",
+    "_is_dev_repo",
+]
