@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.5.6 (2026-02-08)
+- 目标：修复 Release 构建未上传安装包的问题。
+- 结果：
+  - workflow 增加 dist 列表与 upload-artifact，缺失产物直接失败。
+  - action-gh-release 启用 fail_on_unmatched_files，避免空发布。
+  - 版本号升级至 v0.5.6（backend）。
+- 测试：待 tag 构建验证。
+- 问题：无。
+
 ## v0.5.5 (2026-02-08)
 - 目标：修复 PyInstaller spec 在 CI 下缺失 __file__ 的问题。
 - 结果：

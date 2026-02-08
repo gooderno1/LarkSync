@@ -57,10 +57,23 @@ jobs:
       - name: Build installer
         run: python scripts/build_installer.py --nsis
 
+      - name: List dist
+        run: |
+          echo "dist contents:"
+          dir dist
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/LarkSync-Setup-*.exe
+          if-no-files-found: error
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
         with:
           files: dist/LarkSync-Setup-*.exe
+          fail_on_unmatched_files: true
 
   build-macos:
     if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') }}
@@ -105,7 +118,20 @@ jobs:
       - name: Build DMG
         run: python scripts/build_installer.py --dmg
 
+      - name: List dist
+        run: |
+          echo "dist contents:"
+          ls -la dist
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: dist/LarkSync-*.dmg
+          if-no-files-found: error
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
         with:
           files: dist/LarkSync-*.dmg
+          fail_on_unmatched_files: true
