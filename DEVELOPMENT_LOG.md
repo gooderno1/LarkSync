@@ -1,5 +1,48 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.5 (2026-02-08)
+- 目标：修复前端 Logo/Favicon 白色背景问题，优化图标大小和圆角。
+- 问题分析：
+  - 品牌 Logo 原图 (logo-horizontal.png) 带有白色/浅灰色不透明背景，在深色侧边栏上显示为丑陋的白色矩形。
+  - Favicon 同样带有白色背景，浏览器标签中视觉效果差。
+  - 侧边栏 Logo 尺寸 h-14/h-16 (56-64px) 对于 w-72 的侧边栏过大。
+  - 亮色主题下 `bg-zinc-950/80` 未正确适配。
+- 结果：
+  - **新增 `scripts/process_logo.py` 图片处理工具**：
+    - 基于 PIL/Pillow 自动去除品牌 Logo 白色/近白色背景像素，替换为透明。
+    - 对边缘像素进行渐变透明处理（抗锯齿平滑过渡，smooth_range=25）。
+    - 自动裁剪多余透明区域，并缩放到合理的 Web 尺寸（横版 Logo max_width=600px）。
+    - 原始 2816x1536 (5.2MB) → 600x97 透明 PNG (59KB)。
+  - **Favicon 重制**：
+    - 去除白色背景后，在 zinc-900 深色画布上居中放置图标。
+    - 添加 32px 圆角（192x192 版本），边距 16px。
+    - 同时生成 32x32 ICO 版本（6px 圆角）。
+  - **Sidebar.tsx Logo 样式优化**：
+    - 高度从 `h-14 sm:h-16` → `h-9` (36px)，比例更协调。
+    - 容器改为 `justify-center`，内边距调整为 `px-4 py-3`。
+    - 添加品牌色光晕 `drop-shadow-[0_1px_8px_rgba(51,112,255,0.25)]`，透明底色上更醒目。
+  - **亮色主题适配**：`index.css` 新增 `bg-zinc-950/80` 的亮色主题映射。
+  - 版本号同步为 v0.4.0-dev.5。
+- 修改文件：
+  - `scripts/process_logo.py` (新增)
+  - `apps/frontend/public/logo-horizontal.png` (重新生成 - 透明底色)
+  - `apps/frontend/public/favicon.png` (重新生成 - 深色圆角)
+  - `apps/frontend/public/favicon.ico` (重新生成 - 深色圆角)
+  - `apps/frontend/src/components/Sidebar.tsx` (Logo 尺寸和样式)
+  - `apps/frontend/src/index.css` (亮色主题 bg-zinc-950/80 适配)
+- 测试：视觉验证，lint 无报错。
+- 问题：无阻塞。
+
+## v0.4.0-dev.4 (2026-02-08)
+- 目标：托盘状态闭环，托盘提示未解决冲突，并补充状态接口测试；修复前端 Logo 清晰度。
+- 结果：
+  - `/tray/status` 接入冲突统计（读取 ConflictService），托盘检测到未解决冲突时切换 error 状态并去重提醒。
+  - 新增回归测试 `tests/test_tray_status.py`，使用临时 SQLite 验证未解决冲突计数随解决状态变化。
+  - 前端侧边栏产品 Logo 放大并加阴影，解决图标过小、压缩模糊问题。
+  - 版本号同步为 v0.4.0-dev.4；CHANGELOG/UPGRADE_PLAN 进度更新。
+- 测试：`python -m pytest apps/backend/tests/test_tray_status.py`（通过，存在 FastAPI on_event Deprecation 警告）。
+- 问题：需后续补充 tray 聚合接口与状态机的更多用例；大文件模块回归测试仍待覆盖。
+
 ## v0.4.0-dev.3 (2026-02-07)
 - 目标：统一托盘模式为唯一运行方式；增加 `--dev` 热重载开发支持；删除 Docker 部署。
 - 结果：

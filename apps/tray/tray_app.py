@@ -43,6 +43,7 @@ from apps.tray.config import (
     get_dashboard_url,
     get_settings_url,
     get_logs_url,
+    _is_port_active,
 )
 from apps.tray.backend_manager import BackendManager
 from apps.tray.icon_generator import generate_icons, get_icon_path
@@ -56,13 +57,6 @@ try:
     HAS_TRAY = True
 except ImportError:
     HAS_TRAY = False
-
-
-def _is_port_active(port: int) -> bool:
-    """检测本地端口是否有服务在监听。"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(1)
-        return s.connect_ex((BACKEND_HOST, port)) == 0
 
 
 def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
@@ -102,6 +96,7 @@ class LarkSyncTray:
         self._global_paused = False
         self._poller_thread: threading.Thread | None = None
         self._running = False
+        self._last_conflict_count: int = 0
 
         # 确保图标已生成
         generate_icons()
@@ -356,6 +351,20 @@ class LarkSyncTray:
                 if status is None:
                     self._set_state("error")
                 else:
+                    conflicts = int(status.get("unresolved_conflicts", 0) or 0)
+                    if conflicts > 0:
+                        if conflicts > self._last_conflict_count:
+                            self._notify(
+                                "检测到未解决的同步冲突",
+                                f"当前有 {conflicts} 个冲突，请在管理面板处理。",
+                                category="conflict",
+                            )
+                        self._last_conflict_count = conflicts
+                        self._set_state("error")
+                        time.sleep(STATUS_POLL_INTERVAL)
+                        continue
+                    self._last_conflict_count = 0
+
                     if status.get("tasks_running", 0) > 0:
                         self._set_state("syncing")
                     elif status.get("last_error"):

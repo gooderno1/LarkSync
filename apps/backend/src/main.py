@@ -24,9 +24,11 @@ from src.db.session import init_db
 from src.api.watcher import watcher_manager
 from src.api.sync_tasks import runner as sync_runner, service as sync_task_service
 from src.services.sync_scheduler import SyncScheduler
+from src.services.conflict_service import ConflictService
 
 app = FastAPI(title="LarkSync API")
 sync_scheduler = SyncScheduler(runner=sync_runner, task_service=sync_task_service)
+conflict_service = ConflictService()
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,6 +55,7 @@ async def tray_status() -> dict:
     """返回托盘应用需要的聚合状态信息。"""
     statuses = sync_runner.list_statuses()
     tasks = await sync_task_service.list_tasks()
+    conflicts = await conflict_service.list_conflicts(include_resolved=False)
     running = sum(1 for s in statuses.values() if s.state == "running")
     paused = sum(1 for t in tasks if not t.enabled)
     errors = [s.last_error for s in statuses.values() if s.last_error]
@@ -65,7 +68,7 @@ async def tray_status() -> dict:
         "tasks_total": len(tasks),
         "tasks_running": running,
         "tasks_paused": paused,
-        "unresolved_conflicts": 0,  # TODO: 接入冲突服务
+        "unresolved_conflicts": len(conflicts),
         "last_error": errors[0] if errors else None,
         "last_sync_time": last_sync,
     }

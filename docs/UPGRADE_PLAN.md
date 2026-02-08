@@ -8,7 +8,7 @@
 v0.3.x  UI/UX 优化（已完成）
   │
   ▼
-v0.4.x  桌面托盘化 ← 当前里程碑
+v0.4.x  桌面托盘化（进行中）
   │
   ▼
 v0.5.x  打包与安装包
@@ -99,16 +99,19 @@ npm run dev
 - [x] 开发/生产 URL 自动检测（config.py _detect_frontend_url）
 - [x] BAT 启动器简化为纯启动器（无进程清理，由单实例锁管理）
 
-### v0.4.0-dev.3 — 统一托盘模式 + 开发热重载（计划中）
-- [ ] `tray_app.py` 增加 `--dev` 参数
-  - dev 模式：同时启动 Vite dev server（3666）+ uvicorn --reload（8000）+ 托盘
-  - 正常模式：启动 uvicorn（8000，无 reload）+ 托盘
-- [ ] `backend_manager.py` 支持 `dev_mode` 参数（控制 --reload）
-- [ ] 托盘应用管理 Vite 子进程（随托盘退出一起关闭）
-- [ ] `npm run dev` 改为调用 `python apps/tray/tray_app.py --dev`
-- [ ] 删除旧 `scripts/dev.js` 开发脚本
-- [ ] 删除 Docker 部署文件（Dockerfile / docker-compose.yml / nginx.conf）
-- [ ] 更新全部文档（README / USAGE / CHANGELOG / DEVELOPMENT_LOG）
+### v0.4.0-dev.3 — 统一托盘模式 + 开发热重载 ✅
+- [x] `tray_app.py` 新增 `--dev` 参数：同时启动 Vite dev server（3666）+ uvicorn --reload（8000）+ 托盘
+- [x] `backend_manager.py` 支持 `dev_mode`（控制 --reload）
+- [x] 托盘管理 Vite 子进程（随托盘退出一起关闭）
+- [x] `npm run dev` 改为 `python apps/tray/tray_app.py --dev`
+- [x] 删除旧 `scripts/dev.js`、删除 Dockerfile / docker-compose.yml / nginx.conf
+- [x] 文档同步：README / USAGE / CHANGELOG / DEVELOPMENT_LOG
+
+### v0.4.0-dev.4 — 托盘状态闭环（进行中）
+- [x] `/tray/status` 接入冲突统计与最近错误来源
+- [x] 托盘通知：首次检测到未解决冲突时推送提醒
+- [ ] Tray 聚合接口与状态机补充测试用例
+- [ ] 大体量模块（docx_service/sync_runner/transcoder）拆分或新增回归测试
 
 ---
 

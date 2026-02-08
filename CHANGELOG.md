@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-02-08] v0.4.0-dev.5 fix(ui): Logo/Favicon 去除白色背景改为透明底色；侧边栏 Logo 缩放至合理尺寸(h-9)并添加品牌光晕；Favicon 重制为深色圆角版本；新增 scripts/process_logo.py 图片处理工具；亮色主题 bg-zinc-950/80 适配
+[2026-02-08] v0.4.0-dev.4 fix(tray/ui): /tray/status 接入冲突统计，托盘检测未解决冲突时提示；新增 tray 状态接口回归测试；前端侧边栏产品 Logo 放大并增加阴影以提升可读性
 [2026-02-07] v0.4.0-dev.3 refactor(tray): 统一托盘模式为唯一运行方式；tray_app.py 新增 --dev 参数（Vite HMR 3666 + uvicorn --reload 8000 + 托盘一体化启动）；npm run dev 改为调用 tray --dev；删除旧 scripts/dev.js 开发脚本；删除 Docker 部署文件（Dockerfile/docker-compose.yml/nginx.conf）；backend_manager 支持 dev_mode 热重载；全部文档统一为托盘模式说明
 [2026-02-07] v0.4.0-dev.2 fix(tray): 端口冲突智能复用 + 单实例锁 + BAT 简化为纯启动器；SPA fallback 修复 dist 根目录静态文件（logo/favicon）；品牌 Logo 集成（托盘4状态变体 + favicon + 侧边栏横版Logo）；开发/生产模式 URL 自动检测
 [2026-02-07] v0.4.0-dev.1 feat(desktop): 系统托盘桌面化 — pystray 托盘应用（启动/停止/菜单/状态轮询/图标变色）；FastAPI 静态文件服务（前后端一体化）；一键启动器 LarkSync.pyw/command；系统通知 plyer；开机自启动（Windows Startup/macOS LaunchAgent）；PyInstaller 打包配置；构建脚本 build.py/build_installer.py；后端新增 /tray/status 聚合接口

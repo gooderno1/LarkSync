@@ -101,7 +101,8 @@ pre,
 }
 
 :root[data-theme="light"] .bg-zinc-950,
-:root[data-theme="light"] .bg-zinc-950\/50 {
+:root[data-theme="light"] .bg-zinc-950\/50,
+:root[data-theme="light"] .bg-zinc-950\/80 {
   background-color: var(--bg-soft);
 }
 

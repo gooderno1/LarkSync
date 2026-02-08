@@ -17,7 +17,8 @@ BACKEND_URL = f"http://{BACKEND_HOST}:{BACKEND_PORT}"
 
 # ---- 前端开发服务器 ----
 VITE_DEV_PORT = 3666
-VITE_DEV_URL = f"http://{BACKEND_HOST}:{VITE_DEV_PORT}"
+# Vite 在 Windows 上默认绑定 IPv6 [::1]，必须用 localhost（自动解析 IPv4/IPv6）
+VITE_DEV_URL = f"http://localhost:{VITE_DEV_PORT}"
 
 # ---- 健康检查 ----
 HEALTH_CHECK_URL = f"{BACKEND_URL}/health"
@@ -37,12 +38,25 @@ RESTART_COOLDOWN = 5  # 秒
 PYTHON_EXE = sys.executable
 
 
-def _is_port_active(port: int) -> bool:
-    """检测本地端口是否有服务在监听。"""
+def _is_port_active(port: int, host: str = "localhost") -> bool:
+    """检测本地端口是否有服务在监听。
+    
+    默认使用 localhost 以兼容 IPv4 (127.0.0.1) 和 IPv6 ([::1])。
+    Vite 在 Windows 上常绑定 [::1]，若用 127.0.0.1 会检测不到。
+    """
     import socket
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(1)
-        return s.connect_ex((BACKEND_HOST, port)) == 0
+    # getaddrinfo 会返回所有可用地址（IPv4 + IPv6），逐个尝试
+    for af, socktype, proto, canonname, sa in socket.getaddrinfo(
+        host, port, socket.AF_UNSPEC, socket.SOCK_STREAM
+    ):
+        try:
+            with socket.socket(af, socktype, proto) as s:
+                s.settimeout(1)
+                if s.connect_ex(sa) == 0:
+                    return True
+        except OSError:
+            continue
+    return False
 
 
 def _detect_frontend_url() -> str:
