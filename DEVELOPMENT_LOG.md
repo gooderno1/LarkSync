@@ -1,5 +1,13 @@
 # DEVELOPMENT LOG
 
+## v0.5.4 (2026-02-08)
+- 目标：修复 Windows runner 下 npm 可执行文件解析失败。
+- 结果：
+  - build_installer 在 Windows 下自动解析 npm.cmd/npx.cmd，避免 FileNotFoundError。
+  - 版本号升级至 v0.5.4（backend）。
+- 测试：待 tag 构建验证。
+- 问题：无。
+
 ## v0.5.3 (2026-02-08)
 - 目标：修复 Windows Release 构建脚本的控制台编码错误。
 - 结果：

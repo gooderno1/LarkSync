@@ -42,9 +42,28 @@ def _configure_output() -> None:
             pass
 
 
+def _resolve_cmd(cmd: list[str]) -> list[str]:
+    if not cmd:
+        return cmd
+    if Path(cmd[0]).is_file():
+        return cmd
+    resolved = shutil.which(cmd[0])
+    if not resolved and sys.platform == "win32":
+        if not cmd[0].lower().endswith((".exe", ".cmd", ".bat")):
+            for suffix in (".cmd", ".exe", ".bat"):
+                candidate = shutil.which(f"{cmd[0]}{suffix}")
+                if candidate:
+                    resolved = candidate
+                    break
+    if resolved:
+        return [resolved, *cmd[1:]]
+    return cmd
+
+
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
-    print(f"  → {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env)
+    resolved_cmd = _resolve_cmd(cmd)
+    print(f"  → {' '.join(resolved_cmd)}")
+    result = subprocess.run(resolved_cmd, cwd=str(cwd) if cwd else None, env=env)
     if result.returncode != 0:
         print(f"  ✗ 命令失败 (exit {result.returncode})")
         sys.exit(1)
