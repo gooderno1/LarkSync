@@ -163,6 +163,12 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
                 modified_time="1700000000",
             ),
             DriveNode(
+                token="slides-1",
+                name="路演幻灯片",
+                type="slides",
+                modified_time="1700000000",
+            ),
+            DriveNode(
                 token="shortcut-1",
                 name="快捷方式文件",
                 type="shortcut",
@@ -203,8 +209,8 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     await runner.run_task(task)
 
     status = runner.get_status(task.id)
-    assert status.total_files == 5
-    assert status.completed_files == 5
+    assert status.total_files == 6
+    assert status.completed_files == 6
     assert status.skipped_files == 0
     assert status.failed_files == 0
     assert status.state == "success"
@@ -212,6 +218,7 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     assert (tmp_path / "设计文档.md").exists()
     assert (tmp_path / "spec.pdf").exists()
     assert (tmp_path / "表格.xlsx").exists()
+    assert (tmp_path / "路演幻灯片.pptx").exists()
     assert (tmp_path / "子目录" / "note.md").exists()
     assert (tmp_path / "快捷方式文件").exists()
     assert downloader.calls[-1][0] == "file-target"

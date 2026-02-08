@@ -1510,6 +1510,7 @@ def _docx_filename(name: str) -> str:
 _EXPORT_EXTENSION_MAP = {
     "sheet": "xlsx",
     "bitable": "xlsx",
+    "slides": "pptx",
 }
 
 

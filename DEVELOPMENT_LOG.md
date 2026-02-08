@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.11 (2026-02-08)
+- 目标：补齐在线幻灯片导出为本地 pptx。
+- 结果：
+  - 导出类型新增 slides → pptx。
+  - 下载阶段覆盖幻灯片的导出落盘路径与测试用例。
+  - 版本号同步为 v0.4.0-dev.11。
+- 测试：`python -m pytest tests/test_sync_runner.py`（apps/backend）。
+- 问题：官方导出指南未列出 slides 参数细节，若仍报错请提供 API JSON 样例以确认类型/扩展名。
+
 ## v0.4.0-dev.10 (2026-02-08)
 - 目标：修复共享表格导出任务查询 400，并补充错误细节便于排查。
 - 结果：

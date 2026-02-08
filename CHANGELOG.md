@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.4.0-dev.11 feat(export): 支持在线幻灯片导出为 pptx
 [2026-02-08] v0.4.0-dev.10 fix(export): 导出任务查询携带文档 token 并增强错误信息，修复共享表格导出 400
 [2026-02-08] v0.4.0-dev.9 fix(sync-download): 支持 sheet/bitable 导出下载、非法文件名自动净化、日志读取改为流式并保留历史
 [2026-02-08] v0.4.0-dev.8 fix(ui): 共享链接说明补充“非所有者共享需使用链接/Token”
