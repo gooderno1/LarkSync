@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.4.0-dev.21 docs(plan): 升级计划迁入本地文档目录并细化自动更新设计
 [2026-02-08] v0.4.0-dev.20 fix(test,plan): 托盘状态回归测试补齐，升级计划新增自动更新
 [2026-02-08] v0.4.0-dev.19 fix(db,shutdown): 托盘优雅关闭后端 + SQLite WAL/超时设置，降低损坏风险
 [2026-02-08] v0.4.0-dev.18 fix(startup): SQLite 损坏自动备份重建，避免启动超时
