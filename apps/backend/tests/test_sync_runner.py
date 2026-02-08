@@ -484,6 +484,34 @@ async def test_export_poll_allows_processing_status_2(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_export_poll_raises_on_error_status() -> None:
+    class FailedExportTaskService(FakeExportTaskService):
+        async def get_export_task_result(self, ticket: str, *, file_token: str | None = None):
+            self.query_calls.append((ticket, file_token))
+            return ExportTaskResult(
+                file_extension="xlsx",
+                type="sheet",
+                file_name="表格.xlsx",
+                file_token=None,
+                file_size=None,
+                job_status=1,
+                job_error_msg="permission denied",
+            )
+
+    export_service = FailedExportTaskService()
+    runner = SyncTaskRunner(export_task_service=export_service, export_poll_attempts=1)
+
+    with pytest.raises(RuntimeError) as exc:
+        await runner._wait_for_export_task(
+            export_task_service=export_service,
+            ticket="ticket-err",
+            file_token="sheet-err",
+        )
+
+    assert "导出任务失败" in str(exc.value)
+
+
+@pytest.mark.asyncio
 async def test_runner_fills_sheet_sub_id_when_missing(tmp_path: Path) -> None:
     tree = DriveNode(
         token="root",

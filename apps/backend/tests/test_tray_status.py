@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.core.config import ConfigManager
+from src.services.sync_runner import SyncTaskStatus
 
 
 @pytest.fixture
@@ -63,3 +64,45 @@ def test_tray_status_conflict_count(tray_client: TestClient) -> None:
 
     status_after = tray_client.get("/tray/status").json()
     assert status_after["unresolved_conflicts"] == 0
+
+
+def test_tray_status_counts_running_and_errors(
+    tray_client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    import src.main as main
+
+    local_dir = tmp_path / "local"
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "name": "任务A",
+        "local_path": str(local_dir),
+        "cloud_folder_token": "token-a",
+        "cloud_folder_name": "云端A",
+        "base_path": None,
+        "sync_mode": "download_only",
+        "update_mode": "auto",
+        "enabled": False,
+    }
+    payload_b = dict(payload)
+    payload_b["name"] = "任务B"
+    payload_b["cloud_folder_token"] = "token-b"
+
+    resp_a = tray_client.post("/sync/tasks", json=payload)
+    resp_b = tray_client.post("/sync/tasks", json=payload_b)
+    assert resp_a.status_code == 200
+    assert resp_b.status_code == 200
+    task_a = resp_a.json()["id"]
+    task_b = resp_b.json()["id"]
+
+    statuses = {
+        task_a: SyncTaskStatus(task_id=task_a, state="failed", last_error="boom"),
+        task_b: SyncTaskStatus(task_id=task_b, state="running"),
+    }
+    monkeypatch.setattr(main.sync_runner, "list_statuses", lambda: statuses)
+
+    status = tray_client.get("/tray/status").json()
+    assert status["tasks_total"] == 2
+    assert status["tasks_paused"] == 2
+    assert status["tasks_running"] == 1
+    assert status["last_error"] == "boom"

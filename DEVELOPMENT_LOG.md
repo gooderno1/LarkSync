@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.20 (2026-02-08)
+- 目标：按升级计划补齐托盘状态回归测试，并新增自动更新规划。
+- 结果：
+  - 托盘状态聚合新增回归用例（running/paused/last_error 统计）。
+  - 导出任务失败状态补充回归测试（job_status/job_error_msg）。
+  - 升级计划新增“自动更新”阶段。
+  - 版本号同步为 v0.4.0-dev.20（backend）。
+- 测试：`python -m pytest tests/test_tray_status.py tests/test_sync_runner.py`（apps/backend）。
+- 问题：无。
+
 ## v0.4.0-dev.19 (2026-02-08)
 - 目标：定位数据库损坏根因并降低发生概率。
 - 结果：
