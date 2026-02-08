@@ -1,5 +1,13 @@
 # DEVELOPMENT LOG
 
+## v0.5.0-dev.5 (2026-02-08)
+- 目标：补齐 CI/CD 自动构建与 Release 上传。
+- 结果：
+  - 新增 GitHub Actions workflow，tag 发布时自动构建 Windows/macOS 安装包并上传到 Release。
+  - 版本号升级至 v0.5.0-dev.5（backend）。
+- 测试：未执行（需在 GitHub Actions 触发 tag 构建验证）。
+- 问题：无。
+
 ## v0.5.0-dev.4 (2026-02-08)
 - 目标：补齐 macOS 打包流程（.app + DMG）。
 - 结果：

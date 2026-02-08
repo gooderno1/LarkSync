@@ -67,6 +67,7 @@
 - 飞书频控重试：新增对 `99991400(request trigger frequency limit)` 的指数退避重试
 - 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
 - 定时调度：本地变更队列按秒/小时/天触发上传；云端下载支持按秒/小时/天或每日定时（可配置）
+- CI/CD 自动构建：GitHub Releases 标签发布时自动构建 Windows/macOS 安装包并上传
 
 ## 快速开始
 

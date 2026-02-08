@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.5.0-dev.5 feat(ci): GitHub Releases 自动构建并上传 Windows/macOS 安装包
 [2026-02-08] v0.5.0-dev.4 feat(package): macOS .app bundle 与 DMG 打包流程补齐
 [2026-02-08] v0.5.0-dev.3 feat(installer): 新增 NSIS 安装脚本与打包参数
 [2026-02-08] v0.5.0-dev.2 feat(package): 补齐 PyInstaller spec 与打包资源路径，支持 bundle 前端/图标

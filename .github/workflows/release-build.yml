@@ -1,0 +1,129 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.10"
+  NODE_VERSION: "20"
+
+jobs:
+  build-windows:
+    if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: pip install -r apps/backend/requirements.txt
+
+      - name: Verify version matches tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="$(python - <<'PY'
+from pathlib import Path
+import re
+
+pyproject = Path("apps/backend/pyproject.toml")
+content = pyproject.read_text(encoding="utf-8")
+match = re.search(r'^version\\s*=\\s*\"([^\"]+)\"', content, re.MULTILINE)
+print(match.group(1) if match else "")
+PY
+          )"
+          if [[ -z "$VERSION" ]]; then
+            echo "未读取到版本号"
+            exit 1
+          fi
+          if [[ "$VERSION" != "$TAG" ]]; then
+            echo "版本号不一致：pyproject=$VERSION tag=$TAG"
+            exit 1
+          fi
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Build installer
+        run: python scripts/build_installer.py --nsis
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/LarkSync-Setup-*.exe
+
+  build-macos:
+    if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Install Python dependencies
+        run: pip install -r apps/backend/requirements.txt
+
+      - name: Verify version matches tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="$(python - <<'PY'
+from pathlib import Path
+import re
+
+pyproject = Path("apps/backend/pyproject.toml")
+content = pyproject.read_text(encoding="utf-8")
+match = re.search(r'^version\\s*=\\s*\"([^\"]+)\"', content, re.MULTILINE)
+print(match.group(1) if match else "")
+PY
+          )"
+          if [[ -z "$VERSION" ]]; then
+            echo "未读取到版本号"
+            exit 1
+          fi
+          if [[ "$VERSION" != "$TAG" ]]; then
+            echo "版本号不一致：pyproject=$VERSION tag=$TAG"
+            exit 1
+          fi
+
+      - name: Build DMG
+        run: python scripts/build_installer.py --dmg
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/LarkSync-*.dmg
