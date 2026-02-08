@@ -163,12 +163,6 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
                 modified_time="1700000000",
             ),
             DriveNode(
-                token="slides-1",
-                name="路演幻灯片",
-                type="slides",
-                modified_time="1700000000",
-            ),
-            DriveNode(
                 token="shortcut-1",
                 name="快捷方式文件",
                 type="shortcut",
@@ -209,8 +203,8 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     await runner.run_task(task)
 
     status = runner.get_status(task.id)
-    assert status.total_files == 6
-    assert status.completed_files == 6
+    assert status.total_files == 5
+    assert status.completed_files == 5
     assert status.skipped_files == 0
     assert status.failed_files == 0
     assert status.state == "success"
@@ -218,7 +212,6 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     assert (tmp_path / "设计文档.md").exists()
     assert (tmp_path / "spec.pdf").exists()
     assert (tmp_path / "表格.xlsx").exists()
-    assert (tmp_path / "路演幻灯片.pptx").exists()
     assert (tmp_path / "子目录" / "note.md").exists()
     assert (tmp_path / "快捷方式文件").exists()
     assert downloader.calls[-1][0] == "file-target"
@@ -281,6 +274,70 @@ async def test_runner_download_prefers_persisted_link_when_cloud_has_duplicates(
 
     assert local_path.read_text(encoding="utf-8") == "# doc-old"
     assert any(call[1] == "doc-old" for call in link_service.calls)
+
+
+@pytest.mark.asyncio
+async def test_runner_skips_unchanged_when_persisted(tmp_path: Path) -> None:
+    cloud_mtime = 1700000000
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="file-1",
+                name="report.pdf",
+                type="file",
+                modified_time=str(cloud_mtime),
+            )
+        ],
+    )
+
+    local_path = tmp_path / "report.pdf"
+    local_path.write_bytes(b"cached")
+
+    persisted = [
+        SyncLinkItem(
+            local_path=str(local_path),
+            cloud_token="file-1",
+            cloud_type="file",
+            task_id="task-unchanged",
+            updated_at=float(cloud_mtime),
+        )
+    ]
+
+    downloader = FakeFileDownloader()
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=downloader,
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(persisted),
+        export_task_service=FakeExportTaskService(),
+    )
+
+    task = SyncTaskItem(
+        id="task-unchanged",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner.run_task(task)
+
+    status = runner.get_status(task.id)
+    assert status.total_files == 1
+    assert status.skipped_files == 1
+    assert status.completed_files == 0
+    assert downloader.calls == []
 
 
 @pytest.mark.asyncio

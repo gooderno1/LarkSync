@@ -363,6 +363,7 @@ class SyncTaskRunner:
                 target_dir = candidate.target_dir
                 target_path = candidate.target_path
                 mtime = candidate.mtime
+                persisted = persisted_by_path.get(str(target_path))
                 if self._should_skip_download_for_local_newer(
                     task=task,
                     local_path=target_path,
@@ -382,6 +383,29 @@ class SyncTaskRunner:
                         target_path,
                         mtime,
                         target_path.stat().st_mtime,
+                    )
+                    continue
+                if self._should_skip_download_for_unchanged(
+                    local_path=target_path,
+                    cloud_mtime=mtime,
+                    persisted=persisted,
+                    effective_token=effective_token,
+                ):
+                    status.skipped_files += 1
+                    status.record_event(
+                        SyncFileEvent(
+                            path=str(target_path),
+                            status="skipped",
+                            message="云端未更新，跳过下载",
+                        )
+                    )
+                    logger.info(
+                        "云端未更新，跳过下载: task_id={} path={} type={} token={} cloud_mtime={}",
+                        task.id,
+                        target_path,
+                        effective_type,
+                        effective_token,
+                        mtime,
                     )
                     continue
                 try:
@@ -515,6 +539,22 @@ class SyncTaskRunner:
         except OSError:
             return False
         return local_mtime > (cloud_mtime + 1.0)
+
+    @staticmethod
+    def _should_skip_download_for_unchanged(
+        *,
+        local_path: Path,
+        cloud_mtime: float,
+        persisted: SyncLinkItem | None,
+        effective_token: str,
+    ) -> bool:
+        if persisted is None:
+            return False
+        if persisted.cloud_token != effective_token:
+            return False
+        if not local_path.exists() or not local_path.is_file():
+            return False
+        return persisted.updated_at >= (cloud_mtime - 1.0)
 
     @staticmethod
     def _build_download_candidate(
@@ -664,7 +704,10 @@ class SyncTaskRunner:
             if job_status == 0 and result.file_token:
                 return result
             if job_status not in (None, 1):
-                last_error = result.job_error_msg or "导出任务失败"
+                detail = f"导出任务失败: status={job_status}"
+                if result.job_error_msg:
+                    detail = f"{detail} msg={result.job_error_msg}"
+                last_error = detail
                 break
             if attempt < self._export_poll_attempts - 1:
                 await asyncio.sleep(self._export_poll_interval)
@@ -1510,7 +1553,6 @@ def _docx_filename(name: str) -> str:
 _EXPORT_EXTENSION_MAP = {
     "sheet": "xlsx",
     "bitable": "xlsx",
-    "slides": "pptx",
 }
 
 

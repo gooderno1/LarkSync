@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.12 (2026-02-08)
+- 目标：避免云端未更新时重复下载；在线幻灯片导出改为跳过；导出失败信息更易排查。
+- 结果：
+  - 下载阶段基于已同步记录与云端 mtime 判断未更新则跳过下载。
+  - 移除 slides 导出映射，在线幻灯片下载时直接跳过。
+  - 导出任务失败信息包含 job_status 与 job_error_msg。
+  - 版本号同步为 v0.4.0-dev.12。
+- 测试：`python -m pytest tests/test_sync_runner.py`（apps/backend）。
+- 问题：bitable 导出失败原因待确认，请提供最新错误日志（含 job_status / msg）。
+
 ## v0.4.0-dev.11 (2026-02-08)
 - 目标：补齐在线幻灯片导出为本地 pptx。
 - 结果：
