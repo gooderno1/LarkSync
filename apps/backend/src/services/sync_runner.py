@@ -11,8 +11,10 @@ from urllib.parse import parse_qs, urlparse
 
 from loguru import logger
 
+from src.services.bitable_service import BitableService
 from src.services.docx_service import DocxService
 from src.services.drive_service import DriveFile, DriveNode, DriveService
+from src.services.sheet_service import SheetService
 from src.services.file_downloader import FileDownloader
 from src.services.file_hash import calculate_file_hash
 from src.services.file_uploader import FileUploader
@@ -22,6 +24,7 @@ from src.services.path_sanitizer import sanitize_filename, sanitize_path_segment
 from src.services.import_task_service import ImportTaskError, ImportTaskService
 from src.services.export_task_service import ExportTaskError, ExportTaskResult, ExportTaskService
 from src.services.sync_block_service import BlockStateItem, SyncBlockService
+from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_task_service import SyncTaskItem
 from src.services.transcoder import DocxTranscoder
@@ -80,8 +83,11 @@ class SyncTaskRunner:
         file_uploader: FileUploader | None = None,
         file_writer: FileWriter | None = None,
         link_service: SyncLinkService | None = None,
+        sheet_service: SheetService | None = None,
+        bitable_service: BitableService | None = None,
         import_task_service: ImportTaskService | None = None,
         export_task_service: ExportTaskService | None = None,
+        event_store: SyncEventStore | None = None,
         import_poll_attempts: int = 10,
         import_poll_interval: float = 1.0,
         export_poll_attempts: int = 10,
@@ -94,9 +100,12 @@ class SyncTaskRunner:
         self._file_uploader = file_uploader
         self._file_writer = file_writer or FileWriter()
         self._link_service = link_service or SyncLinkService()
+        self._sheet_service = sheet_service
+        self._bitable_service = bitable_service
         self._block_service = SyncBlockService()
         self._import_task_service = import_task_service
         self._export_task_service = export_task_service
+        self._event_store = event_store or SyncEventStore()
         self._import_poll_attempts = max(1, import_poll_attempts)
         self._import_poll_interval = max(0.0, import_poll_interval)
         self._export_poll_attempts = max(1, export_poll_attempts)
@@ -109,12 +118,37 @@ class SyncTaskRunner:
         self._doc_locks: dict[str, asyncio.Lock] = {}
         self._pending_uploads: dict[str, set[str]] = {}
         self._running_tasks: set[str] = set()
+        self._task_meta: dict[str, SyncTaskItem] = {}
 
     def get_status(self, task_id: str) -> SyncTaskStatus:
         return self._statuses.get(task_id) or SyncTaskStatus(task_id=task_id)
 
     def list_statuses(self) -> dict[str, SyncTaskStatus]:
         return dict(self._statuses)
+
+    def _record_event(
+        self,
+        status: SyncTaskStatus,
+        event: SyncFileEvent,
+        task: SyncTaskItem | None = None,
+    ) -> None:
+        status.record_event(event)
+        task_info = task or self._task_meta.get(status.task_id)
+        task_name = (
+            task_info.name
+            if task_info and task_info.name
+            else (task_info.local_path if task_info else "未命名任务")
+        )
+        self._event_store.append(
+            SyncEventRecord(
+                timestamp=event.timestamp,
+                task_id=status.task_id,
+                task_name=task_name,
+                status=event.status,
+                path=event.path,
+                message=event.message,
+            )
+        )
 
     def ensure_watcher(self, task: SyncTaskItem) -> None:
         self._ensure_watcher(task)
@@ -123,17 +157,20 @@ class SyncTaskRunner:
         self._stop_watcher(task_id)
 
     def start_task(self, task: SyncTaskItem) -> SyncTaskStatus:
+        self._task_meta[task.id] = task
         current = self._statuses.get(task.id)
         if current and current.state == "running":
             return current
         if task.id in self._running_tasks:
             status = current or SyncTaskStatus(task_id=task.id)
-            status.record_event(
+            self._record_event(
+                status,
                 SyncFileEvent(
                     path=task.local_path,
                     status="skipped",
                     message="任务运行中，跳过重复启动",
-                )
+                ),
+                task,
             )
             return status
         if self._loop is None:
@@ -178,6 +215,7 @@ class SyncTaskRunner:
         if task.id in self._running_tasks:
             return
         self._running_tasks.add(task.id)
+        self._task_meta[task.id] = task
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         self._reset_status(task, status, message="周期上传触发")
         paths = [Path(path) for path in sorted(pending)]
@@ -191,7 +229,8 @@ class SyncTaskRunner:
             status.last_error = str(exc)
             status.finished_at = time.time()
         finally:
-            status.record_event(
+            self._record_event(
+                status,
                 SyncFileEvent(
                     path=task.local_path,
                     status=status.state,
@@ -201,7 +240,8 @@ class SyncTaskRunner:
                         f"failed={status.failed_files} "
                         f"skipped={status.skipped_files}"
                     ),
-                )
+                ),
+                task,
             )
             self._running_tasks.discard(task.id)
 
@@ -209,6 +249,7 @@ class SyncTaskRunner:
         if task.id in self._running_tasks:
             return
         self._running_tasks.add(task.id)
+        self._task_meta[task.id] = task
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         self._reset_status(task, status, message="定时下载触发")
         try:
@@ -220,7 +261,8 @@ class SyncTaskRunner:
             status.last_error = str(exc)
             status.finished_at = time.time()
         finally:
-            status.record_event(
+            self._record_event(
+                status,
                 SyncFileEvent(
                     path=task.local_path,
                     status=status.state,
@@ -230,7 +272,8 @@ class SyncTaskRunner:
                         f"failed={status.failed_files} "
                         f"skipped={status.skipped_files}"
                     ),
-                )
+                ),
+                task,
             )
             self._running_tasks.discard(task.id)
 
@@ -244,15 +287,18 @@ class SyncTaskRunner:
         status.skipped_files = 0
         status.last_error = None
         status.last_files = []
-        status.record_event(
+        self._record_event(
+            status,
             SyncFileEvent(
                 path=task.local_path,
                 status="started",
                 message=message,
-            )
+            ),
+            task,
         )
 
     async def run_task(self, task: SyncTaskItem) -> None:
+        self._task_meta[task.id] = task
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         try:
             if task.sync_mode == "download_only":
@@ -287,22 +333,27 @@ class SyncTaskRunner:
                     f"failed={status.failed_files} "
                     f"skipped={status.skipped_files}"
                 )
-            status.record_event(
+            self._record_event(
+                status,
                 SyncFileEvent(
                     path=task.local_path,
                     status=status.state,
                     message=message,
-                )
+                ),
+                task,
             )
             self._tasks.pop(task.id, None)
             self._running_tasks.discard(task.id)
 
     async def _run_download(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
+        self._task_meta[task.id] = task
         drive_service = self._drive_service or DriveService()
         docx_service = self._docx_service or DocxService()
         transcoder = self._transcoder or DocxTranscoder()
         file_downloader = self._file_downloader or FileDownloader()
         export_task_service = self._export_task_service or ExportTaskService()
+        sheet_service = self._sheet_service or SheetService()
+        bitable_service = self._bitable_service or BitableService()
         link_service = self._link_service
         owned_services = []
         if self._drive_service is None:
@@ -315,6 +366,10 @@ class SyncTaskRunner:
             owned_services.append(file_downloader)
         if self._export_task_service is None:
             owned_services.append(export_task_service)
+        if self._sheet_service is None:
+            owned_services.append(sheet_service)
+        if self._bitable_service is None:
+            owned_services.append(bitable_service)
 
         try:
             tree = await drive_service.scan_folder(
@@ -335,6 +390,8 @@ class SyncTaskRunner:
             candidates = await self._hydrate_export_sub_ids(
                 candidates,
                 drive_service,
+                sheet_service=sheet_service,
+                bitable_service=bitable_service,
             )
             selected_candidates, duplicated_candidates = self._select_download_candidates(
                 candidates,
@@ -344,7 +401,7 @@ class SyncTaskRunner:
 
             for duplicated in duplicated_candidates:
                 status.skipped_files += 1
-                status.record_event(
+                self._record_event(status, 
                     SyncFileEvent(
                         path=str(duplicated.target_path),
                         status="skipped",
@@ -376,7 +433,7 @@ class SyncTaskRunner:
                     cloud_mtime=mtime,
                 ):
                     status.skipped_files += 1
-                    status.record_event(
+                    self._record_event(status, 
                         SyncFileEvent(
                             path=str(target_path),
                             status="skipped",
@@ -398,7 +455,7 @@ class SyncTaskRunner:
                     effective_token=effective_token,
                 ):
                     status.skipped_files += 1
-                    status.record_event(
+                    self._record_event(status, 
                         SyncFileEvent(
                             path=str(target_path),
                             status="skipped",
@@ -445,7 +502,7 @@ class SyncTaskRunner:
                             )
                         self._silence_path(task.id, target_path)
                         status.completed_files += 1
-                        status.record_event(
+                        self._record_event(status, 
                             SyncFileEvent(
                                 path=str(target_path), status="downloaded"
                             )
@@ -471,7 +528,7 @@ class SyncTaskRunner:
                         )
                         self._silence_path(task.id, target_path)
                         status.completed_files += 1
-                        status.record_event(
+                        self._record_event(status, 
                             SyncFileEvent(
                                 path=str(target_path), status="downloaded"
                             )
@@ -492,14 +549,14 @@ class SyncTaskRunner:
                         )
                         self._silence_path(task.id, target_path)
                         status.completed_files += 1
-                        status.record_event(
+                        self._record_event(status, 
                             SyncFileEvent(
                                 path=str(target_path), status="downloaded"
                             )
                         )
                     else:
                         status.skipped_files += 1
-                        status.record_event(
+                        self._record_event(status, 
                             SyncFileEvent(
                                 path=str(target_path),
                                 status="skipped",
@@ -509,7 +566,7 @@ class SyncTaskRunner:
                 except Exception as exc:
                     status.failed_files += 1
                     status.last_error = str(exc)
-                    status.record_event(
+                    self._record_event(status, 
                         SyncFileEvent(
                             path=str(target_path),
                             status="failed",
@@ -594,6 +651,9 @@ class SyncTaskRunner:
         self,
         candidates: list[DownloadCandidate],
         drive_service: DriveService,
+        *,
+        sheet_service: SheetService | None = None,
+        bitable_service: BitableService | None = None,
     ) -> list[DownloadCandidate]:
         pending: list[tuple[str, str]] = []
         for candidate in candidates:
@@ -601,25 +661,66 @@ class SyncTaskRunner:
                 pending.append((candidate.effective_token, candidate.effective_type))
         if not pending:
             return candidates
+        meta_map = {}
         batch_query = getattr(drive_service, "batch_query_metas", None)
-        if batch_query is None:
-            return candidates
-        try:
-            meta_map = await batch_query(pending, with_url=True)
-        except Exception as exc:
-            logger.warning("补齐表格导出 sub_id 失败: {}", exc)
-            return candidates
-        if not meta_map:
-            return candidates
+        if batch_query is not None:
+            try:
+                meta_map = await batch_query(pending, with_url=True)
+            except Exception as exc:
+                logger.warning("补齐表格导出 sub_id 失败: {}", exc)
         enriched: list[DownloadCandidate] = []
-        for candidate in candidates:
+        remaining: dict[tuple[str, str], list[int]] = {}
+        for idx, candidate in enumerate(candidates):
             if candidate.effective_type in _EXPORT_EXTENSION_MAP and not candidate.export_sub_id:
                 meta = meta_map.get(candidate.effective_token)
                 url = getattr(meta, "url", None) if meta else None
                 sub_id = _extract_export_sub_id(url, candidate.effective_type)
                 if sub_id:
                     candidate = replace(candidate, export_sub_id=sub_id)
+                else:
+                    key = (candidate.effective_token, candidate.effective_type)
+                    remaining.setdefault(key, []).append(idx)
             enriched.append(candidate)
+
+        if not remaining:
+            return enriched
+
+        for (token, file_type), indices in remaining.items():
+            if file_type == "sheet":
+                if not sheet_service:
+                    continue
+                try:
+                    sheet_ids = await sheet_service.list_sheet_ids(token)
+                except Exception as exc:
+                    logger.warning("获取 sheet 子表失败: token={} error={}", token, exc)
+                    continue
+                if not sheet_ids:
+                    continue
+                for idx in indices:
+                    enriched[idx] = replace(enriched[idx], export_sub_id=sheet_ids[0])
+                logger.info(
+                    "补齐 sheet sub_id: token={} sheet_id={}",
+                    token,
+                    sheet_ids[0],
+                )
+            elif file_type == "bitable":
+                if not bitable_service:
+                    continue
+                try:
+                    table_ids = await bitable_service.list_table_ids(token)
+                except Exception as exc:
+                    logger.warning("获取 bitable 子表失败: token={} error={}", token, exc)
+                    continue
+                if not table_ids:
+                    continue
+                for idx in indices:
+                    enriched[idx] = replace(enriched[idx], export_sub_id=table_ids[0])
+                logger.info(
+                    "补齐 bitable sub_id: token={} table_id={}",
+                    token,
+                    table_ids[0],
+                )
+
         return enriched
 
     @staticmethod
@@ -709,7 +810,9 @@ class SyncTaskRunner:
         if export_sub_id:
             attempts.append(export_sub_id)
         last_error: Exception | None = None
+        last_sub_id: str | None = None
         for sub_id in attempts:
+            last_sub_id = sub_id
             try:
                 task = await export_task_service.create_export_task(
                     file_extension=export_extension,
@@ -742,7 +845,8 @@ class SyncTaskRunner:
                     )
                     continue
                 break
-        raise RuntimeError(f"导出任务失败: {last_error}") from last_error
+        suffix = f" sub_id={last_sub_id}" if last_sub_id else ""
+        raise RuntimeError(f"导出任务失败{suffix}: {last_error}") from last_error
 
     async def _wait_for_export_task(
         self,
@@ -771,6 +875,7 @@ class SyncTaskRunner:
         raise RuntimeError(last_error or "导出任务超时")
 
     async def _run_upload(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
+        self._task_meta[task.id] = task
         docx_service = self._docx_service or DocxService()
         file_uploader = self._file_uploader or FileUploader()
         drive_service = self._drive_service or DriveService()
@@ -807,7 +912,7 @@ class SyncTaskRunner:
                 except Exception as exc:
                     status.failed_files += 1
                     status.last_error = str(exc)
-                    status.record_event(
+                    self._record_event(status, 
                         SyncFileEvent(
                             path=str(path),
                             status="failed",
@@ -865,7 +970,7 @@ class SyncTaskRunner:
                 except Exception as exc:
                     status.failed_files += 1
                     status.last_error = str(exc)
-                    status.record_event(
+                    self._record_event(status, 
                         SyncFileEvent(
                             path=str(path),
                             status="failed",
@@ -897,7 +1002,7 @@ class SyncTaskRunner:
         key = str(path)
         if key in self._uploading_paths:
             status.skipped_files += 1
-            status.record_event(
+            self._record_event(status, 
                 SyncFileEvent(path=key, status="skipped", message="上传中，跳过重复触发")
             )
             logger.info("重复上传触发，已跳过: task_id={} path={}", task.id, key)
@@ -906,7 +1011,7 @@ class SyncTaskRunner:
         try:
             if self._should_ignore_path(task, path):
                 status.skipped_files += 1
-                status.record_event(
+                self._record_event(status, 
                     SyncFileEvent(path=key, status="skipped", message="忽略内部目录")
                 )
                 return
@@ -954,7 +1059,7 @@ class SyncTaskRunner:
             )
             if not link:
                 status.failed_files += 1
-                status.record_event(
+                self._record_event(status, 
                     SyncFileEvent(
                         path=str(path),
                         status="failed",
@@ -969,21 +1074,21 @@ class SyncTaskRunner:
         if block_states:
             if all(item.file_hash == file_hash for item in block_states):
                 status.skipped_files += 1
-                status.record_event(
+                self._record_event(status, 
                     SyncFileEvent(path=str(path), status="skipped", message="内容未变化")
                 )
                 return
         else:
             if task.sync_mode != "upload_only" and mtime <= (link.updated_at + 1.0):
                 status.skipped_files += 1
-                status.record_event(
+                self._record_event(status, 
                     SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
                 )
                 return
         update_mode = task.update_mode or "auto"
         if link.cloud_type not in {"docx", "doc"}:
             status.failed_files += 1
-            status.record_event(
+            self._record_event(status, 
                 SyncFileEvent(
                     path=str(path),
                     status="failed",
@@ -1061,7 +1166,7 @@ class SyncTaskRunner:
             updated_at=synced_at,
         )
         status.completed_files += 1
-        status.record_event(SyncFileEvent(path=str(path), status="uploaded"))
+        self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
         logger.info("上传完成: task_id={} path={}", task.id, path)
 
     async def _upload_file(
@@ -1075,13 +1180,13 @@ class SyncTaskRunner:
         mtime = path.stat().st_mtime
         if task.sync_mode != "upload_only" and link and mtime <= (link.updated_at + 1.0):
             status.skipped_files += 1
-            status.record_event(
+            self._record_event(status, 
                 SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
             )
             return
         if link and link.cloud_type != "file":
             status.failed_files += 1
-            status.record_event(
+            self._record_event(status, 
                 SyncFileEvent(
                     path=str(path),
                     status="failed",
@@ -1104,7 +1209,7 @@ class SyncTaskRunner:
             updated_at=synced_at,
         )
         status.completed_files += 1
-        status.record_event(SyncFileEvent(path=str(path), status="uploaded"))
+        self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
 
     async def _bootstrap_block_state(
         self,
@@ -1135,7 +1240,7 @@ class SyncTaskRunner:
                 )
             ],
         )
-        status.record_event(
+        self._record_event(status, 
             SyncFileEvent(
                 path=str(path),
                 status="bootstrapped",
@@ -1161,7 +1266,7 @@ class SyncTaskRunner:
     ) -> tuple[SyncLinkItem | None, bool]:
         suffix = path.suffix.lower().lstrip(".")
         if not suffix:
-            status.record_event(
+            self._record_event(status, 
                 SyncFileEvent(
                     path=str(path),
                     status="failed",
@@ -1182,7 +1287,7 @@ class SyncTaskRunner:
                 task_id=task.id,
                 updated_at=0.0,
             )
-            status.record_event(
+            self._record_event(status, 
                 SyncFileEvent(
                     path=str(path),
                     status="linked",
@@ -1190,7 +1295,7 @@ class SyncTaskRunner:
                 )
             )
             return link, False
-        status.record_event(
+        self._record_event(status, 
             SyncFileEvent(path=str(path), status="creating", message="创建云端文档")
         )
         existing_tokens = await self._list_folder_tokens(
@@ -1211,12 +1316,12 @@ class SyncTaskRunner:
                 doc_type="docx",
             )
         except ImportTaskError as exc:
-            status.record_event(
+            self._record_event(status, 
                 SyncFileEvent(path=str(path), status="failed", message=str(exc))
             )
             return None, False
         except Exception as exc:
-            status.record_event(
+            self._record_event(status, 
                 SyncFileEvent(path=str(path), status="failed", message=str(exc))
             )
             return None, False
@@ -1228,7 +1333,7 @@ class SyncTaskRunner:
             existing_tokens=existing_tokens,
         )
         if not doc_token:
-            status.record_event(
+            self._record_event(status, 
                 SyncFileEvent(
                     path=str(path),
                     status="failed",
@@ -1244,7 +1349,7 @@ class SyncTaskRunner:
             task_id=task.id,
             updated_at=0.0,
         )
-        status.record_event(
+        self._record_event(status, 
             SyncFileEvent(path=str(path), status="created", message="云端文档已创建")
         )
         return link, True
@@ -1364,8 +1469,10 @@ class SyncTaskRunner:
         if self._should_ignore_path(task, path):
             return
         self.queue_local_change(task.id, path)
-        status.record_event(
-            SyncFileEvent(path=str(path), status="queued", message="等待周期上传")
+        self._record_event(
+            status,
+            SyncFileEvent(path=str(path), status="queued", message="等待周期上传"),
+            task,
         )
 
     async def _apply_block_update(

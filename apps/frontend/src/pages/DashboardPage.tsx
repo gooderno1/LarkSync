@@ -3,11 +3,12 @@
 /* ------------------------------------------------------------------ */
 
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
 import { useTasks } from "../hooks/useTasks";
 import { useConflicts } from "../hooks/useConflicts";
 import { useWebSocketLog } from "../hooks/useWebSocketLog";
-import { getLoginUrl } from "../lib/api";
+import { apiFetch, getLoginUrl } from "../lib/api";
 import { formatTimestamp, formatShortTime, isSameDay } from "../lib/formatters";
 import { modeLabels, updateModeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
 import { StatCard } from "../components/StatCard";
@@ -17,6 +18,25 @@ import { EmptyState } from "../components/EmptyState";
 import { ModeIcon, IconRefresh, IconTasks, IconArrowRightLeft, IconConflicts, IconCloud, IconSettings, IconActivity } from "../components/Icons";
 import type { SyncLogEntry, NavKey } from "../types";
 
+type SyncLogResponse = {
+  total: number;
+  items: SyncLogEntry[];
+};
+
+type SyncLogEntryRaw = {
+  task_id: string;
+  task_name: string;
+  timestamp: number;
+  status: string;
+  path: string;
+  message?: string | null;
+};
+
+type SyncLogResponseRaw = {
+  total: number;
+  items: SyncLogEntryRaw[];
+};
+
 type Props = { onNavigate: (tab: NavKey) => void };
 
 export function DashboardPage({ onNavigate }: Props) {
@@ -25,6 +45,26 @@ export function DashboardPage({ onNavigate }: Props) {
   const { conflicts } = useConflicts();
   const { entries: wsEntries, status: wsStatus } = useWebSocketLog(connected);
   const loginUrl = getLoginUrl();
+
+  const syncLogsQuery = useQuery<SyncLogResponse>({
+    queryKey: ["sync-logs-dashboard"],
+    queryFn: async () => {
+      const raw = await apiFetch<SyncLogResponseRaw>("/sync/logs/sync?limit=200&order=desc");
+      return {
+        total: raw.total,
+        items: raw.items.map((item) => ({
+          taskId: item.task_id,
+          taskName: item.task_name,
+          timestamp: item.timestamp,
+          status: item.status,
+          path: item.path,
+          message: item.message ?? null,
+        })),
+      };
+    },
+    staleTime: 5_000,
+  });
+  const historyEntries = syncLogsQuery.data?.items || [];
 
   // Merge polling logs with WebSocket real-time entries
   const pollingEntries: SyncLogEntry[] = useMemo(() => {
@@ -44,7 +84,8 @@ export function DashboardPage({ onNavigate }: Props) {
   }, [statusMap, tasks]);
 
   // Prefer WS entries when available, fallback to polling
-  const syncLogEntries = wsEntries.length > 0 ? wsEntries : pollingEntries;
+  const baseEntries = historyEntries.length > 0 ? historyEntries : pollingEntries;
+  const syncLogEntries = wsEntries.length > 0 ? wsEntries : baseEntries;
 
   const today = new Date();
   const todayCount = syncLogEntries.filter((e) => isSameDay(e.timestamp, today)).length;

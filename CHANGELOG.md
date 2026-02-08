@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.4.0-dev.15 fix(logs,export): 同步日志持久化与系统日志读取修复，表格导出补齐子表 ID
 [2026-02-08] v0.4.0-dev.14 fix(export,logs): 表格导出补齐 sub_id 获取，系统日志读取根路径修复
 [2026-02-08] v0.4.0-dev.13 fix(sync-download): 表格导出 sub_id 重试、日志历史排序、上传后避免回流下载
 [2026-02-08] v0.4.0-dev.12 fix(sync-download): 云端未更新时跳过下载，在线幻灯片类型不导出

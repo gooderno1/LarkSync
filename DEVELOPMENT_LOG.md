@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.15 (2026-02-08)
+- 目标：同步日志需持久化保留历史；系统日志不再为空；sheet/bitable 导出补齐子表 ID。
+- 结果：
+  - 新增同步日志 JSONL 持久化与 `/sync/logs/sync` 接口，日志中心/仪表盘改为读取历史日志。
+  - 日志路径统一使用 core.paths 解析，系统日志读取与写入一致。
+  - sheet/bitable 导出补齐子表 ID（缺失时尝试拉取子表列表），导出失败日志包含 sub_id。
+  - 版本号同步为 v0.4.0-dev.15（backend）与 0.4.0-dev.9（frontend）。
+- 测试：`python -m pytest tests/test_sync_event_store.py tests/test_sync_runner.py tests/test_log_reader.py`（apps/backend）。
+- 问题：若 sheet/bitable 仍失败，请提供对应 API JSON 返回（含子表列表或导出任务结果）。
+
 ## v0.4.0-dev.14 (2026-02-08)
 - 目标：修复表格导出仍失败的问题并确保系统日志读取到历史文件。
 - 结果：

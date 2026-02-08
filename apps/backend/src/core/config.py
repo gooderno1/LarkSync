@@ -8,6 +8,7 @@ from typing import ClassVar, Optional
 
 from pydantic import BaseModel, Field
 
+from src.core.paths import repo_root
 
 class SyncMode(str, Enum):
     bidirectional = "bidirectional"
@@ -22,10 +23,7 @@ class SyncIntervalUnit(str, Enum):
 
 
 def _repo_root() -> Path:
-    env_root = os.getenv("LARKSYNC_ROOT")
-    if env_root:
-        return Path(env_root).expanduser().resolve()
-    return Path(__file__).resolve().parents[4]
+    return repo_root()
 
 
 def _default_config_path() -> Path:

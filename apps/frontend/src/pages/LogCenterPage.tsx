@@ -1,10 +1,9 @@
 /* ------------------------------------------------------------------ */
-/*  日志中心页面 — 同步日志(内存) + 系统日志(文件) + 冲突管理             */
+/*  日志中心页面 — 同步日志(持久化) + 系统日志(文件) + 冲突管理           */
 /* ------------------------------------------------------------------ */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useTasks } from "../hooks/useTasks";
 import { useConflicts } from "../hooks/useConflicts";
 import { formatTimestamp } from "../lib/formatters";
 import { statusLabelMap } from "../lib/constants";
@@ -30,16 +29,36 @@ type FileLogResponse = {
   items: FileLogEntry[];
 };
 
+/* 同步日志分页响应 */
+type SyncLogResponse = {
+  total: number;
+  items: SyncLogEntry[];
+};
+
+type SyncLogEntryRaw = {
+  task_id: string;
+  task_name: string;
+  timestamp: number;
+  status: string;
+  path: string;
+  message?: string | null;
+};
+
+type SyncLogResponseRaw = {
+  total: number;
+  items: SyncLogEntryRaw[];
+};
+
 export function LogCenterPage() {
-  const { tasks, statusMap, refreshStatus } = useTasks();
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflict } = useConflicts();
   const { toast } = useToast();
 
   const [logTab, setLogTab] = useState<"logs" | "file-logs" | "conflicts">("logs");
 
-  // ---- 同步日志 (内存) 状态 ----
+  // ---- 同步日志 (持久化) 状态 ----
   const [logFilterStatus, setLogFilterStatus] = useState("all");
   const [logFilterText, setLogFilterText] = useState("");
+  const [logOrder, setLogOrder] = useState<"asc" | "desc">("desc");
   const [logPage, setLogPage] = useState(1);
   const [logPageSize, setLogPageSize] = useState(20);
 
@@ -50,37 +69,36 @@ export function LogCenterPage() {
   const [fileLogPageSize, setFileLogPageSize] = useState(50);
   const [fileLogOrder, setFileLogOrder] = useState<"asc" | "desc">("asc");
 
-  // ---- 同步日志数据 (内存) ----
-  const syncLogEntries: SyncLogEntry[] = useMemo(() => {
-    return Object.values(statusMap)
-      .flatMap((st) =>
-        (st.last_files || []).map((f) => ({
-          taskId: st.task_id,
-          taskName: tasks.find((t) => t.id === st.task_id)?.name || "未命名任务",
-          timestamp: f.timestamp ?? st.finished_at ?? st.started_at ?? Math.floor(Date.now() / 1000),
-          status: f.status,
-          path: f.path,
-          message: f.message,
-        }))
-      )
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 500);
-  }, [statusMap, tasks]);
+  // ---- 同步日志数据 (持久化 API) ----
+  const syncLogsQuery = useQuery<SyncLogResponse>({
+    queryKey: ["sync-logs", logFilterStatus, logFilterText, logOrder, logPage, logPageSize],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", String(logPageSize));
+      params.set("offset", String((logPage - 1) * logPageSize));
+      if (logFilterStatus !== "all") params.set("status", logFilterStatus);
+      if (logFilterText) params.set("search", logFilterText);
+      params.set("order", logOrder);
+      const raw = await apiFetch<SyncLogResponseRaw>(`/sync/logs/sync?${params.toString()}`);
+      return {
+        total: raw.total,
+        items: raw.items.map((item) => ({
+          taskId: item.task_id,
+          taskName: item.task_name,
+          timestamp: item.timestamp,
+          status: item.status,
+          path: item.path,
+          message: item.message ?? null,
+        })),
+      };
+    },
+    enabled: logTab === "logs",
+    staleTime: 5_000,
+    placeholderData: { total: 0, items: [] },
+  });
 
-  const filteredLogs = useMemo(() => {
-    const text = logFilterText.trim().toLowerCase();
-    return syncLogEntries.filter((e) => {
-      if (logFilterStatus !== "all" && e.status !== logFilterStatus) return false;
-      if (!text) return true;
-      return e.path.toLowerCase().includes(text) || e.taskName.toLowerCase().includes(text) || (e.message || "").toLowerCase().includes(text);
-    });
-  }, [syncLogEntries, logFilterStatus, logFilterText]);
-
-  const logTotalPages = Math.max(1, Math.ceil(filteredLogs.length / logPageSize));
-  const paginatedLogs = useMemo(() => {
-    const start = (logPage - 1) * logPageSize;
-    return filteredLogs.slice(start, start + logPageSize);
-  }, [filteredLogs, logPage, logPageSize]);
+  const syncLogEntries = syncLogsQuery.data?.items || [];
+  const syncLogTotal = syncLogsQuery.data?.total || 0;
 
   // ---- 系统日志数据 (文件 API) ----
   const fileLogsQuery = useQuery<FileLogResponse>({
@@ -150,21 +168,21 @@ export function LogCenterPage() {
         </div>
       </div>
 
-      {/* ============ 同步日志 tab (内存) ============ */}
+      {/* ============ 同步日志 tab (持久化) ============ */}
       {logTab === "logs" ? (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg font-semibold text-zinc-50">同步日志流</h3>
-              <p className="mt-1 text-xs text-zinc-400">来自当前运行的任务状态（内存中），重启后清空。</p>
+              <h3 className="text-lg font-semibold text-zinc-50">同步日志</h3>
+              <p className="mt-1 text-xs text-zinc-400">来自持久化日志文件，支持历史查询与筛选。</p>
             </div>
-            <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={refreshStatus} type="button">
+            <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => syncLogsQuery.refetch()} type="button">
               <IconRefresh className="h-3.5 w-3.5" /> 刷新日志
             </button>
           </div>
 
           {/* 筛选器 */}
-          <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.6fr_0.6fr]">
+          <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.6fr_0.5fr_0.6fr]">
             <input
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
               placeholder="搜索任务名、路径或错误信息"
@@ -184,20 +202,30 @@ export function LogCenterPage() {
               <option value="skipped">跳过</option>
               <option value="started">开始</option>
             </select>
-            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setLogFilterStatus("all"); setLogFilterText(""); resetLogPage(); }} type="button">
+            <select
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
+              value={logOrder}
+              onChange={(e) => { setLogOrder(e.target.value as "asc" | "desc"); resetLogPage(); }}
+            >
+              <option value="desc">最新优先</option>
+              <option value="asc">最早优先</option>
+            </select>
+            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setLogFilterStatus("all"); setLogFilterText(""); setLogOrder("desc"); resetLogPage(); }} type="button">
               重置
             </button>
           </div>
 
           {/* 日志列表 */}
           <div className="mt-5 max-h-[520px] space-y-3 overflow-auto pr-1 log-scroll-area">
-            {filteredLogs.length === 0 ? (
+            {syncLogsQuery.isLoading ? (
+              <div className="space-y-2">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-zinc-800/50" />)}</div>
+            ) : syncLogEntries.length === 0 ? (
               <div className="py-8 text-center">
                 <IconConflicts className="mx-auto h-10 w-10 text-zinc-700" />
-                <p className="mt-3 text-sm text-zinc-500">暂无匹配日志。如需查看完整历史，请切换到「系统日志」标签。</p>
+                <p className="mt-3 text-sm text-zinc-500">暂无匹配日志。</p>
               </div>
             ) : (
-              paginatedLogs.map((entry, i) => (
+              syncLogEntries.map((entry, i) => (
                 <div key={`${entry.taskId}-${entry.timestamp}-${i}`} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">
@@ -214,12 +242,12 @@ export function LogCenterPage() {
           </div>
 
           {/* 分页 */}
-          {filteredLogs.length > 0 ? (
+          {(syncLogTotal > 0 || syncLogEntries.length > 0) ? (
             <div className="mt-4 border-t border-zinc-800 pt-4">
               <Pagination
                 page={logPage}
                 pageSize={logPageSize}
-                total={filteredLogs.length}
+                total={syncLogTotal}
                 onPageChange={setLogPage}
                 onPageSizeChange={(size) => { setLogPageSize(size); resetLogPage(); }}
                 pageSizeOptions={[20, 50, 100]}

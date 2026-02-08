@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote
 
+from src.core.paths import repo_root
 from src.services.feishu_client import FeishuClient
 from src.services.file_downloader import FileDownloader
 from src.services.path_sanitizer import sanitize_filename
@@ -42,12 +43,8 @@ _TEXT_BLOCK_FIELDS = {
 }
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
-
-
 def _default_assets_root() -> Path:
-    return _repo_root() / "data" / "assets"
+    return repo_root() / "data" / "assets"
 
 
 class MediaDownloader:

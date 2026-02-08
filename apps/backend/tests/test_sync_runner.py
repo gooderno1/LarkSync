@@ -117,6 +117,19 @@ class FakeExportTaskService:
         return None
 
 
+class FakeSheetService:
+    def __init__(self, sheet_ids: list[str] | None = None) -> None:
+        self.sheet_ids = sheet_ids or []
+        self.calls: list[str] = []
+
+    async def list_sheet_ids(self, spreadsheet_token: str) -> list[str]:
+        self.calls.append(spreadsheet_token)
+        return list(self.sheet_ids)
+
+    async def close(self) -> None:
+        return None
+
+
 class FakeLinkService:
     def __init__(self, persisted: list[SyncLinkItem] | None = None) -> None:
         self.calls: list[tuple[str, str, str, str]] = []
@@ -414,6 +427,77 @@ async def test_runner_export_retries_with_sub_id(tmp_path: Path) -> None:
     assert (tmp_path / "项目表.xlsx").exists()
     assert export_service.create_calls[0][3] is None
     assert export_service.create_calls[1][3] == "tbl123"
+
+
+@pytest.mark.asyncio
+async def test_runner_fills_sheet_sub_id_when_missing(tmp_path: Path) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="sheet-1",
+                name="预算表",
+                type="sheet",
+                modified_time="1700000000",
+            )
+        ],
+    )
+
+    class DriveWithMeta(FakeDriveService):
+        async def batch_query_metas(self, docs, *, with_url=True):  # type: ignore[override]
+            return {}
+
+    class RequireSubIdExportTaskService(FakeExportTaskService):
+        async def create_export_task(
+            self,
+            *,
+            file_extension: str,
+            file_token: str,
+            file_type: str,
+            sub_id: str | None = None,
+        ):
+            self.create_calls.append((file_extension, file_token, file_type, sub_id))
+            if sub_id is None:
+                raise ExportTaskError("missing sub_id")
+            return ExportTaskCreateResult(ticket="ticket-1")
+
+    export_service = RequireSubIdExportTaskService()
+    sheet_service = FakeSheetService(["sheet-xyz"])
+    runner = SyncTaskRunner(
+        drive_service=DriveWithMeta(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(),
+        export_task_service=export_service,
+        sheet_service=sheet_service,
+    )
+
+    task = SyncTaskItem(
+        id="task-sheet",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner.run_task(task)
+
+    status = runner.get_status(task.id)
+    assert status.failed_files == 0
+    assert (tmp_path / "预算表.xlsx").exists()
+    assert export_service.create_calls[0][3] is None
+    assert export_service.create_calls[1][3] == "sheet-xyz"
+    assert sheet_service.calls == ["sheet-1"]
 
 
 @pytest.mark.asyncio

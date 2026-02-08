@@ -7,8 +7,10 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from src.core.config import SyncMode
+from src.core.logging import get_log_file
 from src.services.docx_service import DocxService, DocxServiceError
 from src.services.log_reader import read_log_entries
+from src.services.sync_event_store import SyncEventStore
 from src.services.sync_runner import SyncFileEvent, SyncTaskRunner, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem, SyncTaskService
 
@@ -71,6 +73,7 @@ class MarkdownReplaceRequest(BaseModel):
 router = APIRouter(prefix="/sync", tags=["sync"])
 service = SyncTaskService()
 runner = SyncTaskRunner()
+event_store = SyncEventStore()
 
 
 class SyncFileEventResponse(BaseModel):
@@ -236,6 +239,52 @@ class LogFileResponse(BaseModel):
     items: list[LogFileEntry]
 
 
+class SyncLogEntry(BaseModel):
+    task_id: str
+    task_name: str
+    timestamp: float
+    status: str
+    path: str
+    message: str | None = None
+
+
+class SyncLogResponse(BaseModel):
+    total: int
+    items: list[SyncLogEntry]
+
+
+@router.get("/logs/sync", response_model=SyncLogResponse)
+async def read_sync_logs(
+    limit: int = Query(default=50, ge=1, le=2000, description="返回条数"),
+    offset: int = Query(default=0, ge=0, description="跳过前N条"),
+    status: str = Query(default="", description="按状态筛选"),
+    search: str = Query(default="", description="关键词搜索"),
+    task_id: str = Query(default="", description="任务 ID 过滤"),
+    order: str = Query(default="desc", description="排序: desc=最新优先, asc=最早优先"),
+) -> SyncLogResponse:
+    """读取同步日志（持久化 JSONL）。"""
+    total, entries = event_store.read_events(
+        limit=limit,
+        offset=offset,
+        status=status,
+        search=search,
+        task_id=task_id,
+        order=order,
+    )
+    items = [
+        SyncLogEntry(
+            task_id=entry.task_id,
+            task_name=entry.task_name,
+            timestamp=entry.timestamp,
+            status=entry.status,
+            path=entry.path,
+            message=entry.message,
+        )
+        for entry in entries
+    ]
+    return SyncLogResponse(total=total, items=items)
+
+
 @router.get("/logs/file", response_model=LogFileResponse)
 async def read_log_file(
     limit: int = Query(default=50, ge=1, le=2000, description="返回条数"),
@@ -245,8 +294,7 @@ async def read_log_file(
     order: str = Query(default="desc", description="排序: desc=最新优先, asc=最早优先"),
 ) -> LogFileResponse:
     """读取 loguru 日志文件，支持分页返回最近的日志条目。"""
-    root = Path(__file__).resolve().parents[4]
-    log_file = root / "data" / "logs" / "larksync.log"
+    log_file = get_log_file()
     if not log_file.exists():
         return LogFileResponse(total=0, items=[])
     total, entries = read_log_entries(
