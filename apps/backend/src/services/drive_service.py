@@ -66,9 +66,14 @@ class DriveService:
         self._client = client or FeishuClient()
         self._base_url = base_url.rstrip("/")
 
-    async def get_root_folder_meta(self) -> RootFolderMeta:
+    async def get_root_folder_meta(
+        self, root_folder_type: str | None = None
+    ) -> RootFolderMeta:
         url = f"{self._base_url}/open-apis/drive/explorer/v2/root_folder/meta"
-        response = await self._client.request("GET", url)
+        request_kwargs: dict[str, object] = {}
+        if root_folder_type:
+            request_kwargs["params"] = {"root_folder_type": root_folder_type}
+        response = await self._client.request("GET", url, **request_kwargs)
         payload = response.json()
         if payload.get("code") != 0:
             raise RuntimeError(f"获取根目录失败: {payload.get('msg')}")
@@ -91,9 +96,30 @@ class DriveService:
         data = payload.get("data") or {}
         return DriveFileList.model_validate(data)
 
-    async def scan_root(self) -> DriveNode:
-        meta = await self.get_root_folder_meta()
-        return await self.scan_folder(meta.token, name="我的空间")
+    async def scan_root(
+        self, root_folder_type: str = "explorer", name: str | None = None
+    ) -> DriveNode:
+        meta = await self.get_root_folder_meta(root_folder_type=root_folder_type)
+        if name is None:
+            name = "我的空间" if root_folder_type == "explorer" else "共享文件夹"
+        return await self.scan_folder(meta.token, name=name)
+
+    async def scan_roots(self) -> DriveNode:
+        children: list[DriveNode] = []
+        my_space = await self.scan_root("explorer", name="我的空间")
+        children.append(my_space)
+        try:
+            shared_space = await self.scan_root("share", name="共享文件夹")
+        except RuntimeError:
+            shared_space = None
+        if shared_space is not None:
+            children.append(shared_space)
+        return DriveNode(
+            token="root",
+            name="云空间",
+            type="root",
+            children=children,
+        )
 
     async def scan_folder(
         self,
@@ -136,6 +162,28 @@ class DriveService:
         return node
 
     async def _build_node(self, item: DriveFile, visited: set[str]) -> DriveNode:
+        if item.type == "shortcut" and item.shortcut_info:
+            target_token = item.shortcut_info.target_token or item.token
+            target_type = item.shortcut_info.target_type or item.type
+            if target_type == "folder":
+                return await self.scan_folder(
+                    target_token,
+                    name=item.name,
+                    parent_token=item.parent_token,
+                    visited=visited,
+                )
+            return DriveNode(
+                token=target_token,
+                name=item.name,
+                type=target_type,
+                parent_token=item.parent_token,
+                url=item.url,
+                created_time=item.created_time,
+                modified_time=item.modified_time,
+                owner_id=item.owner_id,
+                shortcut_info=item.shortcut_info,
+                children=[],
+            )
         if item.type == "folder":
             return await self.scan_folder(
                 item.token,

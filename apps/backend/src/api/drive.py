@@ -17,7 +17,7 @@ async def get_drive_tree(
     try:
         if folder_token:
             return await service.scan_folder(folder_token, name=name or folder_token)
-        return await service.scan_root()
+        return await service.scan_roots()
     except AuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except RuntimeError as exc:

@@ -33,6 +33,51 @@ async def test_get_root_folder_meta_parses_response() -> None:
     assert meta.token == "root-token"
     assert meta.id == "root-id"
     assert meta.user_id == "user"
+    assert "params" not in client.requests[0][2]
+
+
+@pytest.mark.asyncio
+async def test_get_root_folder_meta_supports_root_type() -> None:
+    client = FakeClient(
+        [
+            {
+                "code": 0,
+                "data": {"token": "share-token", "id": "share-id", "user_id": "user"},
+            }
+        ]
+    )
+    service = DriveService(client=client)
+    meta = await service.get_root_folder_meta(root_folder_type="share")
+    assert meta.token == "share-token"
+    assert client.requests[0][2]["params"] == {"root_folder_type": "share"}
+
+
+@pytest.mark.asyncio
+async def test_scan_roots_combines_my_space_and_shared() -> None:
+    responses = [
+        {
+            "code": 0,
+            "data": {"token": "root-my", "id": "root-id", "user_id": "user"},
+        },
+        {"code": 0, "data": {"files": [], "has_more": False}},
+        {
+            "code": 0,
+            "data": {"token": "root-share", "id": "share-id", "user_id": "user"},
+        },
+        {"code": 0, "data": {"files": [], "has_more": False}},
+    ]
+    client = FakeClient(responses)
+    service = DriveService(client=client)
+
+    tree = await service.scan_roots()
+
+    assert tree.type == "root"
+    assert [child.name for child in tree.children] == ["我的空间", "共享文件夹"]
+    assert tree.children[0].token == "root-my"
+    assert tree.children[1].token == "root-share"
+
+    assert client.requests[0][2]["params"] == {"root_folder_type": "explorer"}
+    assert client.requests[2][2]["params"] == {"root_folder_type": "share"}
 
 
 @pytest.mark.asyncio
@@ -101,3 +146,36 @@ async def test_scan_folder_builds_tree_with_pagination_and_recursion() -> None:
 
     request_params = client.requests[2][2]["params"]
     assert request_params["page_token"] == "next-page"
+
+
+@pytest.mark.asyncio
+async def test_scan_folder_expands_shortcut_folder() -> None:
+    responses = [
+        {
+            "code": 0,
+            "data": {
+                "files": [
+                    {
+                        "token": "shortcut-1",
+                        "name": "共享文件夹",
+                        "type": "shortcut",
+                        "parent_token": "root",
+                        "shortcut_info": {
+                            "target_token": "shared-folder",
+                            "target_type": "folder",
+                        },
+                    }
+                ],
+                "has_more": False,
+            },
+        },
+        {"code": 0, "data": {"files": [], "has_more": False}},
+    ]
+    client = FakeClient(responses)
+    service = DriveService(client=client)
+
+    tree = await service.scan_folder("root", name="我的空间")
+    assert len(tree.children) == 1
+    assert tree.children[0].name == "共享文件夹"
+    assert tree.children[0].token == "shared-folder"
+    assert tree.children[0].type == "folder"

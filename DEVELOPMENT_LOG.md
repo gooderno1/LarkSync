@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.6 (2026-02-08)
+- 目标：支持共享文件夹目录选择，保证云端目录树覆盖“我的空间/共享文件夹”。
+- 结果：
+  - DriveService 支持 `root_folder_type=share` 获取共享根目录；`/drive/tree` 返回虚拟根节点“云空间”，包含“我的空间/共享文件夹”两棵子树。
+  - 目录树解析新增快捷方式处理，遇到 `shortcut` 指向文件夹时自动展开为真实目录。
+  - 前端目录树支持 `root` 节点展示但不可选，路径展示忽略虚拟根。
+  - 版本号同步为 v0.4.0-dev.6。
+- 测试：`python -m pytest apps/backend/tests/test_drive_service.py`。
+- 问题：暂无阻塞问题。
+
 ## v0.4.0-dev.5 (2026-02-08)
 - 目标：修复前端 Logo/Favicon 白色背景问题，优化图标大小和圆角。
 - 问题分析：

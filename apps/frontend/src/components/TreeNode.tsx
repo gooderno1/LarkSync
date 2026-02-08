@@ -22,9 +22,10 @@ export function TreeNode({
   onSelect,
 }: TreeNodeProps) {
   const [open, setOpen] = useState(true);
-  const isFolder = node.type === "folder";
+  const isFolder = node.type === "folder" || node.type === "root";
+  const canSelect = selectable && node.type === "folder";
   const hasChildren = Boolean(node.children && node.children.length);
-  const currentPath = path ? `${path}/${node.name}` : node.name;
+  const currentPath = node.type === "root" ? path : (path ? `${path}/${node.name}` : node.name);
   const isSelected = selectedToken === node.token;
 
   return (
@@ -49,9 +50,9 @@ export function TreeNode({
           className={`flex items-center gap-2 text-left text-sm ${
             isSelected ? "font-semibold text-emerald-300" : "text-zinc-200"
           }`}
-          disabled={!selectable || !isFolder}
+          disabled={!canSelect}
           onClick={() => {
-            if (!selectable || !isFolder) return;
+            if (!canSelect) return;
             onSelect?.({ token: node.token, name: node.name, path: currentPath });
           }}
           type="button"
@@ -62,7 +63,7 @@ export function TreeNode({
         <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] uppercase tracking-widest text-zinc-500">
           {node.type}
         </span>
-        {selectable && isFolder ? (
+        {canSelect ? (
           <button
             className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
               isSelected
