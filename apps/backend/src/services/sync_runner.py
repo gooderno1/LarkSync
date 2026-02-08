@@ -17,7 +17,9 @@ from src.services.file_hash import calculate_file_hash
 from src.services.file_uploader import FileUploader
 from src.services.file_writer import FileWriter
 from src.services.markdown_blocks import hash_block, split_markdown_blocks
+from src.services.path_sanitizer import sanitize_filename, sanitize_path_segment
 from src.services.import_task_service import ImportTaskError, ImportTaskService
+from src.services.export_task_service import ExportTaskError, ExportTaskResult, ExportTaskService
 from src.services.sync_block_service import BlockStateItem, SyncBlockService
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_task_service import SyncTaskItem
@@ -77,8 +79,11 @@ class SyncTaskRunner:
         file_writer: FileWriter | None = None,
         link_service: SyncLinkService | None = None,
         import_task_service: ImportTaskService | None = None,
+        export_task_service: ExportTaskService | None = None,
         import_poll_attempts: int = 10,
         import_poll_interval: float = 1.0,
+        export_poll_attempts: int = 10,
+        export_poll_interval: float = 1.0,
     ) -> None:
         self._drive_service = drive_service
         self._docx_service = docx_service
@@ -89,8 +94,11 @@ class SyncTaskRunner:
         self._link_service = link_service or SyncLinkService()
         self._block_service = SyncBlockService()
         self._import_task_service = import_task_service
+        self._export_task_service = export_task_service
         self._import_poll_attempts = max(1, import_poll_attempts)
         self._import_poll_interval = max(0.0, import_poll_interval)
+        self._export_poll_attempts = max(1, export_poll_attempts)
+        self._export_poll_interval = max(0.0, export_poll_interval)
         self._statuses: dict[str, SyncTaskStatus] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._watchers: dict[str, WatcherService] = {}
@@ -292,6 +300,7 @@ class SyncTaskRunner:
         docx_service = self._docx_service or DocxService()
         transcoder = self._transcoder or DocxTranscoder()
         file_downloader = self._file_downloader or FileDownloader()
+        export_task_service = self._export_task_service or ExportTaskService()
         link_service = self._link_service
         owned_services = []
         if self._drive_service is None:
@@ -302,6 +311,8 @@ class SyncTaskRunner:
             owned_services.append(transcoder)
         if self._file_downloader is None:
             owned_services.append(file_downloader)
+        if self._export_task_service is None:
+            owned_services.append(export_task_service)
 
         try:
             tree = await drive_service.scan_folder(
@@ -382,12 +393,9 @@ class SyncTaskRunner:
                             base_dir=target_dir,
                             link_map=link_map,
                         )
-                        filename = _docx_filename(node.name)
-                        self._file_writer.write_markdown(
-                            target_dir / filename, markdown, mtime
-                        )
+                        self._file_writer.write_markdown(target_path, markdown, mtime)
                         await link_service.upsert_link(
-                            local_path=str(target_dir / filename),
+                            local_path=str(target_path),
                             cloud_token=effective_token,
                             cloud_type=effective_type,
                             task_id=task.id,
@@ -402,10 +410,35 @@ class SyncTaskRunner:
                                 document_id=effective_token,
                                 markdown=markdown,
                                 base_path=target_dir.as_posix(),
-                                file_path=target_dir / filename,
+                                file_path=target_path,
                                 user_id_type="open_id",
                             )
-                        self._silence_path(task.id, target_dir / filename)
+                        self._silence_path(task.id, target_path)
+                        status.completed_files += 1
+                        status.record_event(
+                            SyncFileEvent(
+                                path=str(target_path), status="downloaded"
+                            )
+                        )
+                    elif effective_type in _EXPORT_EXTENSION_MAP:
+                        export_extension = _EXPORT_EXTENSION_MAP[effective_type]
+                        await self._download_exported_file(
+                            export_task_service=export_task_service,
+                            file_downloader=file_downloader,
+                            file_token=effective_token,
+                            file_type=effective_type,
+                            target_path=target_path,
+                            mtime=mtime,
+                            export_extension=export_extension,
+                        )
+                        await link_service.upsert_link(
+                            local_path=str(target_path),
+                            cloud_token=effective_token,
+                            cloud_type=effective_type,
+                            task_id=task.id,
+                            updated_at=mtime,
+                        )
+                        self._silence_path(task.id, target_path)
                         status.completed_files += 1
                         status.record_event(
                             SyncFileEvent(
@@ -415,7 +448,7 @@ class SyncTaskRunner:
                     elif effective_type == "file":
                         await file_downloader.download(
                             file_token=effective_token,
-                            file_name=node.name,
+                            file_name=target_path.name,
                             target_dir=target_dir,
                             mtime=mtime,
                         )
@@ -491,11 +524,13 @@ class SyncTaskRunner:
     ) -> DownloadCandidate:
         effective_token, effective_type = _resolve_target(node)
         target_dir = Path(task.local_path) / relative_dir
-        target_path = (
-            target_dir / _docx_filename(node.name)
-            if effective_type in {"docx", "doc"}
-            else target_dir / node.name
-        )
+        if effective_type in {"docx", "doc"}:
+            filename = _docx_filename(node.name)
+        elif effective_type in _EXPORT_EXTENSION_MAP:
+            filename = _export_filename(node.name, _EXPORT_EXTENSION_MAP[effective_type])
+        else:
+            filename = sanitize_filename(node.name)
+        target_path = target_dir / filename
         return DownloadCandidate(
             node=node,
             relative_dir=relative_dir,
@@ -550,7 +585,13 @@ class SyncTaskRunner:
             return candidate
         if candidate.mtime < current.mtime:
             return current
-        type_priority = {"docx": 3, "doc": 3, "file": 2}
+        type_priority = {
+            "docx": 3,
+            "doc": 3,
+            "sheet": 2,
+            "bitable": 2,
+            "file": 2,
+        }
         candidate_rank = type_priority.get(candidate.effective_type, 1)
         current_rank = type_priority.get(current.effective_type, 1)
         if candidate_rank > current_rank:
@@ -570,6 +611,55 @@ class SyncTaskRunner:
         return await transcoder.to_markdown(
             document_id, blocks, base_dir=base_dir, link_map=link_map
         )
+
+    async def _download_exported_file(
+        self,
+        *,
+        export_task_service: ExportTaskService,
+        file_downloader: FileDownloader,
+        file_token: str,
+        file_type: str,
+        target_path: Path,
+        mtime: float,
+        export_extension: str,
+    ) -> None:
+        try:
+            task = await export_task_service.create_export_task(
+                file_extension=export_extension,
+                file_token=file_token,
+                file_type=file_type,
+            )
+        except ExportTaskError as exc:
+            raise RuntimeError(f"创建导出任务失败: {exc}") from exc
+
+        result = await self._wait_for_export_task(export_task_service, task.ticket)
+        if not result.file_token:
+            raise RuntimeError("导出任务未返回文件 token")
+
+        await file_downloader.download_exported_file(
+            file_token=result.file_token,
+            file_name=target_path.name,
+            target_dir=target_path.parent,
+            mtime=mtime,
+        )
+
+    async def _wait_for_export_task(
+        self,
+        export_task_service: ExportTaskService,
+        ticket: str,
+    ) -> ExportTaskResult:
+        last_error: str | None = None
+        for attempt in range(self._export_poll_attempts):
+            result = await export_task_service.get_export_task_result(ticket)
+            job_status = result.job_status
+            if job_status == 0 and result.file_token:
+                return result
+            if job_status not in (None, 1):
+                last_error = result.job_error_msg or "导出任务失败"
+                break
+            if attempt < self._export_poll_attempts - 1:
+                await asyncio.sleep(self._export_poll_interval)
+        raise RuntimeError(last_error or "导出任务超时")
 
     async def _run_upload(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
         docx_service = self._docx_service or DocxService()
@@ -1370,14 +1460,17 @@ class SyncTaskRunner:
         files = list(_flatten_files(tree))
         for node, relative_dir in files:
             token, node_type = _resolve_target(node)
-            if node_type not in {"docx", "doc", "file"}:
+            if node_type not in {"docx", "doc", "file", *(_EXPORT_EXTENSION_MAP.keys())}:
                 continue
             target_dir = Path(task.local_path) / relative_dir
-            local_path = (
-                target_dir / _docx_filename(node.name)
-                if node_type in {"docx", "doc"}
-                else target_dir / node.name
-            )
+            if node_type in {"docx", "doc"}:
+                local_path = target_dir / _docx_filename(node.name)
+            elif node_type in _EXPORT_EXTENSION_MAP:
+                local_path = target_dir / _export_filename(
+                    node.name, _EXPORT_EXTENSION_MAP[node_type]
+                )
+            else:
+                local_path = target_dir / sanitize_filename(node.name)
             await self._link_service.upsert_link(
                 local_path=str(local_path),
                 cloud_token=token,
@@ -1390,7 +1483,8 @@ def _flatten_files(node: DriveNode, base: Path | None = None) -> Iterable[tuple[
     base = base or Path()
     for child in node.children:
         if child.type == "folder":
-            yield from _flatten_files(child, base / child.name)
+            safe_name = sanitize_path_segment(child.name)
+            yield from _flatten_files(child, base / safe_name)
         else:
             yield child, base
 
@@ -1398,10 +1492,24 @@ def _flatten_files(node: DriveNode, base: Path | None = None) -> Iterable[tuple[
 def _docx_filename(name: str) -> str:
     lower = name.lower()
     if lower.endswith(".md"):
-        return name
+        return sanitize_filename(name)
     if lower.endswith(".docx") or lower.endswith(".doc"):
-        return f"{Path(name).stem}.md"
-    return f"{name}.md"
+        return f"{sanitize_path_segment(Path(name).stem)}.md"
+    return f"{sanitize_filename(name)}.md"
+
+
+_EXPORT_EXTENSION_MAP = {
+    "sheet": "xlsx",
+    "bitable": "xlsx",
+}
+
+
+def _export_filename(name: str, extension: str) -> str:
+    ext = extension.strip().lstrip(".")
+    base = Path(name).stem if Path(name).suffix else name
+    if not ext:
+        return sanitize_filename(base)
+    return sanitize_filename(f"{base}.{ext}")
 
 
 def _parse_mtime(value: str | int | float | None) -> float:
@@ -1444,8 +1552,12 @@ def _build_link_map(
         target_dir = root / relative_dir
         if node_type in {"docx", "doc"}:
             mapping[token] = target_dir / _docx_filename(node.name)
+        elif node_type in _EXPORT_EXTENSION_MAP:
+            mapping[token] = target_dir / _export_filename(
+                node.name, _EXPORT_EXTENSION_MAP[node_type]
+            )
         elif node_type == "file":
-            mapping[token] = target_dir / node.name
+            mapping[token] = target_dir / sanitize_filename(node.name)
     return mapping
 
 

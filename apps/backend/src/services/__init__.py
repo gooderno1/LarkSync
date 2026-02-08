@@ -9,6 +9,12 @@ from .file_uploader import FileUploadError, FileUploader, UploadResult
 from .file_writer import FileWriter
 from .feishu_client import FeishuClient
 from .media_uploader import MediaUploadError, MediaUploader
+from .export_task_service import (
+    ExportTaskCreateResult,
+    ExportTaskError,
+    ExportTaskResult,
+    ExportTaskService,
+)
 from .import_task_service import ImportTaskCreateResult, ImportTaskError, ImportTaskService
 from .sync_link_service import SyncLinkItem, SyncLinkService
 from .sync_block_service import BlockStateItem, SyncBlockService
@@ -37,6 +43,10 @@ __all__ = [
     "FeishuClient",
     "MediaUploadError",
     "MediaUploader",
+    "ExportTaskCreateResult",
+    "ExportTaskError",
+    "ExportTaskResult",
+    "ExportTaskService",
     "ImportTaskCreateResult",
     "ImportTaskError",
     "ImportTaskService",

@@ -22,6 +22,7 @@ def init_logging(log_dir: Path | None = None) -> Path:
     logger.add(
         log_file,
         level="INFO",
+        mode="a",
         rotation="10 MB",
         retention="10 days",
         compression="zip",

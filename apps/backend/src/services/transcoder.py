@@ -9,6 +9,7 @@ from urllib.parse import unquote
 
 from src.services.feishu_client import FeishuClient
 from src.services.file_downloader import FileDownloader
+from src.services.path_sanitizer import sanitize_filename
 
 BLOCK_TYPE_PAGE = 1
 BLOCK_TYPE_TEXT = 2
@@ -668,6 +669,7 @@ class DocxTranscoder:
             token, name = self._extract_file_info(block)
             if not token or not name:
                 return []
+            safe_name = sanitize_filename(name)
             if base_dir and token in link_map:
                 rel_link = self._relative_link(base_dir, link_map[token])
                 line = f"[{name}]({rel_link})"
@@ -675,8 +677,8 @@ class DocxTranscoder:
             if not base_dir:
                 return [self._line_with_prefix(prefix, name, keep_blank=keep_blank)]
             attachments_dir = base_dir / self._attachments_dir_name
-            attachments.append((token, name, attachments_dir))
-            rel = Path(self._attachments_dir_name) / name
+            attachments.append((token, safe_name, attachments_dir))
+            rel = Path(self._attachments_dir_name) / safe_name
             line = f"[{name}]({rel.as_posix()})"
             return [self._line_with_prefix(prefix, line, keep_blank=keep_blank)]
 

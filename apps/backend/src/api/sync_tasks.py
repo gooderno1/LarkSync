@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Literal
 
@@ -9,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from src.core.config import SyncMode
 from src.services.docx_service import DocxService, DocxServiceError
+from src.services.log_reader import read_log_entries
 from src.services.sync_runner import SyncFileEvent, SyncTaskRunner, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem, SyncTaskService
 
@@ -225,13 +225,6 @@ async def replace_markdown(payload: MarkdownReplaceRequest) -> dict:
     return {"status": "ok"}
 
 
-# ---- Log file reader API ----
-
-_LOG_LINE_RE = re.compile(
-    r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+\|\s+(\w+)\s+\|\s+(.+)$"
-)
-
-
 class LogFileEntry(BaseModel):
     timestamp: str
     level: str
@@ -255,37 +248,15 @@ async def read_log_file(
     log_file = root / "data" / "logs" / "larksync.log"
     if not log_file.exists():
         return LogFileResponse(total=0, items=[])
-
-    raw_lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-
-    # 合并多行日志（续行无时间戳前缀）
-    merged: list[str] = []
-    for line in raw_lines:
-        if _LOG_LINE_RE.match(line):
-            merged.append(line)
-        elif merged:
-            merged[-1] += "\n" + line
-
-    # 先过滤，再计算总数和分页
-    level_upper = level.strip().upper()
-    search_lower = search.strip().lower()
-
-    filtered: list[tuple[str, str, str]] = []
-    for raw in reversed(merged):
-        m = _LOG_LINE_RE.match(raw)
-        if not m:
-            continue
-        ts, lvl, msg = m.group(1), m.group(2), m.group(3)
-        if level_upper and lvl != level_upper:
-            continue
-        if search_lower and search_lower not in raw.lower():
-            continue
-        filtered.append((ts, lvl, msg))
-
-    total = len(filtered)
-
-    # 分页切片
-    page_slice = filtered[offset : offset + limit]
-    items = [LogFileEntry(timestamp=ts, level=lvl, message=msg) for ts, lvl, msg in page_slice]
-
+    total, entries = read_log_entries(
+        log_file,
+        limit=limit,
+        offset=offset,
+        level=level,
+        search=search,
+    )
+    items = [
+        LogFileEntry(timestamp=ts, level=lvl, message=msg)
+        for ts, lvl, msg in entries
+    ]
     return LogFileResponse(total=total, items=items)

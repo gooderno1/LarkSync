@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.9 (2026-02-08)
+- 目标：修复非法文件名导致下载失败，补齐 sheet/bitable 导出下载，并优化日志读取性能与历史保留。
+- 结果：
+  - 新增导出任务服务，sheet/bitable 下载时自动导出为 xlsx 并落盘。
+  - 下载与附件落盘统一做文件名净化，避免 Windows 非法字符。
+  - 日志读取改为流式分页；日志文件显式追加写入。
+  - 版本号同步为 v0.4.0-dev.9。
+- 测试：`python -m pytest tests/test_export_task_service.py tests/test_log_reader.py tests/test_path_sanitizer.py tests/test_file_downloader.py tests/test_sync_runner.py`（apps/backend）。
+- 问题：飞书导出任务未覆盖 slides（PPT 在线文档），需补充官方 API 说明或 JSON 样例。
+
 ## v0.4.0-dev.8 (2026-02-08)
 - 目标：明确“非所有者共享文件夹需使用分享链接/Token”的提示，降低误解。
 - 结果：
