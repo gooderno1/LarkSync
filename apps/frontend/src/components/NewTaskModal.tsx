@@ -251,7 +251,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 space-y-3">
                 <div>
                   <p className="text-xs font-medium text-zinc-400">共享链接 / Token</p>
-                  <p className="mt-1 text-[11px] text-zinc-600">当共享目录未出现在树中时，可粘贴分享链接或直接输入 Token。</p>
+                  <p className="mt-1 text-[11px] text-zinc-600">非所有者的共享文件夹可能不会出现在目录树中，请使用分享链接或 Token 创建同步。</p>
                 </div>
                 <input
                   className={inputCls}
