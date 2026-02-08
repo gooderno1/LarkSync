@@ -23,6 +23,7 @@ def test_read_log_entries_supports_pagination_and_filters(tmp_path: Path) -> Non
         offset=0,
         level="",
         search="",
+        order="desc",
     )
     assert total == 3
     assert entries[0][1] == "WARNING"
@@ -34,6 +35,7 @@ def test_read_log_entries_supports_pagination_and_filters(tmp_path: Path) -> Non
         offset=1,
         level="",
         search="",
+        order="desc",
     )
     assert total == 3
     assert entries[0][1] == "ERROR"
@@ -44,6 +46,19 @@ def test_read_log_entries_supports_pagination_and_filters(tmp_path: Path) -> Non
         offset=0,
         level="",
         search="traceback",
+        order="desc",
     )
     assert total == 1
     assert entries[0][2] == "first line"
+
+    total, entries = read_log_entries(
+        log_file,
+        limit=2,
+        offset=0,
+        level="",
+        search="",
+        order="asc",
+    )
+    assert total == 3
+    assert entries[0][1] == "INFO"
+    assert entries[1][1] == "ERROR"

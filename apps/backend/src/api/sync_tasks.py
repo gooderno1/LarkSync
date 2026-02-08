@@ -242,6 +242,7 @@ async def read_log_file(
     offset: int = Query(default=0, ge=0, description="跳过前N条"),
     level: str = Query(default="", description="按级别筛选 (INFO/WARNING/ERROR)"),
     search: str = Query(default="", description="关键词搜索"),
+    order: str = Query(default="desc", description="排序: desc=最新优先, asc=最早优先"),
 ) -> LogFileResponse:
     """读取 loguru 日志文件，支持分页返回最近的日志条目。"""
     root = Path(__file__).resolve().parents[3]
@@ -254,6 +255,7 @@ async def read_log_file(
         offset=offset,
         level=level,
         search=search,
+        order=order,
     )
     items = [
         LogFileEntry(timestamp=ts, level=lvl, message=msg)

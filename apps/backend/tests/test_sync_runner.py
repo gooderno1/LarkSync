@@ -5,7 +5,11 @@ import pytest
 
 from src.services.drive_service import DriveNode
 from src.services.file_writer import FileWriter
-from src.services.export_task_service import ExportTaskCreateResult, ExportTaskResult
+from src.services.export_task_service import (
+    ExportTaskCreateResult,
+    ExportTaskError,
+    ExportTaskResult,
+)
 from src.services.sync_link_service import SyncLinkItem
 from src.services.sync_runner import SyncTaskRunner, _merge_synced_link_map, _parse_mtime
 from src.services.sync_task_service import SyncTaskItem
@@ -83,11 +87,18 @@ class FakeImportTaskService:
 
 class FakeExportTaskService:
     def __init__(self) -> None:
-        self.create_calls: list[tuple[str, str, str]] = []
+        self.create_calls: list[tuple[str, str, str, str | None]] = []
         self.query_calls: list[tuple[str, str | None]] = []
 
-    async def create_export_task(self, *, file_extension: str, file_token: str, file_type: str):
-        self.create_calls.append((file_extension, file_token, file_type))
+    async def create_export_task(
+        self,
+        *,
+        file_extension: str,
+        file_token: str,
+        file_type: str,
+        sub_id: str | None = None,
+    ):
+        self.create_calls.append((file_extension, file_token, file_type, sub_id))
         return ExportTaskCreateResult(ticket="ticket-1")
 
     async def get_export_task_result(self, ticket: str, *, file_token: str | None = None):
@@ -338,6 +349,71 @@ async def test_runner_skips_unchanged_when_persisted(tmp_path: Path) -> None:
     assert status.skipped_files == 1
     assert status.completed_files == 0
     assert downloader.calls == []
+
+
+@pytest.mark.asyncio
+async def test_runner_export_retries_with_sub_id(tmp_path: Path) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="bitable-1",
+                name="项目表",
+                type="bitable",
+                url="https://example.feishu.cn/base/abc?table=tbl123",
+                modified_time="1700000000",
+            )
+        ],
+    )
+
+    class RetryExportTaskService(FakeExportTaskService):
+        async def create_export_task(
+            self,
+            *,
+            file_extension: str,
+            file_token: str,
+            file_type: str,
+            sub_id: str | None = None,
+        ):
+            self.create_calls.append((file_extension, file_token, file_type, sub_id))
+            if sub_id is None:
+                raise ExportTaskError("missing sub_id")
+            return ExportTaskCreateResult(ticket="ticket-1")
+
+    export_service = RetryExportTaskService()
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(),
+        export_task_service=export_service,
+    )
+
+    task = SyncTaskItem(
+        id="task-subid",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner.run_task(task)
+
+    status = runner.get_status(task.id)
+    assert status.failed_files == 0
+    assert (tmp_path / "项目表.xlsx").exists()
+    assert export_service.create_calls[0][3] is None
+    assert export_service.create_calls[1][3] == "tbl123"
 
 
 @pytest.mark.asyncio

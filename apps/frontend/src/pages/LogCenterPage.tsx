@@ -48,6 +48,7 @@ export function LogCenterPage() {
   const [fileLogSearch, setFileLogSearch] = useState("");
   const [fileLogPage, setFileLogPage] = useState(1);
   const [fileLogPageSize, setFileLogPageSize] = useState(50);
+  const [fileLogOrder, setFileLogOrder] = useState<"asc" | "desc">("asc");
 
   // ---- 同步日志数据 (内存) ----
   const syncLogEntries: SyncLogEntry[] = useMemo(() => {
@@ -83,13 +84,14 @@ export function LogCenterPage() {
 
   // ---- 系统日志数据 (文件 API) ----
   const fileLogsQuery = useQuery<FileLogResponse>({
-    queryKey: ["file-logs", fileLogLevel, fileLogSearch, fileLogPage, fileLogPageSize],
+    queryKey: ["file-logs", fileLogLevel, fileLogSearch, fileLogOrder, fileLogPage, fileLogPageSize],
     queryFn: () => {
       const params = new URLSearchParams();
       params.set("limit", String(fileLogPageSize));
       params.set("offset", String((fileLogPage - 1) * fileLogPageSize));
       if (fileLogLevel) params.set("level", fileLogLevel);
       if (fileLogSearch) params.set("search", fileLogSearch);
+      params.set("order", fileLogOrder);
       return apiFetch<FileLogResponse>(`/sync/logs/file?${params.toString()}`);
     },
     enabled: logTab === "file-logs",
@@ -241,13 +243,21 @@ export function LogCenterPage() {
           </div>
 
           {/* 筛选器 */}
-          <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.6fr_0.6fr]">
+          <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.5fr_0.6fr_0.6fr]">
             <input
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
               placeholder="搜索日志内容（如 error、token、频率限制）"
               value={fileLogSearch}
               onChange={(e) => { setFileLogSearch(e.target.value); resetFileLogPage(); }}
             />
+            <select
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
+              value={fileLogOrder}
+              onChange={(e) => { setFileLogOrder(e.target.value as "asc" | "desc"); resetFileLogPage(); }}
+            >
+              <option value="asc">最早优先</option>
+              <option value="desc">最新优先</option>
+            </select>
             <select
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
               value={fileLogLevel}
@@ -258,7 +268,7 @@ export function LogCenterPage() {
               <option value="WARNING">WARNING</option>
               <option value="INFO">INFO</option>
             </select>
-            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setFileLogLevel(""); setFileLogSearch(""); resetFileLogPage(); }} type="button">
+            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setFileLogLevel(""); setFileLogSearch(""); setFileLogOrder("asc"); resetFileLogPage(); }} type="button">
               重置
             </button>
           </div>

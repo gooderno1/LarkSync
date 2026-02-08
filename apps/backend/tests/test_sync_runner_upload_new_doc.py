@@ -75,7 +75,7 @@ class FakeLinkService:
             cloud_token=cloud_token,
             cloud_type=cloud_type,
             task_id=task_id,
-            updated_at=updated_at or 0.0,
+            updated_at=0.0 if updated_at is None else float(updated_at),
         )
         self.links[local_path] = item
         self.calls.append(item)
@@ -123,6 +123,7 @@ async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
         name="测试任务",
         local_path=tmp_path.as_posix(),
         cloud_folder_token="fld-1",
+        cloud_folder_name=None,
         base_path=None,
         sync_mode="upload_only",
         update_mode="auto",
@@ -151,6 +152,38 @@ async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_upload_file_updates_link_timestamp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    now = 1700000000.0
+    monkeypatch.setattr("src.services.sync_runner.time.time", lambda: now)
+    file_path = tmp_path / "demo.txt"
+    file_path.write_text("data", encoding="utf-8")
+
+    link_service = FakeLinkService()
+    runner = SyncTaskRunner(
+        file_uploader=FakeFileUploader(),
+        link_service=link_service,
+    )
+    task = SyncTaskItem(
+        id="task-upload",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_file(task, status, file_path, runner._file_uploader)  # type: ignore[arg-type]
+
+    assert link_service.calls[-1].updated_at == now
+
+
+@pytest.mark.asyncio
 async def test_upload_markdown_reuses_existing_doc_without_new_import(tmp_path: Path) -> None:
     markdown_path = tmp_path / "复用文档.md"
     markdown_path.write_text("# Reuse", encoding="utf-8")
@@ -172,6 +205,7 @@ async def test_upload_markdown_reuses_existing_doc_without_new_import(tmp_path: 
         name="测试任务",
         local_path=tmp_path.as_posix(),
         cloud_folder_token="fld-1",
+        cloud_folder_name=None,
         base_path=None,
         sync_mode="upload_only",
         update_mode="full",
@@ -226,6 +260,7 @@ async def test_upload_markdown_with_file_link_uses_file_upload(tmp_path: Path) -
         name="测试任务",
         local_path=tmp_path.as_posix(),
         cloud_folder_token="fld-1",
+        cloud_folder_name=None,
         base_path=None,
         sync_mode="upload_only",
         update_mode="partial",
@@ -287,6 +322,7 @@ async def test_upload_markdown_partial_mode_raises_without_block_state(tmp_path:
         name="测试任务",
         local_path=tmp_path.as_posix(),
         cloud_folder_token="fld-1",
+        cloud_folder_name=None,
         base_path=None,
         sync_mode="upload_only",
         update_mode="partial",
@@ -341,6 +377,7 @@ async def test_upload_markdown_partial_bootstraps_block_state(tmp_path: Path) ->
         name="测试任务",
         local_path=tmp_path.as_posix(),
         cloud_folder_token="fld-1",
+        cloud_folder_name=None,
         base_path=None,
         sync_mode="bidirectional",
         update_mode="partial",

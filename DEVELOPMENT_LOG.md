@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.13 (2026-02-08)
+- 目标：修复 sheet/bitable 导出失败并补齐日志历史展示与回流下载防护。
+- 结果：
+  - 表格导出失败时尝试携带 sub_id（从分享链接解析）进行重试。
+  - 系统日志支持最早/最新排序；UI 默认最早优先，便于查看历史。
+  - 上传完成后记录同步时间戳，避免云端更新回流重复下载。
+  - 版本号同步为 v0.4.0-dev.13。
+- 测试：`python -m pytest tests/test_sync_runner.py tests/test_log_reader.py tests/test_sync_runner_upload_new_doc.py`（apps/backend）。
+- 问题：若 bitable/sheet 仍失败，请提供带 table/sheet 参数的分享链接或最新错误日志。
+
 ## v0.4.0-dev.12 (2026-02-08)
 - 目标：避免云端未更新时重复下载；在线幻灯片导出改为跳过；导出失败信息更易排查。
 - 结果：

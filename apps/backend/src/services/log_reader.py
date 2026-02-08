@@ -33,12 +33,35 @@ def read_log_entries(
     offset: int,
     level: str,
     search: str,
+    order: str = "desc",
 ) -> tuple[int, list[tuple[str, str, str]]]:
     max_items = offset + limit
     buffer: deque[tuple[str, str, str]] = deque(maxlen=max_items)
     total = 0
     level_upper = level.strip().upper()
     search_lower = search.strip().lower()
+    order_normalized = order.strip().lower()
+    if order_normalized not in {"asc", "desc"}:
+        order_normalized = "desc"
+
+    if order_normalized == "asc":
+        start = offset
+        end = offset + limit
+        items: list[tuple[str, str, str]] = []
+        for raw in iter_log_entries(log_file):
+            first_line = raw.split("\n", 1)[0]
+            match = LOG_LINE_RE.match(first_line)
+            if not match:
+                continue
+            ts, lvl, msg = match.group(1), match.group(2), match.group(3)
+            if level_upper and lvl != level_upper:
+                continue
+            if search_lower and search_lower not in raw.lower():
+                continue
+            if start <= total < end:
+                items.append((ts, lvl, msg))
+            total += 1
+        return total, items
 
     for raw in iter_log_entries(log_file):
         first_line = raw.split("\n", 1)[0]

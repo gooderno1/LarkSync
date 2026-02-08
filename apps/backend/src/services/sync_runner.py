@@ -7,6 +7,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Literal
+from urllib.parse import parse_qs, urlparse
 
 from loguru import logger
 
@@ -66,6 +67,7 @@ class DownloadCandidate:
     target_dir: Path
     target_path: Path
     mtime: float
+    export_sub_id: str | None = None
 
 
 class SyncTaskRunner:
@@ -454,6 +456,7 @@ class SyncTaskRunner:
                             target_path=target_path,
                             mtime=mtime,
                             export_extension=export_extension,
+                            export_sub_id=candidate.export_sub_id,
                         )
                         await link_service.upsert_link(
                             local_path=str(target_path),
@@ -570,6 +573,7 @@ class SyncTaskRunner:
             filename = _export_filename(node.name, _EXPORT_EXTENSION_MAP[effective_type])
         else:
             filename = sanitize_filename(node.name)
+        export_sub_id = _extract_export_sub_id(node.url, effective_type)
         target_path = target_dir / filename
         return DownloadCandidate(
             node=node,
@@ -579,6 +583,7 @@ class SyncTaskRunner:
             target_dir=target_dir,
             target_path=target_path,
             mtime=_parse_mtime(node.modified_time),
+            export_sub_id=export_sub_id,
         )
 
     @staticmethod
@@ -662,30 +667,46 @@ class SyncTaskRunner:
         target_path: Path,
         mtime: float,
         export_extension: str,
+        export_sub_id: str | None,
     ) -> None:
-        try:
-            task = await export_task_service.create_export_task(
-                file_extension=export_extension,
-                file_token=file_token,
-                file_type=file_type,
-            )
-        except ExportTaskError as exc:
-            raise RuntimeError(f"创建导出任务失败: {exc}") from exc
-
-        result = await self._wait_for_export_task(
-            export_task_service,
-            task.ticket,
-            file_token=file_token,
-        )
-        if not result.file_token:
-            raise RuntimeError("导出任务未返回文件 token")
-
-        await file_downloader.download_exported_file(
-            file_token=result.file_token,
-            file_name=target_path.name,
-            target_dir=target_path.parent,
-            mtime=mtime,
-        )
+        attempts: list[str | None] = [None]
+        if export_sub_id:
+            attempts.append(export_sub_id)
+        last_error: Exception | None = None
+        for sub_id in attempts:
+            try:
+                task = await export_task_service.create_export_task(
+                    file_extension=export_extension,
+                    file_token=file_token,
+                    file_type=file_type,
+                    sub_id=sub_id,
+                )
+                result = await self._wait_for_export_task(
+                    export_task_service,
+                    task.ticket,
+                    file_token=file_token,
+                )
+                if not result.file_token:
+                    raise RuntimeError("导出任务未返回文件 token")
+                await file_downloader.download_exported_file(
+                    file_token=result.file_token,
+                    file_name=target_path.name,
+                    target_dir=target_path.parent,
+                    mtime=mtime,
+                )
+                return
+            except (ExportTaskError, RuntimeError) as exc:
+                last_error = exc
+                if sub_id is None and export_sub_id:
+                    logger.info(
+                        "导出任务失败，尝试携带 sub_id 重试: token={} type={} sub_id={}",
+                        file_token,
+                        file_type,
+                        export_sub_id,
+                    )
+                    continue
+                break
+        raise RuntimeError(f"导出任务失败: {last_error}") from last_error
 
     async def _wait_for_export_task(
         self,
@@ -995,12 +1016,13 @@ class SyncTaskRunner:
                         file_path=path,
                         user_id_type="open_id",
                     )
+        synced_at = time.time()
         await self._link_service.upsert_link(
             local_path=str(path),
             cloud_token=link.cloud_token,
             cloud_type=link.cloud_type,
             task_id=task.id,
-            updated_at=mtime,
+            updated_at=synced_at,
         )
         status.completed_files += 1
         status.record_event(SyncFileEvent(path=str(path), status="uploaded"))
@@ -1037,12 +1059,13 @@ class SyncTaskRunner:
             parent_node=task.cloud_folder_token,
             parent_type="explorer",
         )
+        synced_at = time.time()
         await self._link_service.upsert_link(
             local_path=str(path),
             cloud_token=result.file_token,
             cloud_type="file",
             task_id=task.id,
-            updated_at=mtime,
+            updated_at=synced_at,
         )
         status.completed_files += 1
         status.record_event(SyncFileEvent(path=str(path), status="uploaded"))
@@ -1562,6 +1585,34 @@ def _export_filename(name: str, extension: str) -> str:
     if not ext:
         return sanitize_filename(base)
     return sanitize_filename(f"{base}.{ext}")
+
+
+def _extract_export_sub_id(url: str | None, file_type: str) -> str | None:
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    if not parsed.query:
+        return None
+    params = parse_qs(parsed.query)
+    if file_type == "bitable":
+        return _first_query_value(params, ("table", "table_id"))
+    if file_type == "sheet":
+        return _first_query_value(params, ("sheet", "sheet_id"))
+    return None
+
+
+def _first_query_value(params: dict[str, list[str]], keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        values = params.get(key)
+        if not values:
+            continue
+        value = values[0].strip()
+        if value:
+            return value
+    return None
 
 
 def _parse_mtime(value: str | int | float | None) -> float:
