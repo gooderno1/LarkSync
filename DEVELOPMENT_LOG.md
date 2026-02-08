@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.5.0-dev.4 (2026-02-08)
+- 目标：补齐 macOS 打包流程（.app + DMG）。
+- 结果：
+  - PyInstaller spec 增加 macOS .app bundle 产物配置。
+  - 新增 `scripts/installer/macos/create_dmg.sh`，统一 DMG 生成脚本（支持版本号命名）。
+  - build_installer 走 DMG 脚本并传入版本号。
+  - 版本号升级至 v0.5.0-dev.4（backend）。
+- 测试：未执行（需 macOS 下打包验证）。
+- 问题：待在 macOS 真机验证 .app 产物与 DMG 拖拽安装流程。
+
 ## v0.5.0-dev.3 (2026-02-08)
 - 目标：补齐 Windows 安装包脚本（NSIS）。
 - 结果：

@@ -3,6 +3,7 @@
 # 说明：用于生成桌面托盘版可执行文件
 
 from pathlib import Path
+import sys
 
 block_cipher = None
 project_root = Path(__file__).resolve().parents[1]
@@ -85,3 +86,11 @@ coll = COLLECT(
     upx_exclude=[],
     name="LarkSync",
 )
+
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll,
+        name="LarkSync.app",
+        icon=None,
+        bundle_identifier="com.larksync.app",
+    )

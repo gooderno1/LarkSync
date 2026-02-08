@@ -15,6 +15,7 @@ LarkSync 安装包构建脚本
 """
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -33,9 +34,9 @@ PYPROJECT_FILE = BACKEND_DIR / "pyproject.toml"
 BRANDING_DIR = PROJECT_ROOT / "assets" / "branding"
 
 
-def run(cmd: list[str], cwd: Path | None = None) -> None:
+def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
     print(f"  → {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=str(cwd) if cwd else None)
+    result = subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env)
     if result.returncode != 0:
         print(f"  ✗ 命令失败 (exit {result.returncode})")
         sys.exit(1)
@@ -198,6 +199,14 @@ coll = COLLECT(
     upx_exclude=[],
     name='LarkSync',
 )
+
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        coll,
+        name='LarkSync.app',
+        icon=None,
+        bundle_identifier='com.larksync.app',
+    )
 """
     SPEC_FILE.write_text(spec_content, encoding="utf-8")
     print(f"  ✓ spec 文件: {SPEC_FILE}")
@@ -232,29 +241,22 @@ def _build_nsis() -> None:
 
 def _build_dmg() -> None:
     """macOS: 生成 DMG 安装包。"""
-    create_dmg = shutil.which("create-dmg")
+    create_dmg_script = PROJECT_ROOT / "scripts" / "installer" / "macos" / "create_dmg.sh"
     app_bundle = OUTPUT_DIR / "LarkSync" / "LarkSync.app"
 
-    if not create_dmg:
-        print("  ✗ 未找到 create-dmg，请安装：brew install create-dmg")
+    if not create_dmg_script.is_file():
+        print(f"  ✗ 未找到 DMG 脚本: {create_dmg_script}")
         return
 
     if not app_bundle.is_dir():
         print(f"  ✗ 未找到 .app bundle: {app_bundle}")
         return
 
-    dmg_name = "LarkSync.dmg"
-    run([
-        create_dmg,
-        "--volname", "LarkSync",
-        "--window-size", "600", "400",
-        "--icon-size", "100",
-        "--app-drop-link", "450", "200",
-        "--icon", "LarkSync.app", "150", "200",
-        str(OUTPUT_DIR / dmg_name),
-        str(app_bundle),
-    ])
-    print(f"  ✓ DMG 已生成: {OUTPUT_DIR / dmg_name}")
+    version = _read_version()
+    env = os.environ.copy()
+    env["APP_VERSION"] = version
+    run(["bash", str(create_dmg_script)], cwd=PROJECT_ROOT, env=env)
+    print("  ✓ DMG 已生成")
 
 
 def _read_version() -> str:
