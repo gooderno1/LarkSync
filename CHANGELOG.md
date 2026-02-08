@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.5.0 release: 打包/安装包、CI 构建、自动更新稳定版检查与下载
 [2026-02-08] v0.5.0-dev.6 feat(update): 自动更新检查、下载与设置接入
 [2026-02-08] v0.5.0-dev.5 feat(ci): GitHub Releases 自动构建并上传 Windows/macOS 安装包
 [2026-02-08] v0.5.0-dev.4 feat(package): macOS .app bundle 与 DMG 打包流程补齐
