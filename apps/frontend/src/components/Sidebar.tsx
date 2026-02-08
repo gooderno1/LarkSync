@@ -46,11 +46,11 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
   return (
     <aside className="flex w-full flex-col gap-5 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:w-72">
       {/* Logo */}
-      <div className="inline-flex items-center justify-center rounded-xl border border-zinc-800/70 bg-zinc-950/80 px-4 py-3 shadow-[0_10px_28px_rgba(51,112,255,0.18)]">
+      <div className="flex items-center justify-center px-2 py-1">
         <img
           src="/logo-horizontal.png"
           alt="LarkSync"
-          className="h-9 w-auto object-contain drop-shadow-[0_1px_8px_rgba(51,112,255,0.25)]"
+          className="h-9 w-auto object-contain drop-shadow-[0_1px_6px_rgba(51,112,255,0.3)]"
           draggable={false}
         />
       </div>

@@ -81,32 +81,21 @@ def trim_transparent(img: Image.Image, margin: int = 4) -> Image.Image:
     return img.crop((left, top, right, bottom))
 
 
-def make_rounded_favicon(
+def make_transparent_favicon(
     img: Image.Image,
     size: int = 192,
-    corner_radius: int = 32,
-    padding: int = 16,
+    padding: int = 12,
 ) -> Image.Image:
     """
-    生成带圆角的 favicon。
+    生成透明背景的 favicon，图标居中并留出少量边距。
 
     Args:
         img: 源图标（透明底色）
         size: 输出尺寸
-        corner_radius: 圆角半径
         padding: 图标与边缘的内边距
     """
-    # 创建圆角蒙版
-    mask = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.rounded_rectangle(
-        [0, 0, size - 1, size - 1],
-        radius=corner_radius,
-        fill=255,
-    )
-
-    # 创建带深色背景的画布（与应用深色主题协调）
-    canvas = Image.new("RGBA", (size, size), (24, 24, 27, 255))  # zinc-900
+    # 创建透明画布
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
 
     # 缩放图标到适当大小（留出 padding）
     icon_size = size - padding * 2
@@ -117,11 +106,7 @@ def make_rounded_favicon(
     offset = padding
     canvas.paste(icon, (offset, offset), icon)
 
-    # 应用圆角蒙版
-    output = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    output.paste(canvas, (0, 0), mask)
-
-    return output
+    return canvas
 
 
 def process_horizontal_logo(max_width: int = 600):
@@ -168,14 +153,14 @@ def process_favicon():
     transparent = remove_white_background(img)
     trimmed = trim_transparent(transparent, margin=2)
 
-    # 生成 192x192 圆角 favicon
-    favicon_192 = make_rounded_favicon(trimmed, size=192, corner_radius=32, padding=16)
+    # 生成 192x192 透明 favicon
+    favicon_192 = make_transparent_favicon(trimmed, size=192, padding=12)
     favicon_path = PUBLIC_DIR / "favicon.png"
     favicon_192.save(str(favicon_path), "PNG", optimize=True)
     print(f"[DONE] favicon.png (192x192)：{favicon_path}")
 
-    # 生成 32x32 ICO
-    favicon_32 = make_rounded_favicon(trimmed, size=32, corner_radius=6, padding=2)
+    # 生成 32x32 ICO（边距稍小以保证辨识度）
+    favicon_32 = make_transparent_favicon(trimmed, size=32, padding=1)
     ico_path = PUBLIC_DIR / "favicon.ico"
     favicon_32.save(str(ico_path), format="ICO", sizes=[(32, 32)])
     print(f"[DONE] favicon.ico (32x32)：{ico_path}")
