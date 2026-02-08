@@ -44,6 +44,7 @@
 - 日志中心：同步日志/系统日志双视图，支持筛选/搜索/分页与冲突管理
 - 日志中心自动刷新：同步日志/系统日志定时更新，便于实时排查
 - 日志保留设置：同步日志保留天数与提醒阈值可配置，系统日志默认仅保留 1 天
+- 数据库自愈：检测 SQLite 损坏自动备份并重建，避免启动失败
 - 日志读取优化：后端日志流式分页读取，支持历史滚动查看
 - 系统日志排序：支持最早/最新优先切换，便于查看历史记录
 - 系统日志读取：后端读取根目录 data/logs/larksync.log，确保历史可见
@@ -137,3 +138,6 @@ python scripts/build_installer.py --dmg    # macOS: 额外生成 DMG
 - `LARKSYNC_TOKEN_STORE`（`keyring` / `memory`）
 - `LARKSYNC_UPLOAD_INTERVAL_VALUE` / `LARKSYNC_UPLOAD_INTERVAL_UNIT` / `LARKSYNC_UPLOAD_DAILY_TIME`
 - `LARKSYNC_DOWNLOAD_INTERVAL_VALUE` / `LARKSYNC_DOWNLOAD_INTERVAL_UNIT` / `LARKSYNC_DOWNLOAD_DAILY_TIME`
+- `LARKSYNC_SYNC_LOG_RETENTION_DAYS`（同步日志保留天数，0=永久）
+- `LARKSYNC_SYNC_LOG_WARN_SIZE_MB`（同步日志提醒阈值，MB）
+- `LARKSYNC_SYSTEM_LOG_RETENTION_DAYS`（系统日志保留天数，默认 1）

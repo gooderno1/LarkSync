@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.18 (2026-02-08)
+- 目标：修复客户端启动超时（SQLite 损坏导致后端启动失败）。
+- 结果：
+  - 启动时检测 SQLite 损坏并自动备份为 `.corrupt-YYYYMMDD-HHMMSS`，随后重建数据库。
+  - 保留原损坏库以便手动修复/恢复。
+  - 版本号同步为 v0.4.0-dev.18（backend）与 0.4.0-dev.12（frontend）。
+- 测试：`python -m pytest tests/test_db_session.py`（apps/backend）。
+- 问题：如需恢复历史任务，请从备份 DB 手动迁移数据。
+
 ## v0.4.0-dev.17 (2026-02-08)
 - 目标：修复剩余失败（DB 映射异常导致的同步失败）；新增日志保留与提醒设置。
 - 结果：

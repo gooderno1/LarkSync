@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
 from typing import Optional, Union
 
+from loguru import logger
 from sqlalchemy import text
-
+from sqlalchemy.exc import DatabaseError
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from src.core.config import ConfigManager
@@ -24,23 +28,50 @@ def get_session_maker(database_url: Optional[str] = None) -> async_sessionmaker[
 
 async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
     engine = create_engine(database_url)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await _ensure_column(
-            conn,
-            table="sync_tasks",
-            column="update_mode",
-            column_type="TEXT",
-            default_value="auto",
-        )
-        await _ensure_column(
-            conn,
-            table="sync_tasks",
-            column="cloud_folder_name",
-            column_type="TEXT",
-            default_value=None,
-        )
-    return engine
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await _ensure_column(
+                conn,
+                table="sync_tasks",
+                column="update_mode",
+                column_type="TEXT",
+                default_value="auto",
+            )
+            await _ensure_column(
+                conn,
+                table="sync_tasks",
+                column="cloud_folder_name",
+                column_type="TEXT",
+                default_value=None,
+            )
+        return engine
+    except DatabaseError as exc:
+        if not _is_sqlite_corrupt_error(exc):
+            raise
+        logger.error("检测到数据库损坏，尝试备份并重建: {}", exc)
+        await engine.dispose()
+        backup = _backup_corrupt_db(database_url)
+        if backup:
+            logger.warning("已备份损坏数据库到: {}", backup)
+        engine = create_engine(database_url)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await _ensure_column(
+                conn,
+                table="sync_tasks",
+                column="update_mode",
+                column_type="TEXT",
+                default_value="auto",
+            )
+            await _ensure_column(
+                conn,
+                table="sync_tasks",
+                column="cloud_folder_name",
+                column_type="TEXT",
+                default_value=None,
+            )
+        return engine
 
 
 async def _ensure_column(
@@ -74,8 +105,50 @@ def _sqlite_literal(value: Union[str, int, float, bool, None]) -> str:
     return f"'{escaped}'"
 
 
+def _is_sqlite_corrupt_error(exc: BaseException) -> bool:
+    message = str(exc).lower()
+    return (
+        "database disk image is malformed" in message
+        or "file is not a database" in message
+    )
+
+
+def _extract_sqlite_path(database_url: Optional[str]) -> Optional[Path]:
+    if not database_url:
+        database_url = ConfigManager.get().config.database_url
+    try:
+        url = make_url(database_url)
+    except Exception:
+        return None
+    if url.get_backend_name() != "sqlite":
+        return None
+    if not url.database:
+        return None
+    return Path(url.database)
+
+
+def _backup_corrupt_db(database_url: Optional[str]) -> Optional[Path]:
+    db_path = _extract_sqlite_path(database_url)
+    if not db_path:
+        return None
+    if not db_path.exists():
+        return None
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = db_path.with_suffix(f"{db_path.suffix}.corrupt-{timestamp}")
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        db_path.replace(backup_path)
+    except OSError:
+        return None
+    return backup_path
+
+
 __all__ = [
     "create_engine",
     "get_session_maker",
     "init_db",
+    "_backup_corrupt_db",
+    "_extract_sqlite_path",
+    "_is_sqlite_corrupt_error",
+    "_sqlite_literal",
 ]
