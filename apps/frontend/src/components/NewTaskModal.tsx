@@ -30,6 +30,9 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
   const [taskBasePath, setTaskBasePath] = useState("");
   const [taskCloudToken, setTaskCloudToken] = useState("");
   const [selectedCloud, setSelectedCloud] = useState<CloudSelection | null>(null);
+  const [manualCloudInput, setManualCloudInput] = useState("");
+  const [manualCloudName, setManualCloudName] = useState("");
+  const [manualCloudError, setManualCloudError] = useState<string | null>(null);
   const [taskSyncMode, setTaskSyncMode] = useState("bidirectional");
   const [taskUpdateMode, setTaskUpdateMode] = useState("auto");
   const [taskEnabled, setTaskEnabled] = useState(true);
@@ -55,6 +58,27 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
   const selectCloudFolder = (sel: CloudSelection) => {
     setSelectedCloud(sel);
     setTaskCloudToken(sel.token);
+  };
+
+  const extractFolderToken = (value: string): string | null => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const urlMatch = trimmed.match(/folder\/([A-Za-z0-9_-]+)(?:[/?#]|$)/);
+    if (urlMatch) return urlMatch[1];
+    if (/^[A-Za-z0-9_-]+$/.test(trimmed)) return trimmed;
+    return null;
+  };
+
+  const applyManualCloud = () => {
+    const token = extractFolderToken(manualCloudInput);
+    if (!token) {
+      setManualCloudError("未识别到有效的共享链接或 Token。");
+      return;
+    }
+    setManualCloudError(null);
+    const label = manualCloudName.trim() || token;
+    setSelectedCloud({ token, name: label, path: label });
+    setTaskCloudToken(token);
   };
 
   const handleCreate = async () => {
@@ -96,6 +120,9 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
     setTaskBasePath("");
     setTaskCloudToken("");
     setSelectedCloud(null);
+    setManualCloudInput("");
+    setManualCloudName("");
+    setManualCloudError(null);
     setTaskSyncMode("bidirectional");
     setTaskUpdateMode("auto");
     setTaskEnabled(true);
@@ -220,6 +247,37 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
                     <p className="mt-2 text-sm text-zinc-500">暂无目录数据，请先刷新。</p>
                   </div>
                 )}
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-zinc-400">共享链接 / Token</p>
+                  <p className="mt-1 text-[11px] text-zinc-600">当共享目录未出现在树中时，可粘贴分享链接或直接输入 Token。</p>
+                </div>
+                <input
+                  className={inputCls}
+                  placeholder="例如：https://.../drive/folder/xxxxxxxx 或 Token"
+                  value={manualCloudInput}
+                  onChange={(e) => {
+                    setManualCloudInput(e.target.value);
+                    setManualCloudError(null);
+                  }}
+                />
+                <input
+                  className={inputCls}
+                  placeholder="云端目录显示名称（可选）"
+                  value={manualCloudName}
+                  onChange={(e) => setManualCloudName(e.target.value)}
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    className="rounded-lg bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 hover:bg-zinc-700"
+                    onClick={applyManualCloud}
+                    type="button"
+                  >
+                    使用链接
+                  </button>
+                  {manualCloudError ? <span className="text-xs text-rose-400">{manualCloudError}</span> : null}
+                </div>
               </div>
               {selectedCloud ? (
                 <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2.5 text-xs text-emerald-300">

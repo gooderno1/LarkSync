@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.4.0-dev.7 feat(ui): 新建任务支持粘贴共享链接/Token 选择云端目录
 [2026-02-08] v0.4.0-dev.6 feat(drive): 目录树支持共享文件夹根节点与快捷方式展开，新增共享目录选择
 [2026-02-08] v0.4.0-dev.5 fix(ui): Logo/Favicon 去除白色背景改为透明底色；侧边栏 Logo 去除边框容器直接融入背景(h-9)；Favicon 改为透明背景自适应浏览器主题；新增 scripts/process_logo.py 图片处理工具；亮色主题 bg-zinc-950/80 适配
 [2026-02-08] v0.4.0-dev.4 fix(tray/ui): /tray/status 接入冲突统计，托盘检测未解决冲突时提示；新增 tray 状态接口回归测试；前端侧边栏产品 Logo 放大并增加阴影以提升可读性
