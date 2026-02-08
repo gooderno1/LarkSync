@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.5.0-dev.2 (2026-02-08)
+- 目标：补齐 PyInstaller 打包配置，确保 bundle 资源可用。
+- 结果：
+  - 新增 `scripts/larksync.spec` 并纳入版本控制（.gitignore 放行）。
+  - 打包资源路径调整：前端 dist、托盘图标、品牌资源随包内置。
+  - 运行时路径支持 PyInstaller bundle（backend/tray 自动识别 _MEIPASS）。
+  - 版本号升级至 v0.5.0-dev.2（backend）。
+- 测试：`python -m pytest tests/test_paths.py`（apps/backend）。
+- 问题：需在 Windows/macOS 真机验证 PyInstaller 产物启动与静态资源加载。
+
 ## v0.5.0-dev.1 (2026-02-08)
 - 目标：为打包发布做准备，运行数据迁移到用户目录并支持覆盖配置。
 - 结果：

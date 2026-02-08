@@ -27,3 +27,9 @@ def test_data_dir_falls_back_to_app_data(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(paths, "repo_root", lambda: repo)
     monkeypatch.setattr(paths, "_default_app_data_dir", lambda: fallback)
     assert paths.data_dir() == fallback
+
+
+def test_bundle_root_detects_meipass(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(paths.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(paths.sys, "_MEIPASS", str(tmp_path), raising=False)
+    assert paths.bundle_root() == tmp_path.resolve()

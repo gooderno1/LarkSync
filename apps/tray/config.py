@@ -4,7 +4,13 @@ from pathlib import Path
 import sys
 
 # ---- 路径 ----
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_BUNDLE_ROOT = None
+if getattr(sys, "frozen", False):
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        _BUNDLE_ROOT = Path(meipass).resolve()
+
+PROJECT_ROOT = _BUNDLE_ROOT or Path(__file__).resolve().parents[2]
 BACKEND_DIR = PROJECT_ROOT / "apps" / "backend"
 FRONTEND_DIR = PROJECT_ROOT / "apps" / "frontend"
 FRONTEND_DIST = FRONTEND_DIR / "dist"

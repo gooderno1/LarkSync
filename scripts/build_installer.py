@@ -27,6 +27,7 @@ BACKEND_DIR = PROJECT_ROOT / "apps" / "backend"
 TRAY_DIR = PROJECT_ROOT / "apps" / "tray"
 OUTPUT_DIR = PROJECT_ROOT / "dist"
 SPEC_FILE = PROJECT_ROOT / "scripts" / "larksync.spec"
+BRANDING_DIR = PROJECT_ROOT / "assets" / "branding"
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -103,11 +104,14 @@ def _generate_spec() -> None:
     print("  生成 spec 文件...")
 
     # 收集前端 dist 文件
-    frontend_datas = f"('{DIST_DIR}', 'frontend_dist')" if DIST_DIR.is_dir() else ""
+    frontend_datas = f"('{DIST_DIR}', 'apps/frontend/dist')" if DIST_DIR.is_dir() else ""
 
     # 收集托盘图标
     icons_dir = TRAY_DIR / "icons"
-    icons_datas = f"('{icons_dir}', 'tray_icons')" if icons_dir.is_dir() else ""
+    icons_datas = f"('{icons_dir}', 'apps/tray/icons')" if icons_dir.is_dir() else ""
+
+    # 收集品牌资源
+    branding_datas = f"('{BRANDING_DIR}', 'assets/branding')" if BRANDING_DIR.is_dir() else ""
 
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 # LarkSync PyInstaller Spec File
@@ -126,6 +130,7 @@ a = Analysis(
     datas=[
         {frontend_datas},
         {icons_datas},
+        {branding_datas},
     ],
     hiddenimports=[
         'uvicorn',

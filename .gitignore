@@ -28,6 +28,7 @@ docs/local_specs/
 build/
 dist/
 *.spec
+!scripts/larksync.spec
 
 # Tray generated icons (auto-generated)
 apps/tray/icons/

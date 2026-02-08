@@ -18,6 +18,14 @@ def repo_root() -> Path:
     return start.parents[4]
 
 
+def bundle_root() -> Path | None:
+    frozen = getattr(sys, "frozen", False)
+    meipass = getattr(sys, "_MEIPASS", None)
+    if frozen and meipass:
+        return Path(meipass).resolve()
+    return None
+
+
 def _is_dev_repo(root: Path) -> bool:
     return (root / "apps").exists() and (root / "data").exists()
 
@@ -54,6 +62,7 @@ __all__ = [
     "repo_root",
     "data_dir",
     "logs_dir",
+    "bundle_root",
     "_default_app_data_dir",
     "_is_dev_repo",
 ]

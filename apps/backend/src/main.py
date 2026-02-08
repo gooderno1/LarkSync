@@ -25,6 +25,7 @@ from src.api.watcher import watcher_manager
 from src.api.sync_tasks import runner as sync_runner, service as sync_task_service
 from src.services.sync_scheduler import SyncScheduler
 from src.services.conflict_service import ConflictService
+from src.core.paths import bundle_root
 
 app = FastAPI(title="LarkSync API")
 sync_scheduler = SyncScheduler(runner=sync_runner, task_service=sync_task_service)
@@ -125,7 +126,8 @@ async def health_check() -> dict:
 # 检测前端构建产物 dist/ 目录：
 #   - 项目根 / apps / frontend / dist
 #   - 当前文件: apps / backend / src / main.py → parents[3] = 项目根
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_BUNDLE_ROOT = bundle_root()
+_PROJECT_ROOT = _BUNDLE_ROOT or Path(__file__).resolve().parents[3]
 _FRONTEND_DIST = _PROJECT_ROOT / "apps" / "frontend" / "dist"
 _INDEX_HTML = _FRONTEND_DIST / "index.html"
 
