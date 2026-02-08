@@ -6,10 +6,10 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.core.config import SyncMode
+from src.core.config import ConfigManager, SyncMode
 from src.core.logging import get_log_file
 from src.services.docx_service import DocxService, DocxServiceError
-from src.services.log_reader import read_log_entries
+from src.services.log_reader import prune_log_file, read_log_entries
 from src.services.sync_event_store import SyncEventStore
 from src.services.sync_runner import SyncFileEvent, SyncTaskRunner, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem, SyncTaskService
@@ -251,6 +251,8 @@ class SyncLogEntry(BaseModel):
 class SyncLogResponse(BaseModel):
     total: int
     items: list[SyncLogEntry]
+    warning: str | None = None
+    meta: dict[str, object] | None = None
 
 
 @router.get("/logs/sync", response_model=SyncLogResponse)
@@ -263,6 +265,11 @@ async def read_sync_logs(
     order: str = Query(default="desc", description="排序: desc=最新优先, asc=最早优先"),
 ) -> SyncLogResponse:
     """读取同步日志（持久化 JSONL）。"""
+    config = ConfigManager.get().config
+    retention_days = int(config.sync_log_retention_days or 0)
+    warn_size_mb = int(config.sync_log_warn_size_mb or 0)
+    if retention_days > 0:
+        event_store.prune(retention_days=retention_days, min_interval_seconds=120)
     total, entries = event_store.read_events(
         limit=limit,
         offset=offset,
@@ -282,7 +289,27 @@ async def read_sync_logs(
         )
         for entry in entries
     ]
-    return SyncLogResponse(total=total, items=items)
+    file_size = event_store.file_size_bytes()
+    warning: str | None = None
+    if warn_size_mb > 0:
+        threshold = warn_size_mb * 1024 * 1024
+        if file_size >= threshold:
+            size_mb = file_size / (1024 * 1024)
+            if retention_days <= 0:
+                warning = (
+                    f"同步日志已达到 {size_mb:.1f}MB，建议在设置-更多设置中启用保留天数"
+                    "（如 90 天）。"
+                )
+            else:
+                warning = (
+                    f"同步日志已达到 {size_mb:.1f}MB，可调整保留天数或提醒阈值。"
+                )
+    meta = {
+        "file_size_bytes": file_size,
+        "retention_days": retention_days,
+        "warn_size_mb": warn_size_mb,
+    }
+    return SyncLogResponse(total=total, items=items, warning=warning, meta=meta)
 
 
 @router.get("/logs/file", response_model=LogFileResponse)
@@ -297,6 +324,11 @@ async def read_log_file(
     log_file = get_log_file()
     if not log_file.exists():
         return LogFileResponse(total=0, items=[])
+    config = ConfigManager.get().config
+    retention_days = int(config.system_log_retention_days or 1)
+    if retention_days <= 0:
+        retention_days = 1
+    prune_log_file(log_file, retention_days=retention_days, min_interval_seconds=120)
     total, entries = read_log_entries(
         log_file,
         limit=limit,

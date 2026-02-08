@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
+import time
 
 from loguru import logger
 
@@ -23,6 +24,7 @@ class SyncEventRecord:
 class SyncEventStore:
     def __init__(self, log_file: Path | None = None) -> None:
         self._log_file = log_file or (logs_dir() / "sync-events.jsonl")
+        self._last_pruned_at: float | None = None
 
     @property
     def log_file(self) -> Path:
@@ -128,6 +130,57 @@ class SyncEventStore:
         items = list(reversed(buffer))
         page = items[offset : offset + limit]
         return total, page
+
+    def prune(self, *, retention_days: int, min_interval_seconds: int = 300) -> int:
+        if retention_days <= 0:
+            return 0
+        if not self._log_file.exists():
+            return 0
+        now = time.time()
+        if (
+            self._last_pruned_at is not None
+            and now - self._last_pruned_at < min_interval_seconds
+        ):
+            return 0
+        self._last_pruned_at = now
+        cutoff = now - retention_days * 86400
+        removed = 0
+        temp_path = self._log_file.with_suffix(self._log_file.suffix + ".tmp")
+        try:
+            with self._log_file.open("r", encoding="utf-8", errors="replace") as source, \
+                    temp_path.open("w", encoding="utf-8") as target:
+                for raw in source:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        target.write(raw)
+                        continue
+                    try:
+                        timestamp = float(payload.get("timestamp") or 0.0)
+                    except (TypeError, ValueError):
+                        timestamp = 0.0
+                    if timestamp >= cutoff:
+                        target.write(json.dumps(payload, ensure_ascii=False))
+                        target.write("\n")
+                    else:
+                        removed += 1
+            if removed > 0:
+                temp_path.replace(self._log_file)
+            else:
+                temp_path.unlink(missing_ok=True)
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            return 0
+        return removed
+
+    def file_size_bytes(self) -> int:
+        try:
+            return self._log_file.stat().st_size
+        except FileNotFoundError:
+            return 0
 
     def _iter_records_stream(self) -> Iterable[SyncEventRecord]:
         if not self._log_file.exists():

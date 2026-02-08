@@ -24,6 +24,9 @@ class ConfigResponse(BaseModel):
     download_interval_value: float = 1.0
     download_interval_unit: SyncIntervalUnit = SyncIntervalUnit.days
     download_daily_time: str = "01:00"
+    sync_log_retention_days: int = 0
+    sync_log_warn_size_mb: int = 200
+    system_log_retention_days: int = 1
 
     @classmethod
     def from_config(cls, config: AppConfig, mask_secret: bool = True) -> "ConfigResponse":
@@ -42,6 +45,9 @@ class ConfigResponse(BaseModel):
             download_interval_value=config.download_interval_value,
             download_interval_unit=config.download_interval_unit,
             download_daily_time=config.download_daily_time,
+            sync_log_retention_days=config.sync_log_retention_days,
+            sync_log_warn_size_mb=config.sync_log_warn_size_mb,
+            system_log_retention_days=config.system_log_retention_days,
         )
 
 
@@ -60,6 +66,9 @@ class ConfigUpdateRequest(BaseModel):
     download_interval_value: float | None = None
     download_interval_unit: SyncIntervalUnit | None = None
     download_daily_time: str | None = None
+    sync_log_retention_days: int | None = None
+    sync_log_warn_size_mb: int | None = None
+    system_log_retention_days: int | None = None
 
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -115,6 +124,15 @@ async def update_config(payload: ConfigUpdateRequest) -> ConfigResponse:
         if cleaned:
             if _is_time_value(cleaned):
                 data["download_daily_time"] = cleaned
+
+    if payload.sync_log_retention_days is not None and payload.sync_log_retention_days >= 0:
+        data["sync_log_retention_days"] = payload.sync_log_retention_days
+
+    if payload.sync_log_warn_size_mb is not None and payload.sync_log_warn_size_mb >= 0:
+        data["sync_log_warn_size_mb"] = payload.sync_log_warn_size_mb
+
+    if payload.system_log_retention_days is not None and payload.system_log_retention_days > 0:
+        data["system_log_retention_days"] = payload.system_log_retention_days
 
     config = manager.save_config(data)
     return ConfigResponse.from_config(config, mask_secret=True)

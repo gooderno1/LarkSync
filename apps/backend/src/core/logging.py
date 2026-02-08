@@ -4,6 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from src.core.config import ConfigManager
 from src.core.paths import logs_dir
 
 _LOG_FILE: Path | None = None
@@ -14,6 +15,11 @@ def init_logging(log_dir: Path | None = None) -> Path:
     resolved_dir = Path(log_dir) if log_dir is not None else logs_dir()
     resolved_dir.mkdir(parents=True, exist_ok=True)
     log_file = resolved_dir / "larksync.log"
+    config = ConfigManager.get().config
+    retention_days = config.system_log_retention_days
+    if retention_days <= 0:
+        retention_days = 1
+    retention = f"{retention_days} days"
 
     logger.remove()
     logger.add(
@@ -27,7 +33,7 @@ def init_logging(log_dir: Path | None = None) -> Path:
         level="INFO",
         mode="a",
         rotation="10 MB",
-        retention="10 days",
+        retention=retention,
         compression="zip",
         enqueue=True,
         backtrace=True,

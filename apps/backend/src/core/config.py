@@ -56,6 +56,9 @@ class AppConfig(BaseModel):
     download_interval_value: float = 1.0
     download_interval_unit: SyncIntervalUnit = SyncIntervalUnit.days
     download_daily_time: str = "01:00"
+    sync_log_retention_days: int = 0
+    sync_log_warn_size_mb: int = 200
+    system_log_retention_days: int = 1
 
     auth_authorize_url: str = ""
     auth_token_url: str = ""
@@ -157,6 +160,27 @@ class ConfigManager:
             data["auth_scopes"] = [
                 scope.strip() for scope in env_scopes.split(",") if scope.strip()
             ]
+
+        env_sync_log_retention = os.getenv("LARKSYNC_SYNC_LOG_RETENTION_DAYS")
+        if env_sync_log_retention:
+            try:
+                data["sync_log_retention_days"] = int(env_sync_log_retention)
+            except ValueError:
+                pass
+
+        env_sync_log_warn = os.getenv("LARKSYNC_SYNC_LOG_WARN_SIZE_MB")
+        if env_sync_log_warn:
+            try:
+                data["sync_log_warn_size_mb"] = int(env_sync_log_warn)
+            except ValueError:
+                pass
+
+        env_system_log_retention = os.getenv("LARKSYNC_SYSTEM_LOG_RETENTION_DAYS")
+        if env_system_log_retention:
+            try:
+                data["system_log_retention_days"] = int(env_system_log_retention)
+            except ValueError:
+                pass
 
         for key, env_name in {
             "auth_authorize_url": "LARKSYNC_AUTH_AUTHORIZE_URL",

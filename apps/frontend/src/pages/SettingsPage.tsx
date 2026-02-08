@@ -29,6 +29,10 @@ export function SettingsPage() {
   const [downloadUnit, setDownloadUnit] = useState("days");
   const [downloadTime, setDownloadTime] = useState("01:00");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showMoreSettings, setShowMoreSettings] = useState(false);
+  const [syncLogRetentionDays, setSyncLogRetentionDays] = useState("0");
+  const [syncLogWarnSizeMb, setSyncLogWarnSizeMb] = useState("200");
+  const [systemLogRetentionDays, setSystemLogRetentionDays] = useState("1");
 
   // Redirect URI 自动生成
   const redirectUri = useMemo(() => {
@@ -57,11 +61,17 @@ export function SettingsPage() {
     if (config.download_interval_value != null) setDownloadValue(String(config.download_interval_value));
     if (config.download_interval_unit) setDownloadUnit(config.download_interval_unit);
     if (config.download_daily_time) setDownloadTime(config.download_daily_time);
+    if (config.sync_log_retention_days != null) setSyncLogRetentionDays(String(config.sync_log_retention_days));
+    if (config.sync_log_warn_size_mb != null) setSyncLogWarnSizeMb(String(config.sync_log_warn_size_mb));
+    if (config.system_log_retention_days != null) setSystemLogRetentionDays(String(config.system_log_retention_days));
   }, [config, configLoading]);
 
   const handleSave = async () => {
     const uVal = uploadValue.trim() ? Number.parseFloat(uploadValue) : null;
     const dVal = downloadValue.trim() ? Number.parseFloat(downloadValue) : null;
+    const syncRetention = syncLogRetentionDays.trim() ? Number.parseInt(syncLogRetentionDays, 10) : null;
+    const syncWarnSize = syncLogWarnSizeMb.trim() ? Number.parseInt(syncLogWarnSizeMb, 10) : null;
+    const systemRetention = systemLogRetentionDays.trim() ? Number.parseInt(systemLogRetentionDays, 10) : null;
 
     try {
       await saveConfig({
@@ -78,6 +88,9 @@ export function SettingsPage() {
         download_interval_value: dVal,
         download_interval_unit: downloadUnit,
         download_daily_time: downloadUnit === "days" ? downloadTime.trim() || null : null,
+        sync_log_retention_days: syncRetention,
+        sync_log_warn_size_mb: syncWarnSize,
+        system_log_retention_days: systemRetention,
       });
       setClientSecret("");
       toast("配置已保存", "success");
@@ -312,6 +325,66 @@ export function SettingsPage() {
             {saving ? "保存中..." : "保存策略"}
           </button>
         </div>
+      </div>
+
+      {/* 更多设置 */}
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-50">更多设置</h2>
+            <p className="mt-1 text-xs text-zinc-400">日志保留与提醒阈值配置（一般无需频繁调整）。</p>
+          </div>
+          <button
+            className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            onClick={() => setShowMoreSettings((prev) => !prev)}
+            type="button"
+          >
+            {showMoreSettings ? "收起设置" : "展开设置"}
+          </button>
+        </div>
+
+        {showMoreSettings ? (
+          <div className="mt-5 space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">同步日志保留天数</label>
+                <input
+                  className={inputCls}
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={syncLogRetentionDays}
+                  onChange={(e) => setSyncLogRetentionDays(e.target.value)}
+                />
+                <p className="mt-1 text-[11px] text-zinc-500">0 表示永久保留（不自动清理）。</p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">同步日志提醒阈值（MB）</label>
+                <input
+                  className={inputCls}
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={syncLogWarnSizeMb}
+                  onChange={(e) => setSyncLogWarnSizeMb(e.target.value)}
+                />
+                <p className="mt-1 text-[11px] text-zinc-500">超过该体积会提示调整保留天数。</p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">系统日志保留天数</label>
+                <input
+                  className={inputCls}
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={systemLogRetentionDays}
+                  onChange={(e) => setSystemLogRetentionDays(e.target.value)}
+                />
+                <p className="mt-1 text-[11px] text-zinc-500">默认 1 天，避免系统日志过大。</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

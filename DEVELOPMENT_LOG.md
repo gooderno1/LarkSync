@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.17 (2026-02-08)
+- 目标：修复剩余失败（DB 映射异常导致的同步失败）；新增日志保留与提醒设置。
+- 结果：
+  - SyncLink 数据库异常时降级为“仅记录日志、不阻断同步”，避免单文件失败。
+  - 同步日志支持保留天数清理与容量提醒阈值，系统日志默认保留 1 天并支持配置。
+  - 日志中心新增容量提醒展示；设置页新增“更多设置”可配置日志保留与提醒。
+  - 版本号同步为 v0.4.0-dev.17（backend）与 0.4.0-dev.11（frontend）。
+- 测试：`python -m pytest tests/test_sync_link_service.py tests/test_sync_event_store.py tests/test_log_reader.py`（apps/backend）。
+- 问题：若 SQLite 仍提示损坏，请备份 `data/larksync.db` 后重建。
+
 ## v0.4.0-dev.16 (2026-02-08)
 - 目标：修复表格导出轮询过早失败；日志中心恢复自动刷新。
 - 结果：

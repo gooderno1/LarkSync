@@ -19,6 +19,9 @@ type ConfigData = {
   download_interval_value?: number;
   download_interval_unit?: string;
   download_daily_time?: string;
+  sync_log_retention_days?: number;
+  sync_log_warn_size_mb?: number;
+  system_log_retention_days?: number;
 };
 
 export function useConfig() {
@@ -53,6 +56,18 @@ export function useConfig() {
         !isTimeValue((body.download_daily_time as string) || "")
       ) {
         throw new Error("云端下行设置为按天时必须填写有效时间（HH:MM）。");
+      }
+      const syncLogRetention = body.sync_log_retention_days as number | null;
+      if (syncLogRetention != null && syncLogRetention < 0) {
+        throw new Error("同步日志保留天数不能为负数。");
+      }
+      const syncLogWarn = body.sync_log_warn_size_mb as number | null;
+      if (syncLogWarn != null && syncLogWarn < 0) {
+        throw new Error("同步日志提醒阈值不能为负数。");
+      }
+      const systemLogRetention = body.system_log_retention_days as number | null;
+      if (systemLogRetention != null && systemLogRetention <= 0) {
+        throw new Error("系统日志保留天数必须大于 0。");
       }
       return apiFetch("/config", {
         method: "PUT",

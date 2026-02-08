@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 
@@ -132,3 +133,43 @@ def test_sync_event_store_order_and_pagination(tmp_path: Path) -> None:
     )
     assert total == 5
     assert len(items) == 5
+
+
+def test_sync_event_store_prunes_old_records(tmp_path: Path) -> None:
+    log_file = tmp_path / "sync-events.jsonl"
+    store = SyncEventStore(log_file)
+    now = time.time()
+    store.append(
+        SyncEventRecord(
+            timestamp=now - 90000,
+            task_id="task-1",
+            task_name="任务",
+            status="downloaded",
+            path="/tmp/old.md",
+            message=None,
+        )
+    )
+    store.append(
+        SyncEventRecord(
+            timestamp=now - 60,
+            task_id="task-1",
+            task_name="任务",
+            status="downloaded",
+            path="/tmp/new.md",
+            message=None,
+        )
+    )
+
+    removed = store.prune(retention_days=1, min_interval_seconds=0)
+    assert removed == 1
+
+    total, items = store.read_events(
+        limit=10,
+        offset=0,
+        status="",
+        search="",
+        task_id="",
+        order="asc",
+    )
+    assert total == 1
+    assert items[0].path == "/tmp/new.md"

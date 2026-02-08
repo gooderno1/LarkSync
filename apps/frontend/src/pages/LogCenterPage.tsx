@@ -33,6 +33,12 @@ type FileLogResponse = {
 type SyncLogResponse = {
   total: number;
   items: SyncLogEntry[];
+  warning?: string | null;
+  meta?: {
+    file_size_bytes?: number;
+    retention_days?: number;
+    warn_size_mb?: number;
+  } | null;
 };
 
 type SyncLogEntryRaw = {
@@ -47,6 +53,12 @@ type SyncLogEntryRaw = {
 type SyncLogResponseRaw = {
   total: number;
   items: SyncLogEntryRaw[];
+  warning?: string | null;
+  meta?: {
+    file_size_bytes?: number;
+    retention_days?: number;
+    warn_size_mb?: number;
+  } | null;
 };
 
 export function LogCenterPage() {
@@ -90,6 +102,8 @@ export function LogCenterPage() {
           path: item.path,
           message: item.message ?? null,
         })),
+        warning: raw.warning ?? null,
+        meta: raw.meta ?? null,
       };
     },
     enabled: logTab === "logs",
@@ -220,6 +234,11 @@ export function LogCenterPage() {
           </div>
 
           {/* 日志列表 */}
+          {syncLogsQuery.data?.warning ? (
+            <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+              {syncLogsQuery.data.warning}
+            </div>
+          ) : null}
           <div className="mt-5 max-h-[520px] space-y-3 overflow-auto pr-1 log-scroll-area">
             {syncLogsQuery.isLoading ? (
               <div className="space-y-2">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-12 animate-pulse rounded-lg bg-zinc-800/50" />)}</div>
