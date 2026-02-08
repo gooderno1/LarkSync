@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME}"
-          VERSION="$(python -c "from pathlib import Path;import re;content=Path('apps/backend/pyproject.toml').read_text(encoding='utf-8');m=re.search(r'^version\\\\s*=\\\\s*\\\"([^\\\"]+)\\\"', content, re.MULTILINE);print(m.group(1) if m else '')")"
+          VERSION="$(python -c "from pathlib import Path;import re;content=Path('apps/backend/pyproject.toml').read_text(encoding='utf-8');m=re.search(r'^version\\s*=\\s*\\\"([^\\\"]+)\\\"', content, re.MULTILINE);print(m.group(1) if m else '')")"
           if [[ -z "$VERSION" ]]; then
             echo "未读取到版本号"
             exit 1
@@ -92,7 +92,7 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME}"
-          VERSION="$(python -c "from pathlib import Path;import re;content=Path('apps/backend/pyproject.toml').read_text(encoding='utf-8');m=re.search(r'^version\\\\s*=\\\\s*\\\"([^\\\"]+)\\\"', content, re.MULTILINE);print(m.group(1) if m else '')")"
+          VERSION="$(python -c "from pathlib import Path;import re;content=Path('apps/backend/pyproject.toml').read_text(encoding='utf-8');m=re.search(r'^version\\s*=\\s*\\\"([^\\\"]+)\\\"', content, re.MULTILINE);print(m.group(1) if m else '')")"
           if [[ -z "$VERSION" ]]; then
             echo "未读取到版本号"
             exit 1
