@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.19 (2026-02-08)
+- 目标：定位数据库损坏根因并降低发生概率。
+- 结果：
+  - 托盘停止后端优先调用 `/system/shutdown`，后端先停调度器/监听器并释放数据库连接再退出。
+  - SQLite 连接启用 WAL + busy_timeout/foreign_keys，提升异常退出场景的鲁棒性。
+  - 版本号同步为 v0.4.0-dev.19（backend）。
+- 测试：`python -m pytest tests/test_system_api.py tests/test_db_session.py`（apps/backend）。
+- 问题：若仍出现损坏，请排查外部强杀/异常断电/网盘同步等系统层面因素。
+
 ## v0.4.0-dev.18 (2026-02-08)
 - 目标：修复客户端启动超时（SQLite 损坏导致后端启动失败）。
 - 结果：

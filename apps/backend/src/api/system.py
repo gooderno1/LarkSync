@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+import asyncio
+import os
+
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from loguru import logger
+
+from src.api.watcher import watcher_manager
+from src.db.session import dispose_engines
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -43,3 +50,40 @@ async def select_folder() -> FolderResponse:
     if not path:
         raise HTTPException(status_code=400, detail="未选择文件夹")
     return FolderResponse(path=path)
+
+
+async def _shutdown_after_response(app) -> None:
+    logger.info("收到系统关闭请求，准备停止服务")
+    runner = getattr(app.state, "sync_runner", None)
+    if runner is not None:
+        try:
+            for task_id in list(runner.list_statuses().keys()):
+                runner.cancel_task(task_id)
+        except Exception as exc:
+            logger.warning("停止同步任务失败: {}", exc)
+    scheduler = getattr(app.state, "sync_scheduler", None)
+    if scheduler is not None:
+        try:
+            await scheduler.stop()
+        except Exception as exc:
+            logger.warning("停止同步调度器失败: {}", exc)
+    try:
+        watcher_manager.stop()
+    except Exception as exc:
+        logger.warning("停止文件监听失败: {}", exc)
+    try:
+        await dispose_engines()
+    except Exception as exc:
+        logger.warning("释放数据库连接失败: {}", exc)
+    await asyncio.sleep(0.2)
+    os._exit(0)
+
+
+def _schedule_shutdown(app) -> None:
+    asyncio.create_task(_shutdown_after_response(app))
+
+
+@router.post("/shutdown")
+async def shutdown(request: Request) -> dict:
+    _schedule_shutdown(request.app)
+    return {"status": "shutting_down"}

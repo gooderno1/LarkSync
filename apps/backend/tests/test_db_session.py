@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import DatabaseError
 
 from src.db.session import (
@@ -7,6 +9,8 @@ from src.db.session import (
     _extract_sqlite_path,
     _is_sqlite_corrupt_error,
     _sqlite_literal,
+    create_engine,
+    dispose_engines,
 )
 
 
@@ -46,3 +50,18 @@ def test_backup_corrupt_db_moves_file(tmp_path: Path) -> None:
     assert backup is not None
     assert not db_path.exists()
     assert backup.exists()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_pragmas_applied(tmp_path: Path) -> None:
+    db_path = tmp_path / "larksync.db"
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+    engine = create_engine(url)
+    async with engine.begin() as conn:
+        journal_mode = (await conn.execute(text("PRAGMA journal_mode"))).scalar()
+        busy_timeout = (await conn.execute(text("PRAGMA busy_timeout"))).scalar()
+        foreign_keys = (await conn.execute(text("PRAGMA foreign_keys"))).scalar()
+    await dispose_engines()
+    assert str(journal_mode).lower() == "wal"
+    assert int(busy_timeout) == 5000
+    assert int(foreign_keys) == 1

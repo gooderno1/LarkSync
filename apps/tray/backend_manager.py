@@ -67,6 +67,16 @@ class BackendManager:
         except Exception:
             return False
 
+    def _request_shutdown(self) -> bool:
+        """向后端发送优雅关闭请求。"""
+        shutdown_url = f"http://{BACKEND_HOST}:{BACKEND_PORT}/system/shutdown"
+        try:
+            req = urllib.request.Request(shutdown_url, method="POST")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
     def start(self, wait: bool = True) -> bool:
         """
         启动后端进程。
@@ -162,6 +172,22 @@ class BackendManager:
 
             pid = self._process.pid
             logger.info("停止后端服务 (PID {})", pid)
+
+            graceful_sent = False
+            if self.health_check():
+                graceful_sent = self._request_shutdown()
+                if graceful_sent:
+                    logger.info("已发送后端优雅关闭请求")
+
+            if graceful_sent:
+                try:
+                    self._process.wait(timeout=8)
+                    logger.info("后端已正常退出")
+                    self._process = None
+                    self._restart_count = 0
+                    return
+                except subprocess.TimeoutExpired:
+                    logger.warning("后端优雅关闭超时，执行强制终止")
 
             try:
                 if sys.platform == "win32":

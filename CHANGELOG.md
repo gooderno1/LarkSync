@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.4.0-dev.19 fix(db,shutdown): 托盘优雅关闭后端 + SQLite WAL/超时设置，降低损坏风险
 [2026-02-08] v0.4.0-dev.18 fix(startup): SQLite 损坏自动备份重建，避免启动超时
 [2026-02-08] v0.4.0-dev.17 fix(logs,db): 同步映射异常降级，日志保留与提醒设置
 [2026-02-08] v0.4.0-dev.16 fix(export,logs): 表格导出轮询增强，日志中心自动刷新

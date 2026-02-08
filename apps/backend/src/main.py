@@ -29,6 +29,8 @@ from src.services.conflict_service import ConflictService
 app = FastAPI(title="LarkSync API")
 sync_scheduler = SyncScheduler(runner=sync_runner, task_service=sync_task_service)
 conflict_service = ConflictService()
+app.state.sync_scheduler = sync_scheduler
+app.state.sync_runner = sync_runner
 
 app.add_middleware(
     CORSMiddleware,
