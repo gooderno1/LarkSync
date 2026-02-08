@@ -9,12 +9,18 @@ from loguru import logger
 
 from src.api.watcher import watcher_manager
 from src.db.session import dispose_engines
+from src.services.update_service import UpdateService, UpdateStatus
+from src.services.update_scheduler import UpdateScheduler
 
 router = APIRouter(prefix="/system", tags=["system"])
 
 
 class FolderResponse(BaseModel):
     path: str
+
+
+class UpdateStatusResponse(UpdateStatus):
+    pass
 
 
 def _select_folder() -> str | None:
@@ -50,6 +56,40 @@ async def select_folder() -> FolderResponse:
     if not path:
         raise HTTPException(status_code=400, detail="未选择文件夹")
     return FolderResponse(path=path)
+
+
+def _get_update_service(request: Request) -> UpdateService:
+    scheduler: UpdateScheduler | None = getattr(request.app.state, "update_scheduler", None)
+    if scheduler is not None:
+        return scheduler.service
+    service: UpdateService | None = getattr(request.app.state, "update_service", None)
+    if service is None:
+        service = UpdateService()
+        request.app.state.update_service = service
+    return service
+
+
+@router.get("/update/status", response_model=UpdateStatusResponse)
+async def update_status(request: Request) -> UpdateStatusResponse:
+    service = _get_update_service(request)
+    return UpdateStatusResponse.model_validate(service.load_cached_status())
+
+
+@router.post("/update/check", response_model=UpdateStatusResponse)
+async def update_check(request: Request) -> UpdateStatusResponse:
+    service = _get_update_service(request)
+    status = await service.check_for_updates(force=True)
+    return UpdateStatusResponse.model_validate(status)
+
+
+@router.post("/update/download", response_model=UpdateStatusResponse)
+async def update_download(request: Request) -> UpdateStatusResponse:
+    service = _get_update_service(request)
+    try:
+        status = await service.download_update()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return UpdateStatusResponse.model_validate(status)
 
 
 async def _shutdown_after_response(app) -> None:

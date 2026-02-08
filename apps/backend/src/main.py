@@ -26,12 +26,15 @@ from src.api.sync_tasks import runner as sync_runner, service as sync_task_servi
 from src.services.sync_scheduler import SyncScheduler
 from src.services.conflict_service import ConflictService
 from src.core.paths import bundle_root
+from src.services.update_scheduler import UpdateScheduler
 
 app = FastAPI(title="LarkSync API")
 sync_scheduler = SyncScheduler(runner=sync_runner, task_service=sync_task_service)
 conflict_service = ConflictService()
+update_scheduler = UpdateScheduler()
 app.state.sync_scheduler = sync_scheduler
 app.state.sync_runner = sync_runner
+app.state.update_scheduler = update_scheduler
 
 app.add_middleware(
     CORSMiddleware,
@@ -106,6 +109,7 @@ async def startup_event() -> None:
     watcher_manager.set_loop(asyncio.get_running_loop())
     await init_db()
     await sync_scheduler.start()
+    await update_scheduler.start()
     if _FRONTEND_DIST.is_dir():
         logger.info("前端静态文件已挂载: {}", _FRONTEND_DIST)
     else:
@@ -115,6 +119,7 @@ async def startup_event() -> None:
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
     await sync_scheduler.stop()
+    await update_scheduler.stop()
 
 
 @app.get("/health", tags=["health"])

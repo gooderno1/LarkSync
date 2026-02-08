@@ -11,6 +11,7 @@ project_root = Path(__file__).resolve().parents[1]
 frontend_dist = project_root / "apps" / "frontend" / "dist"
 tray_icons = project_root / "apps" / "tray" / "icons"
 branding_dir = project_root / "assets" / "branding"
+backend_pyproject = project_root / "apps" / "backend" / "pyproject.toml"
 
 datas = []
 if frontend_dist.is_dir():
@@ -19,6 +20,8 @@ if tray_icons.is_dir():
     datas.append((str(tray_icons), "apps/tray/icons"))
 if branding_dir.is_dir():
     datas.append((str(branding_dir), "assets/branding"))
+if backend_pyproject.is_file():
+    datas.append((str(backend_pyproject), "apps/backend"))
 
 a = Analysis(
     [str(project_root / "LarkSync.pyw")],

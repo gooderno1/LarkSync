@@ -55,6 +55,10 @@ class AppConfig(BaseModel):
     sync_log_retention_days: int = 0
     sync_log_warn_size_mb: int = 200
     system_log_retention_days: int = 1
+    auto_update_enabled: bool = False
+    update_check_interval_hours: int = 24
+    last_update_check: float = 0.0
+    allow_dev_to_stable: bool = False
 
     auth_authorize_url: str = ""
     auth_token_url: str = ""
@@ -177,6 +181,31 @@ class ConfigManager:
                 data["system_log_retention_days"] = int(env_system_log_retention)
             except ValueError:
                 pass
+
+        env_auto_update = os.getenv("LARKSYNC_AUTO_UPDATE_ENABLED")
+        if env_auto_update:
+            data["auto_update_enabled"] = env_auto_update.strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+
+        env_update_interval = os.getenv("LARKSYNC_UPDATE_CHECK_INTERVAL_HOURS")
+        if env_update_interval:
+            try:
+                data["update_check_interval_hours"] = int(env_update_interval)
+            except ValueError:
+                pass
+
+        env_allow_dev = os.getenv("LARKSYNC_ALLOW_DEV_TO_STABLE")
+        if env_allow_dev:
+            data["allow_dev_to_stable"] = env_allow_dev.strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
 
         for key, env_name in {
             "auth_authorize_url": "LARKSYNC_AUTH_AUTHORIZE_URL",

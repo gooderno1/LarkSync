@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.5.0-dev.6 (2026-02-08)
+- 目标：完成自动更新（稳定版）检查与下载流程。
+- 结果：
+  - 新增更新检查服务与调度器，支持 GitHub Releases 稳定版检查与下载。
+  - 配置中心新增自动更新开关、检查间隔、dev→稳定版提示配置。
+  - 设置页新增自动更新面板与手动检查/下载入口。
+  - 版本号升级至 v0.5.0-dev.6（backend）。
+- 测试：`python -m pytest tests/test_update_service.py`（apps/backend）。
+- 问题：需在真实 tag 发布后验证 Release 产物下载流程。
+
 ## v0.5.0-dev.5 (2026-02-08)
 - 目标：补齐 CI/CD 自动构建与 Release 上传。
 - 结果：

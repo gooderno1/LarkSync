@@ -117,6 +117,10 @@ def _generate_spec() -> None:
     # 收集品牌资源
     branding_datas = f"('{BRANDING_DIR}', 'assets/branding')" if BRANDING_DIR.is_dir() else ""
 
+    # 收集 backend 版本信息
+    backend_pyproject = BACKEND_DIR / "pyproject.toml"
+    pyproject_datas = f"('{backend_pyproject}', 'apps/backend')" if backend_pyproject.is_file() else ""
+
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 # LarkSync PyInstaller Spec File
 # 自动生成，可手动修改
@@ -135,6 +139,7 @@ a = Analysis(
         {frontend_datas},
         {icons_datas},
         {branding_datas},
+        {pyproject_datas},
     ],
     hiddenimports=[
         'uvicorn',

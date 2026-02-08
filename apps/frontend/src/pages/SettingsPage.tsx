@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useConfig } from "../hooks/useConfig";
+import { useUpdate } from "../hooks/useUpdate";
 import { formatIntervalLabel } from "../lib/formatters";
 import { modeLabels } from "../lib/constants";
 import { useToast } from "../components/ui/toast";
@@ -14,6 +15,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 
 export function SettingsPage() {
   const { config, configLoading, saveConfig, saving, saveError } = useConfig();
+  const { status, checkUpdate, checking, downloadUpdate, downloading } = useUpdate();
   const { toast } = useToast();
 
   const [authorizeUrl, setAuthorizeUrl] = useState("");
@@ -33,6 +35,9 @@ export function SettingsPage() {
   const [syncLogRetentionDays, setSyncLogRetentionDays] = useState("0");
   const [syncLogWarnSizeMb, setSyncLogWarnSizeMb] = useState("200");
   const [systemLogRetentionDays, setSystemLogRetentionDays] = useState("1");
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
+  const [updateCheckIntervalHours, setUpdateCheckIntervalHours] = useState("24");
+  const [allowDevToStable, setAllowDevToStable] = useState(false);
 
   // Redirect URI 自动生成
   const redirectUri = useMemo(() => {
@@ -46,6 +51,24 @@ export function SettingsPage() {
       () => toast("复制失败", "danger")
     );
   };
+
+  const lastCheckLabel = useMemo(() => {
+    if (!status.last_check) return "未检查";
+    try {
+      return new Date(status.last_check * 1000).toLocaleString();
+    } catch {
+      return "未检查";
+    }
+  }, [status.last_check]);
+
+  const publishedLabel = useMemo(() => {
+    if (!status.published_at) return "—";
+    try {
+      return new Date(status.published_at).toLocaleString();
+    } catch {
+      return status.published_at;
+    }
+  }, [status.published_at]);
 
   // populate from server data
   useEffect(() => {
@@ -64,6 +87,9 @@ export function SettingsPage() {
     if (config.sync_log_retention_days != null) setSyncLogRetentionDays(String(config.sync_log_retention_days));
     if (config.sync_log_warn_size_mb != null) setSyncLogWarnSizeMb(String(config.sync_log_warn_size_mb));
     if (config.system_log_retention_days != null) setSystemLogRetentionDays(String(config.system_log_retention_days));
+    if (config.auto_update_enabled != null) setAutoUpdateEnabled(Boolean(config.auto_update_enabled));
+    if (config.update_check_interval_hours != null) setUpdateCheckIntervalHours(String(config.update_check_interval_hours));
+    if (config.allow_dev_to_stable != null) setAllowDevToStable(Boolean(config.allow_dev_to_stable));
   }, [config, configLoading]);
 
   const handleSave = async () => {
@@ -72,6 +98,7 @@ export function SettingsPage() {
     const syncRetention = syncLogRetentionDays.trim() ? Number.parseInt(syncLogRetentionDays, 10) : null;
     const syncWarnSize = syncLogWarnSizeMb.trim() ? Number.parseInt(syncLogWarnSizeMb, 10) : null;
     const systemRetention = systemLogRetentionDays.trim() ? Number.parseInt(systemLogRetentionDays, 10) : null;
+    const updateInterval = updateCheckIntervalHours.trim() ? Number.parseInt(updateCheckIntervalHours, 10) : null;
 
     try {
       await saveConfig({
@@ -91,11 +118,36 @@ export function SettingsPage() {
         sync_log_retention_days: syncRetention,
         sync_log_warn_size_mb: syncWarnSize,
         system_log_retention_days: systemRetention,
+        auto_update_enabled: autoUpdateEnabled,
+        update_check_interval_hours: updateInterval,
+        allow_dev_to_stable: allowDevToStable,
       });
       setClientSecret("");
       toast("配置已保存", "success");
     } catch (err) {
       toast(err instanceof Error ? err.message : "保存失败", "danger");
+    }
+  };
+
+  const handleCheckUpdate = async () => {
+    try {
+      await checkUpdate();
+      toast("已完成更新检查", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "检查更新失败", "danger");
+    }
+  };
+
+  const handleDownloadUpdate = async () => {
+    try {
+      const result = await downloadUpdate();
+      if (result.download_path) {
+        toast(`更新包已下载：${result.download_path}`, "success");
+      } else {
+        toast("更新包已下载", "success");
+      }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "下载更新失败", "danger");
     }
   };
 
@@ -381,6 +433,129 @@ export function SettingsPage() {
                   onChange={(e) => setSystemLogRetentionDays(e.target.value)}
                 />
                 <p className="mt-1 text-[11px] text-zinc-500">默认 1 天，避免系统日志过大。</p>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-zinc-800/80 pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-medium text-zinc-200">自动更新</h3>
+                  <p className="mt-1 text-[11px] text-zinc-500">仅检查稳定版（GitHub Releases）。</p>
+                </div>
+                <button
+                  className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                  onClick={handleCheckUpdate}
+                  disabled={checking}
+                  type="button"
+                >
+                  {checking ? "检查中..." : "检查更新"}
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">自动更新开关</label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      className={cn(
+                        "relative h-6 w-11 rounded-full transition",
+                        autoUpdateEnabled ? "bg-[#3370FF]" : "bg-zinc-700"
+                      )}
+                      onClick={() => setAutoUpdateEnabled((prev) => !prev)}
+                      type="button"
+                    >
+                      <span
+                        className={cn(
+                          "absolute top-0.5 h-5 w-5 rounded-full bg-white transition",
+                          autoUpdateEnabled ? "left-6" : "left-0.5"
+                        )}
+                      />
+                    </button>
+                    <span className="text-xs text-zinc-500">{autoUpdateEnabled ? "已启用" : "未启用"}</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">检查间隔（小时）</label>
+                  <input
+                    className={inputCls}
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={updateCheckIntervalHours}
+                    onChange={(e) => setUpdateCheckIntervalHours(e.target.value)}
+                  />
+                  <p className="mt-1 text-[11px] text-zinc-500">默认 24 小时，可手动触发检查。</p>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">允许 dev 升级到稳定版</label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      className={cn(
+                        "relative h-6 w-11 rounded-full transition",
+                        allowDevToStable ? "bg-[#3370FF]" : "bg-zinc-700"
+                      )}
+                      onClick={() => setAllowDevToStable((prev) => !prev)}
+                      type="button"
+                    >
+                      <span
+                        className={cn(
+                          "absolute top-0.5 h-5 w-5 rounded-full bg-white transition",
+                          allowDevToStable ? "left-6" : "left-0.5"
+                        )}
+                      />
+                    </button>
+                    <span className="text-xs text-zinc-500">{allowDevToStable ? "已允许" : "默认禁用"}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-xs text-zinc-400">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <p className="text-zinc-500">当前版本</p>
+                    <p className="mt-1 text-sm text-zinc-200">{status.current_version || "未知"}</p>
+                  </div>
+                  <div>
+                    <p className="text-zinc-500">最新版本</p>
+                    <p className="mt-1 text-sm text-zinc-200">{status.latest_version || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-zinc-500">上次检查</p>
+                    <p className="mt-1 text-sm text-zinc-200">{lastCheckLabel}</p>
+                  </div>
+                  <div>
+                    <p className="text-zinc-500">发布时间</p>
+                    <p className="mt-1 text-sm text-zinc-200">{publishedLabel}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  {status.update_available ? (
+                    <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-300">发现新版本</span>
+                  ) : (
+                    <span className="rounded-full bg-zinc-700/40 px-3 py-1 text-xs text-zinc-400">已是最新</span>
+                  )}
+                  {status.last_error ? (
+                    <span className="text-rose-300">检查失败：{status.last_error}</span>
+                  ) : null}
+                  {status.asset?.name ? (
+                    <span className="text-zinc-500">包名：{status.asset.name}</span>
+                  ) : null}
+                </div>
+                {status.update_available ? (
+                  <div className="mt-3">
+                    <button
+                      className="rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
+                      onClick={handleDownloadUpdate}
+                      disabled={downloading}
+                      type="button"
+                    >
+                      {downloading ? "下载中..." : "下载更新包"}
+                    </button>
+                    {status.download_path ? (
+                      <p className="mt-2 text-[11px] text-zinc-500">已下载：{status.download_path}</p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

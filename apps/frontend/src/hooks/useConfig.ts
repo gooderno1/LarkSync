@@ -22,6 +22,10 @@ type ConfigData = {
   sync_log_retention_days?: number;
   sync_log_warn_size_mb?: number;
   system_log_retention_days?: number;
+  auto_update_enabled?: boolean;
+  update_check_interval_hours?: number;
+  last_update_check?: number;
+  allow_dev_to_stable?: boolean;
 };
 
 export function useConfig() {
@@ -68,6 +72,10 @@ export function useConfig() {
       const systemLogRetention = body.system_log_retention_days as number | null;
       if (systemLogRetention != null && systemLogRetention <= 0) {
         throw new Error("系统日志保留天数必须大于 0。");
+      }
+      const updateInterval = body.update_check_interval_hours as number | null;
+      if (updateInterval != null && updateInterval <= 0) {
+        throw new Error("更新检查间隔必须大于 0。");
       }
       return apiFetch("/config", {
         method: "PUT",

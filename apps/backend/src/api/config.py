@@ -27,6 +27,10 @@ class ConfigResponse(BaseModel):
     sync_log_retention_days: int = 0
     sync_log_warn_size_mb: int = 200
     system_log_retention_days: int = 1
+    auto_update_enabled: bool = False
+    update_check_interval_hours: int = 24
+    last_update_check: float = 0.0
+    allow_dev_to_stable: bool = False
 
     @classmethod
     def from_config(cls, config: AppConfig, mask_secret: bool = True) -> "ConfigResponse":
@@ -48,6 +52,10 @@ class ConfigResponse(BaseModel):
             sync_log_retention_days=config.sync_log_retention_days,
             sync_log_warn_size_mb=config.sync_log_warn_size_mb,
             system_log_retention_days=config.system_log_retention_days,
+            auto_update_enabled=config.auto_update_enabled,
+            update_check_interval_hours=config.update_check_interval_hours,
+            last_update_check=config.last_update_check,
+            allow_dev_to_stable=config.allow_dev_to_stable,
         )
 
 
@@ -69,6 +77,9 @@ class ConfigUpdateRequest(BaseModel):
     sync_log_retention_days: int | None = None
     sync_log_warn_size_mb: int | None = None
     system_log_retention_days: int | None = None
+    auto_update_enabled: bool | None = None
+    update_check_interval_hours: int | None = None
+    allow_dev_to_stable: bool | None = None
 
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -133,6 +144,15 @@ async def update_config(payload: ConfigUpdateRequest) -> ConfigResponse:
 
     if payload.system_log_retention_days is not None and payload.system_log_retention_days > 0:
         data["system_log_retention_days"] = payload.system_log_retention_days
+
+    if payload.auto_update_enabled is not None:
+        data["auto_update_enabled"] = bool(payload.auto_update_enabled)
+
+    if payload.update_check_interval_hours is not None and payload.update_check_interval_hours > 0:
+        data["update_check_interval_hours"] = payload.update_check_interval_hours
+
+    if payload.allow_dev_to_stable is not None:
+        data["allow_dev_to_stable"] = bool(payload.allow_dev_to_stable)
 
     config = manager.save_config(data)
     return ConfigResponse.from_config(config, mask_secret=True)

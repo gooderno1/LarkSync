@@ -68,6 +68,7 @@
 - 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
 - 定时调度：本地变更队列按秒/小时/天触发上传；云端下载支持按秒/小时/天或每日定时（可配置）
 - CI/CD 自动构建：GitHub Releases 标签发布时自动构建 Windows/macOS 安装包并上传
+- 自动更新：支持稳定版检查与更新包下载（GitHub Releases）
 
 ## 快速开始
 
@@ -145,3 +146,6 @@ python scripts/build_installer.py --dmg    # macOS: 额外生成 DMG
 - `LARKSYNC_SYNC_LOG_RETENTION_DAYS`（同步日志保留天数，0=永久）
 - `LARKSYNC_SYNC_LOG_WARN_SIZE_MB`（同步日志提醒阈值，MB）
 - `LARKSYNC_SYSTEM_LOG_RETENTION_DAYS`（系统日志保留天数，默认 1）
+- `LARKSYNC_AUTO_UPDATE_ENABLED`（自动更新开关）
+- `LARKSYNC_UPDATE_CHECK_INTERVAL_HOURS`（更新检查间隔，小时）
+- `LARKSYNC_ALLOW_DEV_TO_STABLE`（dev 版本是否提示升级到稳定版）
