@@ -94,6 +94,8 @@ export function LogCenterPage() {
     },
     enabled: logTab === "logs",
     staleTime: 5_000,
+    refetchInterval: logTab === "logs" ? 5_000 : false,
+    refetchOnWindowFocus: logTab === "logs",
     placeholderData: { total: 0, items: [] },
   });
 
@@ -114,6 +116,8 @@ export function LogCenterPage() {
     },
     enabled: logTab === "file-logs",
     staleTime: 5_000,
+    refetchInterval: logTab === "file-logs" ? 5_000 : false,
+    refetchOnWindowFocus: logTab === "file-logs",
     placeholderData: { total: 0, items: [] },
   });
 

@@ -90,7 +90,7 @@ class SyncTaskRunner:
         event_store: SyncEventStore | None = None,
         import_poll_attempts: int = 10,
         import_poll_interval: float = 1.0,
-        export_poll_attempts: int = 10,
+        export_poll_attempts: int = 20,
         export_poll_interval: float = 1.0,
     ) -> None:
         self._drive_service = drive_service
@@ -856,23 +856,42 @@ class SyncTaskRunner:
         file_token: str | None = None,
     ) -> ExportTaskResult:
         last_error: str | None = None
+        last_result: ExportTaskResult | None = None
         for attempt in range(self._export_poll_attempts):
             result = await export_task_service.get_export_task_result(
                 ticket,
                 file_token=file_token,
             )
+            last_result = result
             job_status = result.job_status
-            if job_status == 0 and result.file_token:
-                return result
-            if job_status not in (None, 1):
-                detail = f"导出任务失败: status={job_status}"
-                if result.job_error_msg:
-                    detail = f"{detail} msg={result.job_error_msg}"
-                last_error = detail
+            if job_status == 0:
+                if result.file_token:
+                    return result
+                last_error = "导出任务未返回文件 token"
+                break
+            if result.job_error_msg:
+                last_error = (
+                    f"导出任务失败: status={job_status} msg={result.job_error_msg}"
+                )
+                break
+            if job_status not in (None, 1, 2):
+                last_error = f"导出任务失败: status={job_status}"
                 break
             if attempt < self._export_poll_attempts - 1:
                 await asyncio.sleep(self._export_poll_interval)
-        raise RuntimeError(last_error or "导出任务超时")
+        if last_error:
+            raise RuntimeError(last_error)
+        if last_result and last_result.job_status not in (None, 1, 2):
+            detail = f"导出任务失败: status={last_result.job_status}"
+            if last_result.job_error_msg:
+                detail = f"{detail} msg={last_result.job_error_msg}"
+            raise RuntimeError(detail)
+        status_hint = (
+            f" status={last_result.job_status}"
+            if last_result and last_result.job_status is not None
+            else ""
+        )
+        raise RuntimeError(f"导出任务超时{status_hint}")
 
     async def _run_upload(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
         self._task_meta[task.id] = task

@@ -430,6 +430,60 @@ async def test_runner_export_retries_with_sub_id(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_export_poll_allows_processing_status_2(tmp_path: Path) -> None:
+    class SlowExportTaskService(FakeExportTaskService):
+        def __init__(self) -> None:
+            super().__init__()
+            self._calls = 0
+
+        async def get_export_task_result(self, ticket: str, *, file_token: str | None = None):
+            self.query_calls.append((ticket, file_token))
+            self._calls += 1
+            if self._calls < 3:
+                return ExportTaskResult(
+                    file_extension="xlsx",
+                    type="sheet",
+                    file_name="表格.xlsx",
+                    file_token=None,
+                    file_size=None,
+                    job_status=2,
+                    job_error_msg=None,
+                )
+            return ExportTaskResult(
+                file_extension="xlsx",
+                type="sheet",
+                file_name="表格.xlsx",
+                file_token="exported-token",
+                file_size=10,
+                job_status=0,
+                job_error_msg=None,
+            )
+
+    downloader = FakeFileDownloader()
+    export_service = SlowExportTaskService()
+    runner = SyncTaskRunner(
+        export_task_service=export_service,
+        file_downloader=downloader,
+        export_poll_interval=0,
+    )
+
+    await runner._download_exported_file(
+        export_task_service=export_service,
+        file_downloader=downloader,
+        file_token="sheet-1",
+        file_type="sheet",
+        target_path=tmp_path / "表格.xlsx",
+        mtime=0.0,
+        export_extension="xlsx",
+        export_sub_id=None,
+    )
+
+    assert (tmp_path / "表格.xlsx").exists()
+    assert downloader.export_calls[0][0] == "exported-token"
+    assert export_service.query_calls[-1][0] == "ticket-1"
+
+
+@pytest.mark.asyncio
 async def test_runner_fills_sheet_sub_id_when_missing(tmp_path: Path) -> None:
     tree = DriveNode(
         token="root",

@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.16 (2026-02-08)
+- 目标：修复表格导出轮询过早失败；日志中心恢复自动刷新。
+- 结果：
+  - 导出任务轮询对短时非 0 状态更宽容，避免误判失败，并补充超时状态提示。
+  - 导出轮询默认次数提升至 20 次（约 20s）。
+  - 日志中心同步/系统日志增加自动刷新轮询（5s）。
+  - 版本号同步为 v0.4.0-dev.16（backend）与 0.4.0-dev.10（frontend）。
+- 测试：`python -m pytest tests/test_sync_runner.py`（apps/backend）。
+- 问题：若 sheet/bitable 仍失败，请提供导出任务结果 JSON（含 job_status/job_error_msg）。
+
 ## v0.4.0-dev.15 (2026-02-08)
 - 目标：同步日志需持久化保留历史；系统日志不再为空；sheet/bitable 导出补齐子表 ID。
 - 结果：
