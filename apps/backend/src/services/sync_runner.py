@@ -4,7 +4,7 @@ import asyncio
 import difflib
 import time
 from datetime import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Literal
 from urllib.parse import parse_qs, urlparse
@@ -332,6 +332,10 @@ class SyncTaskRunner:
                 self._build_download_candidate(task, node, relative_dir)
                 for node, relative_dir in files
             ]
+            candidates = await self._hydrate_export_sub_ids(
+                candidates,
+                drive_service,
+            )
             selected_candidates, duplicated_candidates = self._select_download_candidates(
                 candidates,
                 persisted_by_path,
@@ -585,6 +589,38 @@ class SyncTaskRunner:
             mtime=_parse_mtime(node.modified_time),
             export_sub_id=export_sub_id,
         )
+
+    async def _hydrate_export_sub_ids(
+        self,
+        candidates: list[DownloadCandidate],
+        drive_service: DriveService,
+    ) -> list[DownloadCandidate]:
+        pending: list[tuple[str, str]] = []
+        for candidate in candidates:
+            if candidate.effective_type in _EXPORT_EXTENSION_MAP and not candidate.export_sub_id:
+                pending.append((candidate.effective_token, candidate.effective_type))
+        if not pending:
+            return candidates
+        batch_query = getattr(drive_service, "batch_query_metas", None)
+        if batch_query is None:
+            return candidates
+        try:
+            meta_map = await batch_query(pending, with_url=True)
+        except Exception as exc:
+            logger.warning("补齐表格导出 sub_id 失败: {}", exc)
+            return candidates
+        if not meta_map:
+            return candidates
+        enriched: list[DownloadCandidate] = []
+        for candidate in candidates:
+            if candidate.effective_type in _EXPORT_EXTENSION_MAP and not candidate.export_sub_id:
+                meta = meta_map.get(candidate.effective_token)
+                url = getattr(meta, "url", None) if meta else None
+                sub_id = _extract_export_sub_id(url, candidate.effective_type)
+                if sub_id:
+                    candidate = replace(candidate, export_sub_id=sub_id)
+            enriched.append(candidate)
+        return enriched
 
     @staticmethod
     def _select_download_candidates(

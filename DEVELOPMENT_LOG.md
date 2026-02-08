@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.14 (2026-02-08)
+- 目标：修复表格导出仍失败的问题并确保系统日志读取到历史文件。
+- 结果：
+  - 表格导出在缺少 sub_id 时，自动通过 Drive 元数据补齐链接并解析 table/sheet id。
+  - 系统日志 API 使用正确根路径读取 `data/logs/larksync.log`，历史日志可见。
+  - 版本号同步为 v0.4.0-dev.14。
+- 测试：`python -m pytest tests/test_sync_runner.py tests/test_log_reader.py tests/test_sync_runner_upload_new_doc.py`（apps/backend）。
+- 问题：若导出仍失败，请提供带 table/sheet 参数的分享链接或最新错误日志。
+
 ## v0.4.0-dev.13 (2026-02-08)
 - 目标：修复 sheet/bitable 导出失败并补齐日志历史展示与回流下载防护。
 - 结果：

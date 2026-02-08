@@ -245,7 +245,7 @@ async def read_log_file(
     order: str = Query(default="desc", description="排序: desc=最新优先, asc=最早优先"),
 ) -> LogFileResponse:
     """读取 loguru 日志文件，支持分页返回最近的日志条目。"""
-    root = Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[4]
     log_file = root / "data" / "logs" / "larksync.log"
     if not log_file.exists():
         return LogFileResponse(total=0, items=[])

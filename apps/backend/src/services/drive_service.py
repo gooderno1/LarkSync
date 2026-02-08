@@ -34,6 +34,14 @@ class DriveFileList(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class DriveMeta(BaseModel):
+    doc_token: str | None = None
+    doc_type: str | None = None
+    url: str | None = None
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class RootFolderMeta(BaseModel):
     token: str
     id: str
@@ -95,6 +103,32 @@ class DriveService:
             raise RuntimeError(f"获取文件清单失败: {payload.get('msg')}")
         data = payload.get("data") or {}
         return DriveFileList.model_validate(data)
+
+    async def batch_query_metas(
+        self,
+        docs: list[tuple[str, str]],
+        *,
+        with_url: bool = True,
+    ) -> dict[str, DriveMeta]:
+        if not docs:
+            return {}
+        url = f"{self._base_url}/open-apis/drive/v1/metas/batch_query"
+        request_docs = [
+            {"doc_token": token, "doc_type": doc_type} for token, doc_type in docs
+        ]
+        payload = {"request_docs": request_docs, "with_url": bool(with_url)}
+        response = await self._client.request("POST", url, json=payload)
+        body = response.json()
+        if body.get("code") != 0:
+            raise RuntimeError(f"批量获取元数据失败: {body.get('msg')}")
+        data = body.get("data") or {}
+        metas = data.get("metas") or []
+        results: dict[str, DriveMeta] = {}
+        for meta in metas:
+            item = DriveMeta.model_validate(meta)
+            if item.doc_token:
+                results[item.doc_token] = item
+        return results
 
     async def scan_root(
         self, root_folder_type: str = "explorer", name: str | None = None
@@ -212,6 +246,7 @@ class DriveService:
 __all__ = [
     "DriveFile",
     "DriveFileList",
+    "DriveMeta",
     "DriveNode",
     "DriveService",
     "RootFolderMeta",
