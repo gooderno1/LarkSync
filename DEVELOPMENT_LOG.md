@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.5.5 (2026-02-08)
+- 目标：修复 PyInstaller spec 在 CI 下缺失 __file__ 的问题。
+- 结果：
+  - build_installer 运行 PyInstaller 时注入项目根路径并固定工作目录。
+  - spec 支持从环境变量/工作目录解析 project_root。
+  - 版本号升级至 v0.5.5（backend）。
+- 测试：待 tag 构建验证。
+- 问题：无。
+
 ## v0.5.4 (2026-02-08)
 - 目标：修复 Windows runner 下 npm 可执行文件解析失败。
 - 结果：

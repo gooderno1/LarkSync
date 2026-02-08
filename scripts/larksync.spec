@@ -2,11 +2,23 @@
 # LarkSync PyInstaller Spec File
 # 说明：用于生成桌面托盘版可执行文件
 
+import os
 from pathlib import Path
 import sys
 
 block_cipher = None
-project_root = Path(__file__).resolve().parents[1]
+
+def _resolve_project_root() -> Path:
+    env_root = os.getenv("LARKSYNC_PROJECT_ROOT") or os.getenv("LARKSYNC_ROOT")
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    try:
+        return Path(__file__).resolve().parents[1]
+    except NameError:
+        return Path.cwd().resolve()
+
+
+project_root = _resolve_project_root()
 
 frontend_dist = project_root / "apps" / "frontend" / "dist"
 tray_icons = project_root / "apps" / "tray" / "icons"

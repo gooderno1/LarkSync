@@ -101,13 +101,15 @@ def step_pyinstaller() -> None:
         _generate_spec()
 
     # 执行打包
+    env = os.environ.copy()
+    env["LARKSYNC_PROJECT_ROOT"] = str(PROJECT_ROOT)
     run([
         sys.executable, "-m", "PyInstaller",
         str(SPEC_FILE),
         "--noconfirm",
         "--distpath", str(OUTPUT_DIR),
         "--workpath", str(PROJECT_ROOT / "build"),
-    ])
+    ], cwd=PROJECT_ROOT, env=env)
 
     exe_name = "LarkSync.exe" if sys.platform == "win32" else "LarkSync"
     exe_path = OUTPUT_DIR / "LarkSync" / exe_name
@@ -152,11 +154,23 @@ def _generate_spec() -> None:
 # LarkSync PyInstaller Spec File
 # 自动生成，可手动修改
 
+import os
 import sys
 from pathlib import Path
 
 block_cipher = None
-project_root = '{PROJECT_ROOT.as_posix()}'
+
+def _resolve_project_root() -> Path:
+    env_root = os.getenv('LARKSYNC_PROJECT_ROOT') or os.getenv('LARKSYNC_ROOT')
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    try:
+        return Path(__file__).resolve().parents[1]
+    except NameError:
+        return Path.cwd().resolve()
+
+
+project_root = _resolve_project_root()
 
 a = Analysis(
     ['{(PROJECT_ROOT / "LarkSync.pyw").as_posix()}'],

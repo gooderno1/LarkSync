@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.5.5 fix(ci): PyInstaller 运行时注入项目根路径，避免 __file__ 缺失
 [2026-02-08] v0.5.4 fix(ci): Windows 下自动解析 npm 可执行文件
 [2026-02-08] v0.5.3 fix(ci): 修复 Windows 构建脚本控制台编码导致的崩溃
 [2026-02-08] v0.5.2 fix(ci): 修复版本校验正则，确保 Release 构建可读取版本
