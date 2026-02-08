@@ -261,9 +261,18 @@ if sys.platform == 'darwin':
 def _build_nsis() -> None:
     """Windows: 使用 NSIS 生成安装包。"""
     nsis_exe = shutil.which("makensis")
+    if not nsis_exe and sys.platform == "win32":
+        candidates = [
+            r"C:\Program Files (x86)\NSIS\makensis.exe",
+            r"C:\Program Files\NSIS\makensis.exe",
+        ]
+        for candidate in candidates:
+            if Path(candidate).is_file():
+                nsis_exe = candidate
+                break
     if not nsis_exe:
         print("  ✗ 未找到 makensis，请安装 NSIS：https://nsis.sourceforge.io/")
-        return
+        sys.exit(1)
 
     nsi_script = NSIS_DIR / "larksync.nsi"
     if not nsi_script.is_file():
@@ -282,7 +291,11 @@ def _build_nsis() -> None:
     ]
 
     run([nsis_exe, *defines, str(nsi_script)])
-    print("  ✓ NSIS 安装包已生成")
+    output_file = OUTPUT_DIR / f"LarkSync-Setup-{version}.exe"
+    if not output_file.is_file():
+        print(f"  ✗ 未生成 NSIS 安装包: {output_file}")
+        sys.exit(1)
+    print(f"  ✓ NSIS 安装包已生成: {output_file}")
 
 
 def _build_dmg() -> None:

@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.5.7 (2026-02-08)
+- 目标：修复 Windows Release 中 NSIS 安装包未生成的问题。
+- 结果：
+  - workflow 增加 NSIS 路径写入 PATH。
+  - build_installer 找不到 makensis 时直接失败，并校验安装包产物存在。
+  - 版本号升级至 v0.5.7（backend）。
+- 测试：待 tag 构建验证。
+- 问题：无。
+
 ## v0.5.6 (2026-02-08)
 - 目标：修复 Release 构建未上传安装包的问题。
 - 结果：
