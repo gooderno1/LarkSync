@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-08] v0.5.3 fix(ci): 修复 Windows 构建脚本控制台编码导致的崩溃
 [2026-02-08] v0.5.2 fix(ci): 修复版本校验正则，确保 Release 构建可读取版本
 [2026-02-08] v0.5.1 fix(ci): 修复 Release Build 工作流 YAML 语法
 [2026-02-08] v0.5.0 release: 打包/安装包、CI 构建、自动更新稳定版检查与下载

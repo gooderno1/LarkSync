@@ -1,5 +1,13 @@
 # DEVELOPMENT LOG
 
+## v0.5.3 (2026-02-08)
+- 目标：修复 Windows Release 构建脚本的控制台编码错误。
+- 结果：
+  - build_installer 增加 UTF-8 输出配置，避免中文日志在 Windows runner 触发崩溃。
+  - 版本号升级至 v0.5.3（backend）。
+- 测试：待 tag 构建验证。
+- 问题：无。
+
 ## v0.5.2 (2026-02-08)
 - 目标：修复 Release 版本校验正则，确保 workflow 可读取版本号。
 - 结果：

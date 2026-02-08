@@ -34,6 +34,14 @@ PYPROJECT_FILE = BACKEND_DIR / "pyproject.toml"
 BRANDING_DIR = PROJECT_ROOT / "assets" / "branding"
 
 
+def _configure_output() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
     print(f"  → {' '.join(cmd)}")
     result = subprocess.run(cmd, cwd=str(cwd) if cwd else None, env=env)
@@ -281,6 +289,7 @@ def _quote_define(value: str) -> str:
 
 
 def main() -> None:
+    _configure_output()
     parser = argparse.ArgumentParser(description="LarkSync 安装包构建工具")
     parser.add_argument("--nsis", action="store_true", help="Windows: 生成 NSIS 安装包")
     parser.add_argument("--dmg", action="store_true", help="macOS: 生成 DMG 安装包")
