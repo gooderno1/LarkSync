@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.4.0-dev.10 (2026-02-08)
+- 目标：修复共享表格导出任务查询 400，并补充错误细节便于排查。
+- 结果：
+  - 导出任务查询携带源文档 token，符合导出指南说明。
+  - 导出任务错误信息包含 HTTP 状态与 API code。
+  - 版本号同步为 v0.4.0-dev.10。
+- 测试：`python -m pytest tests/test_export_task_service.py tests/test_sync_runner.py`（apps/backend）。
+- 问题：官方导出指南未包含 slides/pptx 导出，仍需补充官方 API 说明或 JSON 样例。
+
 ## v0.4.0-dev.9 (2026-02-08)
 - 目标：修复非法文件名导致下载失败，补齐 sheet/bitable 导出下载，并优化日志读取性能与历史保留。
 - 结果：

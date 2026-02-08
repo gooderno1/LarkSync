@@ -632,7 +632,11 @@ class SyncTaskRunner:
         except ExportTaskError as exc:
             raise RuntimeError(f"创建导出任务失败: {exc}") from exc
 
-        result = await self._wait_for_export_task(export_task_service, task.ticket)
+        result = await self._wait_for_export_task(
+            export_task_service,
+            task.ticket,
+            file_token=file_token,
+        )
         if not result.file_token:
             raise RuntimeError("导出任务未返回文件 token")
 
@@ -647,10 +651,15 @@ class SyncTaskRunner:
         self,
         export_task_service: ExportTaskService,
         ticket: str,
+        *,
+        file_token: str | None = None,
     ) -> ExportTaskResult:
         last_error: str | None = None
         for attempt in range(self._export_poll_attempts):
-            result = await export_task_service.get_export_task_result(ticket)
+            result = await export_task_service.get_export_task_result(
+                ticket,
+                file_token=file_token,
+            )
             job_status = result.job_status
             if job_status == 0 and result.file_token:
                 return result

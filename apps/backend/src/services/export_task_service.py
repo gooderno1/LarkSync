@@ -69,12 +69,21 @@ class ExportTaskService:
             raise ExportTaskError("创建导出任务响应缺少 ticket")
         return ExportTaskCreateResult(ticket=str(data["ticket"]))
 
-    async def get_export_task_result(self, ticket: str) -> ExportTaskResult:
+    async def get_export_task_result(
+        self,
+        ticket: str,
+        *,
+        file_token: str | None = None,
+    ) -> ExportTaskResult:
         if not ticket:
             raise ExportTaskError("ticket 不能为空")
+        request_kwargs: dict[str, Any] = {}
+        if file_token:
+            request_kwargs["params"] = {"token": file_token}
         response = await self._request_json(
             "GET",
             f"{self._base_url}/open-apis/drive/v1/export_tasks/{ticket}",
+            **request_kwargs,
         )
         data = response.get("data") or {}
         result = data.get("result") if isinstance(data, dict) else None
@@ -92,12 +101,31 @@ class ExportTaskService:
 
     async def _request_json(self, method: str, url: str, **kwargs) -> dict[str, Any]:
         response = await self._client.request_with_retry(method, url, **kwargs)
-        response.raise_for_status()
-        payload = response.json()
-        if isinstance(payload, dict) and payload.get("code", 0) != 0:
-            raise ExportTaskError(payload.get("msg", "飞书 API 返回错误"))
+        try:
+            payload = response.json()
+        except ValueError:
+            if response.status_code >= 400:
+                snippet = response.text.strip()[:200]
+                message = (
+                    f"HTTP {response.status_code}: {snippet}"
+                    if snippet
+                    else f"HTTP {response.status_code}"
+                )
+                raise ExportTaskError(message)
+            raise ExportTaskError("飞书 API 响应格式错误")
         if not isinstance(payload, dict):
             raise ExportTaskError("飞书 API 响应格式错误")
+        code = payload.get("code", 0)
+        if isinstance(code, str):
+            try:
+                code = int(code)
+            except ValueError:
+                pass
+        if code not in (0, None):
+            msg = payload.get("msg") or payload.get("message") or "飞书 API 返回错误"
+            raise ExportTaskError(f"{msg} (code={code}, http={response.status_code})")
+        if response.status_code >= 400:
+            raise ExportTaskError(f"HTTP {response.status_code}")
         return payload
 
     async def close(self) -> None:

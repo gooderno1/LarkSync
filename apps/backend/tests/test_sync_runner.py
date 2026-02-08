@@ -84,14 +84,14 @@ class FakeImportTaskService:
 class FakeExportTaskService:
     def __init__(self) -> None:
         self.create_calls: list[tuple[str, str, str]] = []
-        self.query_calls: list[str] = []
+        self.query_calls: list[tuple[str, str | None]] = []
 
     async def create_export_task(self, *, file_extension: str, file_token: str, file_type: str):
         self.create_calls.append((file_extension, file_token, file_type))
         return ExportTaskCreateResult(ticket="ticket-1")
 
-    async def get_export_task_result(self, ticket: str):
-        self.query_calls.append(ticket)
+    async def get_export_task_result(self, ticket: str, *, file_token: str | None = None):
+        self.query_calls.append((ticket, file_token))
         return ExportTaskResult(
             file_extension="xlsx",
             type="sheet",

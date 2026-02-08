@@ -97,7 +97,7 @@ async def test_get_export_task_result_parses_response() -> None:
     client = FakeClient(response)
     service = ExportTaskService(client=client)
 
-    result = await service.get_export_task_result("ticket-1")
+    result = await service.get_export_task_result("ticket-1", file_token="doc-token")
 
     assert result.file_extension == "xlsx"
     assert result.type == "sheet"
@@ -105,3 +105,22 @@ async def test_get_export_task_result_parses_response() -> None:
     assert result.file_token == "file-token"
     assert result.file_size == 123
     assert result.job_status == 0
+    method, url, kwargs = client.requests[0]
+    assert method == "GET"
+    assert url.endswith("/open-apis/drive/v1/export_tasks/ticket-1")
+    assert kwargs["params"]["token"] == "doc-token"
+
+
+@pytest.mark.asyncio
+async def test_get_export_task_result_reports_api_error() -> None:
+    response = httpx.Response(
+        400,
+        json={"code": 1069918, "msg": "file extension and type mismatch"},
+        request=httpx.Request("GET", "https://open.feishu.cn"),
+    )
+    service = ExportTaskService(client=FakeClient(response))
+
+    with pytest.raises(ExportTaskError) as exc:
+        await service.get_export_task_result("ticket-1")
+
+    assert "1069918" in str(exc.value)
