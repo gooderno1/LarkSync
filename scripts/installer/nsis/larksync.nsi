@@ -1,4 +1,4 @@
-; LarkSync NSIS installer script
+﻿; LarkSync NSIS installer script
 ; Build: makensis /DAPP_VERSION=... /DPROJECT_ROOT=... larksync.nsi
 
 !include "MUI2.nsh"
