@@ -50,12 +50,15 @@ class AuthService:
         )
 
         # 飞书 v2 OAuth：使用标准 client_id 参数
-        params = {
+        params: dict[str, str] = {
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
             "state": state,
         }
+        # 必须携带 scope，否则飞书只授予基本权限，不含 drive/docs
+        if self._config.auth_scopes:
+            params["scope"] = " ".join(self._config.auth_scopes)
 
         return f"{authorize_url}?{urlencode(params)}"
 

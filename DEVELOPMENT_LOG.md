@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.5.21 (2026-02-09)
+- 目标：修复 OAuth 授权后缺少 drive/docs 权限的问题。
+- 根因：切换到飞书 v2 OAuth 端点时，`build_authorize_url` 移除了 `scope` 参数。没有 scope，飞书只授予基本权限（用户身份），不包含 `drive:drive`、`docs:doc` 等资源访问权限。
+- 修复：
+  - `AuthService.build_authorize_url()` 恢复 `scope` 参数，将 `auth_scopes` 配置以空格分隔拼接到授权 URL。
+  - 默认 scopes：`drive:drive`、`docs:doc`、`drive:drive.metadata:readonly`、`contact:contact.base:readonly`。
+- 测试：12 项全部通过。
+- 版本号升级至 v0.5.21。
+- 问题：无。
+
 ## v0.5.20 (2026-02-09)
 - 目标：修复 OAuth 回调时 Windows 凭据管理器报错 `CredWrite 1783` 的问题。
 - 根因：Windows Credential Manager 单条凭据限制 2560 字节，飞书 access_token (JWT) + refresh_token + expires_at JSON 合并后超限。

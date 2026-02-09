@@ -43,6 +43,7 @@ def test_build_authorize_url() -> None:
     assert params["redirect_uri"] == ["http://localhost/callback"]
     assert params["response_type"] == ["code"]
     assert params["state"] == ["state-xyz"]
+    assert params["scope"] == ["scope.read scope.write"]
 
 
 @pytest.mark.asyncio
