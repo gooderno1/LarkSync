@@ -120,6 +120,8 @@ class SyncTaskRunner:
         self._running_tasks: set[str] = set()
         self._task_meta: dict[str, SyncTaskItem] = {}
         self._initial_upload_scanned: set[str] = set()
+        # 缓存: (task_id, relative_dir_posix) -> cloud_folder_token
+        self._cloud_folder_cache: dict[tuple[str, str], str] = {}
 
     def get_status(self, task_id: str) -> SyncTaskStatus:
         return self._statuses.get(task_id) or SyncTaskStatus(task_id=task_id)
@@ -1054,7 +1056,7 @@ class SyncTaskRunner:
                     import_task_service,
                 )
                 return
-            await self._upload_file(task, status, path, file_uploader)
+            await self._upload_file(task, status, path, file_uploader, drive_service)
         finally:
             self._uploading_paths.discard(key)
 
@@ -1200,6 +1202,7 @@ class SyncTaskRunner:
         status: SyncTaskStatus,
         path: Path,
         file_uploader: FileUploader,
+        drive_service: DriveService | None = None,
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
         mtime = path.stat().st_mtime
@@ -1219,10 +1222,17 @@ class SyncTaskRunner:
                 )
             )
             return
-        logger.info("上传文件: task_id={} path={}", task.id, path)
+
+        # 根据本地子目录结构解析正确的云端父文件夹
+        if drive_service:
+            parent_token = await self._resolve_cloud_parent(task, path, drive_service)
+        else:
+            parent_token = task.cloud_folder_token
+
+        logger.info("上传文件: task_id={} path={} parent={}", task.id, path, parent_token)
         result = await file_uploader.upload_file(
             file_path=path,
-            parent_node=task.cloud_folder_token,
+            parent_node=parent_token,
             parent_type="explorer",
         )
         synced_at = time.time()
@@ -1299,9 +1309,13 @@ class SyncTaskRunner:
                 )
             )
             return None, False
+
+        # 根据本地子目录结构解析正确的云端父文件夹
+        parent_token = await self._resolve_cloud_parent(task, path, drive_service)
+
         existing_doc_token = await self._find_existing_doc_by_name(
             drive_service=drive_service,
-            folder_token=task.cloud_folder_token,
+            folder_token=parent_token,
             expected_name=path.stem,
         )
         if existing_doc_token:
@@ -1324,19 +1338,19 @@ class SyncTaskRunner:
             SyncFileEvent(path=str(path), status="creating", message="创建云端文档")
         )
         existing_tokens = await self._list_folder_tokens(
-            drive_service, task.cloud_folder_token
+            drive_service, parent_token
         )
         try:
             upload = await file_uploader.upload_file(
                 file_path=path,
-                parent_node=task.cloud_folder_token,
+                parent_node=parent_token,
                 parent_type="explorer",
                 record_db=False,
             )
             await import_task_service.create_import_task(
                 file_extension=suffix,
                 file_token=upload.file_token,
-                mount_key=task.cloud_folder_token,
+                mount_key=parent_token,
                 file_name=path.stem,
                 doc_type="docx",
             )
@@ -1353,7 +1367,7 @@ class SyncTaskRunner:
 
         doc_token = await self._wait_for_imported_doc(
             drive_service=drive_service,
-            folder_token=task.cloud_folder_token,
+            folder_token=parent_token,
             expected_name=path.stem,
             existing_tokens=existing_tokens,
         )
@@ -1420,6 +1434,76 @@ class SyncTaskRunner:
         if "assets" in lowered or "attachments" in lowered:
             return True
         return False
+
+    async def _resolve_cloud_parent(
+        self,
+        task: SyncTaskItem,
+        path: Path,
+        drive_service: DriveService,
+    ) -> str:
+        """根据本地文件的相对路径，在云端逐层查找/创建对应的子文件夹。
+
+        返回该文件应上传到的云端父文件夹 token。
+        例如：本地 ``sync_root/sub1/sub2/doc.md`` → 云端 ``cloud_root/sub1/sub2`` 的 token。
+        """
+        try:
+            relative = path.relative_to(Path(task.local_path))
+        except ValueError:
+            return task.cloud_folder_token
+
+        parent_parts = relative.parent.parts  # ('sub1', 'sub2') 或 ()
+        if not parent_parts or parent_parts == (".",):
+            return task.cloud_folder_token  # 文件在根目录
+
+        current_token = task.cloud_folder_token
+        accumulated = ""
+
+        for part in parent_parts:
+            accumulated = f"{accumulated}/{part}" if accumulated else part
+            cache_key = (task.id, accumulated)
+
+            if cache_key in self._cloud_folder_cache:
+                current_token = self._cloud_folder_cache[cache_key]
+                continue
+
+            # 先查找已有的同名子文件夹
+            existing_token = await self._find_subfolder(
+                drive_service, current_token, part
+            )
+            if existing_token:
+                self._cloud_folder_cache[cache_key] = existing_token
+                current_token = existing_token
+            else:
+                # 不存在则创建
+                new_token = await drive_service.create_folder(current_token, part)
+                self._cloud_folder_cache[cache_key] = new_token
+                current_token = new_token
+                logger.info(
+                    "创建云端子文件夹: task_id={} path={} token={}",
+                    task.id, accumulated, new_token,
+                )
+
+        return current_token
+
+    async def _find_subfolder(
+        self,
+        drive_service: DriveService,
+        parent_token: str,
+        name: str,
+    ) -> str | None:
+        """在指定云端文件夹中按名称查找子文件夹。"""
+        page_token: str | None = None
+        while True:
+            result = await drive_service.list_files(
+                parent_token, page_token=page_token
+            )
+            for f in result.files:
+                if f.type == "folder" and f.name == name:
+                    return f.token
+            if not result.has_more or not result.next_page_token:
+                break
+            page_token = result.next_page_token
+        return None
 
     def _ensure_watcher(self, task: SyncTaskItem) -> None:
         if task.id in self._watchers:

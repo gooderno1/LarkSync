@@ -130,6 +130,22 @@ class DriveService:
                 results[item.doc_token] = item
         return results
 
+    async def create_folder(self, parent_token: str, name: str) -> str:
+        """在指定父文件夹中创建子文件夹，返回新文件夹的 token。"""
+        url = f"{self._base_url}/open-apis/drive/v1/files/create_folder"
+        body = {"name": name, "folder_token": parent_token}
+        response = await self._client.request("POST", url, json=body)
+        payload = response.json()
+        if payload.get("code") != 0:
+            raise RuntimeError(
+                f"创建云端文件夹失败: {payload.get('msg')} (name={name})"
+            )
+        data = payload.get("data") or {}
+        token = data.get("token")
+        if not token:
+            raise RuntimeError(f"创建文件夹未返回 token: {data}")
+        return token
+
     async def scan_root(
         self, root_folder_type: str = "explorer", name: str | None = None
     ) -> DriveNode:

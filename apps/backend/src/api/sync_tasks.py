@@ -11,6 +11,7 @@ from src.core.logging import get_log_file
 from src.services.docx_service import DocxService, DocxServiceError
 from src.services.log_reader import prune_log_file, read_log_entries
 from src.services.sync_event_store import SyncEventStore
+from src.services.sync_link_service import SyncLinkService
 from src.services.sync_runner import SyncFileEvent, SyncTaskRunner, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem, SyncTaskService
 
@@ -180,6 +181,25 @@ async def delete_task(task_id: str) -> dict:
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"status": "deleted"}
+
+
+@router.post("/tasks/{task_id}/reset-links")
+async def reset_task_links(task_id: str) -> dict:
+    """清除指定任务的所有同步映射（SyncLink），用于修复上传位置错误等问题。
+
+    清除后下一次同步会重新建立映射关系。
+    """
+    item = await service.get_task(task_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Task not found")
+    link_service = SyncLinkService()
+    count = await link_service.delete_by_task(task_id)
+    # 同时清除初始扫描标记，确保下次上传调度重新扫描
+    runner._initial_upload_scanned.discard(task_id)
+    runner._cloud_folder_cache = {
+        k: v for k, v in runner._cloud_folder_cache.items() if k[0] != task_id
+    }
+    return {"status": "ok", "deleted_links": count}
 
 
 @router.post("/tasks/{task_id}/run", response_model=SyncTaskStatusResponse)

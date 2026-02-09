@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -99,6 +99,21 @@ class SyncLinkService:
         except SQLAlchemyError:
             logger.exception("同步映射查询失败，已忽略")
             return []
+
+    async def delete_by_task(self, task_id: str) -> int:
+        """删除指定任务的所有同步映射，返回删除数量。"""
+        session_maker = self._session_maker or get_session_maker()
+        try:
+            async with session_maker() as session:
+                stmt = delete(SyncLink).where(SyncLink.task_id == task_id)
+                result = await session.execute(stmt)
+                await session.commit()
+                count = result.rowcount or 0  # type: ignore[union-attr]
+                logger.info("已清除任务 {} 的 {} 条同步映射", task_id, count)
+                return count
+        except SQLAlchemyError:
+            logger.exception("同步映射删除失败: task_id={}", task_id)
+            return 0
 
     @staticmethod
     def _to_item(record: SyncLink) -> SyncLinkItem:

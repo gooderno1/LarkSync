@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.5.25 (2026-02-10)
+- 目标：修复上传文件时忽略本地子目录结构、全部上传到云端根目录的问题。
+- 根因分析：
+  1. `_upload_file()` 和 `_create_cloud_doc_for_markdown()` 始终使用 `task.cloud_folder_token`（任务根目录）作为上传的父目录。
+  2. 完全没有计算文件相对于同步根目录的路径，也没有在云端创建对应的子文件夹。
+  3. 导致本地 `sync_root/sub1/sub2/doc.md` 上传后出现在云端根目录而非 `sub1/sub2/` 下。
+- 修复：
+  - `drive_service.py`：新增 `create_folder()` 方法，调用飞书 `POST /drive/v1/files/create_folder` 创建云端子文件夹。
+  - `sync_runner.py`：新增 `_resolve_cloud_parent()` 方法，根据本地文件的相对路径逐层在云端查找/创建对应子文件夹，并用 `_cloud_folder_cache` 缓存避免重复 API 调用。
+  - `sync_runner.py`：新增 `_find_subfolder()` 辅助方法，按名称查找云端子文件夹。
+  - `_upload_file()` 和 `_create_cloud_doc_for_markdown()` 所有对 `task.cloud_folder_token` 的直接引用改为调用 `_resolve_cloud_parent()` 获取正确的父目录 token。
+  - `sync_link_service.py`：新增 `delete_by_task()` 方法，支持按任务 ID 批量清除同步映射。
+  - `sync_tasks.py`：新增 `POST /sync/tasks/{task_id}/reset-links` API，用于清除指定任务的所有同步映射，修复已错位的文件。
+- 测试：27 项核心同步测试全部通过。
+- 版本号升级至 v0.5.25。
+- 已错位文件处理方案：用户手动删除云端根目录的错位文件，调用 reset-links API 清除旧映射，下次同步自动重新上传到正确位置。
+
 ## v0.5.24 (2026-02-10)
 - 目标：修复双向同步模式切换后已有本地文件不上传的问题；NSIS 安装器增强。
 - 根因分析：
