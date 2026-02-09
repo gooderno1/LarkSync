@@ -3,6 +3,7 @@
 /* ------------------------------------------------------------------ */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { apiFetch } from "../lib/api";
 import { useDriveTree } from "../hooks/useDriveTree";
 import { useAuth } from "../hooks/useAuth";
@@ -140,9 +141,10 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
     { num: 3, label: "配置与确认", icon: IconArrowRightLeft, done: false },
   ];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
+  const modal = (
+    <div className="fixed inset-0 z-50 bg-black/50">
+      <div className="flex min-h-full items-start justify-center overflow-y-auto px-4 py-6">
+        <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-5">
           <div>
@@ -401,7 +403,10 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
             </button>
           )}
         </div>
+        </div>
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }

@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.5.14 (2026-02-09)
+- 目标：修复新建任务弹窗位置过高导致顶部不可见的问题。
+- 结果：
+  - 弹窗使用 Portal 挂载到 body，避免父级 transform 影响定位。
+  - 覆盖层改为可滚动容器，顶部留出安全边距。
+  - 版本号升级至 v0.5.14（backend）。
+- 测试：未执行（UI 视觉修正）。
+- 问题：无。
+
 ## v0.5.13 (2026-02-08)
 - 目标：修复安装包体验与打包后端启动异常。
 - 结果：
@@ -7,7 +16,7 @@
   - Windows 图标改为品牌 Logo（安装包/快捷方式/EXE）。
   - 打包环境后端启动改为 LarkSync.exe --backend，修复 uvicorn 参数报错。
   - 版本号升级至 v0.5.13（backend）。
- - 测试：本地打包通过；`python -m pytest apps/backend/tests/test_backend_manager.py`。
+- 测试：本地打包通过；`python -m pytest apps/backend/tests/test_backend_manager.py`。
 - 问题：无。
 
 ## v0.5.12 (2026-02-08)
