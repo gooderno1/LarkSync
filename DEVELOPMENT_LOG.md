@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.5.19 (2026-02-09)
+- 目标：诊断并修复 "Internal Server Error" 500 裸报错问题。
+- 修复：
+  - `main.py`：新增全局 `@app.exception_handler(Exception)` 处理器，所有未捕获的异常现在返回 JSON `{detail, path}`，不再显示裸 "Internal Server Error"。
+  - `auth.py` `/auth/callback`：增加 `except Exception` 兜底，捕获 keyring 等非 AuthError 异常并返回详细错误。
+  - 异常日志：`logger.error` 记录异常摘要，`logger.debug` 记录完整 traceback。
+- 目的：即使仍有后端异常，前端/浏览器也能显示实际错误信息，方便定位根因。
+- 版本号升级至 v0.5.19。
+- 问题：待用户安装后观察实际错误详情。
+
 ## v0.5.18 (2026-02-09)
 - 目标：修复飞书 v2 OAuth 端点不返回 refresh_token 导致认证流程中断的问题。
 - 修复：

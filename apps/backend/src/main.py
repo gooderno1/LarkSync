@@ -1,11 +1,12 @@
 import asyncio
 import time
+import traceback
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
@@ -29,6 +30,23 @@ from src.core.paths import bundle_root
 from src.services.update_scheduler import UpdateScheduler
 
 app = FastAPI(title="LarkSync API")
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    """全局异常处理：将裸 500 替换为包含错误详情的 JSON 响应，方便排查。"""
+    tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    logger.error("未处理异常 {} {}: {}", request.method, request.url.path, exc)
+    logger.debug("Traceback:\n{}", "".join(tb))
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"{type(exc).__name__}: {exc}",
+            "path": str(request.url.path),
+        },
+    )
+
+
 sync_scheduler = SyncScheduler(runner=sync_runner, task_service=sync_task_service)
 conflict_service = ConflictService()
 update_scheduler = UpdateScheduler()

@@ -41,6 +41,12 @@ async def callback(code: str = Query(...), state: str | None = Query(default=Non
         token = await auth_service.exchange_code(code)
     except AuthError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        # 捕获所有未预期异常（如 keyring 失败），返回详细错误而非裸 500
+        raise HTTPException(
+            status_code=500,
+            detail=f"OAuth 回调处理异常: {type(exc).__name__}: {exc}",
+        ) from exc
 
     if redirect_target:
         return RedirectResponse(redirect_target)

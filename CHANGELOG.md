@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-09] v0.5.19 fix(error): 全局异常处理器，500 错误返回详细错误信息而非裸 Internal Server Error
 [2026-02-09] v0.5.18 fix(oauth): refresh_token 改为可选，兼容飞书 v2 端点响应格式
 [2026-02-09] v0.5.17 fix(oauth): 修正飞书 OAuth 端点为 v2 标准协议，修复 code=20003 错误
 [2026-02-09] v0.5.16-hotfix docs(oauth): 修正 OAUTH_GUIDE 回调地址示例错误
