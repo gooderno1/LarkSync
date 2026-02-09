@@ -10,8 +10,8 @@ from src.core.config import AppConfig, ConfigManager, SyncIntervalUnit, SyncMode
 
 
 class ConfigResponse(BaseModel):
-    auth_authorize_url: str = "https://open.feishu.cn/open-apis/authen/v1/authorize"
-    auth_token_url: str = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
+    auth_authorize_url: str = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
+    auth_token_url: str = "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
     auth_client_id: str = ""
     auth_client_secret: str = ""
     auth_redirect_uri: str = ""

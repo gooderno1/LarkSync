@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-09] v0.5.17 fix(oauth): 修正飞书 OAuth 端点为 v2 标准协议，修复 code=20003 错误
 [2026-02-09] v0.5.16-hotfix docs(oauth): 修正 OAUTH_GUIDE 回调地址示例错误
 [2026-02-09] v0.5.16 fix(oauth): OAuth 默认端点、redirect_uri 修正与引导向导完善
 [2026-02-09] v0.5.15 feat(ui): 首次使用引导向导与弹窗定位优化

@@ -60,8 +60,8 @@ class AppConfig(BaseModel):
     last_update_check: float = 0.0
     allow_dev_to_stable: bool = False
 
-    auth_authorize_url: str = "https://open.feishu.cn/open-apis/authen/v1/authorize"
-    auth_token_url: str = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
+    auth_authorize_url: str = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
+    auth_token_url: str = "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
     auth_client_id: str = ""
     auth_client_secret: str = ""
     auth_redirect_uri: str = ""
@@ -218,6 +218,22 @@ class ConfigManager:
             env_value = os.getenv(env_name)
             if env_value:
                 data[key] = env_value
+
+        # ---- 旧 OAuth 端点迁移 ----
+        _OLD_AUTHORIZE_URLS = {
+            "https://open.feishu.cn/open-apis/authen/v1/authorize",
+        }
+        _OLD_TOKEN_URLS = {
+            "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token",
+        }
+        if data.get("auth_authorize_url") in _OLD_AUTHORIZE_URLS:
+            data["auth_authorize_url"] = AppConfig.model_fields[
+                "auth_authorize_url"
+            ].default
+        if data.get("auth_token_url") in _OLD_TOKEN_URLS:
+            data["auth_token_url"] = AppConfig.model_fields[
+                "auth_token_url"
+            ].default
 
         if "upload_interval_value" not in data and "upload_interval_seconds" in data:
             try:

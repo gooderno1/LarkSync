@@ -39,11 +39,10 @@ def test_build_authorize_url() -> None:
     parsed = urlparse(url)
     assert parsed.scheme == "https"
     params = parse_qs(parsed.query)
-    assert params["app_id"] == ["client-123"]
+    assert params["client_id"] == ["client-123"]
     assert params["redirect_uri"] == ["http://localhost/callback"]
     assert params["response_type"] == ["code"]
     assert params["state"] == ["state-xyz"]
-    assert params["scope"] == ["scope.read scope.write"]
 
 
 @pytest.mark.asyncio

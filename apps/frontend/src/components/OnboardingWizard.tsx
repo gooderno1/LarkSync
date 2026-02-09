@@ -10,11 +10,11 @@ import { useToast } from "./ui/toast";
 import { IconCloud, IconSettings, IconCopy, IconExternalLink } from "./Icons";
 import { cn } from "../lib/utils";
 
-/* 飞书 OAuth 固定端点（标准值，通常无需修改） */
+/* 飞书 v2 OAuth 标准端点（通常无需修改） */
 const FEISHU_AUTHORIZE_URL =
-  "https://open.feishu.cn/open-apis/authen/v1/authorize";
+  "https://accounts.feishu.cn/open-apis/authen/v1/authorize";
 const FEISHU_TOKEN_URL =
-  "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token";
+  "https://open.feishu.cn/open-apis/authen/v2/oauth/token";
 
 type Props = {
   oauthConfigured: boolean;
@@ -69,10 +69,8 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
         auth_client_id: clientId.trim(),
         auth_client_secret: clientSecret.trim(),
         auth_redirect_uri: redirectUri,
-        auth_authorize_url:
-          config.auth_authorize_url?.trim() || FEISHU_AUTHORIZE_URL,
-        auth_token_url:
-          config.auth_token_url?.trim() || FEISHU_TOKEN_URL,
+        auth_authorize_url: FEISHU_AUTHORIZE_URL,
+        auth_token_url: FEISHU_TOKEN_URL,
       });
       setClientSecret("");
       toast("OAuth 配置已保存，请继续连接飞书", "success");

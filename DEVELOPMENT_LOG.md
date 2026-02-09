@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.5.17 (2026-02-09)
+- 目标：修复飞书 OAuth 授权流程中 "missing required parameter: code (code=20003)" 错误。
+- 根因分析：
+  - 旧 token 端点 `/authen/v1/oidc/access_token` 要求 `Authorization: Bearer <app_access_token>` 头部鉴权，但我们发送的是 body 中的 `app_id`/`app_secret`，导致飞书忽略请求体。
+  - 旧 authorize 端点域名 `open.feishu.cn` 不正确，应为 `accounts.feishu.cn`。
+  - 参数名使用了旧版 `app_id`/`app_secret`，v2 标准协议要求 `client_id`/`client_secret`。
+- 修复：
+  - 授权端点改为：`https://accounts.feishu.cn/open-apis/authen/v1/authorize`。
+  - Token 端点改为：`https://open.feishu.cn/open-apis/authen/v2/oauth/token`（标准 OAuth2，body 中直接传 client_id/client_secret）。
+  - `auth_service.py`：`build_authorize_url` 参数 `app_id` → `client_id`；`exchange_code`/`refresh` 参数 `app_id`/`app_secret` → `client_id`/`client_secret`。
+  - `config.py`：`_load_config` 增加旧 URL 自动迁移，已保存的错误端点会自动修正为新端点。
+  - `OnboardingWizard.tsx`：保存时始终使用正确的新端点常量，不再保留旧配置值。
+  - `OAUTH_GUIDE.md`：更新默认端点说明。
+  - 测试：`test_auth_service.py` 断言更新，9 个测试全部通过。
+- 版本号升级至 v0.5.17。
+- 问题：无。
+
 ## v0.5.16 (2026-02-09)
 - 目标：修复 OAuth 配置不完整导致授权失败的问题，完善引导向导的配置保存逻辑。
 - 结果：

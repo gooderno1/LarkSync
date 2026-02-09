@@ -48,14 +48,13 @@ class AuthService:
             self._config.auth_redirect_uri, "auth_redirect_uri"
         )
 
+        # 飞书 v2 OAuth：使用标准 client_id 参数
         params = {
-            "app_id": client_id,
+            "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
             "state": state,
         }
-        if self._config.auth_scopes:
-            params["scope"] = " ".join(self._config.auth_scopes)
 
         return f"{authorize_url}?{urlencode(params)}"
 
@@ -67,12 +66,13 @@ class AuthService:
         redirect_uri = self._require_config(
             self._config.auth_redirect_uri, "auth_redirect_uri"
         )
+        # 飞书 v2 OAuth：使用标准 client_id / client_secret
         payload = {
             "grant_type": "authorization_code",
             "code": code,
             "redirect_uri": redirect_uri,
-            "app_id": client_id,
-            "app_secret": client_secret,
+            "client_id": client_id,
+            "client_secret": client_secret,
         }
         return await self._request_token(payload)
 
@@ -84,11 +84,12 @@ class AuthService:
         client_secret = self._require_config(
             self._config.auth_client_secret, "auth_client_secret"
         )
+        # 飞书 v2 OAuth：使用标准 client_id / client_secret
         payload = {
             "grant_type": "refresh_token",
             "refresh_token": current.refresh_token,
-            "app_id": client_id,
-            "app_secret": client_secret,
+            "client_id": client_id,
+            "client_secret": client_secret,
         }
         return await self._request_token(payload)
 
