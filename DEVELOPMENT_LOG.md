@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.20 (2026-02-09)
+- 目标：修复 OAuth 回调时 Windows 凭据管理器报错 `CredWrite 1783` 的问题。
+- 根因：Windows Credential Manager 单条凭据限制 2560 字节，飞书 access_token (JWT) + refresh_token + expires_at JSON 合并后超限。
+- 修复：
+  - `KeyringTokenStore` 拆分存储：access_token / refresh_token / expires_at 分别作为独立凭据条目。
+  - 保留旧版合并格式的读取兼容（`oauth_tokens` key），确保升级后旧 token 仍可读取。
+  - `set()` 写入后自动清除旧版合并记录。
+  - `clear()` 清除所有 key（新旧格式）。
+- 测试：12 项全部通过。
+- 版本号升级至 v0.5.20。
+- 问题：无。
+
 ## v0.5.19 (2026-02-09)
 - 目标：诊断并修复 "Internal Server Error" 500 裸报错问题。
 - 修复：

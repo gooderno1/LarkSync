@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-09] v0.5.20 fix(keyring): 拆分 token 存储，解决 Windows 凭据管理器 2560 字节限制导致 CredWrite 失败
 [2026-02-09] v0.5.19 fix(error): 全局异常处理器，500 错误返回详细错误信息而非裸 Internal Server Error
 [2026-02-09] v0.5.18 fix(oauth): refresh_token 改为可选，兼容飞书 v2 端点响应格式
 [2026-02-09] v0.5.17 fix(oauth): 修正飞书 OAuth 端点为 v2 标准协议，修复 code=20003 错误

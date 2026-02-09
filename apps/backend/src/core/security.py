@@ -35,11 +35,30 @@ class TokenStore:
 
 
 class KeyringTokenStore(TokenStore):
+    """Windows 凭据管理器单条记录限 2560 字节，拆分存储以避免 CredWrite 1783 错误。"""
+
     _service = "larksync"
-    _username = "oauth_tokens"
+    # 拆分存储的 key
+    _KEY_ACCESS = "access_token"
+    _KEY_REFRESH = "refresh_token"
+    _KEY_EXPIRES = "expires_at"
+    # 旧版合并存储 key（兼容迁移）
+    _KEY_LEGACY = "oauth_tokens"
 
     def get(self) -> Optional[TokenData]:
-        raw = keyring.get_password(self._service, self._username)
+        # 优先读取拆分格式
+        access_token = keyring.get_password(self._service, self._KEY_ACCESS)
+        if access_token:
+            refresh_token = keyring.get_password(self._service, self._KEY_REFRESH) or ""
+            expires_raw = keyring.get_password(self._service, self._KEY_EXPIRES)
+            expires_at = float(expires_raw) if expires_raw else None
+            return TokenData(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                expires_at=expires_at,
+            )
+        # 回退：读取旧版合并格式
+        raw = keyring.get_password(self._service, self._KEY_LEGACY)
         if not raw:
             return None
         data = json.loads(raw)
@@ -50,20 +69,25 @@ class KeyringTokenStore(TokenStore):
         )
 
     def set(self, token: TokenData) -> None:
-        payload = json.dumps(
-            {
-                "access_token": token.access_token,
-                "refresh_token": token.refresh_token,
-                "expires_at": token.expires_at,
-            }
+        keyring.set_password(self._service, self._KEY_ACCESS, token.access_token)
+        keyring.set_password(
+            self._service, self._KEY_REFRESH, token.refresh_token or "_empty_"
         )
-        keyring.set_password(self._service, self._username, payload)
+        expires_str = str(token.expires_at) if token.expires_at is not None else ""
+        if expires_str:
+            keyring.set_password(self._service, self._KEY_EXPIRES, expires_str)
+        # 清除旧版合并记录（避免数据不一致）
+        try:
+            keyring.delete_password(self._service, self._KEY_LEGACY)
+        except keyring.errors.PasswordDeleteError:
+            pass
 
     def clear(self) -> None:
-        try:
-            keyring.delete_password(self._service, self._username)
-        except keyring.errors.PasswordDeleteError:
-            return
+        for key in (self._KEY_ACCESS, self._KEY_REFRESH, self._KEY_EXPIRES, self._KEY_LEGACY):
+            try:
+                keyring.delete_password(self._service, key)
+            except keyring.errors.PasswordDeleteError:
+                pass
 
 
 class MemoryTokenStore(TokenStore):
