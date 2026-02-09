@@ -26,6 +26,7 @@ type ConfigData = {
   update_check_interval_hours?: number;
   last_update_check?: number;
   allow_dev_to_stable?: boolean;
+  upload_md_to_cloud?: boolean;
 };
 
 export function useConfig() {
