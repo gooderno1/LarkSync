@@ -32,6 +32,8 @@ SPEC_FILE = PROJECT_ROOT / "scripts" / "larksync.spec"
 NSIS_DIR = PROJECT_ROOT / "scripts" / "installer" / "nsis"
 PYPROJECT_FILE = BACKEND_DIR / "pyproject.toml"
 BRANDING_DIR = PROJECT_ROOT / "assets" / "branding"
+BRAND_ICON = BRANDING_DIR / "LarkSync_Logo_Icon_FullColor.png"
+WINDOWS_ICON = BRANDING_DIR / "LarkSync.ico"
 
 
 def _configure_output() -> None:
@@ -83,6 +85,7 @@ def step_generate_icons() -> None:
     sys.path.insert(0, str(PROJECT_ROOT))
     from apps.tray.icon_generator import generate_icons
     icons = generate_icons(force=True)
+    _ensure_windows_icon()
     print(f"  ✓ 生成了 {len(icons)} 个图标")
 
 
@@ -232,7 +235,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='{(TRAY_DIR / "icons" / "icon_idle.png").as_posix()}' if sys.platform != 'win32' else None,
+    icon='{WINDOWS_ICON.as_posix()}' if sys.platform == 'win32' else None,
 )
 
 coll = COLLECT(
@@ -343,6 +346,27 @@ def _quote_define(value: str) -> str:
     if " " in value or "\t" in value:
         return f'"{value}"'
     return value
+
+
+def _ensure_windows_icon() -> None:
+    """生成 Windows 使用的 .ico 图标。"""
+    if WINDOWS_ICON.is_file():
+        return
+    if not BRAND_ICON.is_file():
+        return
+    try:
+        from PIL import Image
+    except ImportError:
+        return
+    img = Image.open(str(BRAND_ICON)).convert("RGBA")
+    size = 256
+    img = img.resize((size, size), Image.LANCZOS)
+    WINDOWS_ICON.parent.mkdir(parents=True, exist_ok=True)
+    img.save(
+        str(WINDOWS_ICON),
+        format="ICO",
+        sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)],
+    )
 
 
 def main() -> None:

@@ -120,17 +120,20 @@ class BackendManager:
             log_dir.mkdir(parents=True, exist_ok=True)
             self._stderr_path = log_dir / "backend-stderr.log"
 
-            cmd = [
-                PYTHON_EXE, "-m", "uvicorn",
-                "src.main:app",
-                "--host", BACKEND_HOST,
-                "--port", str(BACKEND_PORT),
-                "--log-level", "warning",
-            ]
+            if getattr(sys, "frozen", False):
+                cmd = [sys.executable, "--backend"]
+            else:
+                cmd = [
+                    PYTHON_EXE, "-m", "uvicorn",
+                    "src.main:app",
+                    "--host", BACKEND_HOST,
+                    "--port", str(BACKEND_PORT),
+                    "--log-level", "warning",
+                ]
 
-            if self._dev_mode:
-                cmd.append("--reload")
-                logger.info("开发模式：后端启用 --reload 热重载")
+                if self._dev_mode:
+                    cmd.append("--reload")
+                    logger.info("开发模式：后端启用 --reload 热重载")
 
             # Windows: 使用 CREATE_NO_WINDOW 避免弹出终端
             creationflags = 0

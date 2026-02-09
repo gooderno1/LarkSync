@@ -68,6 +68,7 @@
 - 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
 - 定时调度：本地变更队列按秒/小时/天触发上传；云端下载支持按秒/小时/天或每日定时（可配置）
 - CI/CD 自动构建：GitHub Releases 标签发布时自动构建 Windows/macOS 安装包并上传
+- Windows 安装包体验：完成页可直接启动，应用/快捷方式使用品牌 Logo
 - 自动更新：支持稳定版检查与更新包下载（GitHub Releases）
 
 ## 快速开始

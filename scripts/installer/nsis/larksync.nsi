@@ -13,6 +13,7 @@
 
 !define /redef PROJECT_ROOT "${__FILEDIR__}\..\..\.."
 !define /redef SOURCE_DIR "${PROJECT_ROOT}\dist\LarkSync"
+!define /redef APP_ICON "${PROJECT_ROOT}\assets\branding\LarkSync.ico"
 
 Name "${APP_NAME}"
 OutFile "${PROJECT_ROOT}/dist/${APP_NAME}-Setup-${APP_VERSION}.exe"
@@ -24,6 +25,10 @@ SetCompressor /SOLID lzma
 
 ; ---- UI ----
 !define MUI_ABORTWARNING
+!define MUI_ICON "${APP_ICON}"
+!define MUI_UNICON "${APP_ICON}"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\\${APP_EXE}"
+!define MUI_FINISHPAGE_RUN_TEXT "Launch LarkSync now"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -42,8 +47,8 @@ Section "Main" SecMain
   WriteRegStr HKLM "Software\\${APP_NAME}" "Version" "${APP_VERSION}"
 
   CreateDirectory "$SMPROGRAMS\\${APP_NAME}"
-  CreateShortcut "$SMPROGRAMS\\${APP_NAME}\\${APP_NAME}.lnk" "$INSTDIR\\${APP_EXE}"
-  CreateShortcut "$DESKTOP\\${APP_NAME}.lnk" "$INSTDIR\\${APP_EXE}"
+  CreateShortcut "$SMPROGRAMS\\${APP_NAME}\\${APP_NAME}.lnk" "$INSTDIR\\${APP_EXE}" "" "$INSTDIR\\${APP_EXE}" 0
+  CreateShortcut "$DESKTOP\\${APP_NAME}.lnk" "$INSTDIR\\${APP_EXE}" "" "$INSTDIR\\${APP_EXE}" 0
 
   WriteUninstaller "$INSTDIR\\Uninstall.exe"
   WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${APP_NAME}" "DisplayName" "${APP_NAME}"

@@ -19,5 +19,20 @@ if _ROOT not in sys.path:
 
 from apps.tray.tray_app import main
 
+
+def _run_backend() -> None:
+    """在打包环境中直接启动后端（替代 python -m uvicorn）。"""
+    from apps.tray.config import BACKEND_DIR, BACKEND_HOST, BACKEND_PORT
+    os.chdir(str(BACKEND_DIR))
+    if str(BACKEND_DIR) not in sys.path:
+        sys.path.insert(0, str(BACKEND_DIR))
+    from src.main import app
+    import uvicorn
+    uvicorn.run(app, host=BACKEND_HOST, port=BACKEND_PORT, log_level="warning")
+
 if __name__ == "__main__":
+    if "--backend" in sys.argv:
+        sys.argv.remove("--backend")
+        _run_backend()
+        raise SystemExit(0)
     main()

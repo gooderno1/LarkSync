@@ -23,6 +23,7 @@ project_root = _resolve_project_root()
 frontend_dist = project_root / "apps" / "frontend" / "dist"
 tray_icons = project_root / "apps" / "tray" / "icons"
 branding_dir = project_root / "assets" / "branding"
+win_icon = branding_dir / "LarkSync.ico"
 backend_pyproject = project_root / "apps" / "backend" / "pyproject.toml"
 
 datas = []
@@ -89,6 +90,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    icon=str(win_icon) if sys.platform == "win32" and win_icon.is_file() else None,
 )
 
 coll = COLLECT(

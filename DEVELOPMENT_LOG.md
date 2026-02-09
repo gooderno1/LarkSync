@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.5.13 (2026-02-08)
+- 目标：修复安装包体验与打包后端启动异常。
+- 结果：
+  - 安装完成页增加“立即启动”选项。
+  - Windows 图标改为品牌 Logo（安装包/快捷方式/EXE）。
+  - 打包环境后端启动改为 LarkSync.exe --backend，修复 uvicorn 参数报错。
+  - 版本号升级至 v0.5.13（backend）。
+ - 测试：本地打包通过；`python -m pytest apps/backend/tests/test_backend_manager.py`。
+- 问题：无。
+
 ## v0.5.12 (2026-02-08)
 - 目标：修复本地 NSIS 构建失败与版本号读取异常。
 - 结果：
