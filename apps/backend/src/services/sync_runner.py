@@ -119,6 +119,7 @@ class SyncTaskRunner:
         self._pending_uploads: dict[str, set[str]] = {}
         self._running_tasks: set[str] = set()
         self._task_meta: dict[str, SyncTaskItem] = {}
+        self._initial_upload_scanned: set[str] = set()
 
     def get_status(self, task_id: str) -> SyncTaskStatus:
         return self._statuses.get(task_id) or SyncTaskStatus(task_id=task_id)
@@ -209,6 +210,11 @@ class SyncTaskRunner:
         pending.add(str(path))
 
     async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
+        # 首次调度时，全量扫描本地目录，将没有 SyncLink 的文件加入待上传队列
+        if task.id not in self._initial_upload_scanned:
+            self._initial_upload_scanned.add(task.id)
+            await self._scan_for_unlinked_files(task)
+
         pending = self._pending_uploads.get(task.id)
         if not pending:
             return
@@ -1379,6 +1385,32 @@ class SyncTaskRunner:
             return []
         return [path for path in root.rglob("*") if path.is_file()]
 
+    async def _scan_for_unlinked_files(self, task: SyncTaskItem) -> int:
+        """全量扫描本地目录，将没有 SyncLink 的文件加入待上传队列。
+
+        用于覆盖以下场景：
+        - 文件在 watcher 启动前就已存在（如从 download_only 切换到 bidirectional）
+        - watcher 遗漏的文件事件
+        """
+        root = Path(task.local_path)
+        if not root.exists():
+            return 0
+        queued = 0
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            if self._should_ignore_path(task, path):
+                continue
+            link = await self._link_service.get_by_local_path(str(path))
+            if not link:
+                self.queue_local_change(task.id, path)
+                queued += 1
+        if queued:
+            logger.info(
+                "初始扫描发现 {} 个未同步本地文件: task_id={}", queued, task.id
+            )
+        return queued
+
     def _should_ignore_path(self, task: SyncTaskItem, path: Path) -> bool:
         try:
             relative = path.relative_to(Path(task.local_path))
@@ -1414,6 +1446,7 @@ class SyncTaskRunner:
         watcher = self._watchers.pop(task_id, None)
         if watcher:
             watcher.stop()
+        self._initial_upload_scanned.discard(task_id)
 
     def _silence_path(self, task_id: str, path: Path) -> None:
         watcher = self._watchers.get(task_id)

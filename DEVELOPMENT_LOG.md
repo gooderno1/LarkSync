@@ -1,5 +1,24 @@
 # DEVELOPMENT LOG
 
+## v0.5.24 (2026-02-10)
+- 目标：修复双向同步模式切换后已有本地文件不上传的问题；NSIS 安装器增强。
+- 根因分析：
+  1. 调度上传 `run_scheduled_upload()` 仅处理 watchdog 检测到的文件变更（`_pending_uploads`）。
+  2. 从 download_only 切换到 bidirectional 时，watcher 才启动，但已存在的本地文件不会触发 watchdog 事件。
+  3. 因此这些文件永远不会被加入待上传队列，即使它们在云端并不存在。
+- 修复：
+  - `sync_runner.py`：新增 `_scan_for_unlinked_files()` 方法，全量扫描本地目录，将没有 SyncLink 的文件加入待上传队列。
+  - `run_scheduled_upload()` 首次调度时自动执行初始扫描（通过 `_initial_upload_scanned` 集合避免重复）。
+  - watcher 停止时（`_stop_watcher`）清除已扫描标记，确保重启后重新扫描。
+- NSIS 安装器改进：
+  - 安装前自动关闭运行中的 LarkSync 进程（支持覆盖安装）。
+  - 卸载时弹出对话框询问是否删除用户数据（%APPDATA%\LarkSync + 凭据管理器）。
+  - 默认保留用户数据，重新安装后无需再次授权。
+  - 界面改为简体中文。
+- 测试：156 项通过，5 项预存在失败与本次改动无关。
+- 版本号升级至 v0.5.24。
+- 问题：无。
+
 ## v0.5.23 (2026-02-09)
 - 目标：回退至飞书 v1 OAuth 端点，修复之前误迁移至 v2 导致的 drive 权限丢失问题；优化令牌状态 UI 显示。
 - 根因分析：

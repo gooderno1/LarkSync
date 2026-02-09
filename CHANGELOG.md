@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-10] v0.5.24 fix(sync): 双向同步首次调度时全量扫描未链接本地文件，修复模式切换后已有文件不上传；NSIS 安装器支持覆盖安装、卸载保留用户数据选项、中文界面
 [2026-02-09] v0.5.23 fix(oauth): 回退至飞书 v1 OAuth 端点（app_id/app_secret），修复 drive 权限丢失；侧边栏令牌状态改为"自动续期中"
 [2026-02-09] v0.5.22 fix(oauth): scope URL 编码修复 + drive 权限诊断 + 权限不足前端引导提示
 [2026-02-09] v0.5.21 fix(oauth): 授权 URL 恢复 scope 参数，修复用户授权后缺少 drive/docs 权限
