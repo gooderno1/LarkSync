@@ -11,15 +11,8 @@
 !define APP_VERSION "0.0.0"
 !endif
 
-!ifndef PROJECT_ROOT
-!define PROJECT_ROOT "..\..\.."
-!endif
-!define SOURCE_DIR "${PROJECT_ROOT}\dist\LarkSync"
-
-!ifexist "${SOURCE_DIR}\LarkSync.exe"
-!else
-!error "Missing build output: ${SOURCE_DIR}\LarkSync.exe"
-!endif
+!define /redef PROJECT_ROOT "${__FILEDIR__}\..\..\.."
+!define /redef SOURCE_DIR "${PROJECT_ROOT}\dist\LarkSync"
 
 Name "${APP_NAME}"
 OutFile "${PROJECT_ROOT}/dist/${APP_NAME}-Setup-${APP_VERSION}.exe"

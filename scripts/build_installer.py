@@ -284,10 +284,8 @@ def _build_nsis() -> None:
         return
 
     version = _read_version()
-    project_root = str(PROJECT_ROOT) if sys.platform == "win32" else PROJECT_ROOT.as_posix()
     defines = [
         f"/DAPP_VERSION={_quote_define(version)}",
-        f"/DPROJECT_ROOT={_quote_define(project_root)}",
     ]
 
     run([nsis_exe, *defines, str(nsi_script)])
@@ -335,7 +333,7 @@ def _read_version() -> str:
         content = PYPROJECT_FILE.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         content = PYPROJECT_FILE.read_text(encoding="utf-8-sig")
-    match = re.search(r'^version\\s*=\\s*"([^"]+)"', content, re.MULTILINE)
+    match = re.search(r'^version\s*=\s*"([^"]+)"', content, re.MULTILINE)
     if not match:
         return "0.0.0"
     return match.group(1)
