@@ -14,6 +14,7 @@
 !ifndef PROJECT_ROOT
 !define PROJECT_ROOT "..\..\.."
 !endif
+!define SOURCE_DIR "${PROJECT_ROOT}\dist\LarkSync"
 
 Name "${APP_NAME}"
 OutFile "${PROJECT_ROOT}/dist/${APP_NAME}-Setup-${APP_VERSION}.exe"
@@ -37,7 +38,9 @@ SetCompressor /SOLID lzma
 
 Section "Main" SecMain
   SetOutPath "$INSTDIR"
-  File /r "${PROJECT_ROOT}/dist/LarkSync/*"
+  IfFileExists "${SOURCE_DIR}\LarkSync.exe" +2 0
+    Abort "Missing build output: ${SOURCE_DIR}\LarkSync.exe"
+  File /r "${SOURCE_DIR}\*.*"
 
   WriteRegStr HKLM "Software\\${APP_NAME}" "InstallDir" "$INSTDIR"
   WriteRegStr HKLM "Software\\${APP_NAME}" "Version" "${APP_VERSION}"

@@ -319,9 +319,15 @@ def _build_dmg() -> None:
 
 
 def _read_version() -> str:
+    env_version = os.getenv("LARKSYNC_VERSION")
+    if env_version:
+        return env_version
     if not PYPROJECT_FILE.is_file():
         return "0.0.0"
-    content = PYPROJECT_FILE.read_text(encoding="utf-8")
+    try:
+        content = PYPROJECT_FILE.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        content = PYPROJECT_FILE.read_text(encoding="utf-8-sig")
     match = re.search(r'^version\\s*=\\s*"([^"]+)"', content, re.MULTILINE)
     if not match:
         return "0.0.0"

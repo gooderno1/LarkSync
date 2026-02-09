@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.5.8 (2026-02-08)
+- 目标：修复 NSIS 打包阶段找不到输出目录的问题。
+- 结果：
+  - NSIS 脚本改用固定 SOURCE_DIR 并校验输出文件存在。
+  - build_installer 版本读取增强，支持 LARKSYNC_VERSION 与 UTF-8 BOM。
+  - workflow 将 tag 版本注入 LARKSYNC_VERSION。
+  - 版本号升级至 v0.5.8（backend）。
+- 测试：待 tag 构建验证。
+- 问题：无。
+
 ## v0.5.7 (2026-02-08)
 - 目标：修复 Windows Release 中 NSIS 安装包未生成的问题。
 - 结果：

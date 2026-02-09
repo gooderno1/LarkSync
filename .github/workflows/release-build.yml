@@ -59,6 +59,8 @@ jobs:
           echo "C:\\Program Files (x86)\\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Build installer
+        env:
+          LARKSYNC_VERSION: ${{ github.ref_name }}
         run: python scripts/build_installer.py --nsis
 
       - name: List dist
@@ -120,6 +122,8 @@ jobs:
           fi
 
       - name: Build DMG
+        env:
+          LARKSYNC_VERSION: ${{ github.ref_name }}
         run: python scripts/build_installer.py --dmg
 
       - name: List dist
