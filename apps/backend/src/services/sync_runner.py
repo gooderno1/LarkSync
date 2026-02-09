@@ -1049,6 +1049,24 @@ class SyncTaskRunner:
                 return
             suffix = path.suffix.lower()
             if suffix == ".md":
+                # 双向模式下，默认不将 MD 转为飞书文档上传，除非显式开启
+                if task.sync_mode == "bidirectional":
+                    from src.core.config import ConfigManager
+                    cfg = ConfigManager.get().config
+                    if not cfg.upload_md_to_cloud:
+                        status.skipped_files += 1
+                        self._record_event(status,
+                            SyncFileEvent(
+                                path=key,
+                                status="skipped",
+                                message="双向模式下 MD→飞书文档上传已关闭",
+                            )
+                        )
+                        logger.info(
+                            "跳过 MD 上传（upload_md_to_cloud=false）: task_id={} path={}",
+                            task.id, path,
+                        )
+                        return
                 await self._upload_markdown(
                     task,
                     status,
@@ -1418,11 +1436,21 @@ class SyncTaskRunner:
         root = Path(task.local_path)
         if not root.exists():
             return 0
+
+        # 双向模式 + MD上传关闭时，扫描跳过 .md 文件
+        skip_md = False
+        if task.sync_mode == "bidirectional":
+            from src.core.config import ConfigManager
+            cfg = ConfigManager.get().config
+            skip_md = not cfg.upload_md_to_cloud
+
         queued = 0
         for path in root.rglob("*"):
             if not path.is_file():
                 continue
             if self._should_ignore_path(task, path):
+                continue
+            if skip_md and path.suffix.lower() == ".md":
                 continue
             link = await self._link_service.get_by_local_path(str(path))
             if not link:

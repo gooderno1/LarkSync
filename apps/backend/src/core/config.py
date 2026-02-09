@@ -60,6 +60,7 @@ class AppConfig(BaseModel):
     update_check_interval_hours: int = 24
     last_update_check: float = 0.0
     allow_dev_to_stable: bool = False
+    upload_md_to_cloud: bool = False
 
     auth_authorize_url: str = "https://open.feishu.cn/open-apis/authen/v1/index"
     auth_token_url: str = "https://open.feishu.cn/open-apis/authen/v1/access_token"

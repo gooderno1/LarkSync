@@ -31,6 +31,7 @@ class ConfigResponse(BaseModel):
     update_check_interval_hours: int = 24
     last_update_check: float = 0.0
     allow_dev_to_stable: bool = False
+    upload_md_to_cloud: bool = False
 
     @classmethod
     def from_config(cls, config: AppConfig, mask_secret: bool = True) -> "ConfigResponse":
@@ -56,6 +57,7 @@ class ConfigResponse(BaseModel):
             update_check_interval_hours=config.update_check_interval_hours,
             last_update_check=config.last_update_check,
             allow_dev_to_stable=config.allow_dev_to_stable,
+            upload_md_to_cloud=config.upload_md_to_cloud,
         )
 
 
@@ -80,6 +82,7 @@ class ConfigUpdateRequest(BaseModel):
     auto_update_enabled: bool | None = None
     update_check_interval_hours: int | None = None
     allow_dev_to_stable: bool | None = None
+    upload_md_to_cloud: bool | None = None
 
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -153,6 +156,9 @@ async def update_config(payload: ConfigUpdateRequest) -> ConfigResponse:
 
     if payload.allow_dev_to_stable is not None:
         data["allow_dev_to_stable"] = bool(payload.allow_dev_to_stable)
+
+    if payload.upload_md_to_cloud is not None:
+        data["upload_md_to_cloud"] = bool(payload.upload_md_to_cloud)
 
     config = manager.save_config(data)
     return ConfigResponse.from_config(config, mask_secret=True)

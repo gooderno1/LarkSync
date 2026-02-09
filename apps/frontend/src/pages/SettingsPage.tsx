@@ -39,6 +39,7 @@ export function SettingsPage() {
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
   const [updateCheckIntervalHours, setUpdateCheckIntervalHours] = useState("24");
   const [allowDevToStable, setAllowDevToStable] = useState(false);
+  const [uploadMdToCloud, setUploadMdToCloud] = useState(false);
 
   // Redirect URI 自动生成（origin 即后端地址，生产模式前后端同源）
   const redirectUri = useMemo(() => {
@@ -91,6 +92,7 @@ export function SettingsPage() {
     if (config.auto_update_enabled != null) setAutoUpdateEnabled(Boolean(config.auto_update_enabled));
     if (config.update_check_interval_hours != null) setUpdateCheckIntervalHours(String(config.update_check_interval_hours));
     if (config.allow_dev_to_stable != null) setAllowDevToStable(Boolean(config.allow_dev_to_stable));
+    if (config.upload_md_to_cloud != null) setUploadMdToCloud(Boolean(config.upload_md_to_cloud));
   }, [config, configLoading]);
 
   const handleSave = async () => {
@@ -122,6 +124,7 @@ export function SettingsPage() {
         auto_update_enabled: autoUpdateEnabled,
         update_check_interval_hours: updateInterval,
         allow_dev_to_stable: allowDevToStable,
+        upload_md_to_cloud: uploadMdToCloud,
       });
       setClientSecret("");
       toast("配置已保存", "success");
@@ -434,6 +437,42 @@ export function SettingsPage() {
                   onChange={(e) => setSystemLogRetentionDays(e.target.value)}
                 />
                 <p className="mt-1 text-[11px] text-zinc-500">默认 1 天，避免系统日志过大。</p>
+              </div>
+            </div>
+
+            {/* 同步行为 */}
+            <div className="mt-6 border-t border-zinc-800/80 pt-4">
+              <h3 className="text-sm font-medium text-zinc-200">同步行为</h3>
+              <div className="mt-3 grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+                    双向模式：允许 MD → 飞书文档上传
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      className={cn(
+                        "relative h-6 w-11 rounded-full transition",
+                        uploadMdToCloud ? "bg-[#3370FF]" : "bg-zinc-700"
+                      )}
+                      onClick={() => setUploadMdToCloud((prev) => !prev)}
+                      type="button"
+                    >
+                      <span
+                        className={cn(
+                          "absolute top-0.5 h-5 w-5 rounded-full bg-white transition",
+                          uploadMdToCloud ? "left-6" : "left-0.5"
+                        )}
+                      />
+                    </button>
+                    <span className="text-xs text-zinc-500">
+                      {uploadMdToCloud ? "已开启" : "已关闭（推荐）"}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-zinc-500">
+                    关闭时，双向同步仅从云端下行飞书文档到本地，不会将本地 MD 转为飞书文档上传。
+                    上传模式不受此限制。
+                  </p>
+                </div>
               </div>
             </div>
 

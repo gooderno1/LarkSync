@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.27 (2026-02-10)
+- 目标：MD↔飞书文档转换尚不完善，双向模式下默认仅支持云端飞书文档→本地 MD（下行），不开放本地 MD→飞书文档（上行），通过配置开关可手动开启。
+- 变更：
+  - `config.py`（AppConfig）：新增 `upload_md_to_cloud: bool = False`，默认关闭。
+  - `api/config.py`：`ConfigResponse`、`ConfigUpdateRequest`、`update_config` 均新增该字段，支持读写。
+  - `sync_runner.py`：
+    - `_upload_path`：在 `.md` 分支增加判断，双向模式 + `upload_md_to_cloud=False` 时跳过 MD 上传并记录事件。
+    - `_scan_for_unlinked_files`：同条件下不将 `.md` 文件加入待上传队列，避免无效扫描。
+  - 注意：`upload_only` 模式不受此限制，用户显式选择上传时 MD 仍正常上传。
+  - `SettingsPage.tsx`：在"更多设置 → 同步行为"区域新增「双向模式：允许 MD→飞书文档上传」开关（默认关闭），附使用说明。
+- 版本号升级至 v0.5.27。
+
 ## v0.5.26 (2026-02-10)
 - 目标：SyncLink 记录云端父目录信息，方便追踪排错；前端"更多设置"提供重置同步映射维护入口。
 - 变更：
