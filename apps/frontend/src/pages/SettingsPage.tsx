@@ -8,7 +8,6 @@ import { useUpdate } from "../hooks/useUpdate";
 import { formatIntervalLabel } from "../lib/formatters";
 import { modeLabels } from "../lib/constants";
 import { useToast } from "../components/ui/toast";
-import { apiUrl } from "../lib/api";
 import { IconCopy, IconArrowUp, IconArrowDown, IconArrowRightLeft } from "../components/Icons";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -39,10 +38,10 @@ export function SettingsPage() {
   const [updateCheckIntervalHours, setUpdateCheckIntervalHours] = useState("24");
   const [allowDevToStable, setAllowDevToStable] = useState(false);
 
-  // Redirect URI 自动生成
+  // Redirect URI 自动生成（origin 即后端地址，生产模式前后端同源）
   const redirectUri = useMemo(() => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return `${origin}${apiUrl("/auth/callback")}`;
+    return `${origin}/auth/callback`;
   }, []);
 
   const copyRedirectUri = () => {

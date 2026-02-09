@@ -5,10 +5,16 @@
 import { useMemo, useState } from "react";
 import { useConfig } from "../hooks/useConfig";
 import { useAuth } from "../hooks/useAuth";
-import { apiUrl, getLoginUrl } from "../lib/api";
+import { getLoginUrl } from "../lib/api";
 import { useToast } from "./ui/toast";
 import { IconCloud, IconSettings, IconCopy, IconExternalLink } from "./Icons";
 import { cn } from "../lib/utils";
+
+/* 飞书 OAuth 固定端点（标准值，通常无需修改） */
+const FEISHU_AUTHORIZE_URL =
+  "https://open.feishu.cn/open-apis/authen/v1/authorize";
+const FEISHU_TOKEN_URL =
+  "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token";
 
 type Props = {
   oauthConfigured: boolean;
@@ -16,7 +22,7 @@ type Props = {
 };
 
 export function OnboardingWizard({ oauthConfigured, connected }: Props) {
-  const { saveConfig, saving } = useConfig();
+  const { config, saveConfig, saving } = useConfig();
   const { loading: authLoading } = useAuth();
   const { toast } = useToast();
   const loginUrl = getLoginUrl();
@@ -29,10 +35,14 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
   /* 当前步骤：根据 oauthConfigured 自动推导 */
   const currentStep = oauthConfigured ? 2 : 1;
 
-  /* Redirect URI 自动生成 */
+  /*
+   * Redirect URI — 回调地址
+   * 生产模式（安装包）：前端由 FastAPI 同源服务，origin 即后端地址，正确。
+   * 开发模式：Vite 代理 /auth → 后端，使用 origin 同样可行。
+   */
   const redirectUri = useMemo(() => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return `${origin}${apiUrl("/auth/callback")}`;
+    return `${origin}/auth/callback`;
   }, []);
 
   const copyRedirectUri = () => {
@@ -54,10 +64,15 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
     }
     setSaveError(null);
     try {
+      // 保存完整的 OAuth 配置：包含飞书标准端点地址
       await saveConfig({
         auth_client_id: clientId.trim(),
         auth_client_secret: clientSecret.trim(),
         auth_redirect_uri: redirectUri,
+        auth_authorize_url:
+          config.auth_authorize_url?.trim() || FEISHU_AUTHORIZE_URL,
+        auth_token_url:
+          config.auth_token_url?.trim() || FEISHU_TOKEN_URL,
       });
       setClientSecret("");
       toast("OAuth 配置已保存，请继续连接飞书", "success");

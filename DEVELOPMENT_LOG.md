@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.5.16 (2026-02-09)
+- 目标：修复 OAuth 配置不完整导致授权失败的问题，完善引导向导的配置保存逻辑。
+- 结果：
+  - 后端 AppConfig 为 auth_authorize_url 和 auth_token_url 设置飞书标准默认值，不再强制用户手动填写。
+  - OnboardingWizard 保存时自动填充 authorize_url / token_url（已有值则保留），确保只需填写 App ID 和 Secret 即可完成配置。
+  - 修正 redirect_uri 生成逻辑：统一使用 `origin + /auth/callback`，移除 apiUrl() 多余调用。
+  - SettingsPage redirect_uri 同步修正，保持一致。
+  - 版本号升级至 v0.5.16。
+- 测试：lint 检查通过，无 TS 类型报错。
+- 问题：无。
+
 ## v0.5.15 (2026-02-09)
 - 目标：重设计应用启动引导流程，增加飞书连接状态检测与引导向导；优化新建任务弹窗位置。
 - 结果：

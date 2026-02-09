@@ -60,8 +60,8 @@ class AppConfig(BaseModel):
     last_update_check: float = 0.0
     allow_dev_to_stable: bool = False
 
-    auth_authorize_url: str = ""
-    auth_token_url: str = ""
+    auth_authorize_url: str = "https://open.feishu.cn/open-apis/authen/v1/authorize"
+    auth_token_url: str = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
     auth_client_id: str = ""
     auth_client_secret: str = ""
     auth_redirect_uri: str = ""
