@@ -100,6 +100,17 @@ export function useTasks() {
     },
   });
 
+  const resetLinksMutation = useMutation({
+    mutationFn: (taskId: string) =>
+      apiFetch<{ status: string; deleted_links: number }>(
+        `/sync/tasks/${taskId}/reset-links`,
+        { method: "POST" }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["task-status"] });
+    },
+  });
+
   return {
     tasks: tasksQuery.data || [],
     taskLoading: tasksQuery.isLoading,
@@ -113,6 +124,8 @@ export function useTasks() {
     updateMode: updateModeMutation.mutate,
     runTask: runMutation.mutate,
     deleteTask: deleteMutation.mutate,
+    resetLinks: resetLinksMutation.mutateAsync,
+    resettingLinks: resetLinksMutation.isPending,
     creating: createMutation.isPending,
   };
 }

@@ -22,6 +22,7 @@ class SyncLink(Base):
     cloud_type: Mapped[str] = mapped_column(String, nullable=False)
     task_id: Mapped[str] = mapped_column(String, index=True)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    cloud_parent_token: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
 
 
 class ConflictRecord(Base):

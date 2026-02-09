@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useConfig } from "../hooks/useConfig";
 import { useUpdate } from "../hooks/useUpdate";
+import { useTasks } from "../hooks/useTasks";
 import { formatIntervalLabel } from "../lib/formatters";
 import { modeLabels } from "../lib/constants";
 import { useToast } from "../components/ui/toast";
@@ -15,6 +16,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 export function SettingsPage() {
   const { config, configLoading, saveConfig, saving, saveError } = useConfig();
   const { status, checkUpdate, checking, downloadUpdate, downloading } = useUpdate();
+  const { tasks, resetLinks, resettingLinks } = useTasks();
   const { toast } = useToast();
 
   const [authorizeUrl, setAuthorizeUrl] = useState("");
@@ -555,6 +557,56 @@ export function SettingsPage() {
                     ) : null}
                   </div>
                 ) : null}
+              </div>
+            </div>
+
+            {/* 维护工具 */}
+            <div className="mt-6 border-t border-zinc-800/80 pt-4">
+              <h3 className="text-sm font-medium text-zinc-200">维护工具</h3>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                当同步映射出现异常时，可重置指定任务的同步映射（SyncLink）。重置后下次同步将重新建立映射关系。
+              </p>
+              <div className="mt-3 space-y-2">
+                {tasks.length === 0 ? (
+                  <p className="text-xs text-zinc-500">暂无同步任务。</p>
+                ) : (
+                  tasks.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-zinc-200">{t.name || "未命名任务"}</p>
+                        <p className="truncate text-[11px] text-zinc-500">{t.local_path}</p>
+                      </div>
+                      <button
+                        className="ml-3 shrink-0 rounded-lg border border-amber-700/50 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
+                        disabled={resettingLinks}
+                        onClick={async () => {
+                          const confirmed = window.confirm(
+                            `确定要重置任务「${t.name || t.id}」的同步映射吗？\n\n重置后需要重新同步以建立新的映射关系。`
+                          );
+                          if (!confirmed) return;
+                          try {
+                            const result = await resetLinks(t.id);
+                            toast(
+                              `已清除 ${result.deleted_links} 条同步映射`,
+                              "success"
+                            );
+                          } catch (err) {
+                            toast(
+                              err instanceof Error ? err.message : "重置失败",
+                              "danger"
+                            );
+                          }
+                        }}
+                        type="button"
+                      >
+                        重置映射
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

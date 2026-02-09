@@ -495,6 +495,7 @@ class SyncTaskRunner:
                             cloud_type=effective_type,
                             task_id=task.id,
                             updated_at=mtime,
+                            cloud_parent_token=node.parent_token,
                         )
                         if task.sync_mode in {"bidirectional", "upload_only"} and (
                             (task.update_mode or "auto") != "full"
@@ -533,6 +534,7 @@ class SyncTaskRunner:
                             cloud_type=effective_type,
                             task_id=task.id,
                             updated_at=mtime,
+                            cloud_parent_token=node.parent_token,
                         )
                         self._silence_path(task.id, target_path)
                         status.completed_files += 1
@@ -554,6 +556,7 @@ class SyncTaskRunner:
                             cloud_type=effective_type,
                             task_id=task.id,
                             updated_at=mtime,
+                            cloud_parent_token=node.parent_token,
                         )
                         self._silence_path(task.id, target_path)
                         status.completed_files += 1
@@ -1185,12 +1188,15 @@ class SyncTaskRunner:
                         user_id_type="open_id",
                     )
         synced_at = time.time()
+        # 使用缓存获取 parent_token（已在 _create_cloud_doc_for_markdown 或更早处解析）
+        upload_parent = await self._resolve_cloud_parent(task, path, drive_service)
         await self._link_service.upsert_link(
             local_path=str(path),
             cloud_token=link.cloud_token,
             cloud_type=link.cloud_type,
             task_id=task.id,
             updated_at=synced_at,
+            cloud_parent_token=upload_parent,
         )
         status.completed_files += 1
         self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
@@ -1242,6 +1248,7 @@ class SyncTaskRunner:
             cloud_type="file",
             task_id=task.id,
             updated_at=synced_at,
+            cloud_parent_token=parent_token,
         )
         status.completed_files += 1
         self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
@@ -1325,6 +1332,7 @@ class SyncTaskRunner:
                 cloud_type="docx",
                 task_id=task.id,
                 updated_at=0.0,
+                cloud_parent_token=parent_token,
             )
             self._record_event(status, 
                 SyncFileEvent(
@@ -1387,6 +1395,7 @@ class SyncTaskRunner:
             cloud_type="docx",
             task_id=task.id,
             updated_at=0.0,
+            cloud_parent_token=parent_token,
         )
         self._record_event(status, 
             SyncFileEvent(path=str(path), status="created", message="云端文档已创建")
@@ -1831,6 +1840,7 @@ class SyncTaskRunner:
                 cloud_type=node_type,
                 task_id=task.id,
                 updated_at=0.0,
+                cloud_parent_token=node.parent_token,
             )
 
 def _flatten_files(node: DriveNode, base: Path | None = None) -> Iterable[tuple[DriveNode, Path]]:

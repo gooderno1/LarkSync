@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.5.26 (2026-02-10)
+- 目标：SyncLink 记录云端父目录信息，方便追踪排错；前端"更多设置"提供重置同步映射维护入口。
+- 变更：
+  - `models.py`：SyncLink 新增 `cloud_parent_token` 可空字段，记录文件上传/下载时所在的云端父文件夹 token。
+  - `sync_link_service.py`：`SyncLinkItem` 数据类和 `upsert_link()` 方法均支持 `cloud_parent_token` 参数；`_to_item()` 同步映射。
+  - `session.py`（init_db）：新增 `_ensure_column` 调用，自动为 `sync_links` 表添加 `cloud_parent_token` 列（兼容旧库升级）。
+  - `sync_runner.py`：所有 `upsert_link` 调用（上传侧 × 4、下载侧 × 4）均传入 `cloud_parent_token`：
+    - 上传侧使用 `_resolve_cloud_parent()` 解析的 parent_token。
+    - 下载侧使用 `node.parent_token`。
+  - `useTasks.ts`：新增 `resetLinks`、`resettingLinks` 以调用 `POST /sync/tasks/{task_id}/reset-links` API。
+  - `SettingsPage.tsx`：在"更多设置"展开区底部新增"维护工具"板块，列出所有同步任务并提供"重置映射"按钮（含确认弹窗）。
+- 版本号升级至 v0.5.26。
+
 ## v0.5.25 (2026-02-10)
 - 目标：修复上传文件时忽略本地子目录结构、全部上传到云端根目录的问题。
 - 根因分析：

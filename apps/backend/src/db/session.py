@@ -54,6 +54,13 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
                 column_type="TEXT",
                 default_value=None,
             )
+            await _ensure_column(
+                conn,
+                table="sync_links",
+                column="cloud_parent_token",
+                column_type="TEXT",
+                default_value=None,
+            )
         return engine
     except DatabaseError as exc:
         if not _is_sqlite_corrupt_error(exc):
@@ -77,6 +84,13 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
                 conn,
                 table="sync_tasks",
                 column="cloud_folder_name",
+                column_type="TEXT",
+                default_value=None,
+            )
+            await _ensure_column(
+                conn,
+                table="sync_links",
+                column="cloud_parent_token",
                 column_type="TEXT",
                 default_value=None,
             )

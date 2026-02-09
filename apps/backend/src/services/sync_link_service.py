@@ -19,6 +19,7 @@ class SyncLinkItem:
     cloud_type: str
     task_id: str
     updated_at: float
+    cloud_parent_token: str | None = None
 
 
 class SyncLinkService:
@@ -34,6 +35,7 @@ class SyncLinkService:
         cloud_type: str,
         task_id: str,
         updated_at: float | None = None,
+        cloud_parent_token: str | None = None,
     ) -> SyncLinkItem:
         session_maker = self._session_maker or get_session_maker()
         updated_at = updated_at if updated_at is not None else time.time()
@@ -45,6 +47,8 @@ class SyncLinkService:
                     record.cloud_type = cloud_type
                     record.task_id = task_id
                     record.updated_at = updated_at
+                    if cloud_parent_token is not None:
+                        record.cloud_parent_token = cloud_parent_token
                 else:
                     session.add(
                         SyncLink(
@@ -53,6 +57,7 @@ class SyncLinkService:
                             cloud_type=cloud_type,
                             task_id=task_id,
                             updated_at=updated_at,
+                            cloud_parent_token=cloud_parent_token,
                         )
                     )
                 await session.commit()
@@ -64,6 +69,7 @@ class SyncLinkService:
             cloud_type=cloud_type,
             task_id=task_id,
             updated_at=updated_at,
+            cloud_parent_token=cloud_parent_token,
         )
 
     async def get_by_local_path(self, local_path: str) -> SyncLinkItem | None:
@@ -123,6 +129,7 @@ class SyncLinkService:
             cloud_type=record.cloud_type,
             task_id=record.task_id,
             updated_at=record.updated_at,
+            cloud_parent_token=record.cloud_parent_token,
         )
 
 
