@@ -16,6 +16,11 @@
 !endif
 !define SOURCE_DIR "${PROJECT_ROOT}\dist\LarkSync"
 
+!ifexists "${SOURCE_DIR}\LarkSync.exe"
+!else
+!error "Missing build output: ${SOURCE_DIR}\LarkSync.exe"
+!endif
+
 Name "${APP_NAME}"
 OutFile "${PROJECT_ROOT}/dist/${APP_NAME}-Setup-${APP_VERSION}.exe"
 InstallDir "$PROGRAMFILES64\\${APP_NAME}"
@@ -38,8 +43,6 @@ SetCompressor /SOLID lzma
 
 Section "Main" SecMain
   SetOutPath "$INSTDIR"
-  IfFileExists "${SOURCE_DIR}\LarkSync.exe" +2 0
-    Abort "Missing build output: ${SOURCE_DIR}\LarkSync.exe"
   File /r "${SOURCE_DIR}\*.*"
 
   WriteRegStr HKLM "Software\\${APP_NAME}" "InstallDir" "$INSTDIR"

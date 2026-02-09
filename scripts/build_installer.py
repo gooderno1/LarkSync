@@ -284,7 +284,7 @@ def _build_nsis() -> None:
         return
 
     version = _read_version()
-    project_root = PROJECT_ROOT.as_posix()
+    project_root = str(PROJECT_ROOT) if sys.platform == "win32" else PROJECT_ROOT.as_posix()
     defines = [
         f"/DAPP_VERSION={_quote_define(version)}",
         f"/DPROJECT_ROOT={_quote_define(project_root)}",
