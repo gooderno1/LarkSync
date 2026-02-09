@@ -19,12 +19,12 @@
 
 ### 2.3 配置 OAuth 回调地址
 1) 打开“安全设置 / OAuth 回调”。
-2) 添加回调地址（必须与 LarkSync 设置中填写的地址完全一致）：
-   - 开发环境：`http://localhost:8000/auth/callback`
-   - 生产环境：`http://localhost:8080/api/auth/callback`
+2) 添加回调地址（**必须**与 LarkSync 引导向导/设置页自动生成的 Redirect URI **完全一致**）：
+   - 本地运行：`http://localhost:8000/auth/callback`
+   - 自定义端口：`http://localhost:9000/auth/callback`（若修改了后端端口）
 3) 保存设置。
 
-> 说明：回调地址填写在飞书控制台；LarkSync 设置页只需要填写同样的 Redirect URI。
+> **重要**：回调地址**不含** `/api` 前缀，端口默认 8000。协议、域名、端口、路径必须**完全匹配**，否则授权会失败。
 
 ### 2.4 配置权限 Scopes（在飞书控制台配置）
 1) 打开“权限管理”。
