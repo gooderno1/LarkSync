@@ -191,9 +191,69 @@ def test_parse_token_response_wrapped_data() -> None:
     assert token.refresh_token == "refresh-456"
 
 
+def test_parse_token_response_missing_refresh_token() -> None:
+    """飞书 v2 端点可能不返回 refresh_token，应仍解析成功。"""
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    service = AuthService(config=config, token_store=MemoryTokenStore())
+
+    # 没有 refresh_token 字段
+    payload_no_field = {
+        "access_token": "token-abc",
+        "expires_in": 7200,
+    }
+    token = service._parse_token_response(payload_no_field)
+    assert token.access_token == "token-abc"
+    assert token.refresh_token == ""
+    assert token.expires_in == 7200
+
+    # refresh_token 为空字符串
+    payload_empty = {
+        "access_token": "token-def",
+        "refresh_token": "",
+        "expires_in": 3600,
+    }
+    token2 = service._parse_token_response(payload_empty)
+    assert token2.access_token == "token-def"
+    assert token2.refresh_token == ""
+
+
+@pytest.mark.asyncio
+async def test_refresh_fails_without_refresh_token() -> None:
+    """当 refresh_token 为空时，refresh() 应抛出 AuthError。"""
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    store = MemoryTokenStore()
+    store.set(TokenData(access_token="a", refresh_token="", expires_at=None))
+    service = AuthService(config=config, token_store=store)
+
+    with pytest.raises(AuthError, match="refresh_token 不可用"):
+        await service.refresh()
+
+
 def test_token_store_roundtrip() -> None:
     store = MemoryTokenStore()
     token = TokenData(access_token="a", refresh_token="r", expires_at=None)
     store.set(token)
     loaded = store.get()
     assert loaded == token
+
+
+def test_token_store_empty_refresh_token() -> None:
+    """TokenData 支持空 refresh_token。"""
+    store = MemoryTokenStore()
+    token = TokenData(access_token="a", refresh_token="", expires_at=None)
+    store.set(token)
+    loaded = store.get()
+    assert loaded is not None
+    assert loaded.refresh_token == ""

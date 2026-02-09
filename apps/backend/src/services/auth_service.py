@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from urllib.parse import urlencode
 
 import httpx
+from loguru import logger
 
 from src.core.config import AppConfig, ConfigManager
 from src.core.security import TokenData, TokenStore, get_token_store
@@ -17,7 +18,7 @@ class AuthError(RuntimeError):
 @dataclass
 class TokenResponse:
     access_token: str
-    refresh_token: str
+    refresh_token: str  # 可为空字符串（飞书 v2 可能不返回）
     expires_in: int | None
 
 
@@ -79,7 +80,9 @@ class AuthService:
     async def refresh(self) -> TokenData:
         current = self._token_store.get()
         if not current:
-            raise AuthError("缺少 refresh_token，请重新登录")
+            raise AuthError("缺少登录凭证，请重新登录")
+        if not current.refresh_token:
+            raise AuthError("refresh_token 不可用，请重新登录")
         client_id = self._require_config(self._config.auth_client_id, "auth_client_id")
         client_secret = self._require_config(
             self._config.auth_client_secret, "auth_client_secret"
@@ -122,6 +125,9 @@ class AuthService:
                 snippet = response.text[:200]
                 raise AuthError(f"Token 响应不是 JSON：{snippet}") from exc
 
+        # 记录响应结构（脱敏）用于调试
+        self._log_token_response(data)
+
         token = self._parse_token_response(data)
         expires_at = None
         if token.expires_in is not None:
@@ -134,6 +140,26 @@ class AuthService:
         )
         self._token_store.set(stored)
         return stored
+
+    @staticmethod
+    def _log_token_response(data: dict[str, object]) -> None:
+        """记录 token 响应的键和值类型（脱敏），方便排查飞书端点变化。"""
+        try:
+            sanitized: dict[str, str] = {}
+            target = data
+            if isinstance(data, dict) and isinstance(data.get("data"), dict):
+                sanitized["_envelope"] = "code={}, keys={}".format(
+                    data.get("code"), list(data.keys())
+                )
+                target = data["data"]  # type: ignore[assignment]
+            for k, v in (target if isinstance(target, dict) else {}).items():
+                if isinstance(v, str) and len(v) > 8:
+                    sanitized[k] = f"{type(v).__name__}({len(v)}): {v[:4]}...{v[-4:]}"
+                else:
+                    sanitized[k] = repr(v)
+            logger.debug("Token 响应结构（脱敏）: {}", sanitized)
+        except Exception:  # noqa: BLE001
+            logger.debug("Token 响应记录失败，原始 keys: {}", list(data.keys()) if isinstance(data, dict) else type(data))
 
     def _parse_token_response(self, data: dict[str, object]) -> TokenResponse:
         if isinstance(data, dict):
@@ -151,8 +177,16 @@ class AuthService:
 
         if not isinstance(access_token, str) or not access_token:
             raise AuthError("Token 响应缺少 access_token，请提供 API 响应样例")
-        if not isinstance(refresh_token, str) or not refresh_token:
-            raise AuthError("Token 响应缺少 refresh_token，请提供 API 响应样例")
+
+        # refresh_token 在飞书 v2 端点中可能不存在，设为可选
+        refresh_token_value = ""
+        if isinstance(refresh_token, str) and refresh_token:
+            refresh_token_value = refresh_token
+        else:
+            logger.warning(
+                "Token 响应未包含 refresh_token（类型={}），令牌过期后需重新授权",
+                type(refresh_token).__name__,
+            )
 
         expires_value: int | None = None
         if isinstance(expires_in, (int, float)):
@@ -160,7 +194,7 @@ class AuthService:
 
         return TokenResponse(
             access_token=access_token,
-            refresh_token=refresh_token,
+            refresh_token=refresh_token_value,
             expires_in=expires_value,
         )
 

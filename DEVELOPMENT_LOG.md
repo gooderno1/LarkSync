@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.18 (2026-02-09)
+- 目标：修复飞书 v2 OAuth 端点不返回 refresh_token 导致认证流程中断的问题。
+- 修复：
+  - `_parse_token_response`：refresh_token 改为可选，缺失时设为空字符串并记录 warning 日志。
+  - `_request_token`：新增 `_log_token_response` 方法，脱敏记录飞书 token 响应结构，方便排查。
+  - `refresh()`：新增空 refresh_token 提前检测，提示"refresh_token 不可用，请重新登录"。
+  - `KeyringTokenStore.get()`：兼容存储中缺少 refresh_token 的旧数据。
+  - 新增 3 个测试：验证无 refresh_token 解析、空 refresh_token 刷新拒绝、空 refresh_token 存储往返。
+- 测试：12 项全部通过，lint 无报错。
+- 版本号升级至 v0.5.18。
+- 问题：无。
+
 ## v0.5.17 (2026-02-09)
 - 目标：修复飞书 OAuth 授权流程中 "missing required parameter: code (code=20003)" 错误。
 - 根因分析：

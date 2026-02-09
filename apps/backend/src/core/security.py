@@ -45,7 +45,7 @@ class KeyringTokenStore(TokenStore):
         data = json.loads(raw)
         return TokenData(
             access_token=data["access_token"],
-            refresh_token=data["refresh_token"],
+            refresh_token=data.get("refresh_token", ""),
             expires_at=data.get("expires_at"),
         )
 
