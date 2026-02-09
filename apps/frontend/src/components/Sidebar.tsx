@@ -97,7 +97,7 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
             dot
           />
           <span className="text-xs text-zinc-500">
-            {expiresAt ? formatTimestamp(expiresAt) : "—"}
+            {connected ? "自动续期中" : "—"}
           </span>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
+from loguru import logger
 
 from src.services import AuthError, AuthService, AuthStateStore
 
@@ -60,10 +62,39 @@ async def callback(code: str = Query(...), state: str | None = Query(default=Non
 async def status():
     auth_service = AuthService()
     token = auth_service.get_cached_token()
-    return {
+    result: dict[str, object] = {
         "connected": token is not None,
         "expires_at": token.expires_at if token else None,
     }
+    # 如果已连接，尝试验证 drive 权限是否可用
+    if token is not None:
+        try:
+            access_token = await auth_service.get_valid_access_token()
+            result["drive_ok"] = await _check_drive_permission(access_token)
+        except Exception as exc:
+            logger.debug("权限检查异常: {}", exc)
+            result["drive_ok"] = False
+    return result
+
+
+async def _check_drive_permission(access_token: str) -> bool:
+    """尝试调用飞书 Drive 元数据接口验证 token 是否有 drive 权限。"""
+    url = "https://open.feishu.cn/open-apis/drive/explorer/v2/root_folder/meta"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                url, headers={"Authorization": f"Bearer {access_token}"}
+            )
+            payload = resp.json()
+            code = payload.get("code", -1)
+            if code == 0:
+                return True
+            msg = payload.get("msg", "")
+            logger.warning("Drive 权限检查失败 code={}: {}", code, msg)
+            return False
+    except Exception as exc:
+        logger.warning("Drive 权限检查请求异常: {}", exc)
+        return False
 
 
 @router.post("/logout")

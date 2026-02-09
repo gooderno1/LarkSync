@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-02-09] v0.5.23 fix(oauth): 回退至飞书 v1 OAuth 端点（app_id/app_secret），修复 drive 权限丢失；侧边栏令牌状态改为"自动续期中"
+[2026-02-09] v0.5.22 fix(oauth): scope URL 编码修复 + drive 权限诊断 + 权限不足前端引导提示
 [2026-02-09] v0.5.21 fix(oauth): 授权 URL 恢复 scope 参数，修复用户授权后缺少 drive/docs 权限
 [2026-02-09] v0.5.20 fix(keyring): 拆分 token 存储，解决 Windows 凭据管理器 2560 字节限制导致 CredWrite 失败
 [2026-02-09] v0.5.19 fix(error): 全局异常处理器，500 错误返回详细错误信息而非裸 Internal Server Error

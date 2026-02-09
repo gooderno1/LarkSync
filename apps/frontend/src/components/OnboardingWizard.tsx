@@ -10,11 +10,11 @@ import { useToast } from "./ui/toast";
 import { IconCloud, IconSettings, IconCopy, IconExternalLink } from "./Icons";
 import { cn } from "../lib/utils";
 
-/* 飞书 v2 OAuth 标准端点（通常无需修改） */
+/* 飞书 v1 OAuth 端点（已验证可用） */
 const FEISHU_AUTHORIZE_URL =
-  "https://accounts.feishu.cn/open-apis/authen/v1/authorize";
+  "https://open.feishu.cn/open-apis/authen/v1/index";
 const FEISHU_TOKEN_URL =
-  "https://open.feishu.cn/open-apis/authen/v2/oauth/token";
+  "https://open.feishu.cn/open-apis/authen/v1/access_token";
 
 type Props = {
   oauthConfigured: boolean;

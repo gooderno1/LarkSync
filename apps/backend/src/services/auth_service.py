@@ -44,39 +44,33 @@ class AuthService:
         authorize_url = self._require_config(
             self._config.auth_authorize_url, "auth_authorize_url"
         )
-        client_id = self._require_config(self._config.auth_client_id, "auth_client_id")
+        app_id = self._require_config(self._config.auth_client_id, "auth_client_id")
         redirect_uri = self._require_config(
             self._config.auth_redirect_uri, "auth_redirect_uri"
         )
 
-        # 飞书 v2 OAuth：使用标准 client_id 参数
+        # 飞书 v1 OAuth：使用 app_id 参数
         params: dict[str, str] = {
-            "client_id": client_id,
+            "app_id": app_id,
             "redirect_uri": redirect_uri,
-            "response_type": "code",
             "state": state,
         }
-        # 必须携带 scope，否则飞书只授予基本权限，不含 drive/docs
-        if self._config.auth_scopes:
-            params["scope"] = " ".join(self._config.auth_scopes)
 
-        return f"{authorize_url}?{urlencode(params)}"
+        url = f"{authorize_url}?{urlencode(params)}"
+        logger.info("授权 URL（脱敏）: {}...&state=***", url.split("&state=")[0])
+        return url
 
     async def exchange_code(self, code: str) -> TokenData:
-        client_id = self._require_config(self._config.auth_client_id, "auth_client_id")
-        client_secret = self._require_config(
+        app_id = self._require_config(self._config.auth_client_id, "auth_client_id")
+        app_secret = self._require_config(
             self._config.auth_client_secret, "auth_client_secret"
         )
-        redirect_uri = self._require_config(
-            self._config.auth_redirect_uri, "auth_redirect_uri"
-        )
-        # 飞书 v2 OAuth：使用标准 client_id / client_secret
+        # 飞书 v1 OAuth：使用 app_id / app_secret
         payload = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": redirect_uri,
-            "client_id": client_id,
-            "client_secret": client_secret,
+            "app_id": app_id,
+            "app_secret": app_secret,
         }
         return await self._request_token(payload)
 
@@ -86,16 +80,16 @@ class AuthService:
             raise AuthError("缺少登录凭证，请重新登录")
         if not current.refresh_token:
             raise AuthError("refresh_token 不可用，请重新登录")
-        client_id = self._require_config(self._config.auth_client_id, "auth_client_id")
-        client_secret = self._require_config(
+        app_id = self._require_config(self._config.auth_client_id, "auth_client_id")
+        app_secret = self._require_config(
             self._config.auth_client_secret, "auth_client_secret"
         )
-        # 飞书 v2 OAuth：使用标准 client_id / client_secret
+        # 飞书 v1 OAuth：使用 app_id / app_secret
         payload = {
             "grant_type": "refresh_token",
             "refresh_token": current.refresh_token,
-            "client_id": client_id,
-            "client_secret": client_secret,
+            "app_id": app_id,
+            "app_secret": app_secret,
         }
         return await self._request_token(payload)
 

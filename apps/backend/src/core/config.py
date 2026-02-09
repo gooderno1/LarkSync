@@ -6,6 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import ClassVar, Optional
 
+from loguru import logger
 from pydantic import BaseModel, Field
 
 from src.core.paths import data_dir
@@ -60,8 +61,8 @@ class AppConfig(BaseModel):
     last_update_check: float = 0.0
     allow_dev_to_stable: bool = False
 
-    auth_authorize_url: str = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
-    auth_token_url: str = "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
+    auth_authorize_url: str = "https://open.feishu.cn/open-apis/authen/v1/index"
+    auth_token_url: str = "https://open.feishu.cn/open-apis/authen/v1/access_token"
     auth_client_id: str = ""
     auth_client_secret: str = ""
     auth_redirect_uri: str = ""
@@ -220,20 +221,29 @@ class ConfigManager:
                 data[key] = env_value
 
         # ---- 旧 OAuth 端点迁移 ----
-        _OLD_AUTHORIZE_URLS = {
+        # 仅修正已知错误的端点，正确的 v1 端点保持不变。
+        _CORRECT_AUTHORIZE = AppConfig.model_fields["auth_authorize_url"].default
+        _CORRECT_TOKEN = AppConfig.model_fields["auth_token_url"].default
+        _WRONG_AUTHORIZE_URLS = {
             "https://open.feishu.cn/open-apis/authen/v1/authorize",
+            "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
         }
-        _OLD_TOKEN_URLS = {
+        _WRONG_TOKEN_URLS = {
             "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token",
+            "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
         }
-        if data.get("auth_authorize_url") in _OLD_AUTHORIZE_URLS:
-            data["auth_authorize_url"] = AppConfig.model_fields[
-                "auth_authorize_url"
-            ].default
-        if data.get("auth_token_url") in _OLD_TOKEN_URLS:
-            data["auth_token_url"] = AppConfig.model_fields[
-                "auth_token_url"
-            ].default
+        saved_authorize = (data.get("auth_authorize_url") or "").strip()
+        saved_token_url = (data.get("auth_token_url") or "").strip()
+        if saved_authorize in _WRONG_AUTHORIZE_URLS:
+            logger.info(
+                "迁移 auth_authorize_url: {} → {}", saved_authorize, _CORRECT_AUTHORIZE
+            )
+            data["auth_authorize_url"] = _CORRECT_AUTHORIZE
+        if saved_token_url in _WRONG_TOKEN_URLS:
+            logger.info(
+                "迁移 auth_token_url: {} → {}", saved_token_url, _CORRECT_TOKEN
+            )
+            data["auth_token_url"] = _CORRECT_TOKEN
 
         if "upload_interval_value" not in data and "upload_interval_seconds" in data:
             try:

@@ -46,8 +46,8 @@
 - Redirect URI
 
 > 授权地址与 Token 地址均为可选项，通常可留空，系统使用以下默认值：
-> - 授权地址：`https://accounts.feishu.cn/open-apis/authen/v1/authorize`
-> - Token 地址：`https://open.feishu.cn/open-apis/authen/v2/oauth/token`
+> - 授权地址：`https://open.feishu.cn/open-apis/authen/v1/index`
+> - Token 地址：`https://open.feishu.cn/open-apis/authen/v1/access_token`
 
 ## 4. 保存与验证
 1) 在设置页点击“保存配置”。

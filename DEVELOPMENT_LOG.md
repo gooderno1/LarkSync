@@ -1,5 +1,37 @@
 # DEVELOPMENT LOG
 
+## v0.5.23 (2026-02-09)
+- 目标：回退至飞书 v1 OAuth 端点，修复之前误迁移至 v2 导致的 drive 权限丢失问题；优化令牌状态 UI 显示。
+- 根因分析：
+  1. 用户 `data/config.json` 保留了此前正常运行的 v1 OAuth 配置（`/authen/v1/index`、`/authen/v1/access_token`、`app_id`/`app_secret`），但 v0.5.17–v0.5.22 的修改逐步将端点迁移到 v2（`client_id`/`client_secret`、不同端点路径），导致授权后 token 缺失 drive 权限。
+  2. 侧边栏显示短期 access_token 的 `expires_at`（约 2 小时），与用户实际数天连续使用的体验不符，容易误导。
+- 修复：
+  - `apps/backend/src/core/config.py`：默认值回退到 v1 端点；迁移逻辑改为仅修正已知错误 URL，保留正确的 v1 配置不变。
+  - `apps/backend/src/services/auth_service.py`：`build_authorize_url` / `exchange_code` / `refresh` 全部改回使用 `app_id` / `app_secret` 参数（v1 协议），移除 `scope` / `response_type` 参数。
+  - `apps/backend/src/api/config.py`：`ConfigResponse` 默认端点对齐 v1。
+  - `apps/frontend/src/components/OnboardingWizard.tsx`：硬编码端点回退到 v1。
+  - `apps/frontend/src/components/Sidebar.tsx`：连接状态时间改为显示"自动续期中"，避免误导。
+  - `apps/backend/tests/test_auth_service.py`：断言改为检查 `app_id` 而非 `client_id`。
+  - `docs/OAUTH_GUIDE.md`：文档端点回退到 v1。
+- 测试结果：用户实测授权成功、云端目录正常获取。
+- 版本号升级至 v0.5.23。
+- 问题：无。
+
+## v0.5.22 (2026-02-09)
+- 目标：修复 OAuth scope 编码问题 + 增加 drive 权限诊断 + 前端权限不足引导。
+- 根因分析：
+  1. `urlencode` 默认用 `quote_plus` 将冒号编码为 `%3A`，导致 `drive:drive` → `drive%3Adrive`，飞书可能不识别。
+  2. 用户授权后无直观方式判断 token 是否具有 drive 权限。
+  3. 前端获取目录失败时仅显示裸错误，缺乏操作指引。
+- 修复：
+  - `build_authorize_url`：改用 `quote_via=quote` 保留冒号不编码，并打日志记录授权 URL。
+  - `/auth/status` 增加 `drive_ok` 字段，实时检测 token 是否可访问 Drive API。
+  - 前端 `App.tsx`：已连接但 `drive_ok=false` 时显示权限不足警告横幅。
+  - 前端 `NewTaskModal.tsx`：目录树加载失败且涉及权限关键字时，显示详细操作指引。
+- 测试：12 项全部通过。
+- 版本号升级至 v0.5.22。
+- 问题：无。
+
 ## v0.5.21 (2026-02-09)
 - 目标：修复 OAuth 授权后缺少 drive/docs 权限的问题。
 - 根因：切换到飞书 v2 OAuth 端点时，`build_authorize_url` 移除了 `scope` 参数。没有 scope，飞书只授予基本权限（用户身份），不包含 `drive:drive`、`docs:doc` 等资源访问权限。
