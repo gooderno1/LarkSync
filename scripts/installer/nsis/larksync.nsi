@@ -16,7 +16,7 @@
 !endif
 !define SOURCE_DIR "${PROJECT_ROOT}\dist\LarkSync"
 
-!ifexists "${SOURCE_DIR}\LarkSync.exe"
+!ifexist "${SOURCE_DIR}\LarkSync.exe"
 !else
 !error "Missing build output: ${SOURCE_DIR}\LarkSync.exe"
 !endif
