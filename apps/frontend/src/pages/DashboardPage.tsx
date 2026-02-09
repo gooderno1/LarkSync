@@ -8,14 +8,14 @@ import { useAuth } from "../hooks/useAuth";
 import { useTasks } from "../hooks/useTasks";
 import { useConflicts } from "../hooks/useConflicts";
 import { useWebSocketLog } from "../hooks/useWebSocketLog";
-import { apiFetch, getLoginUrl } from "../lib/api";
+import { apiFetch } from "../lib/api";
 import { formatTimestamp, formatShortTime, isSameDay } from "../lib/formatters";
 import { modeLabels, updateModeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
 import { StatCard } from "../components/StatCard";
 import { StatusPill } from "../components/StatusPill";
 import { StatCardSkeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
-import { ModeIcon, IconRefresh, IconTasks, IconArrowRightLeft, IconConflicts, IconCloud, IconSettings, IconActivity } from "../components/Icons";
+import { ModeIcon, IconRefresh, IconTasks, IconArrowRightLeft, IconConflicts, IconActivity } from "../components/Icons";
 import type { SyncLogEntry, NavKey } from "../types";
 
 type SyncLogResponse = {
@@ -44,7 +44,7 @@ export function DashboardPage({ onNavigate }: Props) {
   const { tasks, taskLoading, statusMap, refreshTasks, refreshStatus } = useTasks();
   const { conflicts } = useConflicts();
   const { entries: wsEntries, status: wsStatus } = useWebSocketLog(connected);
-  const loginUrl = getLoginUrl();
+
 
   const syncLogsQuery = useQuery<SyncLogResponse>({
     queryKey: ["sync-logs-dashboard"],
@@ -96,33 +96,10 @@ export function DashboardPage({ onNavigate }: Props) {
 
   return (
     <section className="space-y-6 animate-fade-up">
-      {/* Onboarding banner */}
+      {/* 防御性提示：正常流程不应到达此处（App.tsx 已门控未连接状态） */}
       {!connected ? (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#3370FF]/20 text-[#3370FF]">
-            <IconCloud className="h-8 w-8" />
-          </div>
-          <h2 className="mt-4 text-xl font-semibold text-zinc-50">连接飞书账号</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-zinc-400">
-            首次使用请完成 OAuth 授权。未配置参数时请先前往设置页填写 App ID 与 Secret。
-          </p>
-          <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <a
-              className="inline-flex items-center gap-2 rounded-lg bg-[#3370FF] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80"
-              href={loginUrl}
-            >
-              <IconCloud className="h-4 w-4" />
-              连接飞书
-            </a>
-            <button
-              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-6 py-2.5 text-sm font-semibold text-zinc-300 transition hover:bg-zinc-800"
-              onClick={() => onNavigate("settings")}
-              type="button"
-            >
-              <IconSettings className="h-4 w-4" />
-              打开配置
-            </button>
-          </div>
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-center text-sm text-amber-300">
+          飞书账号未连接，请刷新页面以完成授权引导。
         </div>
       ) : null}
 

@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.5.15 (2026-02-09)
+- 目标：重设计应用启动引导流程，增加飞书连接状态检测与引导向导；优化新建任务弹窗位置。
+- 结果：
+  - 新增 OnboardingWizard 组件：全屏两步引导（Step 1 OAuth 配置 → Step 2 连接飞书）。
+  - App.tsx 增加门控逻辑：加载中显示骨架屏，OAuth 未配置或未连接时展示引导向导，已连接才渲染主 UI。
+  - DashboardPage 移除冗余的大型 onboarding banner，简化为防御性一行提示。
+  - NewTaskModal 弹窗从 items-start 改为 items-center 实现垂直居中。
+  - 版本号升级至 v0.5.15。
+- 测试：lint 检查通过，无 TS 类型报错。
+- 问题：无。
+
 ## v0.5.14 (2026-02-09)
 - 目标：修复新建任务弹窗位置过高导致顶部不可见的问题。
 - 结果：

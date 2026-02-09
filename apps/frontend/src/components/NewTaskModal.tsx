@@ -143,7 +143,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
 
   const modal = (
     <div className="fixed inset-0 z-50 bg-black/50">
-      <div className="flex min-h-full items-start justify-center overflow-y-auto px-4 py-6">
+        <div className="flex min-h-full items-center justify-center overflow-y-auto px-4 py-6">
         <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-5">
