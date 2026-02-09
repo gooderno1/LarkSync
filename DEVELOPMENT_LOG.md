@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.5.9 (2026-02-08)
+- 目标：修复 macOS Release 未生成 DMG 的问题。
+- 结果：
+  - DMG 生成逻辑支持 dist/LarkSync.app 与 dist/LarkSync/LarkSync.app 两种路径。
+  - 缺失 .app bundle 时直接失败，避免静默跳过。
+  - 版本号升级至 v0.5.9（backend）。
+- 测试：待 tag 构建验证。
+- 问题：无。
+
 ## v0.5.8 (2026-02-08)
 - 目标：修复 NSIS 打包阶段找不到输出目录的问题。
 - 结果：

@@ -3,7 +3,13 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
-APP_BUNDLE="$DIST_DIR/LarkSync/LarkSync.app"
+APP_BUNDLE="${APP_BUNDLE:-$DIST_DIR/LarkSync.app}"
+if [[ ! -d "$APP_BUNDLE" ]]; then
+  FALLBACK_BUNDLE="$DIST_DIR/LarkSync/LarkSync.app"
+  if [[ -d "$FALLBACK_BUNDLE" ]]; then
+    APP_BUNDLE="$FALLBACK_BUNDLE"
+  fi
+fi
 
 if ! command -v create-dmg >/dev/null 2>&1; then
   echo "ERROR: create-dmg not found. Install with: brew install create-dmg"

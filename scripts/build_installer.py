@@ -301,19 +301,26 @@ def _build_nsis() -> None:
 def _build_dmg() -> None:
     """macOS: 生成 DMG 安装包。"""
     create_dmg_script = PROJECT_ROOT / "scripts" / "installer" / "macos" / "create_dmg.sh"
-    app_bundle = OUTPUT_DIR / "LarkSync" / "LarkSync.app"
 
     if not create_dmg_script.is_file():
         print(f"  ✗ 未找到 DMG 脚本: {create_dmg_script}")
-        return
+        sys.exit(1)
 
-    if not app_bundle.is_dir():
-        print(f"  ✗ 未找到 .app bundle: {app_bundle}")
-        return
+    candidates = [
+        OUTPUT_DIR / "LarkSync.app",
+        OUTPUT_DIR / "LarkSync" / "LarkSync.app",
+    ]
+    app_bundle = next((path for path in candidates if path.is_dir()), None)
+    if not app_bundle:
+        print("  ✗ 未找到 .app bundle")
+        for candidate in candidates:
+            print(f"    - 期待路径: {candidate}")
+        sys.exit(1)
 
     version = _read_version()
     env = os.environ.copy()
     env["APP_VERSION"] = version
+    env["APP_BUNDLE"] = str(app_bundle)
     run(["bash", str(create_dmg_script)], cwd=PROJECT_ROOT, env=env)
     print("  ✓ DMG 已生成")
 
