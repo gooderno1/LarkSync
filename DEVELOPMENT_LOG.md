@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-readme-balance-and-usage-release-guide (2026-02-18)
+- 目标：
+  - 修正 README 过度精简的问题，回到“有介绍但不冗长”的开源项目风格。
+  - 保留三份核心文档入口，并在 README 做简要导读。
+  - 恢复 `docs/USAGE.md` 的发布教学，便于维护者日常使用。
+- 变更：
+  - `README.md`
+    - 补充“项目简介 / 适用场景 / 功能亮点”。
+    - 保留 Logo 与双路径快速开始（本地开发、Release 下载）。
+    - 移除当前不合适的“常见问题”段落。
+  - `docs/USAGE.md`
+    - 第 10 节调整为“本地打包、发布与安装包下载”。
+    - 恢复维护者发布教学（`npm run release:publish`）与 GitHub Release 构建说明。
+    - 保留使用者下载安装包路径。
+
 ## v0.5.44-public-readme-and-repo-hygiene (2026-02-18)
 - 目标：
   - 面向公开仓库精简对外文档，避免暴露不必要的内部流程。

@@ -271,7 +271,7 @@ npx tsc --noEmit
   3) 清空本地 token（调用 `/auth/logout` 或清理 token 存储）。
   4) 重新启动 `npm run dev`，系统会自动创建空数据库。
 
-## 10. 本地打包与安装包下载
+## 10. 本地打包、发布与安装包下载
 ### 10.1 本地打包（当前真实做法）
 统一使用脚本：`scripts/build_installer.py`。
 
@@ -292,7 +292,40 @@ python scripts/build_installer.py --dmg
 - Windows 生成安装包依赖 `makensis`（NSIS）；macOS 生成 DMG 依赖 `create-dmg`。
 - 脚本会自动过滤与当前解释器版本不匹配的 `PYTHONPATH` `site-packages`（例如 `Python312` 与 `Python314` 混用），减少本机环境污染导致的打包失败。
 
-### 10.2 GitHub Release 下载安装包
+### 10.2 一行稳定版发布（维护者）
+
+```bash
+npm run release:publish
+```
+
+可选：自定义提交信息
+
+```bash
+npm run release:publish -- "release: v0.5.45"
+```
+
+该命令等价于 `python scripts/release.py --publish`，会自动：
+- 读取当前版本与 git tags，计算下一稳定版号；
+- 同步更新 `package.json` / `apps/frontend/package.json` / `apps/backend/pyproject.toml`；
+- 追加 `CHANGELOG.md`；
+- 执行 `git add .`、`git commit`、`git tag <version>`、`git push`、`git push origin <version>`。
+
+### 10.3 GitHub Release 构建说明（维护者）
+当前发布工作流：`.github/workflows/release-build.yml`。
+
+触发条件：
+- 推送 `v*` 标签（如 `v0.5.44`）。
+- 标签不能包含 `-dev`，否则构建任务会被 `if` 条件跳过。
+
+产物上传结果：
+- Windows：`dist/LarkSync-Setup-*.exe`
+- macOS：`dist/LarkSync-*.dmg`
+- 由 workflow 自动上传到对应 GitHub Release。
+
+注意：
+- workflow 虽支持手动 `workflow_dispatch`，但当前 job 仍要求“tag 且非 -dev”，手动触发默认不会产出安装包。
+
+### 10.4 GitHub Release 下载安装包（使用者）
 - 发布页：<https://github.com/gooderno1/LarkSync/releases>
 - Windows：下载 `LarkSync-Setup-*.exe`
 - macOS：下载 `LarkSync-*.dmg`
