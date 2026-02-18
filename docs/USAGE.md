@@ -3,11 +3,11 @@
 本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
 
 ## 0. 当前版本（截至 2026-02-18）
-- 最新发布记录：`v0.5.42`（见 `CHANGELOG.md` 顶部）
-- 当前开发迭代：`v0.5.43-dev.4`（含任务级 MD 上传模式、自动更新自动下载与一行发布能力）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.5.43-dev.4`
-- 前端版本：`apps/frontend/package.json` 中为 `0.5.43-dev.4`
-- 根目录版本：`package.json` 中为 `v0.5.43-dev.4`
+- 最新发布记录：`v0.5.44`（见 `CHANGELOG.md` 顶部）
+- 当前主线状态：`v0.5.44`（更新检查 404 友好化、公开前仓库清理）
+- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.5.44`
+- 前端版本：`apps/frontend/package.json` 中为 `0.5.44`
+- 根目录版本：`package.json` 中为 `v0.5.44`
 
 ## 1. 环境准备
 - Node.js 18+（用于前端）
@@ -301,7 +301,7 @@ npm run release:publish
 可选：自定义提交信息
 
 ```bash
-npm run release:publish -- "release: v0.5.43"
+npm run release:publish -- "release: v0.5.45"
 ```
 
 该命令等价于 `python scripts/release.py --publish`，会自动：
@@ -314,7 +314,7 @@ npm run release:publish -- "release: v0.5.43"
 当前发布工作流：`.github/workflows/release-build.yml`。
 
 触发条件：
-- 推送 `v*` 标签（如 `v0.5.43`）。
+- 推送 `v*` 标签（如 `v0.5.44`）。
 - 标签不能包含 `-dev`，否则构建任务会被 `if` 条件跳过。
 
 产物上传结果：
@@ -324,6 +324,7 @@ npm run release:publish -- "release: v0.5.43"
 
 注意：
 - workflow 虽支持手动 `workflow_dispatch`，但当前 job 仍要求“tag 且非 -dev”，手动触发默认不会产出安装包。
+- 自动更新依赖公开可访问的 GitHub Release；若仓库私有、暂无 Release 或无稳定版 tag，客户端会显示“暂无稳定版 Release”，不会继续下载更新包。
 
 ## 11. 已知限制
 - 非 Markdown 文件的"覆盖更新"接口尚未接入。

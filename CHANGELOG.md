@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-18] v0.5.44 docs(readme,usage): 重构 README 为 GitHub 项目首页格式，补充项目定位/测试/打包/发布/自动更新说明；同步修正文档中的版本与发布示例到 v0.5.44 现状
 [2026-02-18] v0.5.44 release: v0.5.44
 [2026-02-18] v0.5.43 release: v0.5.43
 [2026-02-18] v0.5.43-dev.4 feat(release,update,md-sync): 新增一行稳定版发布命令（自动计算版本/打 tag/push）；自动更新从“仅检查”补全为“可自动下载更新包”；同步任务新增任务级 MD 上传模式（enhanced/download_only/doc_only，默认 enhanced）并接入任务创建与任务管理；修复本地 MD 上云图片路径解析（支持 file://、URL 编码、query/hash）；修复“检查更新”接口响应校验异常并在每次 OAuth 登录后触发一次更新检查

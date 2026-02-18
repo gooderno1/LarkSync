@@ -1,182 +1,136 @@
 # LarkSync
 
-运行在本地的“双向同步助手”，通过智能转码引擎连接飞书云端（Docx）与本地文件系统（Markdown/Office）。实现“本地编辑，云端协作”的无缝工作流，打通个人数据孤岛与企业知识库。
+本地优先的飞书文档同步器：把飞书云文档系统接入你的本地知识库、NAS 与 AI 文档工作流。
 
-## 功能概览
-- 全栈脚手架已搭建：FastAPI 后端 + Vite React TypeScript 前端
-- 统一开发入口：根目录 `npm run dev` 并行启动前后端
-- 开发入口稳健性：托盘主进程与后端子进程都会自动过滤不兼容 `PYTHONPATH`，降低本机全局环境污染导致的启动失败
-- 预留同步核心模块与数据层目录结构（core / services / db）
-- 配置中心：支持 `data/config.json` 与环境变量覆盖（含 `sync_mode`）
-- SQLite 同步状态模型：`SyncMapping`
-- 发布脚本：`scripts/release.py --publish` 支持一键稳定版发布（自动计算版本、更新 CHANGELOG、打 tag 并推送）
-- OAuth 登录：后端提供 `/auth/login`、`/auth/callback`、`/auth/status`、`/auth/logout`
-- 云端目录树：后端提供 `/drive/tree`，前端可展示云空间层级
-- 共享文件夹支持：目录树新增“共享文件夹”根节点，可直接选择共享空间目录
-- 共享链接/Token 选择：当共享目录未出现在树中时可粘贴分享链接创建任务
-- Docx 转 Markdown：支持标题/加粗/列表/引用/代码块/待办(含完成态)/表格/图片块解析与图片落盘，支持提及/提醒/公式渲染，支持 add-ons mermaid 图输出，sheet 内嵌表格优先转 Markdown 表格（失败回退 token 占位）
-- Sheet 单元格转码增强：兼容 rich segment / mention link / formattedValue / formula / bool / number / 嵌套对象等常见返回结构
-- 历史占位自动回刷：本地若仍含旧版 `sheet_token` 占位，下载阶段会自动跳过“云端未更新”短路并重转 Markdown
-- 表格单元格增强：表格内列表/换行保留层级缩进，兼容嵌套待办文本容器
-- 本地写入器：写入文件后强制同步云端 mtime
-- 非文档下载：提供 Drive 文件下载器，直接写入本地目录
-- 表格导出下载：飞书 sheet/bitable 自动导出为 xlsx 后落盘
-- 表格导出增强：导出任务查询携带源文档 token，修复共享表格导出 400
-- 幻灯片导出：在线幻灯片当前不支持导出，下载阶段自动跳过
-- 表格导出重试：从分享链接解析 sub_id，导出失败时自动重试
-- 表格导出补齐：缺少 sub_id 时自动拉取元数据并解析 table/sheet id
-- 表格导出轮询增强：支持长耗时导出任务完成后落盘
-- 文件名净化：自动替换 Windows 非法字符，避免下载失败
-- 本地变更监听：Watchdog 防抖监听驱动上传队列
-- Markdown 转 Docx：调用 Docx Block 接口执行全量覆盖（含 429 指数退避重试）
-- Markdown 上行局部更新：基于 block 差异仅更新变更段落（partial 模式失败直接报错，避免静默全量覆盖）
-- 同步任务支持更新模式：自动/局部/全量
-- Markdown 图片上传：本地图片自动上传为 Docx 图片块并插入文档
-- 通用文件上传：支持 upload_all / 分片上传，并在本地状态库记录 file_hash 与云端 token
-- 冲突中心：持久化冲突记录与前端对比视图，支持“使用本地/云端”决策
-- 同步任务配置向导：支持云端目录选择器、本地文件夹选择器与任务状态
-- 下载型同步任务：支持立即同步、状态展示与删除
-- 全新侧边栏仪表盘 UI：任务/冲突/设置分区与实时日志面板
-- 组件化架构：pages / components / hooks / lib 分层，TanStack Query 数据管理
-- 明暗主题切换：Inter + JetBrains Mono 字体，Zinc + Lark Blue 色板
-- Toast 通知与确认弹窗：操作反馈即时可见，删除等危险操作需二次确认
-- 新建任务分步向导：Step 1/2/3 引导式创建
-- 冲突解决 Keep Both：支持使用本地/云端/保留双方三种策略
-- WebSocket 实时日志流：连接后端 ws://host/ws/logs 推送日志
-- 骨架屏与空状态引导：页面加载与无数据时的良好视觉体验
-- 日志中心：同步日志/系统日志双视图，支持筛选/搜索/分页与冲突管理
-- 日志中心筛选增强：状态与任务均支持复选，新增“所有日志（推荐）”选项并默认全量显示（自动覆盖未来新增状态）
-- 删除日志可观测性：日志中心支持删除状态筛选（待删除/删除成功/删除失败），删除失败会记录 `delete_failed` 事件
-- 系统日志可观测性优化：默认“最新优先”，后端不可达时前端直接展示加载失败原因
-- 日志中心自动刷新：同步日志/系统日志定时更新，便于实时排查
-- 日志保留设置：同步日志保留天数与提醒阈值可配置，系统日志默认仅保留 1 天
-- 数据库自愈：检测 SQLite 损坏自动备份并重建，避免启动失败
-- 后端优雅退出：托盘停止优先走 /system/shutdown，降低数据库损坏风险
-- SQLite WAL：启用 WAL + busy_timeout 提升写入鲁棒性
-- 日志读取优化：后端日志流式分页读取，支持历史滚动查看
-- 系统日志排序：支持最早/最新优先切换，便于查看历史记录
-- 系统日志读取：后端读取根目录 data/logs/larksync.log，确保历史可见
-- 同步任务管理：默认简洁视图，按需展开管理选项
-- 同步任务管理布局优化：任务页新增状态概览卡片，任务卡片分区信息更清晰
-- MD 上传模式（任务级）：支持 `enhanced / download_only / doc_only` 三种模式；新建任务默认 `enhanced`
-- 任务完成率口径优化：按 `completed / (total - skipped)` 计算，跳过项不再拉低完成率
-- 删除同步策略（任务级）：每个任务可独立配置 `off/safe/strict`；`safe` 模式使用墓碑+宽限期，云删本地会先移动到本地 `.larksync_trash/` 回收目录；删除失败项会进入自动重试（5 分钟退避）
-- 变更判定增强：本地上传优先基于文件哈希（`local_hash`）判定，mtime 仅作回退，降低误判与重复上传
-- 同步任务归属隔离：按设备 ID + 飞书账号 open_id 双重绑定，避免跨设备/跨账号任务串扰
-- 同步任务映射约束：同设备同账号下，本地目录与云端目录强制一对一；禁止父子本地目录同时建任务，避免重复/循环同步
-- 身份标识自愈：OAuth token 若未返回 open_id，会自动调用用户信息接口补齐并持久化
-- 身份昵称补齐：连接状态会同步并缓存飞书用户昵称（name），用于前端友好展示
-- 任务归属收敛：任务访问严格要求设备 ID 与 open_id 同时匹配，不再放行空 open_id 任务
-- 历史任务迁移策略：仅自动补齐可确认为本机路径的任务归属，避免跨设备历史任务误入当前设备
-- 连接状态友好展示：侧边栏显示可编辑设备名称 + 飞书昵称，真实 ID 仅内部使用
-- 设置页保存逻辑优化：`更多设置` 拥有独立保存按钮，不再复用`同步策略`保存
-- 更多设置交互优化：保存按钮与“展开/收起设置”并列，减少跨区操作
-- 授权向导防闪屏：首屏等待真实授权状态返回，不再误判为未连接
-- 登录引导页主题支持：明亮/深色可切换，默认明亮主题
-- 长路径防溢出：同步任务中的本地/云端路径默认展示后半段，支持点击展开后换行显示完整地址
-- 双向/上传任务：本地变更上传（已映射 Docx 全量覆盖，普通文件新增上传）
-- 云端 MD 镜像策略：下行后自动同步本地 MD 到云端 `_LarkSync_MD_Mirror` 专用目录；上行时同步更新该目录内副本；该目录不参与下行扫描
-- Markdown 新建 Docx：缺少映射时自动创建云端文档并覆盖内容
-- Markdown 导入残留清理：新建 Docx 导入成功后自动删除原目录中用于导入的临时 `.md`，避免出现“云文档 + 同目录 md + 镜像 md”三份文件
-- Markdown file 映射直传：历史为 `file` 的 `.md` 继续按文件上传，不再强制迁移为 Docx
-- 文档链接本地化：已同步且本地存在的云端链接自动改写为本地相对路径，未同步链接保持云端地址；附件落盘至 attachments
-- 日志系统：后端运行日志写入 `data/logs/larksync.log`
-- 开发控制台日志：`npm run dev` 输出同时写入 `data/logs/dev-console.log`
-- 同步日志持久化：同步事件写入 `data/logs/sync-events.jsonl`，重启后仍可追溯历史记录
-- 双向下载保护：bidirectional 模式下检测到本地文件较新时跳过下载，避免覆盖本地修改
-- 下载去重：云端未更新且已同步记录存在时跳过下载，避免重复写入
-- 块状态自愈：partial 模式遇到缺失块状态时自动初始化，避免“本地较新但无法上云”
-- 云端同名去重：下载阶段对同一路径的同名云端文件按策略择一，避免映射漂移与重复覆盖
-- 块级更新：Markdown 变更按块检测与更新，记录每块更新时间
-- 上行一致性优化：列表续行/附件挂载/文本子块渲染优化，减少云端回写后的结构偏差
-- 飞书频控重试：新增对 `99991400(request trigger frequency limit)` 的指数退避重试
-- 飞书开发文档同步：`python scripts/sync_feishu_docs.py` 自动检查并下载最新手册
-- 飞书文档同步脚本增强：页面改版或暂未发现 zip 时不再硬失败，仍会更新 `docs/feishu/_manifest.json` 记录检查结果
-- 定时调度：本地变更队列按秒/小时/天触发上传；云端下载支持按秒/小时/天或每日定时（可配置）
-- CI/CD 自动构建：GitHub Releases 标签发布时自动构建 Windows/macOS 安装包并上传
-- Windows 安装包体验：完成页可直接启动，应用/快捷方式使用品牌 Logo
-- 自动更新：支持稳定版自动检查；命中新版本后可自动下载更新包（GitHub Releases）
-- 自动更新校验：更新包下载后强制执行 sha256 校验，不通过则阻止安装
-- 测试任务显式标记：通过后端 `is_test` 字段区分测试/正式任务，新建任务默认正式任务；仅在开发/测试模式且存在测试任务时显示切换按钮
+## 当前状态
+- 当前版本：`v0.5.44`（2026-02-18）
+- 核心运行形态：系统托盘常驻 + Web 管理面板
+- 开发入口：`npm run dev`
+- 稳定版一行发布：`npm run release:publish`
+
+## 为什么做这个项目
+1. 作为 NAS 与飞书联合应用的补充，把飞书纳入个人整体工作体系。
+2. 让本地文档上传飞书变成自动流程，免去“本地保存后再手动上传一次”。
+3. 为 OpenClaw 等 AI 助手的个人文档管理做准备，避免每次读取都直接调用飞书 API（免费次数与效率都受限）。
+4. 打通“本地编辑 + 云端协作 + 多设备同步”的完整链路。
+
+## 核心能力
+- 双向同步：飞书 Docx <-> 本地 Markdown，支持任务级模式控制。
+- 任务级 MD 策略：
+  - `enhanced`：云文档 + `_LarkSync_MD_Mirror` 云端镜像（默认）
+  - `download_only`：仅下行，不执行本地 MD 上行
+  - `doc_only`：仅更新云文档，不保留镜像（有转换损耗风险）
+- 同步任务隔离：按 `设备 ID + 飞书 open_id` 双重绑定。
+- 任务映射约束：同设备同账号下，本地目录与云端目录强制一对一，禁止父子目录并行任务。
+- 删除联动策略（任务级）：`off / safe / strict`，`safe` 含墓碑宽限和本地回收目录 `.larksync_trash/`。
+- 转码能力：覆盖标题、列表、代码块、表格、图片、公式、提醒/提及、内嵌 sheet 等常见结构。
+- 可靠性：哈希优先变更判定、429 指数退避、SQLite WAL、自愈恢复、同步日志持久化。
+- 桌面体验：托盘状态、通知、日志中心、测试任务显隐、主题切换。
+- 发布与升级：GitHub Release 构建安装包、客户端稳定版检查与自动下载（sha256 校验）。
+
+## 项目结构
+```text
+apps/
+  backend/   FastAPI + SQLAlchemy + Watchdog
+  frontend/  React + Vite + TypeScript
+  tray/      pystray 托盘应用
+scripts/     打包、发布、文档同步脚本
+data/        SQLite 与日志等运行数据
+docs/        使用说明、同步逻辑、OAuth 指南
+```
 
 ## 快速开始
 
-LarkSync 统一采用 **系统托盘模式** 运行，启动后在系统托盘区域显示图标，右键菜单可打开管理面板、暂停/恢复同步、查看日志、配置开机自启动等。
-
-### 依赖安装
-
+### 1) 安装依赖
 ```bash
-# 根目录（用于 npm run dev）
 npm install
-
-# 前端
 cd apps/frontend && npm install
-
-# 后端
-cd apps/backend && pip install -r requirements.txt
+cd ../backend && python -m pip install -r requirements.txt
 ```
 
-### 开发调试（推荐日常开发使用）
-
-一键启动：托盘 + 前端 Vite 热重载（3666）+ 后端 uvicorn --reload（8000）。
-
+### 2) 本地开发测试（默认方式）
 ```bash
 npm run dev
 ```
 
-- 前端改代码 → Vite HMR 即时生效
-- 后端改代码 → uvicorn 自动重启
-- 托盘图标、菜单、通知等与正式版完全一致
-- 退出：托盘右键"退出"或 Ctrl+C
+会同时启动：
+- 托盘进程
+- 前端 Vite（`http://localhost:3666`）
+- 后端 FastAPI（`http://localhost:8000`）
 
-### 日常使用（无需热重载）
-
-先构建前端，再通过一键启动器运行，前后端统一由 FastAPI 服务于 `http://localhost:8000`。
-
+### 3) 日常运行（无热更新）
 ```bash
-# 构建前端（仅需执行一次，代码更新后重新构建）
 python scripts/build.py
-
-# 启动
-# Windows：双击 LarkSync.bat 或 LarkSync.pyw
-# macOS：双击 LarkSync.command
-# 通用：python apps/tray/tray_app.py
+# Windows: 双击 LarkSync.bat / LarkSync.pyw
+# macOS: 双击 LarkSync.command
+# 通用: python apps/tray/tray_app.py
 ```
 
-### 打包为安装包（v0.5.0+）
-
+## 测试方式
+- 本地联调测试：`npm run dev`
+- 用户级体验测试（打包后安装验证）：
 ```bash
-python scripts/build_installer.py          # PyInstaller 打包
-python scripts/build_installer.py --nsis   # Windows: 额外生成安装包
-python scripts/build_installer.py --dmg    # macOS: 额外生成 DMG
+python scripts/build_installer.py
+python scripts/build_installer.py --nsis   # Windows 安装包
+python scripts/build_installer.py --dmg    # macOS DMG
+```
+- 后端回归：
+```bash
+cd apps/backend
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+- 前端检查：
+```bash
+cd apps/frontend
+npm run build
+npx tsc --noEmit
 ```
 
-### OAuth 配置
+## 发布与 GitHub 发布
 
-支持在设置页填写 App ID / Secret / Redirect URI，详细步骤见 `docs/OAUTH_GUIDE.md`。
+### 一行发布稳定版（本地）
+```bash
+npm run release:publish
+```
 
-### 开发文档更新
+该命令会自动：
+1. 计算下一个稳定版本号
+2. 更新根/前端/后端版本
+3. 更新 `CHANGELOG.md`
+4. `git commit` + `git tag`
+5. `git push` 与 `git push origin <tag>`
 
-执行 `npm run sync:feishu-docs`（或 `python scripts/sync_feishu_docs.py`）同步飞书开发手册到 `docs/feishu/`。
+### GitHub 安装包发布
+- 已配置工作流：`.github/workflows/release-build.yml`
+- 触发条件：推送稳定版 tag（`v*` 且非 `-dev`）
+- 产物：Windows `*.exe`、macOS `*.dmg` 自动上传到 Release
 
-### 配置
+## 自动更新机制
+- 检查策略：按配置周期检查 + 每次 OAuth 登录成功后额外检查一次。
+- 下载策略：命中新稳定版时可自动下载更新包（不自动安装）。
+- 校验策略：必须通过 sha256 校验才会保留更新包。
+- 说明：若看到 `获取 Release 失败: HTTP 404` 或 “暂无稳定版 Release”，通常是仓库未公开、无 Release 或无稳定版 tag。
 
-默认读取 `data/config.json`，可通过环境变量覆盖：
-- `LARKSYNC_SYNC_MODE`：`bidirectional` / `download_only` / `upload_only`
-- `LARKSYNC_DATABASE_URL` 或 `LARKSYNC_DB_PATH`
-- `LARKSYNC_AUTH_AUTHORIZE_URL` / `LARKSYNC_AUTH_TOKEN_URL`
-- `LARKSYNC_AUTH_CLIENT_ID` / `LARKSYNC_AUTH_CLIENT_SECRET`
-- `LARKSYNC_AUTH_REDIRECT_URI`
-- `LARKSYNC_AUTH_SCOPES`（逗号分隔）
-- `LARKSYNC_TOKEN_STORE`（`keyring` / `memory`）
-- `LARKSYNC_DATA_DIR`（运行数据目录；开发模式默认使用仓库 data/，安装版默认使用用户目录）
-- `LARKSYNC_UPLOAD_INTERVAL_VALUE` / `LARKSYNC_UPLOAD_INTERVAL_UNIT` / `LARKSYNC_UPLOAD_DAILY_TIME`
-- `LARKSYNC_DOWNLOAD_INTERVAL_VALUE` / `LARKSYNC_DOWNLOAD_INTERVAL_UNIT` / `LARKSYNC_DOWNLOAD_DAILY_TIME`
-- `LARKSYNC_SYNC_LOG_RETENTION_DAYS`（同步日志保留天数，0=永久）
-- `LARKSYNC_SYNC_LOG_WARN_SIZE_MB`（同步日志提醒阈值，MB）
-- `LARKSYNC_SYSTEM_LOG_RETENTION_DAYS`（系统日志保留天数，默认 1）
-- `LARKSYNC_AUTO_UPDATE_ENABLED`（自动更新开关）
-- `LARKSYNC_UPDATE_CHECK_INTERVAL_HOURS`（更新检查间隔，小时）
-- `LARKSYNC_ALLOW_DEV_TO_STABLE`（dev 版本是否提示升级到稳定版）
-- `LARKSYNC_DELETE_POLICY`（删除同步策略：`off` / `safe` / `strict`）
-- `LARKSYNC_DELETE_GRACE_MINUTES`（删除宽限时间，分钟）
+## 配置与文档
+- 使用文档：`docs/USAGE.md`
+- OAuth 指南：`docs/OAUTH_GUIDE.md`
+- 同步逻辑：`docs/SYNC_LOGIC.md`
+- 飞书开发文档同步：`npm run sync:feishu-docs`
+
+主要环境变量（节选）：
+- `LARKSYNC_SYNC_MODE`
+- `LARKSYNC_UPLOAD_INTERVAL_VALUE` / `LARKSYNC_UPLOAD_INTERVAL_UNIT`
+- `LARKSYNC_DOWNLOAD_INTERVAL_VALUE` / `LARKSYNC_DOWNLOAD_INTERVAL_UNIT`
+- `LARKSYNC_AUTO_UPDATE_ENABLED`
+- `LARKSYNC_UPDATE_CHECK_INTERVAL_HOURS`
+- `LARKSYNC_ALLOW_DEV_TO_STABLE`
+
+## 常见问题
+- 托盘不显示：
+  - 先退出旧实例，确认 `48901` 未被占用，再重启 `npm run dev`
+  - 确认后端依赖已安装（`pystray`、`Pillow`）
+- `npm run dev` 启动异常：
+  - 项目已内置 `PYTHONPATH` 污染过滤，但建议仍在项目虚拟环境运行
+- 打包失败且堆栈含 `numpy/matplotlib`：
+  - 先升级到当前版本脚本（已内置跨版本 `site-packages` 过滤）
