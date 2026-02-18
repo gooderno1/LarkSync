@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-18] v0.5.44 docs(repo): README 精简为公开版（仅保留本地开发与 Release 下载两种快速开始，新增 Logo 与关键文档链接）；USAGE 移除 Git 发布说明；启动器文件（.bat/.pyw/.command）改为 ignore 并停止跟踪
 [2026-02-18] v0.5.44 docs(readme,usage): 重构 README 为 GitHub 项目首页格式，补充项目定位/测试/打包/发布/自动更新说明；同步修正文档中的版本与发布示例到 v0.5.44 现状
 [2026-02-18] v0.5.44 release: v0.5.44
 [2026-02-18] v0.5.43 release: v0.5.43

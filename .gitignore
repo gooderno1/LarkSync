@@ -46,3 +46,8 @@ apps/tray/icons/
 
 # Local AI tooling config
 opencode.json
+
+# Local launchers (not for public repo)
+/LarkSync.bat
+/LarkSync.pyw
+/LarkSync.command

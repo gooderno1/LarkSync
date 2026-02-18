@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-public-readme-and-repo-hygiene (2026-02-18)
+- 目标：
+  - 面向公开仓库精简对外文档，避免暴露不必要的内部流程。
+  - README 快速开始仅保留“本地开发”和“Release 下载安装包”两条主路径。
+  - 启动器脚本文件改为本地保留、不再纳入 Git 跟踪。
+- 变更：
+  - `README.md`
+    - 精简公开内容，移除 Git 发布流程与内部实现细节。
+    - 新增产品 Logo 展示。
+    - 新增关键文档链接：`docs/OAUTH_GUIDE.md`、`docs/USAGE.md`、`docs/SYNC_LOGIC.md`。
+  - `docs/USAGE.md`
+    - 第 10 节改为“本地打包与安装包下载”，移除 Git 发布操作说明。
+  - `.gitignore`
+    - 新增 `LarkSync.bat`、`LarkSync.pyw`、`LarkSync.command` 忽略规则。
+  - Git 跟踪清理：
+    - `git rm --cached LarkSync.bat LarkSync.pyw LarkSync.command`（仅停止跟踪，本地文件保留）。
+
 ## v0.5.44-docs-refresh-before-release (2026-02-18)
 - 目标：
   - 在发布前重构 `README.md`，对齐优秀 GitHub 项目首页的结构与可读性。
