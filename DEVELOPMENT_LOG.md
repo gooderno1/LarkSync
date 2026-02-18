@@ -1,5 +1,12 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-add-license-cc-by-nc-sa (2026-02-18)
+- 目标：
+  - 为仓库补齐标准许可证文件，明确对外许可条款。
+- 变更：
+  - 新增 `LICENSE`，内容为 CC BY-NC-SA 4.0 官方 legalcode 正文（来源：<https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode>）。
+  - `README.md` 新增 License 区块，链接本地 `LICENSE` 与官方 legalcode 页面。
+
 ## v0.5.44-readme-balance-and-usage-release-guide (2026-02-18)
 - 目标：
   - 修正 README 过度精简的问题，回到“有介绍但不冗长”的开源项目风格。

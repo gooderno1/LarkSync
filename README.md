@@ -50,3 +50,7 @@ npm run dev
 - 使用文档：[`docs/USAGE.md`](docs/USAGE.md)
 - OAuth 配置：[`docs/OAUTH_GUIDE.md`](docs/OAUTH_GUIDE.md)
 - 同步逻辑：[`docs/SYNC_LOGIC.md`](docs/SYNC_LOGIC.md)
+
+## License
+本项目采用 **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**。  
+完整法律文本见 [`LICENSE`](LICENSE) 或官网：<https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode>
