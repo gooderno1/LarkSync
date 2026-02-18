@@ -55,11 +55,20 @@ def test_update_config_persists(tmp_path: Path, monkeypatch) -> None:
             "auth_scopes": ["drive:drive"],
             "sync_mode": "upload_only",
             "token_store": "keyring",
+            "device_display_name": "我的笔记本",
+            "delete_policy": "strict",
+            "delete_grace_minutes": 0,
         },
     )
     assert response.status_code == 200
+    payload = response.json()
+    assert payload["delete_policy"] == "strict"
+    assert payload["delete_grace_minutes"] == 0
 
     persisted = json.loads(config_path.read_text(encoding="utf-8"))
     assert persisted["auth_client_id"] == "new-id"
     assert persisted["auth_client_secret"] == "new-secret"
     assert persisted["sync_mode"] == "upload_only"
+    assert persisted["device_display_name"] == "我的笔记本"
+    assert persisted["delete_policy"] == "strict"
+    assert persisted["delete_grace_minutes"] == 0

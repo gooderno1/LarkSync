@@ -1,6 +1,8 @@
 import asyncio
+import os
 import time
 import traceback
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -32,16 +34,39 @@ from src.services.update_scheduler import UpdateScheduler
 app = FastAPI(title="LarkSync API")
 
 
+def _as_bool_env(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _expose_error_detail() -> bool:
+    # 默认关闭错误详情回显，避免将内部异常直接暴露给客户端。
+    return _as_bool_env("LARKSYNC_DEBUG_ERRORS", default=False)
+
+
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception):
-    """全局异常处理：将裸 500 替换为包含错误详情的 JSON 响应，方便排查。"""
+    """全局异常处理：默认返回通用错误，开发诊断可通过环境变量开启详情。"""
     tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
-    logger.error("未处理异常 {} {}: {}", request.method, request.url.path, exc)
+    error_id = uuid.uuid4().hex[:12]
+    logger.error(
+        "未处理异常 id={} {} {}: {}",
+        error_id,
+        request.method,
+        request.url.path,
+        exc,
+    )
     logger.debug("Traceback:\n{}", "".join(tb))
+    detail = "Internal Server Error"
+    if _expose_error_detail():
+        detail = f"{type(exc).__name__}: {exc}"
     return JSONResponse(
         status_code=500,
         content={
-            "detail": f"{type(exc).__name__}: {exc}",
+            "detail": detail,
+            "error_id": error_id,
             "path": str(request.url.path),
         },
     )

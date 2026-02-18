@@ -27,6 +27,9 @@ type ConfigData = {
   last_update_check?: number;
   allow_dev_to_stable?: boolean;
   upload_md_to_cloud?: boolean;
+  device_display_name?: string;
+  delete_policy?: "off" | "safe" | "strict";
+  delete_grace_minutes?: number;
 };
 
 export function useConfig() {
@@ -36,7 +39,6 @@ export function useConfig() {
     queryKey: ["config"],
     queryFn: () => apiFetch<ConfigData>("/config"),
     staleTime: 60_000,
-    placeholderData: {},
   });
 
   const saveMutation = useMutation({
@@ -77,6 +79,19 @@ export function useConfig() {
       const updateInterval = body.update_check_interval_hours as number | null;
       if (updateInterval != null && updateInterval <= 0) {
         throw new Error("更新检查间隔必须大于 0。");
+      }
+      const deleteGrace = body.delete_grace_minutes as number | null;
+      if (deleteGrace != null && deleteGrace < 0) {
+        throw new Error("删除宽限时间不能为负数。");
+      }
+      const deletePolicy = body.delete_policy as string | null;
+      if (
+        deletePolicy != null &&
+        deletePolicy !== "off" &&
+        deletePolicy !== "safe" &&
+        deletePolicy !== "strict"
+      ) {
+        throw new Error("删除策略参数无效。");
       }
       return apiFetch("/config", {
         method: "PUT",

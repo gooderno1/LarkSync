@@ -73,6 +73,56 @@ def test_sync_event_store_persists_and_filters(tmp_path: Path) -> None:
     assert items[0].path == "/tmp/b.md"
 
 
+def test_sync_event_store_supports_multi_status_and_task_filters(tmp_path: Path) -> None:
+    log_file = tmp_path / "sync-events.jsonl"
+    store = SyncEventStore(log_file)
+
+    store.append(
+        SyncEventRecord(
+            timestamp=1.0,
+            task_id="task-1",
+            task_name="任务A",
+            status="downloaded",
+            path="/tmp/a.md",
+            message=None,
+        )
+    )
+    store.append(
+        SyncEventRecord(
+            timestamp=2.0,
+            task_id="task-2",
+            task_name="任务B",
+            status="uploaded",
+            path="/tmp/b.md",
+            message=None,
+        )
+    )
+    store.append(
+        SyncEventRecord(
+            timestamp=3.0,
+            task_id="task-3",
+            task_name="任务C",
+            status="failed",
+            path="/tmp/c.md",
+            message="boom",
+        )
+    )
+
+    total, items = store.read_events(
+        limit=10,
+        offset=0,
+        status="",
+        statuses=["uploaded", "failed"],
+        search="",
+        task_id="",
+        task_ids=["task-2", "task-3"],
+        order="desc",
+    )
+    assert total == 2
+    assert [item.task_id for item in items] == ["task-3", "task-2"]
+    assert [item.status for item in items] == ["failed", "uploaded"]
+
+
 def test_sync_event_store_order_and_pagination(tmp_path: Path) -> None:
     log_file = tmp_path / "sync-events.jsonl"
     store = SyncEventStore(log_file)

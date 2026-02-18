@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from src.services.sheet_service import SheetMeta
 from src.services.transcoder import DocxTranscoder
 
 
@@ -28,6 +29,45 @@ class StubFileDownloader:
         self.calls.append((file_token, file_name, target_dir))
         target_dir.mkdir(parents=True, exist_ok=True)
         (target_dir / file_name).write_bytes(b"file")
+
+
+class StubSheetService:
+    async def list_sheet_ids(self, spreadsheet_token: str) -> list[str]:
+        return ["sheet-1"]
+
+    async def get_sheet_meta(self, spreadsheet_token: str, sheet_id: str) -> SheetMeta:
+        return SheetMeta(
+            sheet_id=sheet_id,
+            title="阶段清单",
+            row_count=3,
+            column_count=3,
+        )
+
+    async def get_values(
+        self,
+        spreadsheet_token: str,
+        sheet_id: str,
+        *,
+        row_count: int,
+        column_count: int,
+    ) -> list[list[object]]:
+        return [
+            ["名称", "状态", "备注"],
+            [
+                [{"text": "需求文档"}],
+                [{"text": "已完成"}],
+                [{"text": "详情"}, {"text": "链接", "link": "https://example.com"}],
+            ],
+            ["立项书", "进行中", None],
+        ]
+
+
+class FailingSheetService:
+    async def list_sheet_ids(self, spreadsheet_token: str) -> list[str]:
+        return ["sheet-1"]
+
+    async def get_sheet_meta(self, spreadsheet_token: str, sheet_id: str) -> SheetMeta:
+        raise RuntimeError("sheet metadata unavailable")
 
 
 @pytest.mark.asyncio
@@ -606,6 +646,209 @@ async def test_transcoder_renders_mentions_and_reminders(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
+async def test_transcoder_renders_equation_elements(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["p1"]},
+        {
+            "block_id": "p1",
+            "block_type": 2,
+            "parent_id": "root",
+            "text": {
+                "elements": [
+                    {"text_run": {"content": "定义全域数据空间为 "}},
+                    {"equation": {"content": "\\mathcal{D}", "text_element_style": {}}},
+                    {"text_run": {"content": "。"}},
+                ]
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-equation", blocks)
+
+    assert "定义全域数据空间为 $\\mathcal{D}$。" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_fallback_renders_unknown_element_with_text_and_link(
+    tmp_path: Path,
+) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["p1"]},
+        {
+            "block_id": "p1",
+            "block_type": 2,
+            "parent_id": "root",
+            "text": {
+                "elements": [
+                    {
+                        "mention_sheet": {
+                            "text": "预算表",
+                            "link": "https://example.com/sheet",
+                        }
+                    }
+                ]
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-unknown-element", blocks)
+
+    assert "[预算表](https://example.com/sheet)" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_renders_sheet_block_placeholder(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["sheet1"]},
+        {
+            "block_id": "sheet1",
+            "block_type": 30,
+            "parent_id": "root",
+            "sheet": {"token": "sheet_token_1", "title": "阶段清单"},
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-sheet", blocks)
+
+    assert "阶段清单（sheet_token: sheet_token_1）" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_renders_sheet_block_as_table(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["sheet1"]},
+        {
+            "block_id": "sheet1",
+            "block_type": 30,
+            "parent_id": "root",
+            "sheet": {"token": "spreadsheet_token_1_sheet-1"},
+        },
+    ]
+
+    transcoder = DocxTranscoder(
+        assets_root=tmp_path,
+        downloader=StubDownloader(),
+        sheet_service=StubSheetService(),
+    )
+    markdown = await transcoder.to_markdown("doc-sheet", blocks)
+
+    assert "| 名称 | 状态 | 备注 |" in markdown
+    assert "| 需求文档 | 已完成 | 详情[链接](https://example.com) |" in markdown
+    assert "| 立项书 | 进行中 |  |" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_sheet_block_supports_rich_cell_variants(tmp_path: Path) -> None:
+    class RichSheetService:
+        async def list_sheet_ids(self, spreadsheet_token: str) -> list[str]:
+            return ["sheet-rich"]
+
+        async def get_sheet_meta(self, spreadsheet_token: str, sheet_id: str) -> SheetMeta:
+            return SheetMeta(
+                sheet_id=sheet_id,
+                title="复杂单元格",
+                row_count=3,
+                column_count=4,
+            )
+
+        async def get_values(
+            self,
+            spreadsheet_token: str,
+            sheet_id: str,
+            *,
+            row_count: int,
+            column_count: int,
+        ) -> list[list[object]]:
+            return [
+                ["字段", "值", "链接", "备注"],
+                [
+                    [
+                        {"text": "粗体", "segmentStyle": {"bold": True}},
+                        {"text": " + 普通", "type": "text"},
+                    ],
+                    {"formattedValue": "42.0"},
+                    {"text": "文档", "link": {"url": "https://example.com/doc?from=sheet"}},
+                    {"richText": [{"text": "多行A"}, {"text": "\n"}, {"text": "B"}]},
+                ],
+                [
+                    True,
+                    3.14,
+                    {"value": {"content": "嵌套值"}},
+                    {"formula": "=SUM(A1:A2)"},
+                ],
+            ]
+
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["sheet1"]},
+        {
+            "block_id": "sheet1",
+            "block_type": 30,
+            "parent_id": "root",
+            "sheet": {"token": "spreadsheet_token_2_sheet-rich"},
+        },
+    ]
+
+    transcoder = DocxTranscoder(
+        assets_root=tmp_path,
+        downloader=StubDownloader(),
+        sheet_service=RichSheetService(),
+    )
+    markdown = await transcoder.to_markdown("doc-sheet-rich", blocks)
+
+    assert "| 字段 | 值 | 链接 | 备注 |" in markdown
+    assert "| **粗体** + 普通 | 42.0 | [文档](https://example.com/doc?from=sheet) | 多行A<br>B |" in markdown
+    assert "| True | 3.14 | 嵌套值 | =SUM(A1:A2) |" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_sheet_block_falls_back_when_service_fails(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["sheet1"]},
+        {
+            "block_id": "sheet1",
+            "block_type": 30,
+            "parent_id": "root",
+            "sheet": {"token": "spreadsheet_token_1_sheet-1", "title": "阶段清单"},
+        },
+    ]
+
+    transcoder = DocxTranscoder(
+        assets_root=tmp_path,
+        downloader=StubDownloader(),
+        sheet_service=FailingSheetService(),
+    )
+    markdown = await transcoder.to_markdown("doc-sheet-fallback", blocks)
+
+    assert "阶段清单（sheet_token: spreadsheet_token_1_sheet-1）" in markdown
+
+
+@pytest.mark.asyncio
+async def test_transcoder_renders_addons_mermaid_block(tmp_path: Path) -> None:
+    blocks = [
+        {"block_id": "root", "block_type": 1, "children": ["addon1"]},
+        {
+            "block_id": "addon1",
+            "block_type": 40,
+            "parent_id": "root",
+            "add_ons": {
+                "record": "{\"data\":\"graph TD\\nA-->B\"}",
+                "component_type_id": "blk_631fefbbae02400430b8f9f4",
+            },
+        },
+    ]
+
+    transcoder = DocxTranscoder(assets_root=tmp_path, downloader=StubDownloader())
+    markdown = await transcoder.to_markdown("doc-addon", blocks)
+
+    assert "```mermaid" in markdown
+    assert "graph TD" in markdown
+    assert "A-->B" in markdown
+
+
+@pytest.mark.asyncio
 async def test_transcoder_todo_done_marker(tmp_path: Path) -> None:
     blocks = [
         {"block_id": "root", "block_type": 1, "children": ["t1", "t2"]},
@@ -805,3 +1048,182 @@ async def test_transcoder_falls_back_when_image_download_fails(tmp_path: Path) -
 
     assert "![](assets/doc-image/img-token.png)" in markdown
     assert file_downloader.calls[0][0] == "img-token"
+
+
+@pytest.mark.asyncio
+async def test_transcoder_internal_full_coverage_document(tmp_path: Path) -> None:
+    blocks = [
+        {
+            "block_id": "root",
+            "block_type": 1,
+            "children": [
+                "h1",
+                "p1",
+                "bul1",
+                "ord1",
+                "todo1",
+                "code1",
+                "quote1",
+                "callout1",
+                "divider1",
+                "tbl",
+                "sheet1",
+                "addon1",
+                "file1",
+                "img1",
+                "view1",
+            ],
+        },
+        {
+            "block_id": "h1",
+            "block_type": 3,
+            "parent_id": "root",
+            "heading1": {"elements": [{"text_run": {"content": "全量回归"}}]},
+        },
+        {
+            "block_id": "p1",
+            "block_type": 2,
+            "parent_id": "root",
+            "text": {
+                "elements": [
+                    {
+                        "mention_doc": {
+                            "title": "示例",
+                            "url": "https://example.com/doc",
+                            "text_element_style": {},
+                        }
+                    },
+                    {"text_run": {"content": " "}},
+                    {"mention_user": {"user_id": "ou_demo", "text_element_style": {}}},
+                    {"text_run": {"content": " "}},
+                    {"reminder": {"notify_time": "1700000000000", "text_element_style": {}}},
+                    {"text_run": {"content": " "}},
+                    {"equation": {"content": "x^2", "text_element_style": {}}},
+                ]
+            },
+        },
+        {
+            "block_id": "bul1",
+            "block_type": 12,
+            "parent_id": "root",
+            "bullet": {"style": {}, "elements": [{"text_run": {"content": "列表项"}}]},
+        },
+        {
+            "block_id": "ord1",
+            "block_type": 13,
+            "parent_id": "root",
+            "ordered": {"style": {"sequence": "1"}, "elements": [{"text_run": {"content": "步骤一"}}]},
+        },
+        {
+            "block_id": "todo1",
+            "block_type": 17,
+            "parent_id": "root",
+            "todo": {"style": {"done": True}, "elements": [{"text_run": {"content": "待办完成"}}]},
+        },
+        {
+            "block_id": "code1",
+            "block_type": 14,
+            "parent_id": "root",
+            "code": {"language": "python", "elements": [{"text_run": {"content": "print('ok')"}}]},
+        },
+        {
+            "block_id": "quote1",
+            "block_type": 15,
+            "parent_id": "root",
+            "quote": {"elements": [{"text_run": {"content": "引用块"}}]},
+        },
+        {
+            "block_id": "callout1",
+            "block_type": 19,
+            "parent_id": "root",
+            "children": ["callout_text"],
+        },
+        {
+            "block_id": "callout_text",
+            "block_type": 2,
+            "parent_id": "callout1",
+            "text": {"elements": [{"text_run": {"content": "提示块"}}]},
+        },
+        {"block_id": "divider1", "block_type": 22, "parent_id": "root"},
+        {
+            "block_id": "tbl",
+            "block_type": 31,
+            "parent_id": "root",
+            "table": {"cells": ["c1", "c2", "c3", "c4"], "property": {"row_size": 2, "column_size": 2}},
+        },
+        {"block_id": "c1", "block_type": 32, "parent_id": "tbl", "children": ["t1"]},
+        {"block_id": "c2", "block_type": 32, "parent_id": "tbl", "children": ["t2"]},
+        {"block_id": "c3", "block_type": 32, "parent_id": "tbl", "children": ["t3"]},
+        {"block_id": "c4", "block_type": 32, "parent_id": "tbl", "children": ["t4"]},
+        {"block_id": "t1", "block_type": 2, "parent_id": "c1", "text": {"elements": [{"text_run": {"content": "H1"}}]}},
+        {"block_id": "t2", "block_type": 2, "parent_id": "c2", "text": {"elements": [{"text_run": {"content": "H2"}}]}},
+        {"block_id": "t3", "block_type": 2, "parent_id": "c3", "text": {"elements": [{"text_run": {"content": "R1"}}]}},
+        {"block_id": "t4", "block_type": 2, "parent_id": "c4", "text": {"elements": [{"text_run": {"content": "R2"}}]}},
+        {
+            "block_id": "sheet1",
+            "block_type": 30,
+            "parent_id": "root",
+            "sheet": {"token": "spreadsheet_token_1_sheet-1"},
+        },
+        {
+            "block_id": "addon1",
+            "block_type": 40,
+            "parent_id": "root",
+            "add_ons": {"record": "{\"data\":\"graph TD\\nA-->B\"}"},
+        },
+        {
+            "block_id": "file1",
+            "block_type": 23,
+            "parent_id": "root",
+            "file": {"token": "file-full", "name": "附件.docx"},
+        },
+        {
+            "block_id": "img1",
+            "block_type": 27,
+            "parent_id": "root",
+            "image": {"token": "img-full"},
+        },
+        {"block_id": "view1", "block_type": 33, "parent_id": "root", "children": ["view_text"]},
+        {
+            "block_id": "view_text",
+            "block_type": 2,
+            "parent_id": "view1",
+            "text": {"elements": [{"text_run": {"content": "视图容器文本"}}]},
+        },
+    ]
+
+    base_dir = tmp_path / "full"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    file_downloader = StubFileDownloader()
+    transcoder = DocxTranscoder(
+        assets_root=tmp_path,
+        downloader=StubDownloader(),
+        file_downloader=file_downloader,
+        sheet_service=StubSheetService(),
+    )
+    markdown = await transcoder.to_markdown(
+        "doc-full",
+        blocks,
+        base_dir=base_dir,
+        link_map={},
+    )
+
+    assert "# 全量回归" in markdown
+    assert "[示例](https://example.com/doc)" in markdown
+    assert "@ou_demo" in markdown
+    assert "提醒(" in markdown
+    assert "$x^2$" in markdown
+    assert "- 列表项" in markdown
+    assert "1. 步骤一" in markdown
+    assert "- [x] 待办完成" in markdown
+    assert "```python" in markdown
+    assert "> 引用块" in markdown
+    assert "> 提示块" in markdown
+    assert "---" in markdown
+    assert "| H1 | H2 |" in markdown
+    assert "| R1 | R2 |" in markdown
+    assert "| 名称 | 状态 | 备注 |" in markdown
+    assert "```mermaid" in markdown
+    assert "[附件.docx](attachments/附件.docx)" in markdown
+    assert "![](assets/doc-full/img-full.png)" in markdown
+    assert "视图容器文本" in markdown

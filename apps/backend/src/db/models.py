@@ -23,6 +23,27 @@ class SyncLink(Base):
     task_id: Mapped[str] = mapped_column(String, index=True)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     cloud_parent_token: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    local_hash: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    local_size: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
+    local_mtime: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    cloud_revision: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    cloud_mtime: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+
+
+class SyncTombstone(Base):
+    __tablename__ = "sync_tombstones"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    task_id: Mapped[str] = mapped_column(String, index=True)
+    local_path: Mapped[str] = mapped_column(String, index=True)
+    cloud_token: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    cloud_type: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    source: Mapped[str] = mapped_column(String, nullable=False)  # local/cloud
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    reason: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    detected_at: Mapped[float] = mapped_column(Float, nullable=False)
+    expire_at: Mapped[float] = mapped_column(Float, nullable=False)
+    executed_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
 
 
 class ConflictRecord(Base):
@@ -54,6 +75,16 @@ class SyncTask(Base):
     base_path: Mapped[str | None] = mapped_column(String, nullable=True)
     sync_mode: Mapped[str] = mapped_column(String, nullable=False)
     update_mode: Mapped[str] = mapped_column(String, nullable=False, default="auto")
+    md_sync_mode: Mapped[str] = mapped_column(String, nullable=False, default="enhanced")
+    delete_policy: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    delete_grace_minutes: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=None,
+    )
+    owner_device_id: Mapped[str] = mapped_column(String, nullable=False, default="")
+    owner_open_id: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    is_test: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False)

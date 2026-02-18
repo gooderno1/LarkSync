@@ -1,5 +1,571 @@
 # DEVELOPMENT LOG
 
+## v0.5.43-md-mode-update-release (2026-02-18)
+- 目标：
+  - 新增“一行稳定版发布”能力，自动获取下一稳定版号并发布。
+  - 自动更新补齐为后台自动检查并自动下载更新包（不自动安装）。
+  - 将 MD 上行策略从全局开关升级为任务级模式，默认改为增强模式。
+  - 修复本地 Markdown 上云时图片路径解析不稳定（`file://`、URL 编码、query/hash）。
+- 变更：
+  - 发布流程：
+    - `scripts/release.py`
+      - 新增 `--publish` 模式：自动计算稳定版号、更新版本文件、更新 CHANGELOG、提交、打标签并推送。
+      - 新增版本计算逻辑：读取 git tags 与当前版本，自动选择下一稳定版。
+    - `package.json`
+      - 新增 `release:publish` 与 `release:dev` 脚本，支持一行执行。
+  - 自动更新：
+    - `apps/backend/src/services/update_scheduler.py`
+      - 定时检查后若发现新稳定版，自动下载更新包（去重同版本重复下载）。
+    - `apps/backend/src/services/update_service.py`
+      - 增加 `auto_update_enabled()` 供调度器判断。
+  - 任务级 MD 上传模式：
+    - `apps/backend/src/db/models.py`、`apps/backend/src/db/session.py`
+      - `sync_tasks` 新增 `md_sync_mode` 字段，并在启动迁移中自动补齐。
+    - `apps/backend/src/services/sync_task_service.py`
+      - 新建/更新/返回任务支持 `md_sync_mode`（`enhanced/download_only/doc_only`）。
+      - 兼容旧配置回退：缺失模式时按历史 `upload_md_to_cloud` 推断。
+    - `apps/backend/src/api/sync_tasks.py`
+      - 创建/更新任务 API 与响应增加 `md_sync_mode`。
+    - `apps/backend/src/services/sync_runner.py`
+      - MD 上传与镜像行为改为按任务模式执行：
+        - `enhanced`：上传云文档 + 维护 `_LarkSync_MD_Mirror`
+        - `download_only`：跳过本地 MD 上行
+        - `doc_only`：仅上传云文档，不保留镜像副本
+    - `apps/frontend/src/components/NewTaskModal.tsx`、`apps/frontend/src/pages/TasksPage.tsx`、`apps/frontend/src/hooks/useTasks.ts`、`apps/frontend/src/types/index.ts`
+      - 新建任务与任务管理新增 MD 上传模式配置与保存入口。
+    - `apps/frontend/src/pages/SettingsPage.tsx`
+      - 移除旧的全局 MD 上传开关展示，避免与任务级策略冲突。
+  - 图片上传修复：
+    - `apps/backend/src/services/docx_service.py`
+      - 图片路径解析增强：支持 `file://`、URL 编码、query/hash 清理、Windows 路径前缀兼容。
+  - 文档：
+    - 更新 `README.md`、`docs/USAGE.md`、`CHANGELOG.md`。
+- 测试：
+  - 新增：
+    - `apps/backend/tests/test_update_scheduler.py`
+    - `apps/backend/tests/test_sync_runner_upload_new_doc.py`（MD 模式相关用例）
+    - `apps/backend/tests/test_docx_service.py`（图片路径解析）
+    - `apps/backend/tests/test_sync_task_service.py`（任务级 MD 模式）
+
+## v0.5.43-task-mapping-and-md-cleanup (2026-02-17)
+- 目标：
+  - 修复本地 Markdown 上云新建 Docx 后在原目录残留源 `.md` 的问题（避免云端出现 3 份文件）。
+  - 增加任务映射约束，确保同设备同账号下“本地目录 ↔ 云端目录”一对一并规避本地父子目录冲突。
+  - 优化同步任务页面布局，提升状态和策略信息可读性。
+- 变更：
+  - 后端同步：
+    - `apps/backend/src/services/sync_runner.py`
+      - Markdown 新建 Docx 导入链路新增导入源文件清理：导入成功/失败后都会尝试删除原目录临时 `.md` 上传文件。
+  - 后端任务模型：
+    - `apps/backend/src/services/sync_task_service.py`
+      - 新增 `SyncTaskValidationError`。
+      - 新建/更新任务时增加映射冲突校验：本地目录唯一、云端目录唯一、本地目录禁止父子并行。
+    - `apps/backend/src/api/sync_tasks.py`
+      - 创建/更新任务捕获映射校验错误并返回 `409`。
+  - 前端任务页：
+    - `apps/frontend/src/pages/TasksPage.tsx`
+      - 顶部新增任务状态概览卡片（总数/同步中/失败/停用）。
+      - 卡片视觉层次优化（信息区、路径区、策略区更清晰）。
+  - 测试：
+    - `apps/backend/tests/test_sync_runner_upload_new_doc.py`
+      - 新增“导入失败仍清理源 md”回归用例。
+      - 补充“导入成功清理源 md”断言。
+    - `apps/backend/tests/test_sync_task_service.py`
+      - 新增本地目录/云端目录唯一性与本地父子目录冲突测试。
+    - `apps/backend/tests/test_tray_status.py`
+      - 新增 API 层重复映射返回 `409` 的测试。
+- 测试结果：
+  - `$env:PYTHONPATH='apps/backend'; .\\.venv\\Scripts\\python -m pytest apps/backend/tests/test_sync_runner_upload_new_doc.py apps/backend/tests/test_sync_task_service.py apps/backend/tests/test_tray_status.py -q` 通过（25 passed）。
+  - `npm run build --prefix apps/frontend` 通过。
+
+## v0.5.43-ui-delete-polish (2026-02-17)
+- 目标：
+  - 调整“更多设置”布局，移除删除策略提示卡片。
+  - 在任务管理中补齐删除策略说明与宽限时间单位，降低新用户理解成本。
+  - 修复删除联动对云端 MD 镜像副本不生效问题。
+  - 将默认本地上传间隔从 2 秒调整为 60 秒。
+- 变更：
+  - 前端 UI：
+    - `apps/frontend/src/pages/SettingsPage.tsx`
+      - “更多设置”移除删除策略说明卡，改为纯设备显示名配置块。
+      - 上传间隔默认值由 `2` 调整为 `60`。
+    - `apps/frontend/src/pages/TasksPage.tsx`
+      - 删除策略卡片新增策略行为说明文案（off/safe/strict）。
+      - 宽限输入补充“分钟”单位展示，并在 strict 模式下明确宽限固定为 0。
+    - `apps/frontend/src/components/Sidebar.tsx`
+      - 上传间隔展示默认值由 `2` 改为 `60`。
+  - 后端同步：
+    - `apps/backend/src/services/sync_runner.py`
+      - 删除处理新增 `_cleanup_md_mirror_copy()`：本地删云端/云端删本地流程都会同步清理 `_LarkSync_MD_Mirror` 下对应 MD 副本。
+      - 新增“不创建目录”的镜像目录定位方法，避免删除流程反向创建镜像目录。
+      - `_find_subfolder()` 改为大小写不敏感匹配；`_should_ignore_path()` 增加本地镜像目录过滤。
+  - 默认配置：
+    - `apps/backend/src/core/config.py` 与 `apps/backend/src/api/config.py` 的 `upload_interval_value` 默认值由 `2.0` 改为 `60.0`。
+  - 文档：
+    - `docs/USAGE.md` 更新默认上行间隔样例与说明为 60 秒。
+- 测试：
+  - `$env:PYTHONPATH='apps/backend'; .\\.venv\\Scripts\\python -m pytest apps/backend/tests/test_sync_runner.py apps/backend/tests/test_config_api.py -q` 通过。
+  - `npm run build --prefix apps/frontend` 通过。
+
+## v0.5.43-sync-delete-retry (2026-02-17)
+- 目标：
+  - 修复“本地删除历史失败后不再重试，导致云端长期未删除”的问题。
+  - 验证“删除策略任务级”在现网数据库中的实际生效状态。
+- 根因：
+  - 删除墓碑失败后状态会写成 `failed`，但执行器仅拉取 `pending`，历史失败项不会再次进入执行链路。
+  - 生产日志中的旧报错 `field validation failed token=...` 来自修复前进程；修复后错误信息已包含 `type=...`。
+- 变更：
+  - `apps/backend/src/services/sync_tombstone_service.py`
+    - `list_pending` 新增 `include_failed`（默认 `true`），将 `failed` 纳入可执行队列。
+    - `mark_status` 新增 `expire_at` 参数，用于失败退避重试窗口。
+  - `apps/backend/src/services/sync_runner.py`
+    - `_process_pending_deletes` 在删除失败时写入 `expire_at = now + 300s`，5 分钟后自动重试，避免日志刷屏。
+    - 新增“云端已删除”幂等判定：`file has been delete` 等错误按成功处理，直接清理映射并结束墓碑。
+  - `apps/backend/src/services/sync_task_service.py`
+    - 任务输出统一返回“已解析的有效删除策略”：旧任务 `delete_policy/delete_grace_minutes` 为 `NULL` 时，自动回退到全局默认，避免“页面显示与实际执行不一致”。
+  - 测试：
+    - `apps/backend/tests/test_sync_tombstone_service.py` 新增 `failed` 回退到可重试队列的测试。
+    - `apps/backend/tests/test_sync_runner.py` 更新 FakeTombstone 行为，并校验失败后墓碑保留且带退避时间。
+    - `apps/backend/tests/test_sync_task_service.py` 新增 legacy `NULL` 删除策略回退测试。
+- 现场验证：
+  - 运行 `init_db()` 后，`sync_tasks` 已存在 `delete_policy/delete_grace_minutes` 列（任务级设置迁移已就位）。
+  - 对当前数据库执行一次删除墓碑处理：
+    - 处理前：`failed=8, executed=2`
+    - 处理后：`cancelled=6, failed=2, executed=2`
+    - 说明：历史失败项已重新进入处理；其中 2 条返回 `file has been delete`（云端已不存在），属于可预期幂等场景。
+  - 将剩余 `failed` 墓碑调整为到期后再次执行：
+    - 处理前：`cancelled=6, failed=2, executed=2`
+    - 处理后：`cancelled=6, executed=4`
+    - 说明：两条“云端已删除”墓碑已按幂等成功清理完成。
+- 测试结果：
+  - `$env:PYTHONPATH='apps/backend'; .\\.venv\\Scripts\\python -m pytest apps/backend/tests/test_sync_task_service.py apps/backend/tests/test_sync_tombstone_service.py apps/backend/tests/test_sync_runner.py -k \"legacy_null_delete_settings or pending_deletes or tombstone\" -q` 通过（8 passed）。
+
+## v0.5.42-sync-delete-hotfix (2026-02-17)
+- 目标：
+  - 修复“本地删除未联动云端删除”的生产问题。
+  - 将删除联动策略从全局设置下沉为任务级配置，避免不同任务策略互相干扰。
+- 日志定位：
+  - `data/logs/sync-events.jsonl` 与 `data/logs/larksync.log` 中连续出现 `delete_failed`：
+    - `删除文件失败: field validation failed token=...`
+  - 结论：删除链路已触发并进入 `_process_pending_deletes`，失败点在 Drive 删除接口参数不完整。
+- 变更：
+  - 云端删除接口修复：
+    - `apps/backend/src/services/drive_service.py`
+      - `delete_file(file_token, file_type)` 新增 `type` 查询参数透传。
+    - `apps/backend/src/services/sync_runner.py`
+      - 删除墓碑执行时改为传入 `cloud_type`，避免 docx/file 等类型删除时校验失败。
+      - 同步镜像目录旧文件清理也改为传入类型。
+  - 删除策略任务级化：
+    - 后端模型与迁移：
+      - `apps/backend/src/db/models.py`：`sync_tasks` 新增 `delete_policy`、`delete_grace_minutes`。
+      - `apps/backend/src/db/session.py`：`init_db` 补齐列迁移（含损坏重建分支）。
+    - 后端任务服务/API：
+      - `apps/backend/src/services/sync_task_service.py`：任务创建/更新/返回支持任务级删除策略；新任务默认继承全局默认值。
+      - `apps/backend/src/api/sync_tasks.py`：任务创建/更新/响应模型新增删除策略字段。
+    - 同步执行策略：
+      - `apps/backend/src/services/sync_runner.py`：删除策略解析改为“任务级优先，配置级兜底”。
+  - 前端交互：
+    - `apps/frontend/src/components/NewTaskModal.tsx`：新建任务支持设置删除策略与宽限分钟。
+    - `apps/frontend/src/pages/TasksPage.tsx`：任务管理新增删除策略卡片（单任务保存）。
+    - `apps/frontend/src/pages/SettingsPage.tsx`：移除全局删除策略编辑项，改为任务级引导说明。
+    - `apps/frontend/src/hooks/useTasks.ts`、`apps/frontend/src/types/index.ts`：补充任务级字段与更新接口。
+  - 文档：
+    - `README.md`、`docs/USAGE.md` 更新删除策略为“任务级”说明。
+- 测试结果：
+  - `$env:PYTHONPATH='apps/backend'; python -m pytest apps/backend/tests/test_drive_service.py apps/backend/tests/test_sync_task_service.py apps/backend/tests/test_sync_runner.py -q` 通过。
+  - `$env:PYTHONPATH='apps/backend'; python -m pytest apps/backend/tests/test_tray_status.py -q` 通过。
+  - `npm run build --prefix apps/frontend` 通过。
+
+## v0.5.42-build-hotfix (2026-02-17)
+- 目标：修复本机存在跨版本 Python 路径污染时，`scripts/build_installer.py` 在 PyInstaller 阶段崩溃的问题。
+- 根因：
+  - 当前解释器为 `Python 3.14`，但环境变量 `PYTHONPATH` 混入了 `Python312/site-packages`。
+  - PyInstaller hook 进程导入 `numpy/matplotlib` 时加载到错误版本二进制扩展，触发 `numpy._core._multiarray_umath` 缺失。
+- 变更：
+  - `scripts/build_installer.py`
+    - 新增 `_sanitize_pythonpath` / `_sanitize_runtime_pythonpath` / `_build_subprocess_env`。
+    - 启动时自动清理不兼容 `PYTHONPATH`，并同步清理当前进程 `sys.path` 中的不兼容 `site-packages`。
+    - `run()` 统一对所有子进程环境做净化，确保 PyInstaller 子进程不再继承错误路径。
+  - 测试：
+    - 新增 `apps/backend/tests/test_build_installer.py`，覆盖 `PYTHONPATH` 过滤与子进程环境净化逻辑。
+  - 文档：
+    - `docs/USAGE.md` 的“本地打包”章节补充自动净化说明。
+- 验证结果：
+  - `python scripts/build_installer.py --skip-frontend` 通过（本地复现环境下成功产出 `dist/LarkSync/LarkSync.exe`）。
+  - `$env:PYTHONPATH=''; python -m pytest apps/backend/tests/test_build_installer.py -q` 通过（3 passed）。
+
+## v0.5.42 (2026-02-16)
+- 目标：避免日志默认筛选遗漏新状态，提升后续功能扩展时的可观测性。
+- 变更：
+  - `apps/frontend/src/pages/LogCenterPage.tsx`
+    - 新增状态筛选项 `所有日志（推荐）`（值：`__all__`）。
+    - 默认筛选改为 `__all__`，查询时不再传 `statuses`，后端返回全量状态。
+    - 交互规则：选中“所有日志”后可一键回到全量；若逐个取消状态为空会自动回退到“所有日志”。
+  - 文档同步：
+    - `README.md`、`docs/USAGE.md` 更新为“默认所有日志”说明。
+- 测试结果：
+  - `npm run build --prefix apps/frontend` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.42`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.42`
+  - 前端：`apps/frontend/package.json` → `0.5.42`
+
+## v0.5.41 (2026-02-16)
+- 目标：修复“删除动作在日志中心无单独类目/可见性差”的问题。
+- 变更：
+  - `apps/frontend/src/pages/LogCenterPage.tsx`
+    - 同步日志状态筛选新增：`deleted`、`delete_pending`、`delete_failed`。
+    - 状态徽章颜色映射优化：`delete_pending` 显示 warning，`delete_failed` 显示 danger。
+  - `apps/frontend/src/lib/constants.ts`
+    - 新增删除状态中文映射：待删除/删除成功/删除失败。
+  - `apps/backend/src/services/sync_runner.py`
+    - 删除流程失败分支新增 `delete_failed` 事件写入，避免仅 tombstone 状态变化而无同步日志记录。
+  - 测试：
+    - `apps/backend/tests/test_sync_runner.py` 新增 `test_process_pending_deletes_records_delete_failed_when_drive_delete_missing`。
+- 测试结果：
+  - `PYTHONPATH=apps/backend .venv\\Scripts\\python -m pytest apps/backend/tests/test_sync_runner.py apps/backend/tests/test_config_api.py -q` 通过（22 passed）。
+  - `npm run build --prefix apps/frontend` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.41`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.41`
+  - 前端：`apps/frontend/package.json` → `0.5.41`
+
+## v0.5.40 (2026-02-16)
+- 目标：落实删除联动设计（本地删/云端删）并把文件变更判定升级为“哈希优先”。
+- 变更：
+  - 删除联动主流程
+    - `apps/backend/src/services/sync_runner.py`
+      - 新增删除策略接入：`off / safe / strict`。
+      - 新增墓碑处理链路：本地删除/云端删除检测、宽限到期执行、执行后清理映射与块状态。
+      - 新增本地回收目录 `.larksync_trash/`（`safe` 模式下云删本地先入回收目录）。
+      - 本地 watcher 不再直接忽略 `deleted` 事件，改为登记删除意图。
+      - 下载阶段新增“云端缺失文件”检测，上传阶段新增“本地缺失文件”扫描。
+      - `run_scheduled_upload` 在无上传文件时也会检测待处理删除墓碑。
+  - 变更判定升级（哈希优先）
+    - `apps/backend/src/services/sync_runner.py`
+      - `_upload_file` 改为优先比较 `local_hash/local_size`，mtime 仅回退。
+      - `_upload_markdown` 在缺块状态场景下新增 `link.local_hash` 快速跳过。
+      - `_should_skip_download_for_unchanged` 新增本地哈希校验，避免仅凭 mtime 误判。
+      - 下载/上传成功后统一回写 `SyncLink` 指纹字段（`local_hash/local_size/local_mtime/cloud_revision/cloud_mtime`）。
+  - 数据与服务层
+    - `apps/backend/src/services/sync_tombstone_service.py`
+      - 刷新墓碑时保留最早过期时间，避免轮询场景反复刷新导致“永不过期”。
+    - `apps/backend/src/api/sync_tasks.py`
+      - 删除任务、重置映射时同步清理 tombstone 记录。
+  - 设置页与配置
+    - `apps/frontend/src/hooks/useConfig.ts`
+      - 新增 `delete_policy`、`delete_grace_minutes` 类型与前端参数校验。
+    - `apps/frontend/src/pages/SettingsPage.tsx`
+      - “更多设置”新增删除策略与宽限时间输入，并支持独立保存。
+  - 测试补充
+    - 新增：`apps/backend/tests/test_sync_tombstone_service.py`。
+    - 扩展：`apps/backend/tests/test_sync_runner.py`（删除事件/云端缺失/哈希判定）。
+    - 扩展：`apps/backend/tests/test_sync_link_service.py`（指纹字段持久化）。
+    - 扩展：`apps/backend/tests/test_config_api.py`（删除策略字段）。
+    - 兼容修复：`apps/backend/tests/test_sync_runner_upload_new_doc.py` FakeLinkService 接口补齐。
+- 测试结果：
+  - `PYTHONPATH=apps/backend .venv\\Scripts\\python -m pytest apps/backend/tests/test_sync_runner.py apps/backend/tests/test_sync_runner_upload_new_doc.py apps/backend/tests/test_sync_link_service.py apps/backend/tests/test_sync_tombstone_service.py apps/backend/tests/test_config_api.py -q` 通过（32 passed）。
+  - `npm run build --prefix apps/frontend` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.40`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.40`
+  - 前端：`apps/frontend/package.json` → `0.5.40`
+
+## v0.5.39 (2026-02-16)
+- 目标：优化“更多设置”操作路径，并修复“系统日志看起来为空”的可观测性问题。
+- 变更：
+  - `apps/frontend/src/pages/SettingsPage.tsx`
+    - 将“保存更多设置”按钮移动到“展开/收起设置”按钮旁，减少滚动与跨区操作。
+  - `apps/frontend/src/pages/LogCenterPage.tsx`
+    - 系统日志默认排序由“最早优先”改为“最新优先”。
+    - 增加系统日志加载失败提示，避免后端不可达时误显示为“暂无日志”。
+- 诊断结论（删除行为，未改代码）：
+  - 本地删除：当前 watcher 会忽略 `deleted` 事件，因此不会执行云端删除；下次下载会按云端重拉该文件。
+  - 云端删除：当前下载阶段不会删除本地“云端已缺失”的文件；本地也不会自动上云重建（除非本地后续再次修改并触发上传逻辑）。
+- 测试结果：
+  - `npm run build --prefix apps/frontend` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.39`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.39`
+  - 前端：`apps/frontend/package.json` → `0.5.39`
+
+## v0.5.38 (2026-02-16)
+- 目标：按最新反馈完善设置保存边界、任务完成率口径、日志筛选交互与 MD 云端副本策略。
+- 变更：
+  - 设置页保存拆分
+    - `apps/frontend/src/pages/SettingsPage.tsx`：新增 `handleSaveMoreSettings` 与“保存更多设置”按钮；`更多设置`不再复用“同步策略”保存动作。
+  - 完成率口径修正
+    - `apps/frontend/src/lib/progress.ts`：新增统一进度计算工具，按 `completed / (total - skipped)` 计算。
+    - `apps/frontend/src/pages/TasksPage.tsx`、`apps/frontend/src/pages/DashboardPage.tsx`：切换到新口径展示。
+  - 日志中心筛选增强
+    - `apps/frontend/src/pages/LogCenterPage.tsx`：状态筛选由单选改为复选，新增任务复选筛选；默认只勾选成功/失败核心状态。
+    - `apps/backend/src/api/sync_tasks.py`：`/sync/logs/sync` 新增 `statuses`、`task_ids` 多值查询参数，并兼容旧参数 `status`、`task_id`。
+    - `apps/backend/src/services/sync_event_store.py`：过滤逻辑支持多状态/多任务集合筛选。
+  - MD 云端专用目录策略
+    - `apps/backend/src/services/sync_runner.py`：新增 `_LarkSync_MD_Mirror` 机制：
+      - 下行 Docx→MD 后自动同步 MD 到云端镜像目录。
+      - 上行 MD 时同步更新镜像目录中的 MD 副本。
+      - 下行扫描排除 `_LarkSync_MD_Mirror`，避免回流同步。
+    - `apps/backend/src/services/drive_service.py`：新增 `delete_file()`，用于镜像覆盖前清理同名旧副本。
+  - 测试补充
+    - `apps/backend/tests/test_sync_event_store.py`：新增多选过滤用例。
+    - `apps/backend/tests/test_sync_runner.py`：新增“跳过 `_LarkSync_MD_Mirror` 下行扫描”用例。
+    - `apps/backend/tests/test_sync_runner_upload_new_doc.py`：新增“上传时同步云端 MD 镜像”用例。
+- 测试结果：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_event_store.py apps/backend/tests/test_sync_runner.py apps/backend/tests/test_sync_runner_upload_new_doc.py -q` 通过（26 passed）。
+  - `npm run build --prefix apps/frontend` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.38`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.38`
+  - 前端：`apps/frontend/package.json` → `0.5.38`
+
+## v0.5.37 (2026-02-16)
+- 目标：解决 NPI 文档；内嵌表格“历史占位不回刷”问题，并一次性补齐 Sheet 常见单元格转码结构。
+- 变更：
+  - 下载回刷策略
+    - `apps/backend/src/services/sync_runner.py`：
+      - 新增历史占位检测 `_contains_legacy_docx_placeholder()`。
+      - 对 `doc/docx` 下载跳过判断新增“legacy `sheet_token` 占位”例外：若本地仍是旧占位，云端即使未更新也强制重下重转。
+  - Sheet 转码补强
+    - `apps/backend/src/services/transcoder.py`：
+      - 内嵌 sheet 转码失败增加 warning 日志，避免静默吞错。
+      - `_sheet_cell_text` 扩展支持 rich segment 样式、mention/link 对象、`formattedValue`、`formula`、bool/number、`richText`/`segments`/`runs` 与嵌套对象兜底。
+      - 新增 `_sheet_extract_link`、`_sheet_apply_inline_style` 辅助方法。
+  - 测试与内部基线
+    - `apps/backend/tests/test_sync_runner.py`：新增 `test_runner_redownloads_docx_when_legacy_sheet_placeholder_present`。
+    - `apps/backend/tests/test_transcoder.py`：新增 `test_transcoder_sheet_block_supports_rich_cell_variants`。
+    - `docs/internal/transcoder_coverage.md`：补充“legacy 回刷 + rich sheet 单元格”覆盖项。
+    - 新增 `docs/internal/transcoder_test_fixture.md`：提供全类型人工回归模板。
+  - 文档同步
+    - `README.md`、`docs/USAGE.md`：补充内嵌 sheet 单元格转码增强与历史占位自动回刷说明。
+- 真实回归（飞书在线文档）：
+  - 文档：`JRdXdv02toS6ByxqDP6cGDLtnIf`（NPI 清单副本）
+  - 结果：5 个内嵌 sheet 全部转为 Markdown 表格，`placeholder_count=0`，`table_header_count=5`。
+  - 产物：`F:/File/temp/test/自研具身智能机器人项目 - NPI全流程关键文档输出清单 副本.md`
+- 测试结果：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sheet_service.py apps/backend/tests/test_transcoder.py apps/backend/tests/test_sync_runner.py -q` 通过（44 passed）。
+- 版本更新：
+  - 根：`package.json` → `v0.5.37`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.37`
+  - 前端：`apps/frontend/package.json` → `0.5.37`
+
+## v0.5.36 (2026-02-16)
+- 目标：按用户反馈收敛设置入口与飞书新增文档转码缺失问题。
+- 变更：
+  - 设置页入口调整
+    - `apps/frontend/src/pages/SettingsPage.tsx`：将“设备显示名称”输入从 OAuth 区块迁移到“更多设置”折叠面板，保留内部 ID 仅用于归属隔离的说明。
+  - Docx 转码补齐
+    - `apps/backend/src/services/transcoder.py`：
+      - 新增 `equation` 元素渲染，公式输出为 `$...$` / `$$...$$`。
+      - 新增 `block_type=40(add_ons)` 解析，Mermaid 数据输出 ```mermaid``` 代码块。
+      - 新增 `block_type=30(sheet)` 占位渲染，输出 `内嵌表格（sheet_token: ...）`。
+    - `apps/backend/tests/test_transcoder.py`：补充/更新 equation、sheet、add_ons 场景断言。
+  - 线上回放验证（本地）
+    - 清理目标任务 4 个文档的 `sync_links` 映射后重跑：
+      - 任务 ID：`fabae395-0534-45e6-a52d-93d39434c8b9`
+      - 结果：4 个目标文档重新下载成功。
+      - 对比：专利文档公式与 mermaid 图恢复；NPI 文档中的内嵌表格不再丢失，改为可追踪的 sheet token 占位。
+- 测试结果：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_transcoder.py -q` 通过。
+  - `npm run build --prefix apps/frontend` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.36`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.36`
+  - 前端：`apps/frontend/package.json` → `0.5.36`
+
+## v0.5.35 (2026-02-16)
+- 目标：修复“新建任务被误判测试任务”并优化连接状态展示为用户可读标识。
+- 变更：
+  - 测试任务识别改造（显式字段）
+    - `apps/backend/src/db/models.py`：`SyncTask` 新增 `is_test` 字段（默认 `False`）。
+    - `apps/backend/src/db/session.py`：启动迁移补齐 `sync_tasks.is_test` 列。
+    - `apps/backend/src/services/sync_task_service.py`：`create/update/list` 全链路支持 `is_test`。
+    - `apps/backend/src/api/sync_tasks.py`：任务创建/更新/响应模型新增 `is_test`。
+    - `apps/frontend/src/pages/TasksPage.tsx`：移除按名称/路径关键词判定测试任务，改为仅使用后端 `is_test`；显隐按钮仅在 DEV 且存在 `is_test=true` 任务时显示。
+  - 连接状态展示改造（设备名 + 飞书昵称）
+    - `apps/backend/src/core/device.py`：新增 `current_device_name()`。
+    - `apps/backend/src/core/config.py`、`apps/backend/src/api/config.py`：新增配置项 `device_display_name`，可持久化更新。
+    - `apps/frontend/src/pages/SettingsPage.tsx`、`apps/frontend/src/hooks/useConfig.ts`：设置页新增“设备显示名称”编辑与保存。
+    - `apps/backend/src/core/security.py`：`TokenData` 增加 `account_name`，并写入/读取 keyring。
+    - `apps/backend/src/services/auth_service.py`：通过 `authen/v1/user_info` 同步补齐并缓存 `open_id + name`。
+    - `apps/backend/src/api/auth.py`：`/auth/status` 返回 `account_name`。
+    - `apps/frontend/src/hooks/useAuth.ts`、`apps/frontend/src/components/Sidebar.tsx`：侧边栏显示设备名称与飞书昵称，不再直接展示内部 ID。
+  - 测试补充：
+    - `apps/backend/tests/test_sync_task_service.py` 新增 `is_test` 覆盖用例。
+    - `apps/backend/tests/test_auth_service.py`、`apps/backend/tests/test_security.py` 新增账号昵称缓存用例。
+    - `apps/backend/tests/test_device.py` 新增设备显示名解析用例。
+- 测试结果：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_task_service.py apps/backend/tests/test_auth_service.py apps/backend/tests/test_security.py apps/backend/tests/test_device.py apps/backend/tests/test_config_api.py -q` 通过（30 passed）。
+  - `npm run build --prefix apps/frontend` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.35`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.35`
+  - 前端：`apps/frontend/package.json` → `0.5.35`
+
+## v0.5.34 (2026-02-16)
+- 目标：按用户反馈优化连接状态区文案，并切换到“新用户测试态”排除历史数据干扰。
+- 变更：
+  - `apps/frontend/src/components/Sidebar.tsx`
+    - 删除“OAuth 已连接，但身份标识未补齐。建议点击手动重新授权...”提示文案。
+    - 保留设备/账号状态本身与操作按钮，减少干扰信息。
+  - 运行环境操作（本地数据）：
+    - 停止旧后端进程后，将 `data/larksync.db`、`data/larksync.db-wal`、`data/larksync.db-shm` 归档到：
+      - `data/archive/db-20260216-212539/`
+    - 清空本地 token 存储（模拟新用户未登录态）。
+    - 重新初始化空数据库并启动 `npm run dev` 进行联调。
+  - 结果核验：
+    - 新实例 `GET /auth/status` 返回已包含 `device_id` 字段，当前为新用户态：`connected=false, open_id=null`。
+    - 新库任务计数为 0，历史任务不再影响当前测试。
+- 测试结果：
+  - `cd apps/frontend && npm run build` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.34`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.34`
+  - 前端：`apps/frontend/package.json` → `0.5.34`
+
+## v0.5.33 (2026-02-16)
+- 目标：修复“已授权但账号/设备 ID 不显示”与“跨设备任务串扰”。
+- 根因定位：
+  - 飞书 v1 token 响应在部分场景不返回 `open_id`，导致本地凭证长期缺失账号标识。
+  - 任务过滤逻辑对 `owner_open_id` 存在空值放行，弱化了双重绑定。
+  - 数据库初始化存在“空设备ID任务自动回填为当前设备”的逻辑，可能错误认领历史任务。
+- 变更：
+  - `apps/backend/src/services/auth_service.py`
+    - 新增 `ensure_cached_identity()`：当缓存 token 缺失 `open_id` 时，自动调用 `authen/v1/user_info` 补齐并写回 TokenStore。
+    - `_request_token()` 在 token 响应无 `open_id` 时，自动走用户信息接口补齐。
+  - `apps/backend/src/api/auth.py`
+    - `/auth/status` 在返回状态前自动尝试补齐身份字段，避免前端长期显示“无ID”。
+  - `apps/backend/src/services/sync_task_service.py`
+    - 任务列表/读写删除权限改为严格 `owner_device_id + owner_open_id` 匹配。
+    - 移除 `owner_open_id` 空值自动放行逻辑。
+    - 增加“安全迁移”：仅对可确认为本机路径的历史空 `owner_open_id` 任务自动补齐账号归属。
+  - `apps/backend/src/db/session.py`
+    - 移除启动阶段对 `sync_tasks.owner_device_id` 的批量回填，避免把历史未归属任务误绑定到当前设备。
+  - 测试：
+    - `apps/backend/tests/test_auth_service.py` 新增用例：验证 token 缺失 `open_id` 时可通过用户信息接口补齐。
+    - `apps/backend/tests/test_sync_task_service.py` 调整历史空 open_id 任务用例，验证严格双重绑定后不会被误放行。
+- 测试结果：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_auth_service.py apps/backend/tests/test_sync_task_service.py -q` 通过（19 passed）。
+  - 本地脚本实测：`ensure_cached_identity()` 已将当前凭证 `open_id` 从 `None` 修复为真实值。
+- 版本更新：
+  - 根：`package.json` → `v0.5.33`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.33`
+  - 前端：`apps/frontend/package.json` → `0.5.33`
+
+## v0.5.32 (2026-02-16)
+- 目标：修复同步任务路径展示视觉突兀，并明确“连接正常但账号/设备 ID 缺失”的状态语义。
+- 变更：
+  - `apps/frontend/src/pages/TasksPage.tsx`
+    - 路径展示改为默认显示后半段（地址尾部），避免超长路径冲击布局。
+    - 本地目录/云端目录都支持“点击展开/收起”，展开后按换行完整显示。
+    - 移除路径区域内部的高对比背景框，保持与页面主体一致的卡片风格。
+  - `apps/frontend/src/components/Sidebar.tsx`
+    - 连接状态文案细化为：
+      - 设备：`未获取设备ID`（已连接但缺失）/`待识别`（未连接）。
+      - 账号：`已连接(未获取账号ID)`（已连接但缺失）/`未登录`。
+    - 当已连接但 `open_id` 或 `device_id` 缺失时，增加提示文案，指引手动重新授权并刷新。
+  - `docs/USAGE.md`
+    - 登录与连接状态章节补充“已连接但 ID 未补齐”的解释与恢复建议。
+- 测试结果：
+  - `cd apps/frontend && npm run build` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.32`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.32`
+  - 前端：`apps/frontend/package.json` → `0.5.32`
+
+## v0.5.31 (2026-02-16)
+- 目标：收敛“测试任务入口只在测试场景出现”的产品预期，并补充托盘排查说明。
+- 变更：
+  - `apps/frontend/src/pages/TasksPage.tsx`
+    - 新增 `isDevMode = import.meta.env.DEV`，测试任务“显示/隐藏”按钮改为仅在开发/测试模式且存在测试任务时展示。
+    - 空状态文案按模式区分：开发模式可提示“显示测试任务”，正式模式提示“测试任务已自动隐藏”。
+  - 文档同步：
+    - `README.md` 与 `docs/USAGE.md` 同步更新测试任务按钮规则。
+    - `docs/USAGE.md` 补充托盘不显示时的本地排查要点（旧实例/48901 端口/pystray 与 Pillow 依赖）。
+- 测试结果：
+  - `cd apps/frontend && npm run build` 通过。
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_tray_lock.py apps/backend/tests/test_device.py apps/backend/tests/test_sync_task_service.py -q` 通过。
+- 版本更新：
+  - 根：`package.json` → `v0.5.31`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.31`
+  - 前端：`apps/frontend/package.json` → `0.5.31`
+
+## v0.5.30 (2026-02-16)
+- 目标：修复你新反馈的 UI 体验问题，并继续收敛“托盘不显示”根因。
+- 变更：
+  - 同步任务页面：
+    - `apps/frontend/src/pages/TasksPage.tsx` 将本地/云端长路径从单行截断改为“可滚动多行容器”，避免测试任务长路径溢出卡片。
+    - “显示/隐藏测试任务”按钮改为仅在检测到测试任务时显示，正常使用场景不再出现无关按钮。
+  - 登录页主题：
+    - `apps/frontend/src/main.tsx` 在 React 启动前写入初始主题（默认 `light`）。
+    - `apps/frontend/src/hooks/useTheme.ts` 默认主题改为明亮模式。
+    - `apps/frontend/src/components/OnboardingWizard.tsx` 增加主题切换按钮，登录引导页支持明/暗主题。
+  - 连接状态显示：
+    - `apps/frontend/src/components/Sidebar.tsx` 设备/账号文案改为显式状态（如“待识别/未登录/已连接(无 open_id)”），避免空白误解。
+  - 托盘可见性收敛：
+    - `apps/tray/tray_app.py` 增加运行时 `PYTHONPATH` 自清理，自动移除与当前 Python 版本不兼容的 `site-packages` 条目，避免 `pystray/Pillow` 导入被污染环境破坏。
+    - 托盘依赖导入失败时输出详细异常原因，便于定位（不再仅显示笼统“托盘缺失”）。
+- 测试结果：
+  - 前端：`cd apps/frontend && npm run build` 通过。
+  - 后端（关键回归）：`PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_tray_lock.py apps/backend/tests/test_sync_task_service.py apps/backend/tests/test_device.py -q` 通过。
+  - 本地启动验证：`npm run dev` 可正常拉起托盘进程并监听单实例锁端口 `48901`，Vite 监听 `3666`。
+- 版本更新：
+  - 根：`package.json` → `v0.5.30`
+  - 后端：`apps/backend/pyproject.toml` → `v0.5.30`
+  - 前端：`apps/frontend/package.json` → `0.5.30`
+
+## v0.5.29 (2026-02-16)
+- 目标：修复你反馈的“授权弹窗闪现/侧栏压缩/测试任务干扰/跨设备任务串扰”问题，并明确任务归属策略。
+- 变更：
+  - 前端鉴权加载态：
+    - `apps/frontend/src/hooks/useAuth.ts`、`apps/frontend/src/hooks/useConfig.ts` 去除 React Query `placeholderData`，避免首屏在真实状态返回前误判为未登录而闪现授权向导。
+  - 任务与侧栏体验：
+    - `apps/frontend/src/App.tsx` + `apps/frontend/src/components/Sidebar.tsx` 保证桌面侧栏不被主内容区挤压。
+    - `apps/frontend/src/pages/TasksPage.tsx` 默认隐藏测试任务，并提供显隐切换按钮。
+    - `apps/frontend/src/components/Sidebar.tsx` 增加当前设备 ID / open_id 摘要展示，便于确认归属。
+  - 任务归属强化：
+    - `apps/backend/src/core/device.py`：设备标识改为“机器指纹优先，文件随机值兜底”。
+    - `apps/backend/src/api/auth.py`：`/auth/status` 增加 `device_id` 字段。
+    - `apps/backend/src/services/sync_task_service.py`：历史无 `owner_open_id` 任务在首次访问时自动归属当前账号，避免同设备多账号串任务。
+  - 测试：
+    - 新增 `apps/backend/tests/test_device.py`，覆盖设备 ID 的 env/机器指纹/文件兜底三条路径。
+    - `apps/backend/tests/test_sync_task_service.py` 新增历史任务账号归属锁定用例。
+  - 版本更新：
+    - 根：`package.json` → `v0.5.29`
+    - 后端：`apps/backend/pyproject.toml` → `v0.5.29`
+    - 前端：`apps/frontend/package.json` → `0.5.29`
+- 测试结果：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests -q` 通过。
+  - `cd apps/frontend && npm run build` 通过。
+
+## v0.5.28 (2026-02-16)
+- 目标：修复代码巡检发现的高优先级问题，并将测试规范明确为“本地联调 + 打包体验”双轨制。
+- 变更：
+  - `core/version.py`：修复版本正则错误（`\s` 被误写为 `\\s`），`get_version()` 可正确读取后端版本。
+  - `core/security.py`：修复 Keyring 空 refresh_token 的占位值 `_empty_` 读取还原逻辑，避免伪 token 参与刷新。
+  - `scripts/sync_feishu_docs.py`：
+    - 增加直接 zip URL 解析策略，兼容旧/新页面结构。
+    - 当页面未发现 zip 时不再直接失败，改为写入 `_manifest.json`（`status=no_zip_found`）并返回成功，避免流程阻塞。
+  - `update_service.py`：自动更新下载新增 sha256 完整性校验（读取 checksum 文件并校验本地包），校验失败立即中止。
+  - `main.py`：全局异常默认不回显内部细节，返回通用错误 + `error_id`，可通过 `LARKSYNC_DEBUG_ERRORS=1` 开启详情。
+  - `scripts/release.py`：
+    - 版本解析支持稳定版与 dev 版。
+    - 当前版本优先读取后端 `pyproject.toml`，降低版本源漂移风险。
+    - 同步版本时前端沿用 npm 风格（默认去掉 `v` 前缀）。
+  - 版本统一：根 `package.json`、后端 `pyproject.toml`、前端 `package.json` 分别更新为 `v0.5.28` / `v0.5.28` / `0.5.28`。
+  - 文档更新：
+    - 新增代码审查报告 `docs/reviews/review-2026-02-16.md`。
+    - `AGENTS.md` 明确测试分层：本地开发测试 `npm run dev`，打包体验测试 `python scripts/build_installer.py`（可加 `--nsis` / `--dmg`）。
+    - `docs/USAGE.md` 同步更新当前版本与双轨测试命令。
+- 测试：
+  - 前端：`cd apps/frontend && npm run build` 通过。
+  - 后端：新增/更新单测（version/security/update/release/sync_feishu_docs 脚本）；建议在项目虚拟环境中执行 `python -m pytest`。
+- 问题：无阻塞问题。
+- 补充修复（同日）：
+  - `apps/tray/backend_manager.py`：后端子进程启动前自动净化 `PYTHONPATH`，过滤与当前解释器版本不匹配的 `site-packages`，修复本机环境污染导致 `npm run dev` 后端起不来的问题。
+  - 回归测试修复：`sync_runner` 系列测试桩补齐 `cloud_parent_token` 参数、`SyncTaskItem.cloud_folder_name` 新字段；`tray_status` 用例改为隔离重载 `src.api` 模块；`logging` 用例补齐队列日志 flush。
+  - 结果：`cd apps/backend && python -m pytest tests -q` 全量通过。
+
 ## v0.5.27 (2026-02-10)
 - 目标：MD↔飞书文档转换尚不完善，双向模式下默认仅支持云端飞书文档→本地 MD（下行），不开放本地 MD→飞书文档（上行），通过配置开关可手动开启。
 - 变更：

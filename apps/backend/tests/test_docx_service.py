@@ -6,6 +6,7 @@ from src.services.docx_service import (
     ConvertResult,
     DocxService,
     _build_create_chunks,
+    _normalize_image_ref,
     _normalize_markdown_for_convert,
     _patch_table_properties,
     _replace_continuation_placeholders,
@@ -52,6 +53,27 @@ class StubFileUploader:
     ):
         self.calls.append((str(file_path), parent_node, parent_type, record_db))
         return self._Result(self.file_token)
+
+
+def test_normalize_image_ref_keeps_space_path_and_strips_title() -> None:
+    assert _normalize_image_ref('assets/my logo.png "title"') == "assets/my logo.png"
+    assert _normalize_image_ref("<assets/my logo.png>") == "assets/my logo.png"
+
+
+def test_resolve_image_path_supports_file_url_and_encoded_relative_path(tmp_path) -> None:
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir()
+    image_path = assets_dir / "my logo.png"
+    image_path.write_bytes(b"img")
+    service = DocxService(client=FakeClient([]))
+
+    resolved_file_url = service._resolve_image_path(image_path.as_uri() + "?download=1#preview", tmp_path)
+    assert resolved_file_url == image_path
+
+    markdown = "![](assets/my%20logo.png?raw=1)"
+    _, _, image_paths = service._build_image_placeholders(markdown, tmp_path)
+    assert len(image_paths) == 1
+    assert next(iter(image_paths.values())) == image_path
 
 
 @pytest.mark.asyncio

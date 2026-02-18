@@ -72,7 +72,7 @@ export default function App() {
         />
 
         {/* Main content */}
-        <main className="flex-1 space-y-6">
+        <main className="min-w-0 flex-1 space-y-6">
           {/* Drive 权限不足提示 */}
           {connected && !driveOk && (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">

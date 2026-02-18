@@ -23,19 +23,29 @@ def tray_client(tmp_path, monkeypatch) -> Generator[TestClient, None, None]:
     monkeypatch.setenv("LARKSYNC_CONFIG", str(tmp_path / "config.json"))
     monkeypatch.setenv("LARKSYNC_DB_PATH", str(tmp_path / "test.db"))
 
-    # 确保配置单例与 main 模块按新的环境重载
+    # 确保配置单例与 API 模块按新的环境重载，避免复用旧 service/runner 实例。
     ConfigManager.reset()
-    if "src.main" in sys.modules:
-        main = importlib.reload(sys.modules["src.main"])
-    else:
-        main = importlib.import_module("src.main")
+    stale_modules = [
+        name
+        for name in list(sys.modules)
+        if name == "src.main" or name == "src.api" or name.startswith("src.api.")
+    ]
+    for name in stale_modules:
+        sys.modules.pop(name, None)
+    main = importlib.import_module("src.main")
 
     with TestClient(main.app) as client:
         yield client
 
-    # 恢复默认配置单例并重载 main，避免影响其他用例
+    # 恢复默认配置单例并重载 main，避免影响其他用例。
     ConfigManager.reset()
-    importlib.reload(main)
+    for name in [
+        n
+        for n in list(sys.modules)
+        if n == "src.main" or n == "src.api" or n.startswith("src.api.")
+    ]:
+        sys.modules.pop(name, None)
+    importlib.import_module("src.main")
 
 
 def test_tray_status_conflict_count(tray_client: TestClient) -> None:
@@ -86,6 +96,7 @@ def test_tray_status_counts_running_and_errors(
     }
     payload_b = dict(payload)
     payload_b["name"] = "任务B"
+    payload_b["local_path"] = str(tmp_path / "local-b")
     payload_b["cloud_folder_token"] = "token-b"
 
     resp_a = tray_client.post("/sync/tasks", json=payload)
@@ -106,3 +117,27 @@ def test_tray_status_counts_running_and_errors(
     assert status["tasks_paused"] == 2
     assert status["tasks_running"] == 1
     assert status["last_error"] == "boom"
+
+
+def test_create_task_rejects_duplicate_mapping(tray_client: TestClient, tmp_path: Path) -> None:
+    local_dir = tmp_path / "duplicate-local"
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "name": "任务A",
+        "local_path": str(local_dir),
+        "cloud_folder_token": "token-a",
+        "cloud_folder_name": "我的空间/A",
+        "base_path": None,
+        "sync_mode": "download_only",
+        "update_mode": "auto",
+        "enabled": False,
+    }
+    first = tray_client.post("/sync/tasks", json=payload)
+    assert first.status_code == 200
+
+    duplicate = dict(payload)
+    duplicate["name"] = "任务B"
+    duplicate["cloud_folder_token"] = "token-b"
+    resp = tray_client.post("/sync/tasks", json=duplicate)
+    assert resp.status_code == 409

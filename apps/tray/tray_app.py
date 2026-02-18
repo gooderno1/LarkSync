@@ -15,6 +15,7 @@ from __future__ import annotations
 import atexit
 import sys
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -50,13 +51,55 @@ from apps.tray.icon_generator import generate_icons, get_icon_path
 from apps.tray.autostart import is_autostart_enabled, toggle_autostart
 from apps.tray import notifier
 
+
+def _sanitize_runtime_pythonpath() -> None:
+    """清理与当前解释器版本不兼容的 PYTHONPATH/site-packages，避免托盘依赖导入失败。"""
+    raw_pythonpath = os.getenv("PYTHONPATH")
+    if not raw_pythonpath:
+        return
+
+    current_tag = f"{sys.version_info.major}{sys.version_info.minor}"
+
+    def _is_mismatched_site_packages(entry: str) -> bool:
+        normalized = entry.replace("\\", "/").lower()
+        version_tags = re.findall(r"python(\d{2,3})", normalized)
+        has_mismatch = bool(version_tags) and any(tag != current_tag for tag in version_tags)
+        return has_mismatch and "site-packages" in normalized
+
+    env_entries = [part.strip() for part in raw_pythonpath.split(os.pathsep) if part.strip()]
+    kept_env_entries = [part for part in env_entries if not _is_mismatched_site_packages(part)]
+    if kept_env_entries != env_entries:
+        if kept_env_entries:
+            os.environ["PYTHONPATH"] = os.pathsep.join(kept_env_entries)
+        else:
+            os.environ.pop("PYTHONPATH", None)
+        print("警告：检测到不兼容 PYTHONPATH，已为托盘进程自动过滤。")
+
+    cleaned_sys_path: list[str] = []
+    for entry in sys.path:
+        if not isinstance(entry, str) or not entry.strip():
+            cleaned_sys_path.append(entry)
+            continue
+        if _is_mismatched_site_packages(entry):
+            continue
+        cleaned_sys_path.append(entry)
+    sys.path[:] = cleaned_sys_path
+
+
+_sanitize_runtime_pythonpath()
+
 # ---- 延迟导入 pystray / PIL（可能未安装） ----
+_TRAY_IMPORT_ERROR: str | None = None
 try:
     import pystray
     from PIL import Image
     HAS_TRAY = True
-except ImportError:
+except Exception as exc:
+    _TRAY_IMPORT_ERROR = f"{type(exc).__name__}: {exc}"
     HAS_TRAY = False
+
+
+_LOCK_SOCKET: socket.socket | None = None
 
 
 def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
@@ -67,6 +110,12 @@ def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
             return True
         time.sleep(0.3)
     return False
+
+
+def _truthy_env(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _kill_process_tree(pid: int) -> None:
@@ -106,8 +155,15 @@ class LarkSyncTray:
     def run(self) -> None:
         """启动托盘应用（阻塞式）。"""
         if not HAS_TRAY:
-            print("错误：缺少 pystray 或 Pillow，请先安装：")
-            print("  pip install pystray Pillow")
+            print("错误：未检测到托盘依赖（pystray / Pillow），无法显示系统托盘图标。")
+            if _TRAY_IMPORT_ERROR:
+                print(f"导入详情：{_TRAY_IMPORT_ERROR}")
+            print("请先安装依赖：")
+            print("  python -m pip install -r apps/backend/requirements.txt")
+            if self._dev_mode and _truthy_env(os.getenv("LARKSYNC_ALLOW_HEADLESS_DEV")):
+                print("检测到 LARKSYNC_ALLOW_HEADLESS_DEV=1，进入无托盘开发模式。")
+                self._run_headless_dev_mode()
+                return
             sys.exit(1)
 
         self._running = True
@@ -138,6 +194,11 @@ class LarkSyncTray:
                 dashboard = get_dashboard_url()
                 print(f"后端已就绪，打开管理面板: {dashboard}")
             webbrowser.open(dashboard)
+            self._notify(
+                "LarkSync 已启动",
+                "托盘图标已启动；若未看到，请在任务栏隐藏图标中查找。",
+                category="startup",
+            )
         else:
             print("警告：后端启动失败，请检查日志。")
 
@@ -161,6 +222,25 @@ class LarkSyncTray:
             self._icon.run()
         finally:
             # pystray.run() 退出后（无论是正常退出还是异常），清理所有子进程
+            self._cleanup_all()
+
+    def _run_headless_dev_mode(self) -> None:
+        """缺少托盘依赖时的开发模式降级入口。"""
+        self._running = True
+        atexit.register(self._cleanup_all)
+        self._start_vite()
+        print("正在启动后端服务（无托盘模式）...")
+        success = self._backend.start(wait=True)
+        if success:
+            print(f"后端就绪，打开管理面板: {VITE_DEV_URL}/")
+            webbrowser.open(f"{VITE_DEV_URL}/")
+        else:
+            print("警告：后端启动失败，请检查日志。")
+        try:
+            while self._running:
+                self._backend.maybe_auto_restart()
+                time.sleep(STATUS_POLL_INTERVAL)
+        finally:
             self._cleanup_all()
 
     def stop(self) -> None:
@@ -423,15 +503,31 @@ def _acquire_lock() -> bool:
     单实例锁：防止多个托盘同时运行。
     使用端口绑定方式实现跨平台锁。
     """
+    global _LOCK_SOCKET
+    if _LOCK_SOCKET is not None:
+        return True
+
     lock_port = 48901  # 用一个不常见端口作为锁
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("127.0.0.1", lock_port))
         sock.listen(1)
-        # 不关闭 sock — 进程退出时自动释放
+        # 保持全局引用，防止局部变量释放后锁失效。
+        _LOCK_SOCKET = sock
         return True
     except OSError:
         return False
+
+
+def _release_lock() -> None:
+    global _LOCK_SOCKET
+    if _LOCK_SOCKET is None:
+        return
+    try:
+        _LOCK_SOCKET.close()
+    except Exception:
+        pass
+    _LOCK_SOCKET = None
 
 
 def _parse_args() -> argparse.Namespace:
@@ -471,6 +567,7 @@ def main() -> None:
     except KeyboardInterrupt:
         pass  # run() 的 finally 会处理清理
     finally:
+        _release_lock()
         print("\n正在关闭 LarkSync...")
         app._cleanup_all()
 

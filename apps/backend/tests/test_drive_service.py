@@ -179,3 +179,40 @@ async def test_scan_folder_expands_shortcut_folder() -> None:
     assert tree.children[0].name == "共享文件夹"
     assert tree.children[0].token == "shared-folder"
     assert tree.children[0].type == "folder"
+
+
+@pytest.mark.asyncio
+async def test_delete_file_passes_type_param() -> None:
+    client = FakeClient([{"code": 0}])
+    service = DriveService(client=client)
+
+    await service.delete_file("doc-token", "docx")
+
+    method, url, kwargs = client.requests[0]
+    assert method == "DELETE"
+    assert url.endswith("/open-apis/drive/v1/files/doc-token")
+    assert kwargs["params"] == {"type": "docx"}
+
+
+@pytest.mark.asyncio
+async def test_delete_file_without_type() -> None:
+    client = FakeClient([{"code": 0}])
+    service = DriveService(client=client)
+
+    await service.delete_file("file-token")
+
+    _, _, kwargs = client.requests[0]
+    assert "params" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_delete_file_raises_with_detail() -> None:
+    client = FakeClient([{"code": 1001, "msg": "field validation failed"}])
+    service = DriveService(client=client)
+
+    with pytest.raises(RuntimeError) as exc:
+        await service.delete_file("bad-token", "docx")
+
+    assert "field validation failed" in str(exc.value)
+    assert "bad-token" in str(exc.value)
+    assert "docx" in str(exc.value)

@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from loguru import logger
 
+from src.core.device import current_device_id
 from src.services import AuthError, AuthService, AuthStateStore
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -62,9 +63,17 @@ async def callback(code: str = Query(...), state: str | None = Query(default=Non
 async def status():
     auth_service = AuthService()
     token = auth_service.get_cached_token()
+    if token is not None and (not token.open_id or not token.account_name):
+        try:
+            token = await auth_service.ensure_cached_identity()
+        except Exception as exc:
+            logger.debug("补齐身份信息失败: {}", exc)
     result: dict[str, object] = {
         "connected": token is not None,
         "expires_at": token.expires_at if token else None,
+        "open_id": token.open_id if token else None,
+        "account_name": token.account_name if token else None,
+        "device_id": current_device_id(),
     }
     # 如果已连接，尝试验证 drive 权限是否可用
     if token is not None:

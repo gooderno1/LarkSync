@@ -9,6 +9,9 @@ type AuthStatus = {
   connected: boolean;
   expires_at?: number | null;
   drive_ok?: boolean;
+  open_id?: string | null;
+  account_name?: string | null;
+  device_id?: string | null;
 };
 
 export function useAuth() {
@@ -19,7 +22,6 @@ export function useAuth() {
     queryFn: () => apiFetch<AuthStatus>("/auth/status"),
     retry: false,
     staleTime: 30_000,
-    placeholderData: { connected: false },
   });
 
   const logoutMutation = useMutation({
@@ -36,6 +38,9 @@ export function useAuth() {
     connected: data?.connected ?? false,
     driveOk: data?.drive_ok ?? false,
     expiresAt: data?.expires_at ?? null,
+    openId: data?.open_id ?? null,
+    accountName: data?.account_name ?? null,
+    deviceId: data?.device_id ?? null,
     loading: isLoading,
     logout: logoutMutation.mutate,
   };

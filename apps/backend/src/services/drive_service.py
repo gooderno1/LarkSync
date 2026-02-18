@@ -146,6 +146,19 @@ class DriveService:
             raise RuntimeError(f"创建文件夹未返回 token: {data}")
         return token
 
+    async def delete_file(self, file_token: str, file_type: str | None = None) -> None:
+        """删除指定文件。"""
+        url = f"{self._base_url}/open-apis/drive/v1/files/{file_token}"
+        request_kwargs: dict[str, object] = {}
+        if file_type:
+            request_kwargs["params"] = {"type": file_type}
+        response = await self._client.request("DELETE", url, **request_kwargs)
+        payload = response.json()
+        if payload.get("code") != 0:
+            raise RuntimeError(
+                f"删除文件失败: {payload.get('msg')} token={file_token} type={file_type or '-'}"
+            )
+
     async def scan_root(
         self, root_folder_type: str = "explorer", name: str | None = None
     ) -> DriveNode:

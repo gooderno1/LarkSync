@@ -20,6 +20,13 @@ class TokenResponse:
     access_token: str
     refresh_token: str  # 可为空字符串（飞书 v2 可能不返回）
     expires_in: int | None
+    open_id: str | None
+
+
+@dataclass
+class UserProfile:
+    open_id: str | None = None
+    account_name: str | None = None
 
 
 class AuthService:
@@ -104,8 +111,38 @@ class AuthService:
             token = await self.refresh()
         return token.access_token
 
+    async def ensure_cached_identity(self) -> TokenData | None:
+        """确保缓存凭证里带有身份信息；缺失时通过用户信息接口补齐。"""
+        token = self._token_store.get()
+        if token is None:
+            return None
+        if token.open_id and token.account_name:
+            return token
+        access_token = await self.get_valid_access_token()
+        latest = self._token_store.get() or token
+        if latest.open_id and latest.account_name:
+            return latest
+        profile = await self._fetch_user_profile(access_token)
+        resolved_open_id = latest.open_id or profile.open_id
+        resolved_account_name = latest.account_name or profile.account_name
+        if (
+            resolved_open_id == latest.open_id
+            and resolved_account_name == latest.account_name
+        ):
+            return latest
+        updated = TokenData(
+            access_token=latest.access_token or access_token,
+            refresh_token=latest.refresh_token,
+            expires_at=latest.expires_at,
+            open_id=resolved_open_id,
+            account_name=resolved_account_name,
+        )
+        self._token_store.set(updated)
+        return updated
+
     async def _request_token(self, payload: dict[str, str]) -> TokenData:
         token_url = self._require_config(self._config.auth_token_url, "auth_token_url")
+        previous = self._token_store.get()
 
         async with self._get_client() as client:
             try:
@@ -130,13 +167,72 @@ class AuthService:
         if token.expires_in is not None:
             expires_at = time.time() + token.expires_in
 
+        resolved_open_id = token.open_id or (previous.open_id if previous else None)
+        resolved_account_name = previous.account_name if previous else None
+        if not resolved_open_id or not resolved_account_name:
+            profile = await self._fetch_user_profile(token.access_token)
+            if not resolved_open_id:
+                resolved_open_id = profile.open_id
+            if not resolved_account_name:
+                resolved_account_name = profile.account_name
+
         stored = TokenData(
             access_token=token.access_token,
             refresh_token=token.refresh_token,
             expires_at=expires_at,
+            open_id=resolved_open_id,
+            account_name=resolved_account_name,
         )
         self._token_store.set(stored)
         return stored
+
+    async def _fetch_open_id(self, access_token: str) -> str | None:
+        profile = await self._fetch_user_profile(access_token)
+        return profile.open_id
+
+    async def _fetch_user_profile(self, access_token: str) -> UserProfile:
+        """
+        使用 authen 用户信息接口补齐用户身份。
+        该接口在 token 响应不返回 open_id 时，仍可获取 open_id 与昵称。
+        """
+        if self._http_client is not None and not hasattr(self._http_client, "get"):
+            return UserProfile()
+
+        user_info_url = "https://open.feishu.cn/open-apis/authen/v1/user_info"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        try:
+            async with self._get_client() as client:
+                response = await client.get(user_info_url, headers=headers)
+                response.raise_for_status()
+                payload = response.json()
+        except Exception as exc:
+            logger.warning("补齐用户身份失败：{}", exc)
+            return UserProfile()
+
+        if not isinstance(payload, dict):
+            return UserProfile()
+        if payload.get("code") != 0:
+            logger.warning(
+                "补齐用户身份失败，user_info code={} msg={}",
+                payload.get("code"),
+                payload.get("msg"),
+            )
+            return UserProfile()
+
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return UserProfile()
+        open_id: str | None = None
+        account_name: str | None = None
+        open_id = data.get("open_id")
+        if isinstance(open_id, str) and open_id.strip():
+            open_id = open_id.strip()
+        else:
+            open_id = None
+        name = data.get("name")
+        if isinstance(name, str) and name.strip():
+            account_name = name.strip()
+        return UserProfile(open_id=open_id, account_name=account_name)
 
     @staticmethod
     def _log_token_response(data: dict[str, object]) -> None:
@@ -171,6 +267,7 @@ class AuthService:
         access_token = data.get("access_token")
         refresh_token = data.get("refresh_token")
         expires_in = data.get("expires_in")
+        open_id_raw = data.get("open_id")
 
         if not isinstance(access_token, str) or not access_token:
             raise AuthError("Token 响应缺少 access_token，请提供 API 响应样例")
@@ -193,6 +290,7 @@ class AuthService:
             access_token=access_token,
             refresh_token=refresh_token_value,
             expires_in=expires_value,
+            open_id=open_id_raw.strip() if isinstance(open_id_raw, str) and open_id_raw.strip() else None,
         )
 
     def _format_http_error(self, response: httpx.Response) -> str:

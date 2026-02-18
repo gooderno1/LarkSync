@@ -83,6 +83,38 @@ export function useTasks() {
     },
   });
 
+  const updateMdSyncModeMutation = useMutation({
+    mutationFn: ({ id, md_sync_mode }: { id: string; md_sync_mode: string }) =>
+      apiFetch(`/sync/tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ md_sync_mode }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+
+  const updateDeletePolicyMutation = useMutation({
+    mutationFn: ({
+      id,
+      delete_policy,
+      delete_grace_minutes,
+    }: {
+      id: string;
+      delete_policy: "off" | "safe" | "strict";
+      delete_grace_minutes: number;
+    }) =>
+      apiFetch(`/sync/tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delete_policy, delete_grace_minutes }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+
   const runMutation = useMutation({
     mutationFn: (task: SyncTask) =>
       apiFetch(`/sync/tasks/${task.id}/run`, { method: "POST" }),
@@ -122,6 +154,8 @@ export function useTasks() {
     toggleTask: toggleMutation.mutate,
     updateSyncMode: updateSyncModeMutation.mutate,
     updateMode: updateModeMutation.mutate,
+    updateMdSyncMode: updateMdSyncModeMutation.mutate,
+    updateDeletePolicy: updateDeletePolicyMutation.mutate,
     runTask: runMutation.mutate,
     deleteTask: deleteMutation.mutate,
     resetLinks: resetLinksMutation.mutateAsync,

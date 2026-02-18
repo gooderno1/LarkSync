@@ -25,7 +25,7 @@ export function SettingsPage() {
   const [clientSecret, setClientSecret] = useState("");
   const [syncMode, setSyncMode] = useState("bidirectional");
   const [tokenStore, setTokenStore] = useState("keyring");
-  const [uploadValue, setUploadValue] = useState("2");
+  const [uploadValue, setUploadValue] = useState("60");
   const [uploadUnit, setUploadUnit] = useState("seconds");
   const [uploadTime, setUploadTime] = useState("01:00");
   const [downloadValue, setDownloadValue] = useState("1");
@@ -39,7 +39,7 @@ export function SettingsPage() {
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
   const [updateCheckIntervalHours, setUpdateCheckIntervalHours] = useState("24");
   const [allowDevToStable, setAllowDevToStable] = useState(false);
-  const [uploadMdToCloud, setUploadMdToCloud] = useState(false);
+  const [deviceDisplayName, setDeviceDisplayName] = useState("");
 
   // Redirect URI 自动生成（origin 即后端地址，生产模式前后端同源）
   const redirectUri = useMemo(() => {
@@ -92,16 +92,12 @@ export function SettingsPage() {
     if (config.auto_update_enabled != null) setAutoUpdateEnabled(Boolean(config.auto_update_enabled));
     if (config.update_check_interval_hours != null) setUpdateCheckIntervalHours(String(config.update_check_interval_hours));
     if (config.allow_dev_to_stable != null) setAllowDevToStable(Boolean(config.allow_dev_to_stable));
-    if (config.upload_md_to_cloud != null) setUploadMdToCloud(Boolean(config.upload_md_to_cloud));
+    setDeviceDisplayName(config.device_display_name || "");
   }, [config, configLoading]);
 
   const handleSave = async () => {
     const uVal = uploadValue.trim() ? Number.parseFloat(uploadValue) : null;
     const dVal = downloadValue.trim() ? Number.parseFloat(downloadValue) : null;
-    const syncRetention = syncLogRetentionDays.trim() ? Number.parseInt(syncLogRetentionDays, 10) : null;
-    const syncWarnSize = syncLogWarnSizeMb.trim() ? Number.parseInt(syncLogWarnSizeMb, 10) : null;
-    const systemRetention = systemLogRetentionDays.trim() ? Number.parseInt(systemLogRetentionDays, 10) : null;
-    const updateInterval = updateCheckIntervalHours.trim() ? Number.parseInt(updateCheckIntervalHours, 10) : null;
 
     try {
       await saveConfig({
@@ -118,16 +114,31 @@ export function SettingsPage() {
         download_interval_value: dVal,
         download_interval_unit: downloadUnit,
         download_daily_time: downloadUnit === "days" ? downloadTime.trim() || null : null,
+      });
+      setClientSecret("");
+      toast("配置已保存", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "保存失败", "danger");
+    }
+  };
+
+  const handleSaveMoreSettings = async () => {
+    const syncRetention = syncLogRetentionDays.trim() ? Number.parseInt(syncLogRetentionDays, 10) : null;
+    const syncWarnSize = syncLogWarnSizeMb.trim() ? Number.parseInt(syncLogWarnSizeMb, 10) : null;
+    const systemRetention = systemLogRetentionDays.trim() ? Number.parseInt(systemLogRetentionDays, 10) : null;
+    const updateInterval = updateCheckIntervalHours.trim() ? Number.parseInt(updateCheckIntervalHours, 10) : null;
+
+    try {
+      await saveConfig({
         sync_log_retention_days: syncRetention,
         sync_log_warn_size_mb: syncWarnSize,
         system_log_retention_days: systemRetention,
         auto_update_enabled: autoUpdateEnabled,
         update_check_interval_hours: updateInterval,
         allow_dev_to_stable: allowDevToStable,
-        upload_md_to_cloud: uploadMdToCloud,
+        device_display_name: deviceDisplayName.trim() || null,
       });
-      setClientSecret("");
-      toast("配置已保存", "success");
+      toast("更多设置已保存", "success");
     } catch (err) {
       toast(err instanceof Error ? err.message : "保存失败", "danger");
     }
@@ -250,7 +261,7 @@ export function SettingsPage() {
           <div>
             <h2 className="text-lg font-semibold text-zinc-50">同步策略</h2>
             <p className="mt-1 text-xs text-zinc-400">
-              当前：本地上行每 {formatIntervalLabel(uploadValue || "2", uploadUnit, uploadTime)}，云端下行每{" "}
+              当前：本地上行每 {formatIntervalLabel(uploadValue || "60", uploadUnit, uploadTime)}，云端下行每{" "}
               {formatIntervalLabel(downloadValue || "1", downloadUnit, downloadTime)}
             </p>
           </div>
@@ -390,17 +401,43 @@ export function SettingsPage() {
             <h2 className="text-lg font-semibold text-zinc-50">更多设置</h2>
             <p className="mt-1 text-xs text-zinc-400">日志保留与提醒阈值配置（一般无需频繁调整）。</p>
           </div>
-          <button
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-            onClick={() => setShowMoreSettings((prev) => !prev)}
-            type="button"
-          >
-            {showMoreSettings ? "收起设置" : "展开设置"}
-          </button>
+          <div className="flex items-center gap-2">
+            {showMoreSettings ? (
+              <button
+                className="rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
+                onClick={handleSaveMoreSettings}
+                disabled={saving}
+                type="button"
+              >
+                {saving ? "保存中..." : "保存更多设置"}
+              </button>
+            ) : null}
+            <button
+              className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+              onClick={() => setShowMoreSettings((prev) => !prev)}
+              type="button"
+            >
+              {showMoreSettings ? "收起设置" : "展开设置"}
+            </button>
+          </div>
         </div>
 
         {showMoreSettings ? (
           <div className="mt-5 space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+              <label className="mb-1.5 block text-xs font-medium text-zinc-400">
+                设备显示名称
+              </label>
+              <input
+                className={inputCls}
+                placeholder="例如：家里笔记本 / 公司主力机"
+                value={deviceDisplayName}
+                onChange={(e) => setDeviceDisplayName(e.target.value)}
+              />
+              <p className="mt-1 text-[11px] text-zinc-500">
+                仅用于页面展示，内部仍使用设备 ID 做归属隔离。
+              </p>
+            </div>
             <div className="grid gap-4 md:grid-cols-3">
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-400">同步日志保留天数</label>
@@ -437,42 +474,6 @@ export function SettingsPage() {
                   onChange={(e) => setSystemLogRetentionDays(e.target.value)}
                 />
                 <p className="mt-1 text-[11px] text-zinc-500">默认 1 天，避免系统日志过大。</p>
-              </div>
-            </div>
-
-            {/* 同步行为 */}
-            <div className="mt-6 border-t border-zinc-800/80 pt-4">
-              <h3 className="text-sm font-medium text-zinc-200">同步行为</h3>
-              <div className="mt-3 grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-                    双向模式：允许 MD → 飞书文档上传
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <button
-                      className={cn(
-                        "relative h-6 w-11 rounded-full transition",
-                        uploadMdToCloud ? "bg-[#3370FF]" : "bg-zinc-700"
-                      )}
-                      onClick={() => setUploadMdToCloud((prev) => !prev)}
-                      type="button"
-                    >
-                      <span
-                        className={cn(
-                          "absolute top-0.5 h-5 w-5 rounded-full bg-white transition",
-                          uploadMdToCloud ? "left-6" : "left-0.5"
-                        )}
-                      />
-                    </button>
-                    <span className="text-xs text-zinc-500">
-                      {uploadMdToCloud ? "已开启" : "已关闭（推荐）"}
-                    </span>
-                  </div>
-                  <p className="mt-1.5 text-[11px] text-zinc-500">
-                    关闭时，双向同步仅从云端下行飞书文档到本地，不会将本地 MD 转为飞书文档上传。
-                    上传模式不受此限制。
-                  </p>
-                </div>
               </div>
             </div>
 
@@ -648,6 +649,7 @@ export function SettingsPage() {
                 )}
               </div>
             </div>
+
           </div>
         ) : null}
       </div>

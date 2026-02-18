@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { apiFetch } from "../lib/api";
 import { useDriveTree } from "../hooks/useDriveTree";
 import { useAuth } from "../hooks/useAuth";
-import { modeLabels, updateModeLabels } from "../lib/constants";
+import { mdSyncModeLabels, modeLabels, updateModeLabels } from "../lib/constants";
 import { TreeNode } from "./TreeNode";
 import { IconRefresh, IconFolder, IconCloud, IconArrowRightLeft, IconArrowDown, IconArrowUp } from "./Icons";
 import { useToast } from "./ui/toast";
@@ -36,6 +36,9 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
   const [manualCloudError, setManualCloudError] = useState<string | null>(null);
   const [taskSyncMode, setTaskSyncMode] = useState("bidirectional");
   const [taskUpdateMode, setTaskUpdateMode] = useState("auto");
+  const [taskMdSyncMode, setTaskMdSyncMode] = useState<"enhanced" | "download_only" | "doc_only">("enhanced");
+  const [taskDeletePolicy, setTaskDeletePolicy] = useState<"off" | "safe" | "strict">("safe");
+  const [taskDeleteGraceMinutes, setTaskDeleteGraceMinutes] = useState("30");
   const [taskEnabled, setTaskEnabled] = useState(true);
   const [folderPickLoading, setFolderPickLoading] = useState(false);
   const [folderPickError, setFolderPickError] = useState<string | null>(null);
@@ -101,6 +104,12 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
           base_path: taskBasePath.trim() || null,
           sync_mode: taskSyncMode,
           update_mode: taskUpdateMode,
+          md_sync_mode: taskMdSyncMode,
+          delete_policy: taskDeletePolicy,
+          delete_grace_minutes:
+            taskDeletePolicy === "strict"
+              ? 0
+              : Math.max(0, Number.parseInt(taskDeleteGraceMinutes || "0", 10) || 0),
           enabled: taskEnabled,
         }),
       });
@@ -126,6 +135,9 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
     setManualCloudError(null);
     setTaskSyncMode("bidirectional");
     setTaskUpdateMode("auto");
+    setTaskMdSyncMode("enhanced");
+    setTaskDeletePolicy("safe");
+    setTaskDeleteGraceMinutes("30");
     setTaskEnabled(true);
     setError(null);
     onClose();
@@ -365,6 +377,82 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
                 </div>
               </div>
 
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-400">MD 上传模式</label>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                  {[
+                    {
+                      value: "enhanced",
+                      label: "增强 MD 上传",
+                      desc: "上传云文档并维护云端 MD 副本",
+                    },
+                    {
+                      value: "download_only",
+                      label: "MD 仅下载",
+                      desc: "仅云端下行，不执行本地 MD 上行",
+                    },
+                    {
+                      value: "doc_only",
+                      label: "仅云文档上传",
+                      desc: "仅更新云文档，不保留云端 MD 副本",
+                    },
+                  ].map(({ value, label, desc }) => (
+                    <button
+                      key={value}
+                      className={cn(
+                        "rounded-xl border p-3 text-left transition",
+                        taskMdSyncMode === value
+                          ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
+                          : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
+                      )}
+                      onClick={() =>
+                        setTaskMdSyncMode(
+                          value as "enhanced" | "download_only" | "doc_only"
+                        )
+                      }
+                      type="button"
+                    >
+                      <p className="text-xs font-medium">{label}</p>
+                      <p className="mt-0.5 text-[10px] text-zinc-600">{desc}</p>
+                    </button>
+                  ))}
+                </div>
+                {taskMdSyncMode === "doc_only" ? (
+                  <p className="mt-2 text-[11px] text-amber-300">
+                    提示：仅云文档上传会经历 Markdown 转换，复杂内容可能存在格式损耗风险。
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">删除同步策略</label>
+                  <select
+                    className={inputCls}
+                    value={taskDeletePolicy}
+                    onChange={(e) =>
+                      setTaskDeletePolicy(e.target.value as "off" | "safe" | "strict")
+                    }
+                  >
+                    <option value="off">关闭（不联动）</option>
+                    <option value="safe">安全模式（宽限后）</option>
+                    <option value="strict">严格模式（立即）</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">删除宽限（分钟）</label>
+                  <input
+                    className={inputCls}
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={taskDeleteGraceMinutes}
+                    onChange={(e) => setTaskDeleteGraceMinutes(e.target.value)}
+                    disabled={taskDeletePolicy === "strict"}
+                  />
+                </div>
+              </div>
+
               <label className="flex items-center gap-2.5 text-sm text-zinc-200">
                 <input type="checkbox" checked={taskEnabled} onChange={(e) => setTaskEnabled(e.target.checked)} className="accent-[#3370FF] h-4 w-4" />
                 创建后立即启用
@@ -384,6 +472,10 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
                   <span className="text-zinc-200">{modeLabels[taskSyncMode]}</span>
                   <span className="text-zinc-500">更新模式</span>
                   <span className="text-zinc-200">{updateModeLabels[taskUpdateMode]}</span>
+                  <span className="text-zinc-500">MD 模式</span>
+                  <span className="text-zinc-200">{mdSyncModeLabels[taskMdSyncMode]}</span>
+                  <span className="text-zinc-500">删除策略</span>
+                  <span className="text-zinc-200">{taskDeletePolicy}</span>
                 </div>
               </div>
 

@@ -11,6 +11,7 @@ import { useWebSocketLog } from "../hooks/useWebSocketLog";
 import { apiFetch } from "../lib/api";
 import { formatTimestamp, formatShortTime, isSameDay } from "../lib/formatters";
 import { modeLabels, updateModeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
+import { computeTaskProgress } from "../lib/progress";
 import { StatCard } from "../components/StatCard";
 import { StatusPill } from "../components/StatusPill";
 import { StatCardSkeleton } from "../components/Skeleton";
@@ -141,7 +142,8 @@ export function DashboardPage({ onNavigate }: Props) {
               tasks.slice(0, 4).map((task) => {
                 const st = statusMap[task.id];
                 const stateKey = !task.enabled ? "paused" : st?.state || "idle";
-                const progress = st && st.total_files > 0 ? Math.round((st.completed_files / st.total_files) * 100) : null;
+                const progressState = computeTaskProgress(st);
+                const progress = progressState.progress;
                 return (
                   <div key={task.id} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -164,7 +166,7 @@ export function DashboardPage({ onNavigate }: Props) {
                       <div className="mt-3">
                         <div className="flex items-center justify-between text-xs text-zinc-400">
                           <span>进度 {progress}%</span>
-                          <span>{st?.completed_files ?? 0}/{st?.total_files ?? 0}</span>
+                          <span>{progressState.completed}/{progressState.effectiveTotal}</span>
                         </div>
                         <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
                           <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />

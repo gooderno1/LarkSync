@@ -6,7 +6,7 @@ from pathlib import Path
 
 from src.core.paths import bundle_root, repo_root
 
-_VERSION_PATTERN = re.compile(r'^version\\s*=\\s*"([^"]+)"', re.MULTILINE)
+_VERSION_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
 
 
 def _read_version_from(path: Path) -> str | None:

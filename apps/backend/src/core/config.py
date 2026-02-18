@@ -10,6 +10,7 @@ from loguru import logger
 from pydantic import BaseModel, Field
 
 from src.core.paths import data_dir
+from src.core.device import current_device_name
 
 class SyncMode(str, Enum):
     bidirectional = "bidirectional"
@@ -21,6 +22,12 @@ class SyncIntervalUnit(str, Enum):
     seconds = "seconds"
     hours = "hours"
     days = "days"
+
+
+class DeletePolicy(str, Enum):
+    off = "off"
+    safe = "safe"
+    strict = "strict"
 
 
 def _default_config_path() -> Path:
@@ -47,7 +54,7 @@ def _default_scopes() -> list[str]:
 class AppConfig(BaseModel):
     database_url: str = Field(default_factory=_default_database_url)
     sync_mode: SyncMode = SyncMode.bidirectional
-    upload_interval_value: float = 2.0
+    upload_interval_value: float = 60.0
     upload_interval_unit: SyncIntervalUnit = SyncIntervalUnit.seconds
     upload_daily_time: str = "01:00"
     download_interval_value: float = 1.0
@@ -61,6 +68,9 @@ class AppConfig(BaseModel):
     last_update_check: float = 0.0
     allow_dev_to_stable: bool = False
     upload_md_to_cloud: bool = False
+    device_display_name: str = Field(default_factory=current_device_name)
+    delete_policy: DeletePolicy = DeletePolicy.safe
+    delete_grace_minutes: int = 30
 
     auth_authorize_url: str = "https://open.feishu.cn/open-apis/authen/v1/index"
     auth_token_url: str = "https://open.feishu.cn/open-apis/authen/v1/access_token"
@@ -208,6 +218,17 @@ class ConfigManager:
                 "yes",
                 "on",
             }
+
+        env_delete_policy = os.getenv("LARKSYNC_DELETE_POLICY")
+        if env_delete_policy:
+            data["delete_policy"] = env_delete_policy
+
+        env_delete_grace = os.getenv("LARKSYNC_DELETE_GRACE_MINUTES")
+        if env_delete_grace:
+            try:
+                data["delete_grace_minutes"] = int(env_delete_grace)
+            except ValueError:
+                pass
 
         for key, env_name in {
             "auth_authorize_url": "LARKSYNC_AUTH_AUTHORIZE_URL",

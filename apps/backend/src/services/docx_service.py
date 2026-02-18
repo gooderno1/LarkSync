@@ -9,6 +9,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import unquote, urlsplit
 
 from loguru import logger
 
@@ -1206,16 +1207,29 @@ class DocxService:
 
     @staticmethod
     def _resolve_image_path(ref: str, base_path: str | Path | None) -> Path:
-        normalized = ref
-        if ref.lower().startswith("file://"):
-            normalized = ref[7:]
+        normalized = ref.strip()
+        if normalized.lower().startswith("file://"):
+            parsed = urlsplit(normalized)
+            normalized = parsed.path or ""
+            if parsed.netloc:
+                normalized = f"//{parsed.netloc}{normalized}"
+        else:
+            normalized = normalized.split("#", 1)[0].split("?", 1)[0]
+        normalized = unquote(normalized).replace("\\ ", " ").strip()
+        if (
+            normalized.startswith("/")
+            and len(normalized) >= 3
+            and normalized[1].isalpha()
+            and normalized[2] == ":"
+        ):
+            normalized = normalized[1:]
         path = Path(normalized)
         if not path.is_absolute() and base_path:
             base = Path(base_path)
             if base.is_file():
                 base = base.parent
             path = base / path
-        return path
+        return path.expanduser()
 
 
 
@@ -1264,8 +1278,7 @@ def _normalize_image_ref(raw: str) -> str:
     ref = raw.strip()
     if ref.startswith("<") and ref.endswith(">"):
         ref = ref[1:-1].strip()
-    if " " in ref:
-        ref = ref.split()[0]
+    ref = re.sub(r"""\s+(?:"[^"]*"|'[^']*'|\([^()]*\))\s*$""", "", ref)
     return ref
 
 

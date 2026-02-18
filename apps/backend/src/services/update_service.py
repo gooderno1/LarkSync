@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 import sys
@@ -23,6 +24,8 @@ class UpdateAsset(BaseModel):
     name: str
     url: str
     size: int | None = None
+    checksum_url: str | None = None
+    sha256: str | None = None
 
 
 class UpdateStatus(BaseModel):
@@ -88,6 +91,81 @@ def select_asset(assets: list[dict[str, Any]], platform: str) -> UpdateAsset | N
     return None
 
 
+def find_checksum_asset(
+    assets: list[dict[str, Any]], target_asset_name: str
+) -> UpdateAsset | None:
+    target = target_asset_name.lower()
+    exact_names = {f"{target}.sha256", f"{target}.sha256.txt"}
+    candidates: list[UpdateAsset] = []
+
+    for raw in assets:
+        name = str(raw.get("name", ""))
+        lower_name = name.lower()
+        asset = UpdateAsset(
+            name=name,
+            url=str(raw.get("browser_download_url", "")),
+            size=raw.get("size"),
+        )
+        if lower_name in exact_names:
+            return asset
+        if (
+            lower_name.endswith(".sha256")
+            or lower_name.endswith(".sha256.txt")
+            or "sha256sum" in lower_name
+        ):
+            candidates.append(asset)
+
+    if not candidates:
+        return None
+    # 常见命名：SHA256SUMS / checksums.txt，仅有一个时可直接使用。
+    if len(candidates) == 1:
+        return candidates[0]
+    # 多个候选时，优先选择文件名包含目标安装包名的 checksum 文件。
+    for candidate in candidates:
+        if target in candidate.name.lower():
+            return candidate
+    return None
+
+
+def extract_sha256_from_text(text: str, target_asset_name: str) -> str | None:
+    target = target_asset_name.lower().strip()
+    if not target:
+        return None
+
+    hash_with_name = re.compile(r"(?i)^([a-f0-9]{64})\s+\*?(.+)$")
+    openssl_style = re.compile(r"(?i)^sha256\((.+)\)\s*=\s*([a-f0-9]{64})$")
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = hash_with_name.match(line)
+        if match:
+            digest = match.group(1).lower()
+            name = match.group(2).strip().strip("./").lower()
+            if name == target or name.endswith(f"/{target}"):
+                return digest
+            continue
+        match = openssl_style.match(line)
+        if match:
+            name = match.group(1).strip().strip("./").lower()
+            digest = match.group(2).lower()
+            if name == target or name.endswith(f"/{target}"):
+                return digest
+
+    all_hashes = re.findall(r"(?i)\b[a-f0-9]{64}\b", text)
+    if len(all_hashes) == 1:
+        return all_hashes[0].lower()
+    return None
+
+
+def compute_file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _update_log_path() -> Path:
     return logs_dir() / "update.log"
 
@@ -129,6 +207,9 @@ class UpdateService:
         self._config_manager = config_manager or ConfigManager.get()
         self._lock = asyncio.Lock()
         self._status_path = data_dir() / "updates" / "status.json"
+
+    def auto_update_enabled(self) -> bool:
+        return bool(self._config_manager.config.auto_update_enabled)
 
     def load_cached_status(self) -> UpdateStatus:
         data = _read_json(self._status_path)
@@ -181,6 +262,12 @@ class UpdateService:
                     update_available = False
 
                 asset = select_asset(release.get("assets") or [], sys.platform)
+                if asset:
+                    checksum_asset = find_checksum_asset(
+                        release.get("assets") or [], asset.name
+                    )
+                    if checksum_asset:
+                        asset.checksum_url = checksum_asset.url
 
                 status = UpdateStatus(
                     current_version=current_version,
@@ -214,6 +301,7 @@ class UpdateService:
         status = await self.check_for_updates(force=True)
         if not status.asset or not status.asset.url:
             raise RuntimeError("没有可下载的更新包")
+        expected_sha256 = await self._resolve_expected_sha256(status.asset)
 
         updates_dir = data_dir() / "updates"
         updates_dir.mkdir(parents=True, exist_ok=True)
@@ -221,8 +309,10 @@ class UpdateService:
 
         if target_path.exists() and status.asset.size:
             if target_path.stat().st_size == status.asset.size:
-                status.download_path = str(target_path)
-                return self._save_status(status, status.last_check or time.time())
+                if compute_file_sha256(target_path) == expected_sha256:
+                    status.download_path = str(target_path)
+                    return self._save_status(status, status.last_check or time.time())
+                _append_update_log(f"本地更新包校验失败，重新下载: {target_path}")
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream("GET", status.asset.url, follow_redirects=True) as resp:
@@ -233,8 +323,15 @@ class UpdateService:
                         if chunk:
                             file.write(chunk)
 
+        actual_sha256 = compute_file_sha256(target_path)
+        if actual_sha256 != expected_sha256:
+            target_path.unlink(missing_ok=True)
+            raise RuntimeError("下载完成但 sha256 校验失败，已中止更新")
+
         status.download_path = str(target_path)
-        _append_update_log(f"下载更新包完成: {target_path}")
+        _append_update_log(
+            f"下载更新包完成: {target_path} (sha256={actual_sha256[:12]}...)"
+        )
         return self._save_status(status, status.last_check or time.time())
 
     async def _fetch_latest_release(self) -> dict[str, Any]:
@@ -260,3 +357,20 @@ class UpdateService:
         data = _read_json(path)
         data["last_update_check"] = float(last_check)
         self._config_manager.save_config(data)
+
+    async def _resolve_expected_sha256(self, asset: UpdateAsset) -> str:
+        if asset.sha256:
+            return asset.sha256.lower()
+        if not asset.checksum_url:
+            raise RuntimeError("更新包缺少 sha256 校验信息，已阻止下载")
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(asset.checksum_url, follow_redirects=True)
+            if resp.status_code >= 400:
+                raise RuntimeError(
+                    f"获取校验文件失败: HTTP {resp.status_code}"
+                )
+            checksum_text = resp.text
+        digest = extract_sha256_from_text(checksum_text, asset.name)
+        if not digest:
+            raise RuntimeError("无法从校验文件解析目标安装包的 sha256")
+        return digest

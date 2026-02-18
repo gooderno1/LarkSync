@@ -76,8 +76,10 @@ class SyncEventStore:
         limit: int,
         offset: int,
         status: str,
+        statuses: list[str] | None = None,
         search: str,
         task_id: str,
+        task_ids: list[str] | None = None,
         order: str = "desc",
     ) -> tuple[int, list[SyncEventRecord]]:
         max_items = offset + limit
@@ -85,15 +87,25 @@ class SyncEventStore:
         order_normalized = order.strip().lower()
         status_filter = status.strip().lower()
         task_filter = task_id.strip()
+        status_filters = {
+            value.strip().lower() for value in (statuses or []) if value and value.strip()
+        }
+        task_filters = {
+            value.strip() for value in (task_ids or []) if value and value.strip()
+        }
+        if status_filter:
+            status_filters.add(status_filter)
+        if task_filter:
+            task_filters.add(task_filter)
         search_filter = search.strip().lower()
 
         if order_normalized not in {"asc", "desc"}:
             order_normalized = "desc"
 
         def matches(record: SyncEventRecord) -> bool:
-            if status_filter and record.status.lower() != status_filter:
+            if status_filters and record.status.lower() not in status_filters:
                 return False
-            if task_filter and record.task_id != task_filter:
+            if task_filters and record.task_id not in task_filters:
                 return False
             if not search_filter:
                 return True

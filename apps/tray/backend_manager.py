@@ -10,15 +10,16 @@
 
 from __future__ import annotations
 
+import os
+import re
 import socket
 import subprocess
 import sys
-import time
 import threading
-from pathlib import Path
-
-import urllib.request
+import time
 import urllib.error
+import urllib.request
+from pathlib import Path
 
 from apps.tray.config import (
     BACKEND_DIR,
@@ -35,6 +36,38 @@ from apps.tray.config import (
 )
 
 from loguru import logger
+
+
+def _sanitize_pythonpath(raw_pythonpath: str | None) -> tuple[str | None, bool]:
+    """移除 PYTHONPATH 中与当前解释器版本不匹配的 site-packages。"""
+    if not raw_pythonpath:
+        return raw_pythonpath, False
+
+    current_tag = f"{sys.version_info.major}{sys.version_info.minor}"
+    kept_entries: list[str] = []
+    changed = False
+
+    for entry in raw_pythonpath.split(os.pathsep):
+        cleaned = entry.strip()
+        if not cleaned:
+            continue
+
+        normalized = cleaned.replace("\\", "/").lower()
+        version_tags = re.findall(r"python(\d{2,3})", normalized)
+        has_mismatch = bool(version_tags) and any(tag != current_tag for tag in version_tags)
+
+        # 仅过滤明显的版本不匹配 site-packages，避免误伤业务路径。
+        if has_mismatch and "site-packages" in normalized:
+            changed = True
+            continue
+
+        kept_entries.append(cleaned)
+
+    if not kept_entries:
+        return None, changed or bool(raw_pythonpath.strip())
+
+    sanitized = os.pathsep.join(kept_entries)
+    return sanitized, changed or sanitized != raw_pythonpath
 
 
 class BackendManager:
@@ -141,6 +174,7 @@ class BackendManager:
                 creationflags = subprocess.CREATE_NO_WINDOW
 
             try:
+                env = self._build_backend_env()
                 stderr_file = open(str(self._stderr_path), "a", encoding="utf-8")
                 self._process = subprocess.Popen(
                     cmd,
@@ -148,6 +182,7 @@ class BackendManager:
                     creationflags=creationflags,
                     stdout=subprocess.DEVNULL,
                     stderr=stderr_file,
+                    env=env,
                 )
                 logger.info("后端进程已启动 (PID {})", self._process.pid)
             except Exception as exc:
@@ -305,6 +340,23 @@ class BackendManager:
             time.sleep(STARTUP_POLL_INTERVAL)
         logger.error("后端启动超时 ({}s)", STARTUP_WAIT_TIMEOUT)
         return False
+
+    @staticmethod
+    def _build_backend_env() -> dict[str, str]:
+        """构建后端子进程环境，避免继承不兼容的 PYTHONPATH。"""
+        env = dict(os.environ)
+        raw_pythonpath = env.get("PYTHONPATH")
+        sanitized, changed = _sanitize_pythonpath(raw_pythonpath)
+        if not changed:
+            return env
+
+        if sanitized:
+            env["PYTHONPATH"] = sanitized
+            logger.warning("检测到不兼容 PYTHONPATH，已过滤后端子进程环境")
+        else:
+            env.pop("PYTHONPATH", None)
+            logger.warning("检测到不兼容 PYTHONPATH，已为后端子进程清空该变量")
+        return env
 
     @staticmethod
     def _is_port_in_use() -> bool:

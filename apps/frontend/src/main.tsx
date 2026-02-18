@@ -9,6 +9,13 @@ import { ToastProvider } from "./components/ui/toast";
 import App from "./App";
 import "./index.css";
 
+try {
+  const saved = window.localStorage.getItem("larksync-theme");
+  document.documentElement.dataset.theme = saved === "dark" ? "dark" : "light";
+} catch {
+  document.documentElement.dataset.theme = "light";
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

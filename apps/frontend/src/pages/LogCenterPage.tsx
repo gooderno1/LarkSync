@@ -61,6 +61,30 @@ type SyncLogResponseRaw = {
   } | null;
 };
 
+type SyncTaskFilterItem = {
+  id: string;
+  name?: string | null;
+  local_path: string;
+};
+
+const LOG_STATUS_ALL = "__all__";
+const DEFAULT_LOG_STATUSES = [LOG_STATUS_ALL];
+const LOG_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: LOG_STATUS_ALL, label: "所有日志（推荐）" },
+  { value: "downloaded", label: "下载成功" },
+  { value: "uploaded", label: "上传成功" },
+  { value: "deleted", label: "删除成功" },
+  { value: "delete_pending", label: "待删除" },
+  { value: "delete_failed", label: "删除失败" },
+  { value: "success", label: "任务完成" },
+  { value: "failed", label: "失败" },
+  { value: "skipped", label: "跳过" },
+  { value: "started", label: "开始" },
+];
+
+const WARNING_STATUSES = new Set(["skipped", "delete_pending", "cancelled"]);
+const DANGER_STATUSES = new Set(["failed", "delete_failed"]);
+
 export function LogCenterPage() {
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflict } = useConflicts();
   const { toast } = useToast();
@@ -68,7 +92,8 @@ export function LogCenterPage() {
   const [logTab, setLogTab] = useState<"logs" | "file-logs" | "conflicts">("logs");
 
   // ---- 同步日志 (持久化) 状态 ----
-  const [logFilterStatus, setLogFilterStatus] = useState("all");
+  const [logFilterStatuses, setLogFilterStatuses] = useState<string[]>(DEFAULT_LOG_STATUSES);
+  const [logFilterTaskIds, setLogFilterTaskIds] = useState<string[]>([]);
   const [logFilterText, setLogFilterText] = useState("");
   const [logOrder, setLogOrder] = useState<"asc" | "desc">("desc");
   const [logPage, setLogPage] = useState(1);
@@ -79,16 +104,36 @@ export function LogCenterPage() {
   const [fileLogSearch, setFileLogSearch] = useState("");
   const [fileLogPage, setFileLogPage] = useState(1);
   const [fileLogPageSize, setFileLogPageSize] = useState(50);
-  const [fileLogOrder, setFileLogOrder] = useState<"asc" | "desc">("asc");
+  const [fileLogOrder, setFileLogOrder] = useState<"asc" | "desc">("desc");
+
+  const taskFilterQuery = useQuery<SyncTaskFilterItem[]>({
+    queryKey: ["sync-log-task-filters"],
+    queryFn: () => apiFetch<SyncTaskFilterItem[]>("/sync/tasks"),
+    staleTime: 30_000,
+  });
+  const taskFilterItems = taskFilterQuery.data || [];
 
   // ---- 同步日志数据 (持久化 API) ----
   const syncLogsQuery = useQuery<SyncLogResponse>({
-    queryKey: ["sync-logs", logFilterStatus, logFilterText, logOrder, logPage, logPageSize],
+    queryKey: [
+      "sync-logs",
+      logFilterStatuses.join(","),
+      logFilterTaskIds.join(","),
+      logFilterText,
+      logOrder,
+      logPage,
+      logPageSize,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(logPageSize));
       params.set("offset", String((logPage - 1) * logPageSize));
-      if (logFilterStatus !== "all") params.set("status", logFilterStatus);
+      const useAllStatuses =
+        logFilterStatuses.length === 0 || logFilterStatuses.includes(LOG_STATUS_ALL);
+      if (!useAllStatuses) {
+        logFilterStatuses.forEach((status) => params.append("statuses", status));
+      }
+      logFilterTaskIds.forEach((taskId) => params.append("task_ids", taskId));
       if (logFilterText) params.set("search", logFilterText);
       params.set("order", logOrder);
       const raw = await apiFetch<SyncLogResponseRaw>(`/sync/logs/sync?${params.toString()}`);
@@ -152,6 +197,31 @@ export function LogCenterPage() {
   const resetLogPage = () => setLogPage(1);
   const resetFileLogPage = () => setFileLogPage(1);
 
+  const toggleLogStatus = (status: string) => {
+    if (status === LOG_STATUS_ALL) {
+      setLogFilterStatuses([LOG_STATUS_ALL]);
+      resetLogPage();
+      return;
+    }
+    setLogFilterStatuses((prev) => {
+      const withoutAll = prev.filter((item) => item !== LOG_STATUS_ALL);
+      if (withoutAll.includes(status)) {
+        const next = withoutAll.filter((item) => item !== status);
+        return next.length > 0 ? next : [LOG_STATUS_ALL];
+      }
+      return [...withoutAll, status];
+    });
+    resetLogPage();
+  };
+
+  const toggleLogTask = (taskId: string) => {
+    setLogFilterTaskIds((prev) => {
+      const next = prev.includes(taskId) ? prev.filter((item) => item !== taskId) : [...prev, taskId];
+      return next;
+    });
+    resetLogPage();
+  };
+
   return (
     <section className="space-y-6 animate-fade-up">
       {/* Tabs */}
@@ -200,37 +270,90 @@ export function LogCenterPage() {
           </div>
 
           {/* 筛选器 */}
-          <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.6fr_0.5fr_0.6fr]">
-            <input
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-              placeholder="搜索任务名、路径或错误信息"
-              value={logFilterText}
-              onChange={(e) => { setLogFilterText(e.target.value); resetLogPage(); }}
-            />
-            <select
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
-              value={logFilterStatus}
-              onChange={(e) => { setLogFilterStatus(e.target.value); resetLogPage(); }}
-            >
-              <option value="all">全部状态</option>
-              <option value="downloaded">下载</option>
-              <option value="uploaded">上传</option>
-              <option value="success">成功</option>
-              <option value="failed">失败</option>
-              <option value="skipped">跳过</option>
-              <option value="started">开始</option>
-            </select>
-            <select
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
-              value={logOrder}
-              onChange={(e) => { setLogOrder(e.target.value as "asc" | "desc"); resetLogPage(); }}
-            >
-              <option value="desc">最新优先</option>
-              <option value="asc">最早优先</option>
-            </select>
-            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setLogFilterStatus("all"); setLogFilterText(""); setLogOrder("desc"); resetLogPage(); }} type="button">
-              重置
-            </button>
+          <div className="mt-4 space-y-3">
+            <div className="grid gap-3 md:grid-cols-[1.5fr_0.6fr_0.5fr]">
+              <input
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
+                placeholder="搜索任务名、路径或错误信息"
+                value={logFilterText}
+                onChange={(e) => { setLogFilterText(e.target.value); resetLogPage(); }}
+              />
+              <select
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
+                value={logOrder}
+                onChange={(e) => { setLogOrder(e.target.value as "asc" | "desc"); resetLogPage(); }}
+              >
+                <option value="desc">最新优先</option>
+                <option value="asc">最早优先</option>
+              </select>
+              <button
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800"
+                onClick={() => {
+                  setLogFilterStatuses(DEFAULT_LOG_STATUSES);
+                  setLogFilterTaskIds([]);
+                  setLogFilterText("");
+                  setLogOrder("desc");
+                  resetLogPage();
+                }}
+                type="button"
+              >
+                重置
+              </button>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                <p className="text-xs text-zinc-500">状态筛选（可多选，默认所有日志）</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {LOG_STATUS_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      className={cn(
+                        "inline-flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs transition",
+                        logFilterStatuses.includes(option.value)
+                          ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
+                          : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                      )}
+                    >
+                      <input
+                        checked={logFilterStatuses.includes(option.value)}
+                        className="h-3.5 w-3.5 accent-[#3370FF]"
+                        onChange={() => toggleLogStatus(option.value)}
+                        type="checkbox"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                <p className="text-xs text-zinc-500">任务筛选（可多选）</p>
+                {taskFilterItems.length === 0 ? (
+                  <p className="mt-2 text-xs text-zinc-600">暂无任务，默认显示全部任务日志。</p>
+                ) : (
+                  <div className="mt-2 max-h-24 space-y-1 overflow-auto pr-1">
+                    {taskFilterItems.map((task) => (
+                      <label
+                        key={task.id}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-xs transition",
+                          logFilterTaskIds.includes(task.id)
+                            ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
+                            : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                        )}
+                      >
+                        <input
+                          checked={logFilterTaskIds.includes(task.id)}
+                          className="h-3.5 w-3.5 accent-[#3370FF]"
+                          onChange={() => toggleLogTask(task.id)}
+                          type="checkbox"
+                        />
+                        <span className="truncate">{task.name || task.local_path || task.id}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* 日志列表 */}
@@ -256,7 +379,16 @@ export function LogCenterPage() {
                       <p className="text-sm font-medium text-zinc-200">{entry.taskName}</p>
                       <p className="break-all text-xs text-zinc-500">{entry.path}</p>
                     </div>
-                    <StatusPill label={statusLabelMap[entry.status] || entry.status} tone={entry.status === "failed" ? "danger" : entry.status === "skipped" ? "warning" : "success"} />
+                    <StatusPill
+                      label={statusLabelMap[entry.status] || entry.status}
+                      tone={
+                        DANGER_STATUSES.has(entry.status)
+                          ? "danger"
+                          : WARNING_STATUSES.has(entry.status)
+                            ? "warning"
+                            : "success"
+                      }
+                    />
                   </div>
                   {entry.message ? <p className="mt-2 text-xs text-zinc-600">{entry.message}</p> : null}
                 </div>
@@ -319,12 +451,17 @@ export function LogCenterPage() {
               <option value="WARNING">WARNING</option>
               <option value="INFO">INFO</option>
             </select>
-            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setFileLogLevel(""); setFileLogSearch(""); setFileLogOrder("asc"); resetFileLogPage(); }} type="button">
+            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setFileLogLevel(""); setFileLogSearch(""); setFileLogOrder("desc"); resetFileLogPage(); }} type="button">
               重置
             </button>
           </div>
 
           {/* 日志列表 */}
+          {fileLogsQuery.error ? (
+            <div className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
+              系统日志加载失败：{fileLogsQuery.error.message}
+            </div>
+          ) : null}
           <div className="mt-5 max-h-[520px] space-y-2 overflow-auto pr-1 log-scroll-area">
             {fileLogsQuery.isLoading ? (
               <div className="space-y-2">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-zinc-800/50" />)}</div>

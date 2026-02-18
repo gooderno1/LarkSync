@@ -16,6 +16,12 @@ export const updateModeLabels: Record<string, string> = {
   full: "全量",
 };
 
+export const mdSyncModeLabels: Record<string, string> = {
+  enhanced: "增强 MD 上传",
+  download_only: "MD 仅下载",
+  doc_only: "仅云文档上传",
+};
+
 export const intervalUnitLabels: Record<string, string> = {
   seconds: "秒",
   hours: "小时",
@@ -25,11 +31,15 @@ export const intervalUnitLabels: Record<string, string> = {
 export const statusLabelMap: Record<string, string> = {
   downloaded: "下载",
   uploaded: "上传",
+  deleted: "删除成功",
+  delete_pending: "待删除",
+  delete_failed: "删除失败",
   failed: "失败",
   skipped: "跳过",
   started: "开始",
   success: "完成",
   cancelled: "取消",
+  mirrored: "镜像",
 };
 
 export const stateLabels: Record<string, string> = {

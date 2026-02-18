@@ -6,7 +6,13 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from src.core.config import AppConfig, ConfigManager, SyncIntervalUnit, SyncMode
+from src.core.config import (
+    AppConfig,
+    ConfigManager,
+    DeletePolicy,
+    SyncIntervalUnit,
+    SyncMode,
+)
 
 
 class ConfigResponse(BaseModel):
@@ -18,7 +24,7 @@ class ConfigResponse(BaseModel):
     auth_scopes: list[str] = Field(default_factory=list)
     sync_mode: SyncMode = SyncMode.bidirectional
     token_store: str = "keyring"
-    upload_interval_value: float = 2.0
+    upload_interval_value: float = 60.0
     upload_interval_unit: SyncIntervalUnit = SyncIntervalUnit.seconds
     upload_daily_time: str = "01:00"
     download_interval_value: float = 1.0
@@ -32,6 +38,9 @@ class ConfigResponse(BaseModel):
     last_update_check: float = 0.0
     allow_dev_to_stable: bool = False
     upload_md_to_cloud: bool = False
+    device_display_name: str = "当前设备"
+    delete_policy: DeletePolicy = DeletePolicy.safe
+    delete_grace_minutes: int = 30
 
     @classmethod
     def from_config(cls, config: AppConfig, mask_secret: bool = True) -> "ConfigResponse":
@@ -58,6 +67,9 @@ class ConfigResponse(BaseModel):
             last_update_check=config.last_update_check,
             allow_dev_to_stable=config.allow_dev_to_stable,
             upload_md_to_cloud=config.upload_md_to_cloud,
+            device_display_name=config.device_display_name,
+            delete_policy=config.delete_policy,
+            delete_grace_minutes=config.delete_grace_minutes,
         )
 
 
@@ -83,6 +95,9 @@ class ConfigUpdateRequest(BaseModel):
     update_check_interval_hours: int | None = None
     allow_dev_to_stable: bool | None = None
     upload_md_to_cloud: bool | None = None
+    device_display_name: str | None = None
+    delete_policy: DeletePolicy | None = None
+    delete_grace_minutes: int | None = None
 
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -159,6 +174,13 @@ async def update_config(payload: ConfigUpdateRequest) -> ConfigResponse:
 
     if payload.upload_md_to_cloud is not None:
         data["upload_md_to_cloud"] = bool(payload.upload_md_to_cloud)
+
+    _apply_str(data, "device_display_name", payload.device_display_name)
+
+    if payload.delete_policy is not None:
+        data["delete_policy"] = payload.delete_policy.value
+    if payload.delete_grace_minutes is not None and payload.delete_grace_minutes >= 0:
+        data["delete_grace_minutes"] = int(payload.delete_grace_minutes)
 
     config = manager.save_config(data)
     return ConfigResponse.from_config(config, mask_secret=True)

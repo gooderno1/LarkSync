@@ -6,7 +6,7 @@ import type { NavKey } from "../types";
 import { useAuth } from "../hooks/useAuth";
 import { useConfig } from "../hooks/useConfig";
 import { getLoginUrl } from "../lib/api";
-import { formatTimestamp, formatIntervalLabel } from "../lib/formatters";
+import { formatIntervalLabel } from "../lib/formatters";
 import { modeLabels } from "../lib/constants";
 import { StatusPill } from "./StatusPill";
 import { IconDashboard, IconTasks, IconConflicts, IconSettings } from "./Icons";
@@ -31,11 +31,17 @@ const navItems: Array<{
 ];
 
 export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarProps) {
-  const { connected, expiresAt, loading, logout } = useAuth();
+  const { connected, loading, logout, accountName } = useAuth();
   const { config } = useConfig();
   const loginUrl = getLoginUrl();
+  const deviceLabel = connected
+    ? (config.device_display_name?.trim() || "当前设备")
+    : "待识别";
+  const accountLabel = connected
+    ? (accountName?.trim() || "已连接（昵称未同步）")
+    : "未登录";
 
-  const uploadVal = config.upload_interval_value != null ? String(config.upload_interval_value) : "2";
+  const uploadVal = config.upload_interval_value != null ? String(config.upload_interval_value) : "60";
   const uploadUnit = config.upload_interval_unit || "seconds";
   const uploadTime = config.upload_daily_time || "01:00";
   const downloadVal = config.download_interval_value != null ? String(config.download_interval_value) : "1";
@@ -44,7 +50,7 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
   const syncMode = config.sync_mode || "bidirectional";
 
   return (
-    <aside className="flex w-full flex-col gap-5 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:w-72">
+    <aside className="flex w-full flex-col gap-5 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:w-72 lg:flex-none lg:shrink-0">
       {/* Logo */}
       <div className="flex items-center justify-center px-2 py-1">
         <img
@@ -100,13 +106,26 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
             {connected ? "自动续期中" : "—"}
           </span>
         </div>
+        <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
+          <p>设备：{deviceLabel}</p>
+          <p>账号：{accountLabel}</p>
+        </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <a
-            className="inline-flex items-center justify-center rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80"
-            href={loginUrl}
-          >
-            {connected ? "重新授权" : "连接飞书"}
-          </a>
+          {!connected ? (
+            <a
+              className="inline-flex items-center justify-center rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80"
+              href={loginUrl}
+            >
+              连接飞书
+            </a>
+          ) : (
+            <a
+              className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+              href={loginUrl}
+            >
+              手动重新授权
+            </a>
+          )}
           <button
             className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-4 py-2 text-xs font-semibold text-zinc-300 transition hover:bg-zinc-800"
             onClick={() => logout()}

@@ -8,9 +8,12 @@ type Theme = "dark" | "light";
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "dark";
+    if (typeof window === "undefined") return "light";
     const saved = window.localStorage.getItem("larksync-theme");
-    return saved === "light" ? "light" : "dark";
+    if (saved === "dark" || saved === "light") {
+      return saved;
+    }
+    return "light";
   });
 
   useEffect(() => {

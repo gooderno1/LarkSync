@@ -1,15 +1,22 @@
 import sys
+from pathlib import Path
+
+# 确保从 apps/backend 目录直接执行 pytest 时可导入 apps.tray
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from apps.tray import backend_manager as bm
 
 
 class _DummyProcess:
-    def __init__(self, args, cwd=None, creationflags=0, stdout=None, stderr=None):
+    def __init__(self, args, cwd=None, creationflags=0, stdout=None, stderr=None, env=None):
         self.args = args
         self.cwd = cwd
         self.creationflags = creationflags
         self.stdout = stdout
         self.stderr = stderr
+        self.env = env
         self.pid = 12345
 
     def poll(self):
@@ -27,6 +34,7 @@ def _setup_manager(monkeypatch, frozen: bool):
         proc = _DummyProcess(cmd, **kwargs)
         captured["args"] = proc.args
         captured["cwd"] = proc.cwd
+        captured["env"] = kwargs.get("env")
         return proc
 
     monkeypatch.setattr(bm.subprocess, "Popen", fake_popen)
@@ -50,3 +58,14 @@ def test_backend_manager_dev_uses_uvicorn_module(monkeypatch):
     cmd = captured["args"]
     assert cmd[:3] == [bm.PYTHON_EXE, "-m", "uvicorn"]
     assert "src.main:app" in cmd
+
+
+def test_backend_manager_sanitizes_incompatible_pythonpath(monkeypatch):
+    manager, captured = _setup_manager(monkeypatch, frozen=False)
+    monkeypatch.setenv("PYTHONPATH", r"F:\File\Linux\Python312\site-packages;C:\repo\apps\backend")
+
+    assert manager.start(wait=True)
+
+    env = captured["env"]
+    assert env is not None
+    assert env["PYTHONPATH"] == r"C:\repo\apps\backend"

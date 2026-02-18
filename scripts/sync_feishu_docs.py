@@ -9,7 +9,9 @@ import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html import unescape
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -22,6 +24,7 @@ ZIP_ENTRY_PATTERN = re.compile(
     r'"src":"(?P<src>https:\\u002F\\u002F[^"]+)".{0,600}?"filename":"(?P<filename>[^"]+?\.zip)"',
     re.DOTALL,
 )
+DIRECT_ZIP_URL_PATTERN = re.compile(r'https[^"\'<>\s]+', re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -37,26 +40,58 @@ def fetch_html(url: str) -> str:
 
 
 def decode_source_url(raw_url: str) -> str:
-    return (
+    decoded = (
         raw_url.replace("\\u002F", "/")
         .replace("\\/", "/")
         .replace("\\u003A", ":")
         .replace("\\u003F", "?")
         .replace("\\u003D", "=")
         .replace("\\u0026", "&")
+        .replace("\\u0025", "%")
     )
+    return unescape(decoded)
+
+
+def _is_zip_url(url: str) -> bool:
+    parsed = urlparse(url)
+    file_name = unquote(Path(parsed.path).name)
+    return file_name.lower().endswith(".zip")
+
+
+def _filename_from_url(url: str) -> str:
+    parsed = urlparse(url)
+    file_name = unquote(Path(parsed.path).name)
+    if file_name:
+        return file_name
+    return "feishu-docs.zip"
 
 
 def extract_zip_entries(html: str) -> list[ZipEntry]:
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     entries: list[ZipEntry] = []
+
+    # 兼容旧页面结构：src + filename 成对出现
     for match in ZIP_ENTRY_PATTERN.finditer(html):
         filename = match.group("filename").strip()
-        if filename in seen:
-            continue
         url = decode_source_url(match.group("src"))
-        seen.add(filename)
+        key = (filename, url)
+        if key in seen:
+            continue
+        seen.add(key)
         entries.append(ZipEntry(filename=filename, url=url))
+
+    # 兼容新页面结构：直接出现 zip 链接（可能在 JSON、href、script 文本中）
+    for raw in DIRECT_ZIP_URL_PATTERN.findall(html):
+        url = decode_source_url(raw)
+        if not _is_zip_url(url):
+            continue
+        filename = _filename_from_url(url)
+        key = (filename, url)
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append(ZipEntry(filename=filename, url=url))
+
     return entries
 
 
@@ -67,10 +102,18 @@ def download_file(url: str, output_path: Path) -> None:
     output_path.write_bytes(data)
 
 
-def write_manifest(target_dir: Path, entries: list[ZipEntry], downloaded: list[str]) -> None:
+def write_manifest(
+    target_dir: Path,
+    entries: list[ZipEntry],
+    downloaded: list[str],
+    status: str = "ok",
+    message: str | None = None,
+) -> None:
     manifest = {
         "checked_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source_url": SOURCE_URL,
+        "status": status,
+        "message": message,
         "archives": [
             {
                 "filename": entry.filename,
@@ -91,8 +134,19 @@ def sync_docs(target_dir: Path, force: bool) -> int:
     html = fetch_html(SOURCE_URL)
     entries = extract_zip_entries(html)
     if not entries:
-        print("未在页面中解析到 zip 文档，请检查页面结构是否变化。")
-        return 2
+        message = (
+            "页面中未发现 zip 文档链接，本次仅更新清单。"
+            " 若预期应有 zip，请检查入口页面是否改版。"
+        )
+        write_manifest(
+            target_dir,
+            entries=[],
+            downloaded=[],
+            status="no_zip_found",
+            message=message,
+        )
+        print(message)
+        return 0
 
     downloaded: list[str] = []
     for entry in entries:
@@ -104,7 +158,7 @@ def sync_docs(target_dir: Path, force: bool) -> int:
         download_file(entry.url, output_path)
         downloaded.append(entry.filename)
 
-    write_manifest(target_dir, entries, downloaded)
+    write_manifest(target_dir, entries, downloaded, status="ok", message=None)
     print(
         f"完成：共 {len(entries)} 个文档，新增/覆盖 {len(downloaded)} 个。"
         f" 清单已写入 {target_dir / MANIFEST_FILE}"

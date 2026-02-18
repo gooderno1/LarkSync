@@ -6,14 +6,19 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.core.config import ConfigManager, SyncMode
+from src.core.config import ConfigManager, DeletePolicy, SyncMode
 from src.core.logging import get_log_file
 from src.services.docx_service import DocxService, DocxServiceError
 from src.services.log_reader import prune_log_file, read_log_entries
 from src.services.sync_event_store import SyncEventStore
 from src.services.sync_link_service import SyncLinkService
 from src.services.sync_runner import SyncFileEvent, SyncTaskRunner, SyncTaskStatus
-from src.services.sync_task_service import SyncTaskItem, SyncTaskService
+from src.services.sync_task_service import (
+    SyncTaskItem,
+    SyncTaskService,
+    SyncTaskValidationError,
+)
+from src.services.sync_tombstone_service import SyncTombstoneService
 
 
 class SyncTaskCreateRequest(BaseModel):
@@ -26,6 +31,12 @@ class SyncTaskCreateRequest(BaseModel):
     update_mode: Literal["auto", "partial", "full"] = Field(
         default="auto", description="更新模式"
     )
+    md_sync_mode: Literal["enhanced", "download_only", "doc_only"] = Field(
+        default="enhanced", description="Markdown 上传模式"
+    )
+    delete_policy: DeletePolicy | None = Field(default=None, description="删除联动策略")
+    delete_grace_minutes: int | None = Field(default=None, ge=0, description="删除宽限分钟")
+    is_test: bool = Field(default=False, description="是否测试任务")
     enabled: bool = Field(default=True, description="是否启用")
 
 
@@ -37,6 +48,10 @@ class SyncTaskUpdateRequest(BaseModel):
     base_path: str | None = None
     sync_mode: SyncMode | None = None
     update_mode: Literal["auto", "partial", "full"] | None = None
+    md_sync_mode: Literal["enhanced", "download_only", "doc_only"] | None = None
+    delete_policy: DeletePolicy | None = None
+    delete_grace_minutes: int | None = Field(default=None, ge=0)
+    is_test: bool | None = None
     enabled: bool | None = None
 
 
@@ -49,6 +64,10 @@ class SyncTaskResponse(BaseModel):
     base_path: str | None
     sync_mode: str
     update_mode: str
+    md_sync_mode: str
+    delete_policy: str | None
+    delete_grace_minutes: int | None
+    is_test: bool
     enabled: bool
     created_at: float
     updated_at: float
@@ -135,16 +154,23 @@ async def list_task_status() -> list[SyncTaskStatusResponse]:
 
 @router.post("/tasks", response_model=SyncTaskResponse)
 async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
-    item = await service.create_task(
-        name=payload.name,
-        local_path=payload.local_path,
-        cloud_folder_token=payload.cloud_folder_token,
-        cloud_folder_name=payload.cloud_folder_name,
-        base_path=payload.base_path,
-        sync_mode=payload.sync_mode.value,
-        update_mode=payload.update_mode,
-        enabled=payload.enabled,
-    )
+    try:
+        item = await service.create_task(
+            name=payload.name,
+            local_path=payload.local_path,
+            cloud_folder_token=payload.cloud_folder_token,
+            cloud_folder_name=payload.cloud_folder_name,
+            base_path=payload.base_path,
+            sync_mode=payload.sync_mode.value,
+            update_mode=payload.update_mode,
+            md_sync_mode=payload.md_sync_mode,
+            delete_policy=payload.delete_policy.value if payload.delete_policy else None,
+            delete_grace_minutes=payload.delete_grace_minutes,
+            is_test=payload.is_test,
+            enabled=payload.enabled,
+        )
+    except SyncTaskValidationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if item.enabled:
         runner.start_task(item)
     return SyncTaskResponse.from_item(item)
@@ -152,17 +178,24 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
 
 @router.patch("/tasks/{task_id}", response_model=SyncTaskResponse)
 async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskResponse:
-    item = await service.update_task(
-        task_id,
-        name=payload.name,
-        local_path=payload.local_path,
-        cloud_folder_token=payload.cloud_folder_token,
-        cloud_folder_name=payload.cloud_folder_name,
-        base_path=payload.base_path,
-        sync_mode=payload.sync_mode.value if payload.sync_mode else None,
-        update_mode=payload.update_mode,
-        enabled=payload.enabled,
-    )
+    try:
+        item = await service.update_task(
+            task_id,
+            name=payload.name,
+            local_path=payload.local_path,
+            cloud_folder_token=payload.cloud_folder_token,
+            cloud_folder_name=payload.cloud_folder_name,
+            base_path=payload.base_path,
+            sync_mode=payload.sync_mode.value if payload.sync_mode else None,
+            update_mode=payload.update_mode,
+            md_sync_mode=payload.md_sync_mode,
+            delete_policy=payload.delete_policy.value if payload.delete_policy else None,
+            delete_grace_minutes=payload.delete_grace_minutes,
+            is_test=payload.is_test,
+            enabled=payload.enabled,
+        )
+    except SyncTaskValidationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not item:
         raise HTTPException(status_code=404, detail="Task not found")
     if payload.enabled is False:
@@ -180,6 +213,10 @@ async def delete_task(task_id: str) -> dict:
     deleted = await service.delete_task(task_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
+    link_service = SyncLinkService()
+    tombstone_service = SyncTombstoneService()
+    await link_service.delete_by_task(task_id)
+    await tombstone_service.delete_by_task(task_id)
     return {"status": "deleted"}
 
 
@@ -193,7 +230,9 @@ async def reset_task_links(task_id: str) -> dict:
     if not item:
         raise HTTPException(status_code=404, detail="Task not found")
     link_service = SyncLinkService()
+    tombstone_service = SyncTombstoneService()
     count = await link_service.delete_by_task(task_id)
+    await tombstone_service.delete_by_task(task_id)
     # 同时清除初始扫描标记，确保下次上传调度重新扫描
     runner._initial_upload_scanned.discard(task_id)
     runner._cloud_folder_cache = {
@@ -280,8 +319,10 @@ async def read_sync_logs(
     limit: int = Query(default=50, ge=1, le=2000, description="返回条数"),
     offset: int = Query(default=0, ge=0, description="跳过前N条"),
     status: str = Query(default="", description="按状态筛选"),
+    statuses: list[str] = Query(default_factory=list, description="按状态筛选（可多选）"),
     search: str = Query(default="", description="关键词搜索"),
     task_id: str = Query(default="", description="任务 ID 过滤"),
+    task_ids: list[str] = Query(default_factory=list, description="任务 ID 多选过滤"),
     order: str = Query(default="desc", description="排序: desc=最新优先, asc=最早优先"),
 ) -> SyncLogResponse:
     """读取同步日志（持久化 JSONL）。"""
@@ -294,8 +335,10 @@ async def read_sync_logs(
         limit=limit,
         offset=offset,
         status=status,
+        statuses=statuses,
         search=search,
         task_id=task_id,
+        task_ids=task_ids,
         order=order,
     )
     items = [

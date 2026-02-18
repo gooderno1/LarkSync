@@ -36,6 +36,74 @@ BRAND_ICON = BRANDING_DIR / "LarkSync_Logo_Icon_FullColor.png"
 WINDOWS_ICON = BRANDING_DIR / "LarkSync.ico"
 
 
+def _is_mismatched_site_packages(entry: str) -> bool:
+    normalized = entry.replace("\\", "/").lower()
+    version_tags = re.findall(r"python(\d{2,3})", normalized)
+    current_tag = f"{sys.version_info.major}{sys.version_info.minor}"
+    has_mismatch = bool(version_tags) and any(tag != current_tag for tag in version_tags)
+    return has_mismatch and "site-packages" in normalized
+
+
+def _sanitize_pythonpath(raw_pythonpath: str | None) -> tuple[str | None, bool]:
+    """移除 PYTHONPATH 中与当前解释器版本不匹配的 site-packages。"""
+    if not raw_pythonpath:
+        return raw_pythonpath, False
+
+    kept_entries: list[str] = []
+    changed = False
+    for entry in raw_pythonpath.split(os.pathsep):
+        cleaned = entry.strip()
+        if not cleaned:
+            continue
+        if _is_mismatched_site_packages(cleaned):
+            changed = True
+            continue
+        kept_entries.append(cleaned)
+
+    if not kept_entries:
+        return None, changed or bool(raw_pythonpath.strip())
+
+    sanitized = os.pathsep.join(kept_entries)
+    return sanitized, changed or sanitized != raw_pythonpath
+
+
+def _sanitize_runtime_pythonpath() -> None:
+    """清理当前进程与子进程环境中的不兼容 PYTHONPATH。"""
+    raw_pythonpath = os.getenv("PYTHONPATH")
+    sanitized, changed = _sanitize_pythonpath(raw_pythonpath)
+    if changed:
+        if sanitized:
+            os.environ["PYTHONPATH"] = sanitized
+        else:
+            os.environ.pop("PYTHONPATH", None)
+        print("  ! 检测到不兼容 PYTHONPATH，已为打包进程自动过滤")
+
+    cleaned_sys_path: list[str] = []
+    removed_any = False
+    for entry in sys.path:
+        if not isinstance(entry, str) or not entry.strip():
+            cleaned_sys_path.append(entry)
+            continue
+        if _is_mismatched_site_packages(entry):
+            removed_any = True
+            continue
+        cleaned_sys_path.append(entry)
+    if removed_any:
+        sys.path[:] = cleaned_sys_path
+
+
+def _build_subprocess_env(env: dict[str, str] | None = None) -> dict[str, str]:
+    runtime_env = dict(env if env is not None else os.environ)
+    sanitized, changed = _sanitize_pythonpath(runtime_env.get("PYTHONPATH"))
+    if not changed:
+        return runtime_env
+    if sanitized:
+        runtime_env["PYTHONPATH"] = sanitized
+    else:
+        runtime_env.pop("PYTHONPATH", None)
+    return runtime_env
+
+
 def _configure_output() -> None:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -64,8 +132,9 @@ def _resolve_cmd(cmd: list[str]) -> list[str]:
 
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
     resolved_cmd = _resolve_cmd(cmd)
+    runtime_env = _build_subprocess_env(env)
     print(f"  → {' '.join(resolved_cmd)}")
-    result = subprocess.run(resolved_cmd, cwd=str(cwd) if cwd else None, env=env)
+    result = subprocess.run(resolved_cmd, cwd=str(cwd) if cwd else None, env=runtime_env)
     if result.returncode != 0:
         print(f"  ✗ 命令失败 (exit {result.returncode})")
         sys.exit(1)
@@ -371,6 +440,7 @@ def _ensure_windows_icon() -> None:
 
 def main() -> None:
     _configure_output()
+    _sanitize_runtime_pythonpath()
     parser = argparse.ArgumentParser(description="LarkSync 安装包构建工具")
     parser.add_argument("--nsis", action="store_true", help="Windows: 生成 NSIS 安装包")
     parser.add_argument("--dmg", action="store_true", help="macOS: 生成 DMG 安装包")

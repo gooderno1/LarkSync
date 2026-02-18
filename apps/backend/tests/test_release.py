@@ -13,15 +13,29 @@ from scripts import release  # noqa: E402
 
 def test_parse_version_valid() -> None:
     assert release.parse_version("v0.1.2-dev.3") == (0, 1, 2, 3)
+    assert release.parse_version("0.1.2") == (0, 1, 2, None)
 
 
 def test_parse_version_invalid() -> None:
     with pytest.raises(ValueError):
-        release.parse_version("0.1.2")
+        release.parse_version("0.1")
 
 
 def test_bump_dev_version() -> None:
     assert release.bump_dev_version("v0.1.2-dev.3") == "v0.1.2-dev.4"
+    assert release.bump_dev_version("v0.1.2") == "v0.1.3-dev.1"
+
+
+def test_compute_next_stable_version_uses_current_dev_when_ahead(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(release, "list_git_tags", lambda _repo: ["v0.1.2", "v0.1.1"])
+    next_version = release.compute_next_stable_version(tmp_path, "v0.1.3-dev.4")
+    assert next_version == "v0.1.3"
+
+
+def test_compute_next_stable_version_bumps_from_latest_tag(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(release, "list_git_tags", lambda _repo: ["v0.1.2", "v0.1.1"])
+    next_version = release.compute_next_stable_version(tmp_path, "v0.1.2")
+    assert next_version == "v0.1.3"
 
 
 def test_update_files(tmp_path: Path) -> None:

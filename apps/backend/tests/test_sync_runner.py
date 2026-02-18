@@ -1,9 +1,11 @@
 import os
+import time
 from pathlib import Path
 
 import pytest
 
-from src.services.drive_service import DriveNode
+from src.core.config import ConfigManager
+from src.services.drive_service import DriveFile, DriveFileList, DriveNode
 from src.services.file_writer import FileWriter
 from src.services.export_task_service import (
     ExportTaskCreateResult,
@@ -85,6 +87,75 @@ class FakeImportTaskService:
         return None
 
 
+class FakeTombstoneService:
+    def __init__(self) -> None:
+        self.created: list[dict] = []
+        self.pending: list[dict] = []
+        self.marked: list[tuple[str, str, str | None, float | None]] = []
+
+    async def create_or_refresh(self, **kwargs):
+        self.created.append(kwargs)
+        item = {
+            "id": f"tb-{len(self.created)}",
+            "task_id": kwargs["task_id"],
+            "local_path": kwargs["local_path"],
+            "cloud_token": kwargs.get("cloud_token"),
+            "cloud_type": kwargs.get("cloud_type"),
+            "source": kwargs["source"],
+            "status": "pending",
+            "reason": kwargs.get("reason"),
+            "detected_at": time.time(),
+            "expire_at": kwargs["expire_at"],
+            "executed_at": None,
+        }
+        self.pending.append(item)
+        return item
+
+    async def list_pending(self, task_id: str, *, before: float | None = None):
+        entries = [
+            item
+            for item in self.pending
+            if item["task_id"] == task_id and item.get("status") in {"pending", "failed"}
+        ]
+        if before is not None:
+            entries = [item for item in entries if item["expire_at"] <= before]
+        result = []
+        for item in entries:
+            result.append(
+                type(
+                    "Pending",
+                    (),
+                    item,
+                )()
+            )
+        return result
+
+    async def mark_status(
+        self,
+        tombstone_id: str,
+        *,
+        status: str,
+        reason: str | None = None,
+        expire_at: float | None = None,
+    ):
+        self.marked.append((tombstone_id, status, reason, expire_at))
+        updated: list[dict] = []
+        for item in self.pending:
+            if item["id"] != tombstone_id:
+                updated.append(item)
+                continue
+            item["status"] = status
+            if reason is not None:
+                item["reason"] = reason
+            if expire_at is not None:
+                item["expire_at"] = expire_at
+            if status in {"executed", "cancelled"}:
+                continue
+            updated.append(item)
+        self.pending = updated
+        return True
+
+
 class FakeExportTaskService:
     def __init__(self) -> None:
         self.create_calls: list[tuple[str, str, str, str | None]] = []
@@ -132,20 +203,38 @@ class FakeSheetService:
 
 class FakeLinkService:
     def __init__(self, persisted: list[SyncLinkItem] | None = None) -> None:
-        self.calls: list[tuple[str, str, str, str]] = []
+        self.calls: list[tuple[str, str, str, str, str | None]] = []
         self._persisted = persisted or []
 
     async def upsert_link(
-        self, local_path: str, cloud_token: str, cloud_type: str, task_id: str, updated_at=None
+        self,
+        local_path: str,
+        cloud_token: str,
+        cloud_type: str,
+        task_id: str,
+        updated_at=None,
+        cloud_parent_token: str | None = None,
+        **kwargs,
     ):
-        self.calls.append((local_path, cloud_token, cloud_type, task_id))
+        self.calls.append((local_path, cloud_token, cloud_type, task_id, cloud_parent_token))
         return None
 
     async def get_by_local_path(self, local_path: str):
+        for item in self._persisted:
+            if item.local_path == local_path:
+                return item
         return None
 
     async def list_all(self):
         return list(self._persisted)
+
+    async def list_by_task(self, task_id: str):
+        return [item for item in self._persisted if item.task_id == task_id]
+
+    async def delete_by_local_path(self, local_path: str):
+        before = len(self._persisted)
+        self._persisted = [item for item in self._persisted if item.local_path != local_path]
+        return before != len(self._persisted)
 
 
 @pytest.mark.asyncio
@@ -239,6 +328,67 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     assert (tmp_path / "子目录" / "note.md").exists()
     assert (tmp_path / "快捷方式文件").exists()
     assert downloader.calls[-1][0] == "file-target"
+
+
+@pytest.mark.asyncio
+async def test_runner_download_skips_internal_md_mirror_folder(tmp_path: Path) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="doc-main",
+                name="主文档",
+                type="docx",
+                modified_time="1700000000",
+            ),
+            DriveNode(
+                token="folder-md-mirror",
+                name="_LarkSync_MD_Mirror",
+                type="folder",
+                children=[
+                    DriveNode(
+                        token="doc-shadow",
+                        name="镜像文档",
+                        type="docx",
+                        modified_time="1700000000",
+                    )
+                ],
+            ),
+        ],
+    )
+
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(),
+    )
+
+    task = SyncTaskItem(
+        id="task-skip-md-mirror",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner.run_task(task)
+
+    status = runner.get_status(task.id)
+    assert status.total_files == 1
+    assert status.completed_files == 1
+    assert (tmp_path / "主文档.md").exists()
+    assert not (tmp_path / "_LarkSync_MD_Mirror").exists()
 
 
 @pytest.mark.asyncio
@@ -362,6 +512,71 @@ async def test_runner_skips_unchanged_when_persisted(tmp_path: Path) -> None:
     assert status.skipped_files == 1
     assert status.completed_files == 0
     assert downloader.calls == []
+
+
+@pytest.mark.asyncio
+async def test_runner_redownloads_docx_when_legacy_sheet_placeholder_present(
+    tmp_path: Path,
+) -> None:
+    cloud_mtime = 1700000000
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="doc-legacy",
+                name="历史文档",
+                type="docx",
+                modified_time=str(cloud_mtime),
+            )
+        ],
+    )
+
+    local_path = tmp_path / "历史文档.md"
+    local_path.write_text("阶段清单（sheet_token: legacy_sheet_token）", encoding="utf-8")
+
+    persisted = [
+        SyncLinkItem(
+            local_path=str(local_path),
+            cloud_token="doc-legacy",
+            cloud_type="docx",
+            task_id="task-legacy",
+            updated_at=float(cloud_mtime),
+        )
+    ]
+
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(persisted),
+        export_task_service=FakeExportTaskService(),
+    )
+
+    task = SyncTaskItem(
+        id="task-legacy",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner.run_task(task)
+
+    status = runner.get_status(task.id)
+    assert status.total_files == 1
+    assert status.skipped_files == 0
+    assert status.completed_files == 1
+    assert local_path.read_text(encoding="utf-8") == "# doc-legacy"
 
 
 @pytest.mark.asyncio
@@ -787,3 +1002,466 @@ async def test_handle_local_event_calls_upload_with_all_dependencies(tmp_path: P
     assert str(path) in pending
     status = runner.get_status(task.id)
     assert status.last_files[-1].status == "queued"
+
+
+@pytest.mark.asyncio
+async def test_handle_local_deleted_event_creates_tombstone(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    local_path = tmp_path / "to-delete.md"
+    local_path.write_text("# data", encoding="utf-8")
+    link = SyncLinkItem(
+        local_path=str(local_path),
+        cloud_token="doc-1",
+        cloud_type="docx",
+        task_id="task-del",
+        updated_at=100.0,
+    )
+    link_service = FakeLinkService([link])
+    tombstone_service = FakeTombstoneService()
+    runner = SyncTaskRunner(
+        link_service=link_service,
+        tombstone_service=tombstone_service,
+        drive_service=FakeDriveService(DriveNode(token="root", name="root", type="folder")),
+    )
+    task = SyncTaskItem(
+        id="task-del",
+        name="删除测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    local_path.unlink()
+    event = FileChangeEvent(
+        event_type="deleted",
+        src_path=str(local_path),
+        dest_path=None,
+        timestamp=0.0,
+    )
+
+    await runner._handle_local_event(task, event)
+
+    assert tombstone_service.created
+    assert tombstone_service.created[0]["source"] == "local"
+    assert tombstone_service.created[0]["local_path"] == str(local_path)
+
+
+@pytest.mark.asyncio
+async def test_run_download_enqueues_cloud_missing_delete(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    tree = DriveNode(token="root", name="根目录", type="folder", children=[])
+    stale_local = tmp_path / "stale.md"
+    stale_local.write_text("# stale", encoding="utf-8")
+    persisted = [
+        SyncLinkItem(
+            local_path=str(stale_local),
+            cloud_token="doc-stale",
+            cloud_type="docx",
+            task_id="task-cloud-del",
+            updated_at=100.0,
+        )
+    ]
+    tombstone_service = FakeTombstoneService()
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(persisted),
+        tombstone_service=tombstone_service,
+    )
+    task = SyncTaskItem(
+        id="task-cloud-del",
+        name="云端删除测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+    await runner._run_download(task, status)
+
+    assert tombstone_service.created
+    assert tombstone_service.created[0]["source"] == "cloud"
+    assert tombstone_service.created[0]["local_path"] == str(stale_local)
+
+
+@pytest.mark.asyncio
+async def test_upload_file_skips_when_hash_unchanged(tmp_path: Path) -> None:
+    class UploadingFileUploader:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        async def upload_file(self, file_path: Path, parent_node: str, parent_type: str = "explorer"):
+            self.calls.append(str(file_path))
+            return type("Result", (), {"file_token": "file-token", "file_hash": "hash"})()
+
+    file_path = tmp_path / "keep.txt"
+    file_path.write_text("same-content", encoding="utf-8")
+    from src.services.file_hash import calculate_file_hash as _calc
+
+    file_hash = _calc(file_path)
+    link = SyncLinkItem(
+        local_path=str(file_path),
+        cloud_token="file-1",
+        cloud_type="file",
+        task_id="task-hash",
+        updated_at=10.0,
+        local_hash=file_hash,
+        local_size=file_path.stat().st_size,
+        local_mtime=file_path.stat().st_mtime,
+    )
+    uploader = UploadingFileUploader()
+    runner = SyncTaskRunner(link_service=FakeLinkService([link]))
+    task = SyncTaskItem(
+        id="task-hash",
+        name="hash",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._upload_file(task, status, file_path, uploader)  # type: ignore[arg-type]
+
+    assert status.skipped_files == 1
+    assert uploader.calls == []
+
+
+@pytest.mark.asyncio
+async def test_process_pending_deletes_records_delete_failed_when_drive_delete_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    tombstone_service = FakeTombstoneService()
+    await tombstone_service.create_or_refresh(
+        task_id="task-del-fail",
+        local_path=str(tmp_path / "gone.md"),
+        cloud_token="doc-need-delete",
+        cloud_type="docx",
+        source="local",
+        reason="test",
+        expire_at=0.0,
+    )
+    runner = SyncTaskRunner(
+        tombstone_service=tombstone_service,
+        link_service=FakeLinkService([]),
+    )
+    task = SyncTaskItem(
+        id="task-del-fail",
+        name="删除失败测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._process_pending_deletes(
+        task=task,
+        status=status,
+        drive_service=FakeDriveService(DriveNode(token="root", name="root", type="folder")),
+    )
+
+    assert any(item.status == "delete_failed" for item in status.last_files)
+    assert len(tombstone_service.pending) == 1
+    assert tombstone_service.pending[0]["status"] == "failed"
+    assert tombstone_service.pending[0]["expire_at"] > time.time()
+
+
+@pytest.mark.asyncio
+async def test_process_pending_deletes_passes_cloud_type_to_drive_delete(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    tombstone_service = FakeTombstoneService()
+    await tombstone_service.create_or_refresh(
+        task_id="task-del-ok",
+        local_path=str(tmp_path / "gone.md"),
+        cloud_token="doc-to-delete",
+        cloud_type="docx",
+        source="local",
+        reason="test",
+        expire_at=0.0,
+    )
+
+    class DriveWithDelete(FakeDriveService):
+        def __init__(self) -> None:
+            super().__init__(DriveNode(token="root", name="root", type="folder"))
+            self.deleted: list[tuple[str, str | None]] = []
+
+        async def delete_file(self, file_token: str, file_type: str | None = None) -> None:
+            self.deleted.append((file_token, file_type))
+
+    drive = DriveWithDelete()
+    runner = SyncTaskRunner(
+        tombstone_service=tombstone_service,
+        link_service=FakeLinkService([]),
+    )
+    task = SyncTaskItem(
+        id="task-del-ok",
+        name="删除成功测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._process_pending_deletes(
+        task=task,
+        status=status,
+        drive_service=drive,
+    )
+
+    assert drive.deleted == [("doc-to-delete", "docx")]
+    assert any(item.status == "deleted" for item in status.last_files)
+    assert not any(item.status == "delete_failed" for item in status.last_files)
+
+
+@pytest.mark.asyncio
+async def test_process_pending_deletes_removes_md_mirror_copy(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    tombstone_service = FakeTombstoneService()
+    await tombstone_service.create_or_refresh(
+        task_id="task-del-md-mirror",
+        local_path=str(tmp_path / "doc.md"),
+        cloud_token="doc-main-token",
+        cloud_type="docx",
+        source="local",
+        reason="test",
+        expire_at=0.0,
+    )
+
+    class DriveWithMirror(FakeDriveService):
+        def __init__(self) -> None:
+            super().__init__(DriveNode(token="root", name="root", type="folder"))
+            self.deleted: list[tuple[str, str | None]] = []
+
+        async def delete_file(self, file_token: str, file_type: str | None = None) -> None:
+            self.deleted.append((file_token, file_type))
+
+        async def list_files(
+            self,
+            folder_token: str,
+            page_token: str | None = None,
+            page_size: int = 200,
+        ) -> DriveFileList:
+            if folder_token == "root-token":
+                return DriveFileList(
+                    files=[
+                        DriveFile(
+                            token="mirror-root-token",
+                            name="_LarkSync_MD_Mirror",
+                            type="folder",
+                        )
+                    ],
+                    has_more=False,
+                    next_page_token=None,
+                )
+            if folder_token == "mirror-root-token":
+                return DriveFileList(
+                    files=[
+                        DriveFile(
+                            token="mirror-md-token",
+                            name="doc.md",
+                            type="file",
+                        )
+                    ],
+                    has_more=False,
+                    next_page_token=None,
+                )
+            return DriveFileList(files=[], has_more=False, next_page_token=None)
+
+        async def create_folder(self, parent_token: str, name: str) -> str:
+            return "unused"
+
+    drive = DriveWithMirror()
+    runner = SyncTaskRunner(
+        tombstone_service=tombstone_service,
+        link_service=FakeLinkService([]),
+    )
+    task = SyncTaskItem(
+        id="task-del-md-mirror",
+        name="删除镜像测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._process_pending_deletes(
+        task=task,
+        status=status,
+        drive_service=drive,
+    )
+
+    assert ("doc-main-token", "docx") in drive.deleted
+    assert ("mirror-md-token", "file") in drive.deleted
+    assert any(item.status == "deleted" for item in status.last_files)
+    assert not any(item.status == "delete_failed" for item in status.last_files)
+
+
+@pytest.mark.asyncio
+async def test_process_pending_deletes_handles_cloud_already_deleted_as_success(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    tombstone_service = FakeTombstoneService()
+    await tombstone_service.create_or_refresh(
+        task_id="task-del-idem",
+        local_path=str(tmp_path / "gone.md"),
+        cloud_token="doc-deleted",
+        cloud_type="docx",
+        source="local",
+        reason="test",
+        expire_at=0.0,
+    )
+
+    class DriveAlreadyDeleted(FakeDriveService):
+        def __init__(self) -> None:
+            super().__init__(DriveNode(token="root", name="root", type="folder"))
+
+        async def delete_file(self, file_token: str, file_type: str | None = None) -> None:
+            raise RuntimeError(
+                f"删除文件失败: file has been delete. token={file_token} type={file_type}"
+            )
+
+    runner = SyncTaskRunner(
+        tombstone_service=tombstone_service,
+        link_service=FakeLinkService([]),
+    )
+    task = SyncTaskItem(
+        id="task-del-idem",
+        name="删除幂等测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._process_pending_deletes(
+        task=task,
+        status=status,
+        drive_service=DriveAlreadyDeleted(),
+    )
+
+    assert any(item.status == "deleted" for item in status.last_files)
+    assert not any(item.status == "delete_failed" for item in status.last_files)
+    assert tombstone_service.pending == []
+
+
+def test_should_skip_download_for_unchanged_respects_local_hash(tmp_path: Path) -> None:
+    local_path = tmp_path / "report.pdf"
+    local_path.write_text("v1", encoding="utf-8")
+    from src.services.file_hash import calculate_file_hash as _calc
+
+    same_hash = _calc(local_path)
+    persisted_same = SyncLinkItem(
+        local_path=str(local_path),
+        cloud_token="file-1",
+        cloud_type="file",
+        task_id="task-a",
+        updated_at=100.0,
+        local_hash=same_hash,
+        cloud_mtime=100.0,
+    )
+    assert (
+        SyncTaskRunner._should_skip_download_for_unchanged(
+            local_path=local_path,
+            cloud_mtime=100.0,
+            persisted=persisted_same,
+            effective_token="file-1",
+            effective_type="file",
+        )
+        is True
+    )
+
+    persisted_diff = SyncLinkItem(
+        local_path=str(local_path),
+        cloud_token="file-1",
+        cloud_type="file",
+        task_id="task-a",
+        updated_at=100.0,
+        local_hash="another-hash",
+        cloud_mtime=100.0,
+    )
+    assert (
+        SyncTaskRunner._should_skip_download_for_unchanged(
+            local_path=local_path,
+            cloud_mtime=100.0,
+            persisted=persisted_diff,
+            effective_token="file-1",
+            effective_type="file",
+        )
+        is False
+    )

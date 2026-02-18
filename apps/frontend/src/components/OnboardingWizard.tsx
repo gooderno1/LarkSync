@@ -8,6 +8,7 @@ import { useAuth } from "../hooks/useAuth";
 import { getLoginUrl } from "../lib/api";
 import { useToast } from "./ui/toast";
 import { IconCloud, IconSettings, IconCopy, IconExternalLink } from "./Icons";
+import { ThemeToggle } from "./ThemeToggle";
 import { cn } from "../lib/utils";
 
 /* 飞书 v1 OAuth 端点（已验证可用） */
@@ -83,7 +84,10 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
     "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF] placeholder:text-zinc-600";
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-8">
+    <div className="relative flex min-h-screen items-center justify-center px-4 py-8">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-lg space-y-8">
         {/* Logo + 欢迎语 */}
         <div className="text-center">

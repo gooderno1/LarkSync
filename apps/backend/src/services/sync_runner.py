@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import shutil
 import time
 from datetime import datetime
 from dataclasses import dataclass, field, replace
@@ -11,6 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 from loguru import logger
 
+from src.core.config import ConfigManager, DeletePolicy
 from src.services.bitable_service import BitableService
 from src.services.docx_service import DocxService
 from src.services.drive_service import DriveFile, DriveNode, DriveService
@@ -27,11 +29,28 @@ from src.services.sync_block_service import BlockStateItem, SyncBlockService
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_task_service import SyncTaskItem
+from src.services.sync_tombstone_service import SyncTombstoneService
 from src.services.transcoder import DocxTranscoder
 from src.services.watcher import FileChangeEvent, WatcherService
 
 SyncState = Literal["idle", "running", "success", "failed", "cancelled"]
 SYNC_LOG_LIMIT = 200
+_LEGACY_DOCX_PLACEHOLDER_MARKERS = (
+    "sheet_token:",
+    "内嵌表格（sheet_token:",
+)
+_LEGACY_DOCX_SCAN_BYTES = 262_144
+_CLOUD_MD_MIRROR_FOLDER_NAME = "_LarkSync_MD_Mirror"
+_CLOUD_MD_MIRROR_CACHE_PREFIX = "__md_mirror__"
+_LOCAL_TRASH_DIR_NAME = ".larksync_trash"
+_MD_SYNC_MODE_ENHANCED = "enhanced"
+_MD_SYNC_MODE_DOWNLOAD_ONLY = "download_only"
+_MD_SYNC_MODE_DOC_ONLY = "doc_only"
+_MD_SYNC_MODE_VALUES = {
+    _MD_SYNC_MODE_ENHANCED,
+    _MD_SYNC_MODE_DOWNLOAD_ONLY,
+    _MD_SYNC_MODE_DOC_ONLY,
+}
 
 
 @dataclass
@@ -83,6 +102,7 @@ class SyncTaskRunner:
         file_uploader: FileUploader | None = None,
         file_writer: FileWriter | None = None,
         link_service: SyncLinkService | None = None,
+        tombstone_service: SyncTombstoneService | None = None,
         sheet_service: SheetService | None = None,
         bitable_service: BitableService | None = None,
         import_task_service: ImportTaskService | None = None,
@@ -100,6 +120,7 @@ class SyncTaskRunner:
         self._file_uploader = file_uploader
         self._file_writer = file_writer or FileWriter()
         self._link_service = link_service or SyncLinkService()
+        self._tombstone_service = tombstone_service or SyncTombstoneService()
         self._sheet_service = sheet_service
         self._bitable_service = bitable_service
         self._block_service = SyncBlockService()
@@ -217,8 +238,9 @@ class SyncTaskRunner:
             self._initial_upload_scanned.add(task.id)
             await self._scan_for_unlinked_files(task)
 
-        pending = self._pending_uploads.get(task.id)
-        if not pending:
+        pending = self._pending_uploads.get(task.id) or set()
+        has_pending_tombstone = await self._has_pending_tombstones(task.id)
+        if not pending and not has_pending_tombstone:
             return
         if task.id in self._running_tasks:
             return
@@ -357,10 +379,11 @@ class SyncTaskRunner:
         self._task_meta[task.id] = task
         drive_service = self._drive_service or DriveService()
         docx_service = self._docx_service or DocxService()
-        transcoder = self._transcoder or DocxTranscoder()
-        file_downloader = self._file_downloader or FileDownloader()
-        export_task_service = self._export_task_service or ExportTaskService()
         sheet_service = self._sheet_service or SheetService()
+        transcoder = self._transcoder or DocxTranscoder(sheet_service=sheet_service)
+        file_downloader = self._file_downloader or FileDownloader()
+        file_uploader = self._file_uploader or FileUploader()
+        export_task_service = self._export_task_service or ExportTaskService()
         bitable_service = self._bitable_service or BitableService()
         link_service = self._link_service
         owned_services = []
@@ -372,9 +395,11 @@ class SyncTaskRunner:
             owned_services.append(transcoder)
         if self._file_downloader is None:
             owned_services.append(file_downloader)
+        if self._file_uploader is None:
+            owned_services.append(file_uploader)
         if self._export_task_service is None:
             owned_services.append(export_task_service)
-        if self._sheet_service is None:
+        if self._sheet_service is None and self._transcoder is not None:
             owned_services.append(sheet_service)
         if self._bitable_service is None:
             owned_services.append(bitable_service)
@@ -388,7 +413,7 @@ class SyncTaskRunner:
                 "下载阶段: task_id={} files={}", task.id, len(files)
             )
             link_map = _build_link_map(files, task.local_path)
-            persisted_links = await link_service.list_all()
+            persisted_links = await link_service.list_by_task(task.id)
             link_map = _merge_synced_link_map(link_map, persisted_links)
             persisted_by_path = {item.local_path: item for item in persisted_links}
             candidates = [
@@ -404,6 +429,14 @@ class SyncTaskRunner:
             selected_candidates, duplicated_candidates = self._select_download_candidates(
                 candidates,
                 persisted_by_path,
+            )
+            known_cloud_tokens = {item.effective_token for item in selected_candidates}
+            selected_cloud_paths = {str(item.target_path) for item in selected_candidates}
+            await self._enqueue_cloud_missing_deletes(
+                task=task,
+                status=status,
+                persisted_links=persisted_links,
+                cloud_paths=selected_cloud_paths,
             )
             status.total_files = len(selected_candidates) + len(duplicated_candidates)
 
@@ -461,6 +494,7 @@ class SyncTaskRunner:
                     cloud_mtime=mtime,
                     persisted=persisted,
                     effective_token=effective_token,
+                    effective_type=effective_type,
                 ):
                     status.skipped_files += 1
                     self._record_event(status, 
@@ -489,6 +523,7 @@ class SyncTaskRunner:
                             link_map=link_map,
                         )
                         self._file_writer.write_markdown(target_path, markdown, mtime)
+                        signature = self._get_local_signature(target_path)
                         await link_service.upsert_link(
                             local_path=str(target_path),
                             cloud_token=effective_token,
@@ -496,6 +531,11 @@ class SyncTaskRunner:
                             task_id=task.id,
                             updated_at=mtime,
                             cloud_parent_token=node.parent_token,
+                            local_hash=signature[0] if signature else None,
+                            local_size=signature[1] if signature else None,
+                            local_mtime=signature[2] if signature else None,
+                            cloud_revision=self._build_cloud_revision(effective_token, mtime),
+                            cloud_mtime=mtime,
                         )
                         if task.sync_mode in {"bidirectional", "upload_only"} and (
                             (task.update_mode or "auto") != "full"
@@ -508,6 +548,14 @@ class SyncTaskRunner:
                                 base_path=target_dir.as_posix(),
                                 file_path=target_path,
                                 user_id_type="open_id",
+                            )
+                        if self._should_sync_md_cloud_mirror(task):
+                            await self._sync_markdown_mirror_copy(
+                                task=task,
+                                status=status,
+                                path=target_path,
+                                file_uploader=file_uploader,
+                                drive_service=drive_service,
                             )
                         self._silence_path(task.id, target_path)
                         status.completed_files += 1
@@ -528,6 +576,7 @@ class SyncTaskRunner:
                             export_extension=export_extension,
                             export_sub_id=candidate.export_sub_id,
                         )
+                        signature = self._get_local_signature(target_path)
                         await link_service.upsert_link(
                             local_path=str(target_path),
                             cloud_token=effective_token,
@@ -535,6 +584,11 @@ class SyncTaskRunner:
                             task_id=task.id,
                             updated_at=mtime,
                             cloud_parent_token=node.parent_token,
+                            local_hash=signature[0] if signature else None,
+                            local_size=signature[1] if signature else None,
+                            local_mtime=signature[2] if signature else None,
+                            cloud_revision=self._build_cloud_revision(effective_token, mtime),
+                            cloud_mtime=mtime,
                         )
                         self._silence_path(task.id, target_path)
                         status.completed_files += 1
@@ -550,6 +604,7 @@ class SyncTaskRunner:
                             target_dir=target_dir,
                             mtime=mtime,
                         )
+                        signature = self._get_local_signature(target_path)
                         await link_service.upsert_link(
                             local_path=str(target_path),
                             cloud_token=effective_token,
@@ -557,6 +612,11 @@ class SyncTaskRunner:
                             task_id=task.id,
                             updated_at=mtime,
                             cloud_parent_token=node.parent_token,
+                            local_hash=signature[0] if signature else None,
+                            local_size=signature[1] if signature else None,
+                            local_mtime=signature[2] if signature else None,
+                            cloud_revision=self._build_cloud_revision(effective_token, mtime),
+                            cloud_mtime=mtime,
                         )
                         self._silence_path(task.id, target_path)
                         status.completed_files += 1
@@ -592,6 +652,12 @@ class SyncTaskRunner:
                         effective_token,
                         exc,
                     )
+            await self._process_pending_deletes(
+                task=task,
+                status=status,
+                drive_service=drive_service,
+                known_cloud_tokens=known_cloud_tokens,
+            )
         finally:
             for service in owned_services:
                 close = getattr(service, "close", None)
@@ -622,6 +688,7 @@ class SyncTaskRunner:
         cloud_mtime: float,
         persisted: SyncLinkItem | None,
         effective_token: str,
+        effective_type: str,
     ) -> bool:
         if persisted is None:
             return False
@@ -629,7 +696,25 @@ class SyncTaskRunner:
             return False
         if not local_path.exists() or not local_path.is_file():
             return False
-        return persisted.updated_at >= (cloud_mtime - 1.0)
+        if effective_type in {"doc", "docx"} and _contains_legacy_docx_placeholder(
+            local_path
+        ):
+            return False
+        if persisted.cloud_mtime is not None and persisted.cloud_mtime >= (cloud_mtime - 1.0):
+            if persisted.local_hash:
+                signature = SyncTaskRunner._get_local_signature(local_path)
+                if not signature:
+                    return False
+                return signature[0] == persisted.local_hash
+            return True
+        if persisted.updated_at >= (cloud_mtime - 1.0):
+            if persisted.local_hash:
+                signature = SyncTaskRunner._get_local_signature(local_path)
+                if not signature:
+                    return False
+                return signature[0] == persisted.local_hash
+            return True
+        return False
 
     @staticmethod
     def _build_download_candidate(
@@ -923,6 +1008,7 @@ class SyncTaskRunner:
         try:
             if task.sync_mode == "upload_only":
                 await self._prefill_links_from_cloud(task, drive_service)
+            await self._enqueue_missing_local_deletes(task=task, status=status)
             files = list(self._iter_local_files(task))
             logger.info(
                 "上传阶段: task_id={} files={}", task.id, len(files)
@@ -955,6 +1041,11 @@ class SyncTaskRunner:
                         path,
                         exc,
                     )
+            await self._process_pending_deletes(
+                task=task,
+                status=status,
+                drive_service=drive_service,
+            )
         finally:
             for service in owned_services:
                 close = getattr(service, "close", None)
@@ -984,6 +1075,7 @@ class SyncTaskRunner:
         try:
             if task.sync_mode == "upload_only":
                 await self._prefill_links_from_cloud(task, drive_service)
+            await self._enqueue_missing_local_deletes(task=task, status=status)
             path_list = list(paths)
             status.total_files += len(path_list)
             for path in path_list:
@@ -1013,6 +1105,11 @@ class SyncTaskRunner:
                         path,
                         exc,
                     )
+            await self._process_pending_deletes(
+                task=task,
+                status=status,
+                drive_service=drive_service,
+            )
         finally:
             for service in owned_services:
                 close = getattr(service, "close", None)
@@ -1049,24 +1146,22 @@ class SyncTaskRunner:
                 return
             suffix = path.suffix.lower()
             if suffix == ".md":
-                # 双向模式下，默认不将 MD 转为飞书文档上传，除非显式开启
-                if task.sync_mode == "bidirectional":
-                    from src.core.config import ConfigManager
-                    cfg = ConfigManager.get().config
-                    if not cfg.upload_md_to_cloud:
-                        status.skipped_files += 1
-                        self._record_event(status,
-                            SyncFileEvent(
-                                path=key,
-                                status="skipped",
-                                message="双向模式下 MD→飞书文档上传已关闭",
-                            )
-                        )
-                        logger.info(
-                            "跳过 MD 上传（upload_md_to_cloud=false）: task_id={} path={}",
-                            task.id, path,
-                        )
-                        return
+                if not self._should_upload_markdown_doc(task):
+                    status.skipped_files += 1
+                    self._record_event(
+                        status,
+                        SyncFileEvent(
+                            path=key,
+                            status="skipped",
+                            message="当前 MD 模式为仅下载，跳过 MD 上传",
+                        ),
+                    )
+                    logger.info(
+                        "跳过 MD 上传（md_sync_mode=download_only）: task_id={} path={}",
+                        task.id,
+                        path,
+                    )
+                    return
                 await self._upload_markdown(
                     task,
                     status,
@@ -1093,7 +1188,7 @@ class SyncTaskRunner:
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
         if link and link.cloud_type == "file":
-            await self._upload_file(task, status, path, file_uploader)
+            await self._upload_file(task, status, path, file_uploader, drive_service)
             return
         imported_doc = False
         if not link:
@@ -1127,6 +1222,13 @@ class SyncTaskRunner:
                 )
                 return
         else:
+            if link.local_hash and link.local_hash == file_hash:
+                status.skipped_files += 1
+                self._record_event(
+                    status,
+                    SyncFileEvent(path=str(path), status="skipped", message="内容未变化"),
+                )
+                return
             if task.sync_mode != "upload_only" and mtime <= (link.updated_at + 1.0):
                 status.skipped_files += 1
                 self._record_event(status, 
@@ -1215,10 +1317,666 @@ class SyncTaskRunner:
             task_id=task.id,
             updated_at=synced_at,
             cloud_parent_token=upload_parent,
+            local_hash=file_hash,
+            local_size=path.stat().st_size,
+            local_mtime=path.stat().st_mtime,
+            cloud_revision=self._build_cloud_revision(link.cloud_token, synced_at),
+            cloud_mtime=synced_at,
         )
+        if self._should_sync_md_cloud_mirror(task):
+            await self._sync_markdown_mirror_copy(
+                task=task,
+                status=status,
+                path=path,
+                file_uploader=file_uploader,
+                drive_service=drive_service,
+            )
+        else:
+            await self._cleanup_md_mirror_copy(
+                task=task,
+                local_path=path,
+                drive_service=drive_service,
+            )
         status.completed_files += 1
         self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
         logger.info("上传完成: task_id={} path={}", task.id, path)
+
+    @staticmethod
+    def _supports_md_cloud_mirror(drive_service: DriveService) -> bool:
+        return callable(getattr(drive_service, "list_files", None)) and callable(
+            getattr(drive_service, "create_folder", None)
+        )
+
+    def _resolve_md_sync_mode(self, task: SyncTaskItem) -> str:
+        mode = (task.md_sync_mode or "").strip().lower()
+        if mode in _MD_SYNC_MODE_VALUES:
+            return mode
+        cfg = ConfigManager.get().config
+        return (
+            _MD_SYNC_MODE_ENHANCED
+            if bool(cfg.upload_md_to_cloud)
+            else _MD_SYNC_MODE_DOWNLOAD_ONLY
+        )
+
+    def _should_upload_markdown_doc(self, task: SyncTaskItem) -> bool:
+        return self._resolve_md_sync_mode(task) != _MD_SYNC_MODE_DOWNLOAD_ONLY
+
+    def _should_sync_md_cloud_mirror(self, task: SyncTaskItem) -> bool:
+        return self._resolve_md_sync_mode(task) == _MD_SYNC_MODE_ENHANCED
+
+    async def _sync_markdown_mirror_copy(
+        self,
+        *,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        path: Path,
+        file_uploader: FileUploader,
+        drive_service: DriveService,
+    ) -> None:
+        if path.suffix.lower() != ".md":
+            return
+        if not self._supports_md_cloud_mirror(drive_service):
+            return
+
+        mirror_parent = await self._resolve_md_mirror_parent(
+            task=task,
+            path=path,
+            drive_service=drive_service,
+        )
+        existing = await self._list_files_all(drive_service, mirror_parent)
+        same_name_files = [
+            item for item in existing if item.type == "file" and item.name == path.name
+        ]
+        delete_file = getattr(drive_service, "delete_file", None)
+        if callable(delete_file):
+            for item in same_name_files:
+                try:
+                    await delete_file(item.token, item.type)
+                except Exception as exc:
+                    logger.warning(
+                        "删除旧的云端 MD 镜像失败，继续覆盖上传: token={} error={}",
+                        item.token,
+                        exc,
+                    )
+        elif same_name_files:
+            logger.warning("当前 DriveService 不支持删除旧镜像，可能出现同名 MD 副本累积")
+
+        await file_uploader.upload_file(
+            file_path=path,
+            parent_node=mirror_parent,
+            parent_type="explorer",
+            record_db=False,
+        )
+        self._record_event(
+            status,
+            SyncFileEvent(
+                path=str(path),
+                status="mirrored",
+                message=f"MD 镜像已更新到云端目录：{_CLOUD_MD_MIRROR_FOLDER_NAME}",
+            ),
+            task,
+        )
+
+    @staticmethod
+    def _normalize_delete_policy(raw_policy: object) -> DeletePolicy:
+        if isinstance(raw_policy, DeletePolicy):
+            return raw_policy
+        try:
+            return DeletePolicy(str(raw_policy))
+        except ValueError:
+            return DeletePolicy.safe
+
+    def _resolve_delete_policy(self, task: SyncTaskItem | None = None) -> tuple[DeletePolicy, float]:
+        config = ConfigManager.get().config
+        policy_raw: object = config.delete_policy
+        grace_raw: object = config.delete_grace_minutes
+        if task is not None:
+            if task.delete_policy:
+                policy_raw = task.delete_policy
+            if task.delete_grace_minutes is not None:
+                grace_raw = task.delete_grace_minutes
+        policy = self._normalize_delete_policy(policy_raw)
+        grace_minutes = int(grace_raw or 0)
+        if grace_minutes < 0:
+            grace_minutes = 0
+        grace_seconds = float(grace_minutes * 60)
+        if policy == DeletePolicy.strict:
+            grace_seconds = 0.0
+        return policy, grace_seconds
+
+    async def _has_pending_tombstones(self, task_id: str) -> bool:
+        try:
+            pending = await self._tombstone_service.list_pending(task_id)
+        except Exception:
+            logger.exception("读取删除墓碑失败: task_id={}", task_id)
+            return False
+        return bool(pending)
+
+    @staticmethod
+    def _build_cloud_revision(cloud_token: str, cloud_mtime: float | None) -> str | None:
+        token = (cloud_token or "").strip()
+        if not token:
+            return None
+        if cloud_mtime is None:
+            return token
+        return f"{token}@{int(cloud_mtime * 1000)}"
+
+    @staticmethod
+    def _get_local_signature(path: Path) -> tuple[str, int, float] | None:
+        if not path.exists() or not path.is_file():
+            return None
+        try:
+            stat = path.stat()
+            file_hash = calculate_file_hash(path)
+        except OSError:
+            return None
+        return file_hash, int(stat.st_size), float(stat.st_mtime)
+
+    async def _enqueue_local_delete_tombstone(
+        self,
+        *,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        local_path: Path,
+        reason: str,
+    ) -> bool:
+        policy, grace_seconds = self._resolve_delete_policy(task)
+        if policy == DeletePolicy.off:
+            return False
+        link = await self._link_service.get_by_local_path(str(local_path))
+        if not link:
+            return False
+        expire_at = time.time() + grace_seconds
+        try:
+            await self._tombstone_service.create_or_refresh(
+                task_id=task.id,
+                local_path=str(local_path),
+                cloud_token=link.cloud_token,
+                cloud_type=link.cloud_type,
+                source="local",
+                reason=reason,
+                expire_at=expire_at,
+            )
+        except Exception:
+            logger.exception(
+                "写入本地删除墓碑失败: task_id={} path={}",
+                task.id,
+                local_path,
+            )
+            return False
+        self._record_event(
+            status,
+            SyncFileEvent(
+                path=str(local_path),
+                status="delete_pending",
+                message=f"{reason}，待处理删除同步",
+            ),
+            task,
+        )
+        return True
+
+    async def _enqueue_missing_local_deletes(
+        self,
+        *,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+    ) -> None:
+        policy, grace_seconds = self._resolve_delete_policy(task)
+        if policy == DeletePolicy.off:
+            return
+        links = await self._link_service.list_by_task(task.id)
+        if not links:
+            return
+        expire_at = time.time() + grace_seconds
+        for link in links:
+            local_path = Path(link.local_path)
+            if local_path.exists():
+                continue
+            if link.updated_at <= 0 and not link.local_hash:
+                # 仅云端预填映射、尚未建立本地基线时，不判定为“本地删除”。
+                continue
+            try:
+                await self._tombstone_service.create_or_refresh(
+                    task_id=task.id,
+                    local_path=link.local_path,
+                    cloud_token=link.cloud_token,
+                    cloud_type=link.cloud_type,
+                    source="local",
+                    reason="检测到本地已删除",
+                    expire_at=expire_at,
+                )
+            except Exception:
+                logger.exception(
+                    "写入本地删除墓碑失败: task_id={} path={}",
+                    task.id,
+                    link.local_path,
+                )
+                continue
+            self._record_event(
+                status,
+                SyncFileEvent(
+                    path=link.local_path,
+                    status="delete_pending",
+                    message="检测到本地已删除，待处理删除同步",
+                ),
+                task,
+            )
+
+    async def _enqueue_cloud_missing_deletes(
+        self,
+        *,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        persisted_links: list[SyncLinkItem],
+        cloud_paths: set[str],
+    ) -> None:
+        policy, grace_seconds = self._resolve_delete_policy(task)
+        if policy == DeletePolicy.off:
+            return
+        expire_at = time.time() + grace_seconds
+        for link in persisted_links:
+            if link.local_path in cloud_paths:
+                continue
+            try:
+                await self._tombstone_service.create_or_refresh(
+                    task_id=task.id,
+                    local_path=link.local_path,
+                    cloud_token=link.cloud_token,
+                    cloud_type=link.cloud_type,
+                    source="cloud",
+                    reason="检测到云端已删除",
+                    expire_at=expire_at,
+                )
+            except Exception:
+                logger.exception(
+                    "写入云端删除墓碑失败: task_id={} path={}",
+                    task.id,
+                    link.local_path,
+                )
+                continue
+            self._record_event(
+                status,
+                SyncFileEvent(
+                    path=link.local_path,
+                    status="delete_pending",
+                    message="检测到云端已删除，待处理本地删除",
+                ),
+                task,
+            )
+
+    async def _process_pending_deletes(
+        self,
+        *,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        drive_service: DriveService,
+        known_cloud_tokens: set[str] | None = None,
+    ) -> None:
+        retry_delay_seconds = 300.0
+        policy, _ = self._resolve_delete_policy(task)
+        try:
+            pending = await self._tombstone_service.list_pending(
+                task.id,
+                before=time.time(),
+            )
+        except Exception:
+            logger.exception("查询待处理删除墓碑失败: task_id={}", task.id)
+            return
+        if not pending:
+            return
+        if policy == DeletePolicy.off:
+            for tombstone in pending:
+                await self._tombstone_service.mark_status(
+                    tombstone.id,
+                    status="cancelled",
+                    reason="删除同步已关闭",
+                )
+            return
+
+        delete_file = getattr(drive_service, "delete_file", None)
+        for tombstone in pending:
+            local_path = Path(tombstone.local_path)
+            try:
+                if tombstone.source == "local":
+                    if local_path.exists():
+                        await self._tombstone_service.mark_status(
+                            tombstone.id,
+                            status="cancelled",
+                            reason="本地文件已恢复",
+                        )
+                        continue
+                    if tombstone.cloud_token:
+                        if not callable(delete_file):
+                            await self._tombstone_service.mark_status(
+                                tombstone.id,
+                                status="failed",
+                                reason="当前 DriveService 不支持云端删除",
+                                expire_at=time.time() + retry_delay_seconds,
+                            )
+                            self._record_event(
+                                status,
+                                SyncFileEvent(
+                                    path=tombstone.local_path,
+                                    status="delete_failed",
+                                    message="云端删除失败：当前 DriveService 不支持删除接口",
+                                ),
+                                task,
+                            )
+                            continue
+                        try:
+                            await delete_file(tombstone.cloud_token, tombstone.cloud_type)
+                        except Exception as exc:
+                            if self._is_cloud_already_deleted_error(exc):
+                                logger.info(
+                                    "云端文件已不存在，按幂等成功处理: token={} type={} path={}",
+                                    tombstone.cloud_token,
+                                    tombstone.cloud_type,
+                                    tombstone.local_path,
+                                )
+                            else:
+                                raise
+                    await self._cleanup_md_mirror_copy(
+                        task=task,
+                        local_path=local_path,
+                        drive_service=drive_service,
+                    )
+                    await self._cleanup_deleted_state(
+                        local_path=tombstone.local_path,
+                        cloud_token=tombstone.cloud_token,
+                    )
+                    await self._tombstone_service.mark_status(
+                        tombstone.id,
+                        status="executed",
+                    )
+                    self._record_event(
+                        status,
+                        SyncFileEvent(
+                            path=tombstone.local_path,
+                            status="deleted",
+                            message="已删除云端文件并清理映射",
+                        ),
+                        task,
+                    )
+                    continue
+
+                if known_cloud_tokens and tombstone.cloud_token:
+                    if tombstone.cloud_token in known_cloud_tokens:
+                        await self._tombstone_service.mark_status(
+                            tombstone.id,
+                            status="cancelled",
+                            reason="云端文件已恢复",
+                        )
+                        continue
+
+                await self._cleanup_md_mirror_copy(
+                    task=task,
+                    local_path=local_path,
+                    drive_service=drive_service,
+                )
+
+                if local_path.exists():
+                    if policy == DeletePolicy.strict:
+                        if local_path.is_dir():
+                            shutil.rmtree(local_path, ignore_errors=True)
+                        else:
+                            local_path.unlink(missing_ok=True)
+                        local_message = "本地文件已删除"
+                    else:
+                        moved_to = self._move_to_local_trash(task, local_path)
+                        local_message = f"本地文件已移入回收目录: {moved_to}"
+                else:
+                    local_message = "本地文件已不存在"
+
+                await self._cleanup_deleted_state(
+                    local_path=tombstone.local_path,
+                    cloud_token=tombstone.cloud_token,
+                )
+                await self._tombstone_service.mark_status(
+                    tombstone.id,
+                    status="executed",
+                )
+                self._record_event(
+                    status,
+                    SyncFileEvent(
+                        path=tombstone.local_path,
+                        status="deleted",
+                        message=local_message,
+                    ),
+                    task,
+                )
+            except Exception as exc:
+                await self._tombstone_service.mark_status(
+                    tombstone.id,
+                    status="failed",
+                    reason=str(exc),
+                    expire_at=time.time() + retry_delay_seconds,
+                )
+                self._record_event(
+                    status,
+                    SyncFileEvent(
+                        path=tombstone.local_path,
+                        status="delete_failed",
+                        message=str(exc),
+                    ),
+                    task,
+                )
+                logger.warning(
+                    "处理删除墓碑失败: task_id={} source={} path={} error={}",
+                    task.id,
+                    tombstone.source,
+                    tombstone.local_path,
+                    exc,
+                )
+
+    async def _cleanup_deleted_state(
+        self,
+        *,
+        local_path: str,
+        cloud_token: str | None,
+    ) -> None:
+        link = await self._link_service.get_by_local_path(local_path)
+        token = cloud_token or (link.cloud_token if link else None)
+        try:
+            await self._link_service.delete_by_local_path(local_path)
+        except Exception:
+            logger.exception("清理同步映射失败: {}", local_path)
+        if token:
+            try:
+                await self._block_service.replace_blocks(local_path, token, [])
+            except Exception:
+                logger.exception("清理块级映射失败: path={} token={}", local_path, token)
+
+    @staticmethod
+    def _move_to_local_trash(task: SyncTaskItem, local_path: Path) -> Path:
+        root = Path(task.local_path)
+        trash_root = root / _LOCAL_TRASH_DIR_NAME
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        try:
+            relative = local_path.relative_to(root)
+        except ValueError:
+            relative = Path(local_path.name)
+        candidate = trash_root / timestamp / relative
+        candidate.parent.mkdir(parents=True, exist_ok=True)
+        target = candidate
+        if target.exists():
+            index = 1
+            while True:
+                if target.suffix:
+                    name = f"{target.stem}.{index}{target.suffix}"
+                else:
+                    name = f"{target.name}.{index}"
+                alt = target.with_name(name)
+                if not alt.exists():
+                    target = alt
+                    break
+                index += 1
+        shutil.move(str(local_path), str(target))
+        return target
+
+    @staticmethod
+    def _is_cloud_already_deleted_error(exc: Exception) -> bool:
+        lowered = str(exc).lower()
+        markers = (
+            "file has been delete",
+            "file already deleted",
+            "file not found",
+            "resource not found",
+            "not exist",
+        )
+        return any(marker in lowered for marker in markers)
+
+    async def _cleanup_md_mirror_copy(
+        self,
+        *,
+        task: SyncTaskItem,
+        local_path: Path,
+        drive_service: DriveService,
+    ) -> None:
+        if local_path.suffix.lower() != ".md":
+            return
+        if not self._supports_md_cloud_mirror(drive_service):
+            return
+        delete_file = getattr(drive_service, "delete_file", None)
+        if not callable(delete_file):
+            return
+        mirror_parent = await self._find_md_mirror_parent_no_create(
+            task=task,
+            path=local_path,
+            drive_service=drive_service,
+        )
+        if not mirror_parent:
+            return
+        existing = await self._list_files_all(drive_service, mirror_parent)
+        for item in existing:
+            if item.type != "file" or item.name != local_path.name:
+                continue
+            try:
+                await delete_file(item.token, item.type)
+            except Exception as exc:
+                if self._is_cloud_already_deleted_error(exc):
+                    continue
+                logger.warning(
+                    "删除云端 MD 镜像失败: task_id={} path={} token={} error={}",
+                    task.id,
+                    local_path,
+                    item.token,
+                    exc,
+                )
+
+    async def _find_md_mirror_parent_no_create(
+        self,
+        *,
+        task: SyncTaskItem,
+        path: Path,
+        drive_service: DriveService,
+    ) -> str | None:
+        root_token = await self._find_md_mirror_root_no_create(task, drive_service)
+        if not root_token:
+            return None
+        try:
+            relative = path.relative_to(Path(task.local_path))
+        except ValueError:
+            return root_token
+
+        parent_parts = relative.parent.parts
+        if not parent_parts or parent_parts == (".",):
+            return root_token
+
+        current_token = root_token
+        accumulated = ""
+        for part in parent_parts:
+            accumulated = f"{accumulated}/{part}" if accumulated else part
+            cache_key = (task.id, f"{_CLOUD_MD_MIRROR_CACHE_PREFIX}/{accumulated}")
+            cached = self._cloud_folder_cache.get(cache_key)
+            if cached:
+                current_token = cached
+                continue
+            existing_token = await self._find_subfolder(drive_service, current_token, part)
+            if not existing_token:
+                return None
+            self._cloud_folder_cache[cache_key] = existing_token
+            current_token = existing_token
+        return current_token
+
+    async def _find_md_mirror_root_no_create(
+        self, task: SyncTaskItem, drive_service: DriveService
+    ) -> str | None:
+        cache_key = (task.id, f"{_CLOUD_MD_MIRROR_CACHE_PREFIX}/root")
+        cached = self._cloud_folder_cache.get(cache_key)
+        if cached:
+            return cached
+        existing = await self._find_subfolder(
+            drive_service, task.cloud_folder_token, _CLOUD_MD_MIRROR_FOLDER_NAME
+        )
+        if not existing:
+            return None
+        self._cloud_folder_cache[cache_key] = existing
+        return existing
+
+    async def _resolve_md_mirror_parent(
+        self,
+        *,
+        task: SyncTaskItem,
+        path: Path,
+        drive_service: DriveService,
+    ) -> str:
+        root_token = await self._ensure_md_mirror_root(task, drive_service)
+        try:
+            relative = path.relative_to(Path(task.local_path))
+        except ValueError:
+            return root_token
+
+        parent_parts = relative.parent.parts
+        if not parent_parts or parent_parts == (".",):
+            return root_token
+
+        current_token = root_token
+        accumulated = ""
+        for part in parent_parts:
+            accumulated = f"{accumulated}/{part}" if accumulated else part
+            cache_key = (task.id, f"{_CLOUD_MD_MIRROR_CACHE_PREFIX}/{accumulated}")
+            if cache_key in self._cloud_folder_cache:
+                current_token = self._cloud_folder_cache[cache_key]
+                continue
+            existing_token = await self._find_subfolder(drive_service, current_token, part)
+            if existing_token:
+                self._cloud_folder_cache[cache_key] = existing_token
+                current_token = existing_token
+                continue
+            new_token = await drive_service.create_folder(current_token, part)
+            self._cloud_folder_cache[cache_key] = new_token
+            current_token = new_token
+            logger.info(
+                "创建云端 MD 镜像子目录: task_id={} path={} token={}",
+                task.id,
+                accumulated,
+                new_token,
+            )
+        return current_token
+
+    async def _ensure_md_mirror_root(
+        self, task: SyncTaskItem, drive_service: DriveService
+    ) -> str:
+        cache_key = (task.id, f"{_CLOUD_MD_MIRROR_CACHE_PREFIX}/root")
+        cached = self._cloud_folder_cache.get(cache_key)
+        if cached:
+            return cached
+        existing = await self._find_subfolder(
+            drive_service, task.cloud_folder_token, _CLOUD_MD_MIRROR_FOLDER_NAME
+        )
+        if existing:
+            self._cloud_folder_cache[cache_key] = existing
+            return existing
+        created = await drive_service.create_folder(
+            task.cloud_folder_token, _CLOUD_MD_MIRROR_FOLDER_NAME
+        )
+        self._cloud_folder_cache[cache_key] = created
+        logger.info(
+            "创建云端 MD 镜像根目录: task_id={} token={}",
+            task.id,
+            created,
+        )
+        return created
 
     async def _upload_file(
         self,
@@ -1229,13 +1987,38 @@ class SyncTaskRunner:
         drive_service: DriveService | None = None,
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
-        mtime = path.stat().st_mtime
-        if task.sync_mode != "upload_only" and link and mtime <= (link.updated_at + 1.0):
-            status.skipped_files += 1
-            self._record_event(status, 
-                SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
+        signature = self._get_local_signature(path)
+        if not signature:
+            status.failed_files += 1
+            self._record_event(
+                status,
+                SyncFileEvent(path=str(path), status="failed", message="读取本地文件失败"),
             )
             return
+        file_hash, file_size, file_mtime = signature
+        if link:
+            if (
+                link.local_hash
+                and link.local_hash == file_hash
+                and (link.local_size is None or link.local_size == file_size)
+            ):
+                status.skipped_files += 1
+                self._record_event(
+                    status,
+                    SyncFileEvent(path=str(path), status="skipped", message="内容未变化"),
+                )
+                return
+            if (
+                task.sync_mode != "upload_only"
+                and not link.local_hash
+                and file_mtime <= (link.updated_at + 1.0)
+            ):
+                status.skipped_files += 1
+                self._record_event(
+                    status,
+                    SyncFileEvent(path=str(path), status="skipped", message="本地未变更"),
+                )
+                return
         if link and link.cloud_type != "file":
             status.failed_files += 1
             self._record_event(status, 
@@ -1267,6 +2050,11 @@ class SyncTaskRunner:
             task_id=task.id,
             updated_at=synced_at,
             cloud_parent_token=parent_token,
+            local_hash=file_hash,
+            local_size=file_size,
+            local_mtime=file_mtime,
+            cloud_revision=self._build_cloud_revision(result.file_token, synced_at),
+            cloud_mtime=synced_at,
         )
         status.completed_files += 1
         self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
@@ -1366,6 +2154,7 @@ class SyncTaskRunner:
         existing_tokens = await self._list_folder_tokens(
             drive_service, parent_token
         )
+        source_file_token: str | None = None
         try:
             upload = await file_uploader.upload_file(
                 file_path=path,
@@ -1373,6 +2162,7 @@ class SyncTaskRunner:
                 parent_type="explorer",
                 record_db=False,
             )
+            source_file_token = upload.file_token
             await import_task_service.create_import_task(
                 file_extension=suffix,
                 file_token=upload.file_token,
@@ -1384,10 +2174,24 @@ class SyncTaskRunner:
             self._record_event(status, 
                 SyncFileEvent(path=str(path), status="failed", message=str(exc))
             )
+            await self._cleanup_import_source_file(
+                drive_service=drive_service,
+                source_file_token=source_file_token,
+                task_id=task.id,
+                parent_token=parent_token,
+                source_name=path.name,
+            )
             return None, False
         except Exception as exc:
             self._record_event(status, 
                 SyncFileEvent(path=str(path), status="failed", message=str(exc))
+            )
+            await self._cleanup_import_source_file(
+                drive_service=drive_service,
+                source_file_token=source_file_token,
+                task_id=task.id,
+                parent_token=parent_token,
+                source_name=path.name,
             )
             return None, False
 
@@ -1396,6 +2200,13 @@ class SyncTaskRunner:
             folder_token=parent_token,
             expected_name=path.stem,
             existing_tokens=existing_tokens,
+        )
+        await self._cleanup_import_source_file(
+            drive_service=drive_service,
+            source_file_token=source_file_token,
+            task_id=task.id,
+            parent_token=parent_token,
+            source_name=path.name,
         )
         if not doc_token:
             self._record_event(status, 
@@ -1420,6 +2231,40 @@ class SyncTaskRunner:
         )
         return link, True
 
+    async def _cleanup_import_source_file(
+        self,
+        *,
+        drive_service: DriveService,
+        source_file_token: str | None,
+        task_id: str,
+        parent_token: str,
+        source_name: str,
+    ) -> None:
+        token = (source_file_token or "").strip()
+        if not token:
+            return
+        delete_file = getattr(drive_service, "delete_file", None)
+        if not callable(delete_file):
+            return
+        try:
+            await delete_file(token, "file")
+            logger.info(
+                "清理导入源文件成功: task_id={} parent={} file={} token={}",
+                task_id,
+                parent_token,
+                source_name,
+                token,
+            )
+        except Exception as exc:
+            logger.warning(
+                "清理导入源文件失败: task_id={} parent={} file={} token={} error={}",
+                task_id,
+                parent_token,
+                source_name,
+                token,
+                exc,
+            )
+
     def _iter_local_files(self, task: SyncTaskItem) -> Iterable[Path]:
         root = Path(task.local_path)
         if not root.exists():
@@ -1437,12 +2282,7 @@ class SyncTaskRunner:
         if not root.exists():
             return 0
 
-        # 双向模式 + MD上传关闭时，扫描跳过 .md 文件
-        skip_md = False
-        if task.sync_mode == "bidirectional":
-            from src.core.config import ConfigManager
-            cfg = ConfigManager.get().config
-            skip_md = not cfg.upload_md_to_cloud
+        skip_md = not self._should_upload_markdown_doc(task)
 
         queued = 0
         for path in root.rglob("*"):
@@ -1468,7 +2308,12 @@ class SyncTaskRunner:
         except ValueError:
             return True
         lowered = {part.lower() for part in relative.parts}
-        if "assets" in lowered or "attachments" in lowered:
+        if (
+            "assets" in lowered
+            or "attachments" in lowered
+            or _LOCAL_TRASH_DIR_NAME.lower() in lowered
+            or _CLOUD_MD_MIRROR_FOLDER_NAME.lower() in lowered
+        ):
             return True
         return False
 
@@ -1529,13 +2374,14 @@ class SyncTaskRunner:
         name: str,
     ) -> str | None:
         """在指定云端文件夹中按名称查找子文件夹。"""
+        expected_name = (name or "").strip().lower()
         page_token: str | None = None
         while True:
             result = await drive_service.list_files(
                 parent_token, page_token=page_token
             )
             for f in result.files:
-                if f.type == "folder" and f.name == name:
+                if f.type == "folder" and (f.name or "").strip().lower() == expected_name:
                     return f.token
             if not result.has_more or not result.next_page_token:
                 break
@@ -1635,11 +2481,30 @@ class SyncTaskRunner:
     async def _handle_local_event(self, task: SyncTaskItem, event: FileChangeEvent) -> None:
         if task.sync_mode == "download_only":
             return
-        if event.event_type == "deleted":
-            return
         path = Path(event.dest_path or event.src_path)
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         if self._should_ignore_path(task, path):
+            return
+        if event.event_type == "deleted":
+            marked = await self._enqueue_local_delete_tombstone(
+                task=task,
+                status=status,
+                local_path=path,
+                reason="监听到本地删除事件",
+            )
+            policy, _ = self._resolve_delete_policy(task)
+            if marked and policy == DeletePolicy.strict:
+                drive_service = self._drive_service or DriveService()
+                should_close = self._drive_service is None
+                try:
+                    await self._process_pending_deletes(
+                        task=task,
+                        status=status,
+                        drive_service=drive_service,
+                    )
+                finally:
+                    if should_close:
+                        await drive_service.close()
             return
         self.queue_local_change(task.id, path)
         self._record_event(
@@ -1875,6 +2740,8 @@ def _flatten_files(node: DriveNode, base: Path | None = None) -> Iterable[tuple[
     base = base or Path()
     for child in node.children:
         if child.type == "folder":
+            if child.name == _CLOUD_MD_MIRROR_FOLDER_NAME:
+                continue
             safe_name = sanitize_path_segment(child.name)
             yield from _flatten_files(child, base / safe_name)
         else:
@@ -1950,6 +2817,15 @@ def _parse_mtime(value: str | int | float | None) -> float:
     if ts > 1e12:
         ts = ts / 1000.0
     return ts
+
+
+def _contains_legacy_docx_placeholder(local_path: Path) -> bool:
+    try:
+        with local_path.open("r", encoding="utf-8", errors="ignore") as fp:
+            snippet = fp.read(_LEGACY_DOCX_SCAN_BYTES)
+    except OSError:
+        return False
+    return any(marker in snippet for marker in _LEGACY_DOCX_PLACEHOLDER_MARKERS)
 
 
 def _resolve_target(node: DriveNode) -> tuple[str, str]:
