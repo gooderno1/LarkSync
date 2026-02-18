@@ -23,6 +23,8 @@ docs/feishu/
 
 # Product definition docs (local only)
 docs/local_specs/
+docs/internal/
+docs/reviews/
 
 # PyInstaller build artifacts
 build/
@@ -38,3 +40,9 @@ apps/tray/icons/
 /LarkSync 产品需求文档.md
 /LarkSync 产品开发计划书.md
 /LarkSync飞书云文档本地同步方案深度调研.md
+
+# Frontend incremental build cache (local only)
+*.tsbuildinfo
+
+# Local AI tooling config
+opencode.json

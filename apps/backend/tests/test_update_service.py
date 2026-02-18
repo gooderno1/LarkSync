@@ -1,6 +1,10 @@
 from pathlib import Path
 
+import pytest
+
+from src.core.config import ConfigManager
 from src.services.update_service import (
+    UpdateService,
     compute_file_sha256,
     extract_sha256_from_text,
     find_checksum_asset,
@@ -65,3 +69,29 @@ def test_compute_file_sha256(tmp_path: Path) -> None:
         compute_file_sha256(file_path)
         == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
     )
+
+
+@pytest.mark.asyncio
+async def test_check_for_updates_handles_no_release_without_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        '{"auto_update_enabled": true, "update_check_interval_hours": 24}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    service = UpdateService(config_manager=ConfigManager.get())
+    service._status_path = tmp_path / "status.json"  # type: ignore[attr-defined]
+
+    async def fake_fetch_latest_release():
+        return None
+
+    monkeypatch.setattr(service, "_fetch_latest_release", fake_fetch_latest_release)
+    status = await service.check_for_updates(force=True)
+
+    assert status.update_available is False
+    assert status.latest_version is None
+    assert status.last_error is None

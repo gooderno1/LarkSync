@@ -238,6 +238,21 @@ class UpdateService:
 
             try:
                 release = await self._fetch_latest_release()
+                if not release:
+                    return self._save_status(
+                        UpdateStatus(
+                            current_version=get_version(),
+                            latest_version=None,
+                            update_available=False,
+                            channel="stable",
+                            notes="暂无稳定版 Release",
+                            published_at=None,
+                            asset=None,
+                            last_check=now,
+                            last_error=None,
+                        ),
+                        now,
+                    )
                 latest_version = str(release.get("tag_name") or "")
                 if not latest_version or "-dev" in latest_version:
                     return self._save_status(
@@ -250,7 +265,7 @@ class UpdateService:
                             published_at=None,
                             asset=None,
                             last_check=now,
-                            last_error="未找到稳定版本",
+                            last_error=None,
                         ),
                         now,
                     )
@@ -334,7 +349,7 @@ class UpdateService:
         )
         return self._save_status(status, status.last_check or time.time())
 
-    async def _fetch_latest_release(self) -> dict[str, Any]:
+    async def _fetch_latest_release(self) -> dict[str, Any] | None:
         url = f"https://api.github.com/repos/{self._owner}/{self._repo}/releases/latest"
         headers = {
             "Accept": "application/vnd.github+json",
@@ -342,6 +357,8 @@ class UpdateService:
         }
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(url, headers=headers)
+            if resp.status_code == 404:
+                return None
             if resp.status_code >= 400:
                 raise RuntimeError(f"获取 Release 失败: HTTP {resp.status_code}")
             return resp.json()
