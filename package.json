@@ -1,7 +1,7 @@
 {
   "name": "larksync-root",
   "private": true,
-  "version": "v0.5.43",
+  "version": "v0.5.44",
   "scripts": {
     "dev": "python apps/tray/tray_app.py --dev",
     "sync:feishu-docs": "python scripts/sync_feishu_docs.py",

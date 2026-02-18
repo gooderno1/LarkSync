@@ -72,14 +72,15 @@ def _get_update_service(request: Request) -> UpdateService:
 @router.get("/update/status", response_model=UpdateStatusResponse)
 async def update_status(request: Request) -> UpdateStatusResponse:
     service = _get_update_service(request)
-    return UpdateStatusResponse.model_validate(service.load_cached_status())
+    status = service.load_cached_status()
+    return UpdateStatusResponse.model_validate(status.model_dump())
 
 
 @router.post("/update/check", response_model=UpdateStatusResponse)
 async def update_check(request: Request) -> UpdateStatusResponse:
     service = _get_update_service(request)
     status = await service.check_for_updates(force=True)
-    return UpdateStatusResponse.model_validate(status)
+    return UpdateStatusResponse.model_validate(status.model_dump())
 
 
 @router.post("/update/download", response_model=UpdateStatusResponse)
@@ -89,7 +90,7 @@ async def update_download(request: Request) -> UpdateStatusResponse:
         status = await service.download_update()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return UpdateStatusResponse.model_validate(status)
+    return UpdateStatusResponse.model_validate(status.model_dump())
 
 
 async def _shutdown_after_response(app) -> None:

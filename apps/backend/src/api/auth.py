@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlparse
 
 import httpx
@@ -9,6 +10,7 @@ from loguru import logger
 
 from src.core.device import current_device_id
 from src.services import AuthError, AuthService, AuthStateStore
+from src.services.update_service import UpdateService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,7 +34,11 @@ async def login(
 
 
 @router.get("/callback")
-async def callback(code: str = Query(...), state: str | None = Query(default=None)):
+async def callback(
+    request: Request,
+    code: str = Query(...),
+    state: str | None = Query(default=None),
+):
     redirect_target = None
     if state:
         valid, redirect_target = state_store.consume(state)
@@ -50,6 +56,8 @@ async def callback(code: str = Query(...), state: str | None = Query(default=Non
             status_code=500,
             detail=f"OAuth 回调处理异常: {type(exc).__name__}: {exc}",
         ) from exc
+
+    _schedule_login_update_check(request)
 
     if redirect_target:
         return RedirectResponse(redirect_target)
@@ -134,3 +142,15 @@ def _sanitize_redirect(redirect: str | None, request: Request) -> str | None:
     if request_host and hostname == request_host:
         return value
     return None
+
+
+def _schedule_login_update_check(request: Request) -> None:
+    async def _check_once() -> None:
+        scheduler = getattr(request.app.state, "update_scheduler", None)
+        service = scheduler.service if scheduler is not None else UpdateService()
+        try:
+            await service.check_for_updates(force=True)
+        except Exception as exc:
+            logger.debug("登录后更新检查失败: {}", exc)
+
+    asyncio.create_task(_check_once())

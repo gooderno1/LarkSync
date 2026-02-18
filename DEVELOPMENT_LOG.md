@@ -13,9 +13,13 @@
       - 新增版本计算逻辑：读取 git tags 与当前版本，自动选择下一稳定版。
     - `package.json`
       - 新增 `release:publish` 与 `release:dev` 脚本，支持一行执行。
-  - 自动更新：
-    - `apps/backend/src/services/update_scheduler.py`
+- 自动更新：
+  - `apps/backend/src/services/update_scheduler.py`
       - 定时检查后若发现新稳定版，自动下载更新包（去重同版本重复下载）。
+    - `apps/backend/src/api/system.py`
+      - 修复 `/system/update/status|check|download` 的响应模型校验异常（避免前端“检查更新”报错）。
+    - `apps/backend/src/api/auth.py`
+      - OAuth 回调成功后异步触发一次更新检查，满足“每次登录检测更新”。
     - `apps/backend/src/services/update_service.py`
       - 增加 `auto_update_enabled()` 供调度器判断。
   - 任务级 MD 上传模式：

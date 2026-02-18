@@ -1,7 +1,8 @@
 # CHANGELOG
 
+[2026-02-18] v0.5.44 release: v0.5.44
 [2026-02-18] v0.5.43 release: v0.5.43
-[2026-02-18] v0.5.43-dev.4 feat(release,update,md-sync): 新增一行稳定版发布命令（自动计算版本/打 tag/push）；自动更新从“仅检查”补全为“可自动下载更新包”；同步任务新增任务级 MD 上传模式（enhanced/download_only/doc_only，默认 enhanced）并接入任务创建与任务管理；修复本地 MD 上云图片路径解析（支持 file://、URL 编码、query/hash）
+[2026-02-18] v0.5.43-dev.4 feat(release,update,md-sync): 新增一行稳定版发布命令（自动计算版本/打 tag/push）；自动更新从“仅检查”补全为“可自动下载更新包”；同步任务新增任务级 MD 上传模式（enhanced/download_only/doc_only，默认 enhanced）并接入任务创建与任务管理；修复本地 MD 上云图片路径解析（支持 file://、URL 编码、query/hash）；修复“检查更新”接口响应校验异常并在每次 OAuth 登录后触发一次更新检查
 [2026-02-17] v0.5.43-dev.3 fix(sync,task,ui): Markdown 新建 Docx 导入后自动清理同目录源 `.md`，避免云端出现三份文件；新增任务映射约束（同设备同账号下本地/云端一对一，且禁止本地父子目录并行任务）；任务管理页布局优化并增加状态概览卡片
 [2026-02-17] v0.5.43-dev.2 fix(ui,sync): 设置页“更多设置”移除删除策略说明卡并重排；任务页删除策略补充行为说明与“分钟”单位；本地/云端删除执行时同步清理 `_LarkSync_MD_Mirror` 中同名 MD 副本；默认本地上传间隔由 2 秒调整为 60 秒
 [2026-02-17] v0.5.42 fix(sync,task): 修复本地删除上云失败（云端删除接口改为携带 `type` 参数）；删除策略改为任务级配置（任务可单独设置 `off/safe/strict` 与宽限分钟），设置页移除全局删除策略入口
