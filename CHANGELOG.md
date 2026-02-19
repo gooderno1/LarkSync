@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-19] v0.5.44 feat(release-notes): 新增 `scripts/release_notes.py` 自动从 CHANGELOG 生成 Release 文案；GitHub Release 工作流上传资产时自动附带版本说明（覆盖当前稳定版与上一稳定版之间的全部中间版本条目）
 [2026-02-18] v0.5.44 docs(license): 新增 `LICENSE`（CC BY-NC-SA 4.0 legalcode 正文）并在 README 增加许可证说明
 [2026-02-18] v0.5.44 docs(readme,usage): README 从极简版调整为完整项目介绍版（补充简介/场景/亮点并保留三份核心文档导读，移除不当“常见问题”）；USAGE 恢复维护者发布教学并与下载安装路径并存
 [2026-02-18] v0.5.44 docs(repo): README 精简为公开版（仅保留本地开发与 Release 下载两种快速开始，新增 Logo 与关键文档链接）；USAGE 移除 Git 发布说明；启动器文件（.bat/.pyw/.command）改为 ignore 并停止跟踪

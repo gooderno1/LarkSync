@@ -63,6 +63,11 @@ jobs:
           LARKSYNC_VERSION: ${{ github.ref_name }}
         run: python scripts/build_installer.py --nsis
 
+      - name: Generate release notes
+        shell: bash
+        run: |
+          python scripts/release_notes.py --version "${GITHUB_REF_NAME}" --output release-notes.md
+
       - name: List dist
         run: |
           echo "dist contents:"
@@ -79,6 +84,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: dist/LarkSync-Setup-*.exe
+          body_path: release-notes.md
           fail_on_unmatched_files: true
 
   build-macos:
@@ -126,6 +132,11 @@ jobs:
           LARKSYNC_VERSION: ${{ github.ref_name }}
         run: python scripts/build_installer.py --dmg
 
+      - name: Generate release notes
+        shell: bash
+        run: |
+          python scripts/release_notes.py --version "${GITHUB_REF_NAME}" --output release-notes.md
+
       - name: List dist
         run: |
           echo "dist contents:"
@@ -142,4 +153,5 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: dist/LarkSync-*.dmg
+          body_path: release-notes.md
           fail_on_unmatched_files: true

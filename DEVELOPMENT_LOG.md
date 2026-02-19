@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-release-notes-automation (2026-02-19)
+- 目标：
+  - 修复发布时 Release 页面缺少版本改动说明的问题。
+  - 支持“一个稳定版覆盖多个中间 dev 版本”时，自动汇总所有变更条目。
+- 变更：
+  - 新增 `scripts/release_notes.py`
+    - 从 `CHANGELOG.md` 解析条目，定位当前稳定版与上一稳定版边界。
+    - 自动汇总边界之间的全部条目（含多个中间版本），按版本分组输出 Markdown。
+  - `apps/backend/tests/test_release_notes.py`
+    - 新增解析、区间提取、分组渲染与无目标版本回退测试。
+  - `.github/workflows/release-build.yml`
+    - Windows/macOS 发布任务新增“生成 release-notes.md”步骤。
+    - `softprops/action-gh-release` 增加 `body_path: release-notes.md`，上传安装包时同步写入版本说明。
+  - `docs/USAGE.md`
+    - 发布章节补充“Release 文案自动由 CHANGELOG 生成”的说明。
+
 ## v0.5.44-add-license-cc-by-nc-sa (2026-02-18)
 - 目标：
   - 为仓库补齐标准许可证文件，明确对外许可条款。

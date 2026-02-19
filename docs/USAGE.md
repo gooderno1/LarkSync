@@ -321,6 +321,7 @@ npm run release:publish -- "release: v0.5.45"
 - Windows：`dist/LarkSync-Setup-*.exe`
 - macOS：`dist/LarkSync-*.dmg`
 - 由 workflow 自动上传到对应 GitHub Release。
+- Release 说明：工作流会自动执行 `python scripts/release_notes.py`，从 `CHANGELOG.md` 提取“当前稳定版到上一稳定版之间”的全部条目（可覆盖多个中间 dev 版本），并写入 Release body。
 
 注意：
 - workflow 虽支持手动 `workflow_dispatch`，但当前 job 仍要求“tag 且非 -dev”，手动触发默认不会产出安装包。
