@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-disable-macos-default-release (2026-02-19)
+- 目标：
+  - 处理 macOS 发布流程中的 `upload-artifact` 403 问题带来的发布中断风险。
+  - 按当前策略默认不发布 macOS，仅在需要时手动开启。
+- 变更：
+  - `.github/workflows/release-build.yml`
+    - `workflow_dispatch` 新增布尔输入 `build_macos`（默认 `false`）。
+    - `build-macos` job 改为仅在“手动触发 + 稳定版 tag + `build_macos=true`”时执行。
+    - macOS 的 `Upload workflow artifact` 步骤改为 `continue-on-error: true`，避免 artifact 服务 403 直接中断整条 job。
+  - `docs/USAGE.md`
+    - 发布说明更新为：tag 自动发布默认仅 Windows；macOS 需要手动开启。
+
 ## v0.5.44-release-notes-automation (2026-02-19)
 - 目标：
   - 修复发布时 Release 页面缺少版本改动说明的问题。

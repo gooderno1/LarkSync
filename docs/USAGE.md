@@ -314,17 +314,18 @@ npm run release:publish -- "release: v0.5.45"
 当前发布工作流：`.github/workflows/release-build.yml`。
 
 触发条件：
-- 推送 `v*` 标签（如 `v0.5.44`）。
+- 推送 `v*` 标签（如 `v0.5.44`）默认仅构建 Windows 安装包。
 - 标签不能包含 `-dev`，否则构建任务会被 `if` 条件跳过。
+- macOS 构建默认关闭；如需发布 macOS，请手动触发 `workflow_dispatch` 并将 `build_macos` 勾选为 `true`（同时选择稳定版 tag 作为 ref）。
 
 产物上传结果：
 - Windows：`dist/LarkSync-Setup-*.exe`
-- macOS：`dist/LarkSync-*.dmg`
-- 由 workflow 自动上传到对应 GitHub Release。
+- macOS（手动开启时）：`dist/LarkSync-*.dmg`
+- 构建成功后由 workflow 自动上传到对应 GitHub Release。
 - Release 说明：工作流会自动执行 `python scripts/release_notes.py`，从 `CHANGELOG.md` 提取“当前稳定版到上一稳定版之间”的全部条目（可覆盖多个中间 dev 版本），并写入 Release body。
 
 注意：
-- workflow 虽支持手动 `workflow_dispatch`，但当前 job 仍要求“tag 且非 -dev”，手动触发默认不会产出安装包。
+- 手动触发时若未勾选 `build_macos`，macOS job 不会执行（这是默认行为）。
 
 ### 10.4 GitHub Release 下载安装包（使用者）
 - 发布页：<https://github.com/gooderno1/LarkSync/releases>

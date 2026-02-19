@@ -5,6 +5,12 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      build_macos:
+        description: "是否构建并发布 macOS 安装包（默认关闭）"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -88,7 +94,7 @@ jobs:
           fail_on_unmatched_files: true
 
   build-macos:
-    if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') && (inputs.build_macos == true || inputs.build_macos == 'true') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -143,6 +149,7 @@ jobs:
           ls -la dist
 
       - name: Upload workflow artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: macos-installer
