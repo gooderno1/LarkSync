@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-openclaw-skill-copywriting-polish (2026-02-23)
+- 目标：
+  - 提升 OpenClaw Skill 对外介绍的吸引力，让用户和其他 Agent 更容易理解“为什么要装、装了有什么收益”。
+- 变更：
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+    - 新增价值主张、Before/After、适用人群、30 秒上手入口。
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - frontmatter 描述改为更聚焦“降调用频率/降 token 成本”。
+    - 新增“价值主张”区块，明确对用户/Agent 的直接收益。
+  - `docs/OPENCLAW_SKILL.md`
+    - 增加开场“为什么有吸引力”的说明，强化上架页叙事。
+
 ## v0.5.44-openclaw-skill-local-cache (2026-02-23)
 - 目标：
   - 基于 LarkSync 现有能力，产出可上架 clwuhub 的 OpenClaw Skill，默认走低频下行同步，降低飞书 API/token 消耗。

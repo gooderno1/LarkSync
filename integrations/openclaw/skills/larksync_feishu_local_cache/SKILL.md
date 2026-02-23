@@ -1,6 +1,6 @@
 ---
 name: larksync-feishu-local-cache
-description: 通过 LarkSync 将飞书文档低频同步到本地目录，优先本地读取，降低飞书 API 调用与 token 消耗。
+description: 把飞书文档同步为本地缓存供 OpenClaw 优先读取，显著降低飞书 API 请求频率与 token 成本。
 homepage: https://github.com/gooderno1/LarkSync
 metadata:
   category: integrations
@@ -14,6 +14,11 @@ metadata:
 ---
 
 # LarkSync Feishu Local Cache Skill
+
+## 价值主张
+- 让 OpenClaw 的高频文档问答“走本地、不走云端接口”。
+- 把 API 调用从“每次问答触发”变成“低频定时同步触发”。
+- 在不改用户飞书使用习惯的前提下，直接获得更稳、更省的文档检索链路。
 
 ## 适用目标
 - 目标：减少 OpenClaw 直接调用飞书 API 的频率，优先读取本地 Markdown/附件。
