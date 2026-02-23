@@ -1,6 +1,7 @@
 """托盘应用配置"""
 
 from pathlib import Path
+import os
 import sys
 
 # ---- 路径 ----
@@ -17,9 +18,21 @@ FRONTEND_DIST = FRONTEND_DIR / "dist"
 ICONS_DIR = Path(__file__).resolve().parent / "icons"
 
 # ---- 后端服务 ----
-BACKEND_HOST = "127.0.0.1"
+_bind_host_raw = (os.getenv("LARKSYNC_BACKEND_BIND_HOST") or "").strip()
+# Windows 默认绑定 0.0.0.0，确保 WSL/OpenClaw 可访问宿主机后端。
+# 如需仅本机回环访问，可显式设置 LARKSYNC_BACKEND_BIND_HOST=127.0.0.1
+_DEFAULT_BACKEND_BIND_HOST = "0.0.0.0" if sys.platform == "win32" else "127.0.0.1"
+BACKEND_HOST = _bind_host_raw or _DEFAULT_BACKEND_BIND_HOST
 BACKEND_PORT = 8000
-BACKEND_URL = f"http://{BACKEND_HOST}:{BACKEND_PORT}"
+_client_host_raw = (os.getenv("LARKSYNC_BACKEND_CLIENT_HOST") or "").strip()
+if _client_host_raw:
+    BACKEND_CLIENT_HOST = _client_host_raw
+elif BACKEND_HOST in {"0.0.0.0", "::"}:
+    # 绑定全网卡时，托盘本机回环访问仍应使用可路由地址。
+    BACKEND_CLIENT_HOST = "127.0.0.1"
+else:
+    BACKEND_CLIENT_HOST = BACKEND_HOST
+BACKEND_URL = f"http://{BACKEND_CLIENT_HOST}:{BACKEND_PORT}"
 
 # ---- 前端开发服务器 ----
 VITE_DEV_PORT = 3666

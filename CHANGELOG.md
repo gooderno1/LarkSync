@@ -1,5 +1,11 @@
 # CHANGELOG
 
+[2026-02-23] v0.5.44 docs(openclaw-agent): 新增 `OPENCLAW_AGENT_GUIDE.md`（面向 OpenClaw 代理的执行 runbook：检查/初始化/首次授权边界/无人值守兜底/失败处理模板）；并在 `SKILL.md`、Skill README、`docs/OPENCLAW_SKILL.md`、`docs/USAGE.md` 增加入口链接
+[2026-02-23] v0.5.44 feat(openclaw,wsl-autonomous): `larksync_wsl_helper.py` 新增无人值守兜底（未探测到可达 `:8000` 时自动在 WSL 本地启动后端，支持自动安装后端依赖）；后端新增 `token_store=file`（`LARKSYNC_TOKEN_STORE=file` + `LARKSYNC_TOKEN_FILE`）以适配无桌面 keyring 环境；补充对应测试与文档
+[2026-02-23] v0.5.44 fix(tray,wsl-bridge): Windows 托盘后端默认绑定从 `127.0.0.1` 调整为 `0.0.0.0`（可通过 `LARKSYNC_BACKEND_BIND_HOST` 覆盖），默认 `BACKEND_URL` 仍走 `127.0.0.1` 供本机访问；WSL 诊断与 Skill 文档同步更新排查口径；新增 `test_tray_config.py` 覆盖绑定地址默认值与环境变量覆盖逻辑
+[2026-02-23] v0.5.44 feat(openclaw-skill-wsl): 新增 `larksync_wsl_helper.py`，支持 WSL 下多地址探测（localhost / host.docker.internal / default gateway / resolv nameserver）与逐项诊断输出；未指定 `--base-url` 时自动选择可达地址；手动远程 `--base-url` 自动补 `--allow-remote-base-url`；补充对应 pytest 与文档，ClawHub 发布示例更新至 `0.1.3`
+[2026-02-23] v0.5.44 docs(openclaw-skill): 补充 OpenClaw Skill 中英双语介绍（`SKILL.md` frontmatter description + 英文概览；README 英文概览）；ClawHub 发布示例版本更新至 `0.1.2`
+[2026-02-23] v0.5.44 fix(openclaw-skill-security): `larksync_skill_helper.py` 新增 base-url 安全校验（默认仅允许 localhost/127.0.0.1/::1，远程地址需显式 `--allow-remote-base-url`）；补充对应 pytest；OpenClaw/USAGE 文档同步更新并将 ClawHub 发布示例提升至 `0.1.1`
 [2026-02-23] v0.5.44 docs(openclaw,clawhub): 对齐 ClawHub 最新发布规范（`SKILL.md` 的 `metadata` 改为单行 JSON 对象）；上架命令改为 `clawhub login` + `clawhub sync --dry-run` + `clawhub publish <path> --slug --name --version --changelog`；文档术语统一为 ClawHub
 [2026-02-23] v0.5.44 docs(openclaw): 强化 OpenClaw Skill 对外介绍文案（价值主张/Before-After/适用人群/30 秒上手），提升可读性与下载意愿；同步更新 Skill 定义与使用指南开场说明
 [2026-02-23] v0.5.44 feat(openclaw,docs): 新增 OpenClaw Skill 包（`integrations/openclaw/skills/larksync_feishu_local_cache`）与辅助脚本 `larksync_skill_helper.py`，支持低频下行同步配置/建任务/立即执行；补充 OpenClaw Skill 使用与 clwuhub 上架文档；新增对应 pytest 覆盖核心参数与 payload 构造

@@ -24,7 +24,9 @@ from pathlib import Path
 from apps.tray.config import (
     BACKEND_DIR,
     BACKEND_HOST,
+    BACKEND_CLIENT_HOST,
     BACKEND_PORT,
+    BACKEND_URL,
     HEALTH_CHECK_URL,
     HEALTH_CHECK_TIMEOUT,
     STARTUP_WAIT_TIMEOUT,
@@ -102,7 +104,7 @@ class BackendManager:
 
     def _request_shutdown(self) -> bool:
         """向后端发送优雅关闭请求。"""
-        shutdown_url = f"http://{BACKEND_HOST}:{BACKEND_PORT}/system/shutdown"
+        shutdown_url = f"{BACKEND_URL}/system/shutdown"
         try:
             req = urllib.request.Request(shutdown_url, method="POST")
             with urllib.request.urlopen(req, timeout=3) as resp:
@@ -133,8 +135,12 @@ class BackendManager:
             # ---- 检测端口占用 ----
             if self._is_port_in_use():
                 if self.health_check():
-                    logger.info("检测到已有后端服务在 {}:{} 运行，将复用该服务",
-                                BACKEND_HOST, BACKEND_PORT)
+                    logger.info(
+                        "检测到已有后端服务在 {}:{} 可用（bind={}），将复用该服务",
+                        BACKEND_CLIENT_HOST,
+                        BACKEND_PORT,
+                        BACKEND_HOST,
+                    )
                     self._external_backend = True
                     return True
                 else:
@@ -363,5 +369,5 @@ class BackendManager:
         """检查端口是否已被占用。"""
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(1)
-            result = s.connect_ex((BACKEND_HOST, BACKEND_PORT))
+            result = s.connect_ex((BACKEND_CLIENT_HOST, BACKEND_PORT))
             return result == 0

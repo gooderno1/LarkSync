@@ -4,11 +4,13 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import keyring
 
 from .config import ConfigManager
+from .paths import data_dir
 
 
 @dataclass(frozen=True)
@@ -136,9 +138,88 @@ class MemoryTokenStore(TokenStore):
         self._token = None
 
 
+class FileTokenStore(TokenStore):
+    """用于无桌面 keyring 环境（如 WSL/CI）的文件凭证存储。"""
+
+    def __init__(self, path: Path | None = None) -> None:
+        env_path = os.getenv("LARKSYNC_TOKEN_FILE")
+        target = path
+        if target is None and env_path:
+            target = Path(env_path).expanduser()
+        if target is None:
+            target = data_dir() / "token_store.json"
+        self._path = target.resolve()
+
+    def get(self) -> Optional[TokenData]:
+        if not self._path.exists():
+            return None
+        try:
+            payload = json.loads(self._path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        access_token = payload.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            return None
+        refresh_token = payload.get("refresh_token", "")
+        if not isinstance(refresh_token, str):
+            refresh_token = ""
+        expires_raw = payload.get("expires_at")
+        expires_at: Optional[float] = None
+        if isinstance(expires_raw, (int, float)):
+            expires_at = float(expires_raw)
+        elif isinstance(expires_raw, str) and expires_raw.strip():
+            try:
+                expires_at = float(expires_raw)
+            except ValueError:
+                expires_at = None
+        open_id = payload.get("open_id")
+        if not isinstance(open_id, str) or not open_id.strip():
+            open_id = None
+        account_name = payload.get("account_name")
+        if not isinstance(account_name, str) or not account_name.strip():
+            account_name = None
+        return TokenData(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=expires_at,
+            open_id=open_id.strip() if open_id else None,
+            account_name=account_name.strip() if account_name else None,
+        )
+
+    def set(self, token: TokenData) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "access_token": token.access_token,
+            "refresh_token": token.refresh_token,
+            "expires_at": token.expires_at,
+            "open_id": token.open_id,
+            "account_name": token.account_name,
+        }
+        tmp_path = self._path.with_suffix(self._path.suffix + ".tmp")
+        tmp_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(tmp_path, self._path)
+        try:
+            os.chmod(self._path, 0o600)
+        except OSError:
+            pass
+
+    def clear(self) -> None:
+        try:
+            self._path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def get_token_store() -> TokenStore:
     config = ConfigManager.get().config
     store = os.getenv("LARKSYNC_TOKEN_STORE", config.token_store).lower()
     if store == "memory":
         return MemoryTokenStore()
+    if store == "file":
+        return FileTokenStore()
     return KeyringTokenStore()

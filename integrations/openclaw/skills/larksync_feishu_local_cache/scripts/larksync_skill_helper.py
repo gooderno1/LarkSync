@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from urllib import error, request
 
 DEFAULT_BASE_URL = "http://localhost:8000"
@@ -29,6 +31,34 @@ def _build_url(base_url: str, path: str) -> str:
     if not path.startswith("/"):
         path = f"/{path}"
     return f"{_normalize_base_url(base_url)}{path}"
+
+
+def _is_loopback_host(host: str) -> bool:
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def validate_base_url(base_url: str, allow_remote: bool = False) -> str:
+    normalized = _normalize_base_url(base_url)
+    parsed = urlparse(normalized)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("base_url 仅支持 http 或 https")
+
+    host = parsed.hostname or ""
+    if not host:
+        raise ValueError("base_url 缺少有效主机名")
+
+    if not allow_remote and not _is_loopback_host(host):
+        raise ValueError(
+            "默认仅允许 localhost/127.0.0.1/::1。"
+            "如需连接远程地址，请显式传入 --allow-remote-base-url 并确认目标可信。"
+        )
+
+    return normalized
 
 
 def _validate_hhmm(value: str) -> bool:
@@ -269,7 +299,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="OpenClaw x LarkSync skill helper: 低频同步与任务自动化"
     )
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="LarkSync API 地址")
+    parser.add_argument(
+        "--base-url",
+        default=DEFAULT_BASE_URL,
+        help="LarkSync API 地址（默认仅允许 localhost）",
+    )
+    parser.add_argument(
+        "--allow-remote-base-url",
+        action="store_true",
+        help="显式允许非 localhost 地址（存在令牌泄露风险，仅在可信网络使用）",
+    )
 
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -305,9 +344,12 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    base_url = _normalize_base_url(args.base_url)
 
     try:
+        base_url = validate_base_url(
+            args.base_url,
+            allow_remote=bool(getattr(args, "allow_remote_base_url", False)),
+        )
         if args.command == "check":
             result = do_check(base_url)
         elif args.command == "configure-download":

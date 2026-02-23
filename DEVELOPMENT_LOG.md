@@ -1,5 +1,132 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-openclaw-agent-runbook (2026-02-23)
+- 目标：
+  - 给 OpenClaw 代理提供“可直接执行”的使用说明，避免仅有人类视角文档导致代理流程不一致。
+- 变更：
+  - 新增 `integrations/openclaw/skills/larksync_feishu_local_cache/OPENCLAW_AGENT_GUIDE.md`
+    - 覆盖代理默认 SOP（check -> bootstrap -> run）、首次 OAuth 边界、WSL 无人值守兜底、错误处理、用户反馈模板。
+  - 入口链接补充：
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+    - `docs/OPENCLAW_SKILL.md`
+    - `docs/USAGE.md`
+- 验证：
+  - 文档路径与链接均在仓库内可解析；
+  - 与现有 helper 行为保持一致（未引入新命令分支）。
+- 发布：
+  - `clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.4 --changelog "feat(wsl-agent): autonomous WSL fallback runtime + agent runbook"`
+  - 发布成功：`larksync-feishu-local-cache@0.1.4`，versionId=`k97ab35791c2vkmpdfpvfavmxd81pxbh`
+  - 平台状态：安全扫描进行中（短暂 hidden），扫描完成后自动恢复可见。
+
+## v0.5.44-openclaw-wsl-autonomous-runtime (2026-02-23)
+- 目标：
+  - 支持 OpenClaw 在 WSL 下“拉代码后自动运行”场景，尽量减少人工介入（后端启动、依赖与凭证持久化）。
+- 变更：
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py`
+    - 新增运行时参数解析：`--no-auto-start-local-backend`、`--no-auto-install-backend-deps`。
+    - WSL 未探测到可达 `:8000` 时，默认自动在当前 WSL 启动本地后端（`localhost:8000`）。
+    - 本地缺少后端依赖时，默认自动执行 `pip install -r apps/backend/requirements.txt`。
+    - 自动启动本地后端时，默认注入：
+      - `LARKSYNC_TOKEN_STORE=file`
+      - `LARKSYNC_TOKEN_FILE=data/token_store_wsl.json`
+      - `LARKSYNC_AUTH_REDIRECT_URI=http://localhost:8000/auth/callback`
+  - `apps/backend/src/core/security.py`
+    - 新增 `FileTokenStore`，支持 `token_store=file`（文件持久化 token，`chmod 600` 尝试加固权限）。
+    - `get_token_store()` 新增 `file` 分支。
+  - 新增/更新测试：
+    - `apps/backend/tests/test_larksync_wsl_helper.py`：补充运行时选项解析与本地后端环境构造测试。
+    - `apps/backend/tests/test_security.py`：新增 `FileTokenStore` 读写、清理与 `get_token_store(file)` 测试。
+  - 文档更新：
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - `docs/OPENCLAW_SKILL.md`
+    - `docs/USAGE.md`
+    - 明确 WSL 无人值守兜底行为与可关闭开关。
+- 验证：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest apps/backend/tests/test_larksync_wsl_helper.py -q`（9 passed）
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest apps/backend/tests/test_larksync_skill_helper.py -q`（10 passed）
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/test_security.py -q`（5 passed，工作目录 `apps/backend`，并清空 `PYTHONPATH`）
+  - `python -m py_compile integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py apps/backend/src/core/security.py`（通过）
+
+## v0.5.44-wsl-bridge-default-bind-fix (2026-02-23)
+- 目标：
+  - 修复“OpenClaw 在 WSL 中仍无法访问 Windows 侧 LarkSync :8000”的默认可用性问题，避免依赖手动设置环境变量。
+- 变更：
+  - `apps/tray/config.py`
+    - Windows 默认后端绑定地址改为 `0.0.0.0`（原为 `127.0.0.1`），保证 WSL 可通过宿主机地址连接。
+    - 托盘本机访问地址继续使用 `127.0.0.1`（`BACKEND_CLIENT_HOST`），避免本机调用落到不可路由地址。
+    - 保留 `LARKSYNC_BACKEND_BIND_HOST` / `LARKSYNC_BACKEND_CLIENT_HOST` 覆盖能力。
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py`
+    - 全部地址不可达时的排查提示更新为：优先检查是否手动把 `LARKSYNC_BACKEND_BIND_HOST` 设回了 `127.0.0.1`。
+  - 文档同步：
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - `docs/OPENCLAW_SKILL.md`
+    - `docs/USAGE.md`
+    - 统一说明“Windows 默认已支持 WSL 访问；仅在手动改回 loopback 时需调整配置”。
+  - 新增测试：
+    - `apps/backend/tests/test_tray_config.py`
+    - 覆盖 Windows/非 Windows 默认绑定、bind/client env 覆盖逻辑。
+- 验证：
+  - `python scripts/sync_feishu_docs.py`（通过；入口页未发现 zip，仅更新清单）
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest apps/backend/tests/test_tray_config.py -q`（4 passed）
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest apps/backend/tests/test_backend_manager.py -q`（3 passed）
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest apps/backend/tests/test_larksync_wsl_helper.py -q`（6 passed）
+
+## v0.5.44-openclaw-skill-wsl-helper (2026-02-23)
+- 目标：
+  - 解决 OpenClaw 在 WSL 中调用 LarkSync 时的宿主地址探测不稳定问题，明确区分“脚本逻辑”与“服务未监听”。
+- 变更：
+  - 新增 `integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py`
+    - 同时探测 `localhost`、`host.docker.internal`、default gateway、`/etc/resolv.conf` nameserver。
+    - 输出逐项诊断（连接状态/health 状态/延迟/错误详情）。
+    - WSL 下未指定 `--base-url` 时自动选择可达地址；若全部不可达，明确提示先启动 Windows 侧 LarkSync。
+    - 手动远程 `--base-url` 自动补 `--allow-remote-base-url`，兼容安全策略。
+  - 新增测试 `apps/backend/tests/test_larksync_wsl_helper.py`
+    - 覆盖 gateway/resolv 解析、远程 allow flag 注入与可达地址选择逻辑。
+  - 文档更新：
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+    - `docs/OPENCLAW_SKILL.md`
+    - `docs/USAGE.md`
+    - 增加 WSL 诊断与执行示例，发布示例版本升级至 `0.1.3`。
+
+## v0.5.44-openclaw-skill-bilingual-intro (2026-02-23)
+- 目标：
+  - 修复 OpenClaw Skill 介绍“仅中文”的可读性问题，补充英文介绍以适配 ClawHub 国际用户与英文 Agent。
+- 变更：
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - frontmatter `description` 调整为中英双语。
+    - 新增 `English Overview` 与英文示例意图。
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+    - 新增 `English Overview` 区块。
+  - 文档发布示例同步：
+    - `docs/OPENCLAW_SKILL.md`
+    - `docs/USAGE.md`
+    - ClawHub 发布示例版本升级为 `0.1.2`。
+
+## v0.5.44-openclaw-skill-security-hardening (2026-02-23)
+- 目标：
+  - 修复 ClawHub/VirusTotal 将 `larksync-feishu-local-cache` 标记为 suspicious 的主要触发点（helper 可被引导请求任意远程 `base-url`）。
+  - 保留远程联调能力，但改为显式高风险开关，默认走本机地址。
+- 变更：
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py`
+    - 新增 `validate_base_url()` 与 loopback 校验逻辑。
+    - 默认仅允许 `localhost/127.0.0.1/::1`。
+    - 新增 `--allow-remote-base-url` 显式开关，远程地址需用户主动启用。
+  - `apps/backend/tests/test_larksync_skill_helper.py`
+    - 新增 base-url 安全校验用例（默认拒绝远程、显式开关放行、非法 scheme 拒绝）。
+  - 文档同步：
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+    - `docs/OPENCLAW_SKILL.md`
+    - `docs/USAGE.md`
+    - 补充安全说明与远程场景命令示例；发布命令示例升级为 Skill `0.1.1`。
+- 验证：
+  - `python scripts/sync_feishu_docs.py`（已执行，入口页面未发现 zip，清单已更新）
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest apps/backend/tests/test_larksync_skill_helper.py -q` 通过（10 passed）
+
 ## v0.5.44-openclaw-clawhub-compliance (2026-02-23)
 - 目标：
   - 按 ClawHub 官方要求校正 Skill frontmatter 与上架命令格式，避免发布时因格式问题被拒。

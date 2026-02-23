@@ -71,3 +71,23 @@ def test_build_task_payload_invalid_mode() -> None:
             cloud_folder_token="fld_xxx",
             sync_mode="invalid",
         )
+
+
+def test_validate_base_url_localhost_default() -> None:
+    assert helper.validate_base_url("http://localhost:8000") == "http://localhost:8000"
+    assert helper.validate_base_url("http://127.0.0.1:8000/") == "http://127.0.0.1:8000"
+    assert helper.validate_base_url("http://[::1]:8000/") == "http://[::1]:8000"
+
+
+def test_validate_base_url_reject_remote_by_default() -> None:
+    with pytest.raises(ValueError, match="localhost"):
+        helper.validate_base_url("https://example.com")
+
+
+def test_validate_base_url_allow_remote_with_opt_in() -> None:
+    assert helper.validate_base_url("https://example.com", allow_remote=True) == "https://example.com"
+
+
+def test_validate_base_url_invalid_scheme() -> None:
+    with pytest.raises(ValueError, match="http 或 https"):
+        helper.validate_base_url("ftp://localhost:8000")
