@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-openclaw-clawhub-compliance (2026-02-23)
+- 目标：
+  - 按 ClawHub 官方要求校正 Skill frontmatter 与上架命令格式，避免发布时因格式问题被拒。
+- 变更：
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - `metadata` 从 YAML 多行结构改为单行 JSON 对象（符合官方 parser 约束）。
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+  - `docs/OPENCLAW_SKILL.md`
+  - `docs/USAGE.md`
+    - 上架流程统一为：`clawhub login` -> `clawhub sync --root . --dry-run` -> `clawhub publish . --slug --name --version --changelog`。
+    - 术语统一为 `ClawHub`。
+- 验证：
+  - 已安装 `clawhub` CLI（v0.7.0）。
+  - 本机发布被登录态阻塞：`clawhub whoami/sync/publish` 均返回 `Not logged in`。
+
 ## v0.5.44-openclaw-skill-copywriting-polish (2026-02-23)
 - 目标：
   - 提升 OpenClaw Skill 对外介绍的吸引力，让用户和其他 Agent 更容易理解“为什么要装、装了有什么收益”。

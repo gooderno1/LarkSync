@@ -2,15 +2,7 @@
 name: larksync-feishu-local-cache
 description: 把飞书文档同步为本地缓存供 OpenClaw 优先读取，显著降低飞书 API 请求频率与 token 成本。
 homepage: https://github.com/gooderno1/LarkSync
-metadata:
-  category: integrations
-  tags:
-    - openclaw
-    - feishu
-    - larksync
-    - sync
-    - local-cache
-  license: CC-BY-NC-SA-4.0
+metadata: {"category":"integrations","tags":["openclaw","feishu","larksync","sync","local-cache"],"license":"CC-BY-NC-SA-4.0"}
 ---
 
 # LarkSync Feishu Local Cache Skill

@@ -367,12 +367,13 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
   --run-now
 ```
 
-上架 clwuhub（建议先 dry-run）：
+上架 ClawHub（建议先 dry-run）：
 
 ```bash
 cd integrations/openclaw/skills/larksync_feishu_local_cache
-clawhub publish --dry-run
-clawhub publish
+clawhub login
+clawhub sync --root . --dry-run
+clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.0 --changelog "首次发布：飞书低频同步到本地缓存"
 ```
 
 详见：`docs/OPENCLAW_SKILL.md`。

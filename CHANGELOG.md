@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-02-23] v0.5.44 docs(openclaw,clawhub): 对齐 ClawHub 最新发布规范（`SKILL.md` 的 `metadata` 改为单行 JSON 对象）；上架命令改为 `clawhub login` + `clawhub sync --dry-run` + `clawhub publish <path> --slug --name --version --changelog`；文档术语统一为 ClawHub
 [2026-02-23] v0.5.44 docs(openclaw): 强化 OpenClaw Skill 对外介绍文案（价值主张/Before-After/适用人群/30 秒上手），提升可读性与下载意愿；同步更新 Skill 定义与使用指南开场说明
 [2026-02-23] v0.5.44 feat(openclaw,docs): 新增 OpenClaw Skill 包（`integrations/openclaw/skills/larksync_feishu_local_cache`）与辅助脚本 `larksync_skill_helper.py`，支持低频下行同步配置/建任务/立即执行；补充 OpenClaw Skill 使用与 clwuhub 上架文档；新增对应 pytest 覆盖核心参数与 payload 构造
 [2026-02-19] v0.5.44 fix(ci,release): 默认停用 macOS 自动发布（tag 发布仅构建 Windows）；macOS 改为 workflow_dispatch + `build_macos=true` 手动开启；macOS 工作流产物上传改为非阻塞，降低 upload-artifact 403 对发布流程的影响
