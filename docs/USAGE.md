@@ -340,4 +340,41 @@ npm run release:publish -- "release: v0.5.45"
 - 在线文档中的 `sheet` 内嵌表格当前为“优先转 Markdown 表格”；在权限不足、接口异常或超限场景下会回退为 `sheet_token` 占位输出。
 - 文档内附件块若字段结构不同，请提供 docx blocks JSON 样例以完善解析。
 
+## 12. OpenClaw Skill（降低飞书 API 调用）
+Skill 目录：
+
+```text
+integrations/openclaw/skills/larksync_feishu_local_cache/
+```
+
+推荐默认模式：`download_only` + 每日一次下载同步。  
+目标：先把飞书文档低频同步到本地，再由 OpenClaw 优先本地读取，减少飞书 API 与 token 消耗。
+
+常用命令：
+
+```bash
+# 检查环境
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
+
+# 一键配置低频下载 + 建任务 + 首次执行
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-daily \
+  --local-path "D:\\Knowledge\\FeishuMirror" \
+  --cloud-folder-token "<token>" \
+  --sync-mode download_only \
+  --download-value 1 \
+  --download-unit days \
+  --download-time 01:00 \
+  --run-now
+```
+
+上架 clwuhub（建议先 dry-run）：
+
+```bash
+cd integrations/openclaw/skills/larksync_feishu_local_cache
+clawhub publish --dry-run
+clawhub publish
+```
+
+详见：`docs/OPENCLAW_SKILL.md`。
+
 本教程会随版本更新持续完善。

@@ -25,6 +25,7 @@ LarkSync 面向“云端协作 + 本地知识管理”并行使用的用户场�
 - 设备 + 飞书账号双重归属隔离，避免跨设备串任务。
 - 自动更新检查与更新包下载（sha256 校验）。
 - 日志中心与同步状态面板，便于排查同步异常。
+- 内置 OpenClaw Skill 模板：支持“低频同步到本地再本地读取”的降 token 用法。
 
 ## 快速开始
 
@@ -50,6 +51,11 @@ npm run dev
 - 使用文档：[`docs/USAGE.md`](docs/USAGE.md)
 - OAuth 配置：[`docs/OAUTH_GUIDE.md`](docs/OAUTH_GUIDE.md)
 - 同步逻辑：[`docs/SYNC_LOGIC.md`](docs/SYNC_LOGIC.md)
+- OpenClaw Skill：[`docs/OPENCLAW_SKILL.md`](docs/OPENCLAW_SKILL.md)
+
+## OpenClaw 集成
+- Skill 目录：`integrations/openclaw/skills/larksync_feishu_local_cache/`
+- 设计目标：通过 LarkSync 低频同步飞书文档到本地，让 OpenClaw 优先本地检索，减少飞书 API 调用次数。
 
 ## License
 本项目采用 **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**。  

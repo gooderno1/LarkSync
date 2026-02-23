@@ -1,5 +1,25 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-openclaw-skill-local-cache (2026-02-23)
+- 目标：
+  - 基于 LarkSync 现有能力，产出可上架 clwuhub 的 OpenClaw Skill，默认走低频下行同步，降低飞书 API/token 消耗。
+  - 输出一份本地规范规划文档，并按规划完成交付。
+- 本地规划文档（不入 Git）：
+  - `docs/local_specs/openclaw_skill_plan_larksync.md`
+- 变更：
+  - 新增 Skill 包：
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py`
+  - 新增公共文档：
+    - `docs/OPENCLAW_SKILL.md`（定位、默认策略、命令、上架步骤）
+  - 更新现有文档：
+    - `README.md` 增加 OpenClaw 集成说明与文档入口
+    - `docs/USAGE.md` 增加 OpenClaw Skill 专章
+  - 新增测试：
+    - `apps/backend/tests/test_larksync_skill_helper.py`
+    - 覆盖时间校验、下载配置 payload、任务 payload、模式映射与非法参数处理
+
 ## v0.5.44-disable-macos-default-release (2026-02-19)
 - 目标：
   - 处理 macOS 发布流程中的 `upload-artifact` 403 问题带来的发布中断风险。
