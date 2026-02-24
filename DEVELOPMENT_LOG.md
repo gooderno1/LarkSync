@@ -1,5 +1,27 @@
 # DEVELOPMENT LOG
 
+## v0.5.44-openclaw-wsl-pythonpath-sanitization (2026-02-24)
+- 目标：
+  - 修复 OpenClaw 在 WSL 场景下自动拉起本地后端失败（`pydantic_core` 导入异常）的问题。
+- 根因：
+  - WSL helper 启动链路未净化 `PYTHONPATH`，混入了其他 Python 版本的 `site-packages`，导致后端子进程导入二进制扩展失败。
+- 变更：
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py`
+    - 新增 `_sanitize_pythonpath()` 与 `_build_runtime_env()`。
+    - 依赖安装 `_install_backend_requirements()` 改为使用净化后的环境。
+    - 本地后端启动 `_build_local_backend_env()` 改为基于净化环境构建。
+  - `apps/backend/tests/test_larksync_wsl_helper.py`
+    - 新增 `PYTHONPATH` 净化与运行时环境净化测试。
+- 验证：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest apps/backend/tests/test_larksync_wsl_helper.py -q`（11 passed）
+  - `python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check`（模拟 WSL，自动拉起后端成功，返回 `ok=true`）
+  - `python -m py_compile integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py`（通过）
+- 发布：
+  - 首次发布尝试命中 ClawHub 限流（`Rate limit exceeded`），退避后重试成功。
+  - `clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.5 --changelog "fix(wsl-runtime): sanitize pythonpath for autonomous local backend startup"`
+  - 发布成功：`larksync-feishu-local-cache@0.1.5`，versionId=`k97a3800mtwf74j1ra8ejkf63x81rhmp`
+  - 平台状态：安全扫描进行中（短暂 hidden），扫描完成后自动恢复可见。
+
 ## v0.5.44-openclaw-agent-runbook (2026-02-23)
 - 目标：
   - 给 OpenClaw 代理提供“可直接执行”的使用说明，避免仅有人类视角文档导致代理流程不一致。

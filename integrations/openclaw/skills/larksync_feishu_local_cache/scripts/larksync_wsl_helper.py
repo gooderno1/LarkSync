@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import ipaddress
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -109,20 +110,62 @@ def _has_backend_requirements() -> bool:
     return True
 
 
-def _install_backend_requirements(backend_dir: Path) -> tuple[bool, str | None]:
+def _sanitize_pythonpath(raw_pythonpath: str | None) -> tuple[str | None, bool]:
+    if not raw_pythonpath:
+        return raw_pythonpath, False
+
+    current_tag = f"{sys.version_info.major}{sys.version_info.minor}"
+    kept_entries: list[str] = []
+    changed = False
+
+    for entry in raw_pythonpath.split(os.pathsep):
+        cleaned = entry.strip()
+        if not cleaned:
+            continue
+        normalized = cleaned.replace("\\", "/").lower()
+        version_tags = re.findall(r"python(\d{2,3})", normalized)
+        has_mismatch = bool(version_tags) and any(tag != current_tag for tag in version_tags)
+        if has_mismatch and "site-packages" in normalized:
+            changed = True
+            continue
+        kept_entries.append(cleaned)
+
+    if not kept_entries:
+        return None, changed or bool(raw_pythonpath.strip())
+
+    sanitized = os.pathsep.join(kept_entries)
+    return sanitized, changed or sanitized != raw_pythonpath
+
+
+def _build_runtime_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(base or os.environ)
+    raw_pythonpath = env.get("PYTHONPATH")
+    sanitized, changed = _sanitize_pythonpath(raw_pythonpath)
+    if changed:
+        if sanitized:
+            env["PYTHONPATH"] = sanitized
+        else:
+            env.pop("PYTHONPATH", None)
+    return env
+
+
+def _install_backend_requirements(
+    backend_dir: Path,
+    env: dict[str, str] | None = None,
+) -> tuple[bool, str | None]:
     req_file = backend_dir / "requirements.txt"
     if not req_file.is_file():
         return False, f"缺少依赖清单：{req_file}"
     cmd = [sys.executable, "-m", "pip", "install", "-r", str(req_file)]
     try:
-        subprocess.check_call(cmd, cwd=str(backend_dir))
+        subprocess.check_call(cmd, cwd=str(backend_dir), env=env)
     except Exception as exc:  # noqa: BLE001
         return False, f"安装后端依赖失败: {type(exc).__name__}: {exc}"
     return True, None
 
 
 def _build_local_backend_env(project_root: Path) -> dict[str, str]:
-    env = dict(os.environ)
+    env = _build_runtime_env()
     env.setdefault("LARKSYNC_TOKEN_STORE", "file")
     env.setdefault("LARKSYNC_TOKEN_FILE", str(project_root / "data" / "token_store_wsl.json"))
     env.setdefault("LARKSYNC_AUTH_REDIRECT_URI", f"http://localhost:{DEFAULT_PORT}/auth/callback")
@@ -196,7 +239,8 @@ def ensure_local_backend(
     if not _has_backend_requirements():
         if not auto_install_deps:
             return False, "缺少后端依赖（fastapi/uvicorn/sqlalchemy/pydantic）"
-        ok, message = _install_backend_requirements(backend_dir)
+        env_for_install = _build_runtime_env()
+        ok, message = _install_backend_requirements(backend_dir, env=env_for_install)
         if not ok:
             return False, message or "安装后端依赖失败"
 

@@ -116,3 +116,19 @@ def test_build_local_backend_env_defaults(monkeypatch, tmp_path) -> None:
     assert env["LARKSYNC_TOKEN_STORE"] == "file"
     assert env["LARKSYNC_TOKEN_FILE"].endswith("token_store_wsl.json")
     assert env["LARKSYNC_AUTH_REDIRECT_URI"] == "http://localhost:8000/auth/callback"
+
+
+def test_sanitize_pythonpath_removes_mismatched_site_packages() -> None:
+    raw = r"F:\File\Linux\Python312\site-packages;C:\repo\apps\backend"
+    sanitized, changed = wsl_helper._sanitize_pythonpath(raw)
+    assert changed is True
+    assert sanitized == r"C:\repo\apps\backend"
+
+
+def test_build_runtime_env_cleans_pythonpath(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        r"F:\File\Linux\Python312\site-packages;C:\repo\apps\backend",
+    )
+    env = wsl_helper._build_runtime_env()
+    assert env.get("PYTHONPATH") == r"C:\repo\apps\backend"

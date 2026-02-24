@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-02-24] v0.5.44 release(openclaw-skill): 发布 `larksync-feishu-local-cache@0.1.5`（`fix(wsl-runtime): sanitize pythonpath for autonomous local backend startup`）
+[2026-02-24] v0.5.44 fix(openclaw,wsl-runtime): 修复 WSL 自动拉起后端时受跨版本 `PYTHONPATH` 污染导致 `pydantic_core` 导入失败；`larksync_wsl_helper.py` 新增运行时 `PYTHONPATH` 净化并应用到依赖安装与后端子进程启动；补充对应测试
 [2026-02-23] v0.5.44 docs(openclaw-agent): 新增 `OPENCLAW_AGENT_GUIDE.md`（面向 OpenClaw 代理的执行 runbook：检查/初始化/首次授权边界/无人值守兜底/失败处理模板）；并在 `SKILL.md`、Skill README、`docs/OPENCLAW_SKILL.md`、`docs/USAGE.md` 增加入口链接
 [2026-02-23] v0.5.44 feat(openclaw,wsl-autonomous): `larksync_wsl_helper.py` 新增无人值守兜底（未探测到可达 `:8000` 时自动在 WSL 本地启动后端，支持自动安装后端依赖）；后端新增 `token_store=file`（`LARKSYNC_TOKEN_STORE=file` + `LARKSYNC_TOKEN_FILE`）以适配无桌面 keyring 环境；补充对应测试与文档
 [2026-02-23] v0.5.44 fix(tray,wsl-bridge): Windows 托盘后端默认绑定从 `127.0.0.1` 调整为 `0.0.0.0`（可通过 `LARKSYNC_BACKEND_BIND_HOST` 覆盖），默认 `BACKEND_URL` 仍走 `127.0.0.1` 供本机访问；WSL 诊断与 Skill 文档同步更新排查口径；新增 `test_tray_config.py` 覆盖绑定地址默认值与环境变量覆盖逻辑

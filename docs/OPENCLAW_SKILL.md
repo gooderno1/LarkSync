@@ -101,7 +101,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 cd integrations/openclaw/skills/larksync_feishu_local_cache
 clawhub login
 clawhub sync --root . --dry-run
-clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.4 --changelog "fix(wsl): default Windows tray bind supports WSL bridge; improve diagnostics"
+clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.5 --changelog "fix(wsl-runtime): sanitize pythonpath for autonomous local backend startup"
 ```
 
 若发布失败，请先检查：
