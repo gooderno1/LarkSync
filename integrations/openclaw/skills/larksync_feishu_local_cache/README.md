@@ -80,18 +80,16 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py diagnose
 
 # 自动探测并执行原命令
-# 若未发现可达 :8000，会自动在 WSL 本地拉起后端（并自动安装后端依赖）
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-daily --local-path "/mnt/d/Knowledge/FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
 ```
 
 说明：
 - 若所有候选地址都显示 `UNREACHABLE`，主因通常是 Windows 侧 LarkSync 尚未启动或未监听 8000 端口。
-- 如果 Windows 侧不可达，脚本会默认尝试在当前 WSL 本地启动后端（`localhost:8000`），无需人工构建。
-- WSL 本地启动时默认使用 `token_store=file`（`data/token_store_wsl.json`），避免无桌面 keyring 导致授权信息不可持久化。
+- 如果 Windows 侧不可达，脚本会输出诊断信息并停止，不会在 WSL 自动安装依赖或自动拉起后端。
+- 请先在 Windows 侧启动 LarkSync，再重新执行 `check` / `bootstrap-daily`。
 - Windows 版 LarkSync 默认允许 WSL 通过宿主机地址访问；若你手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改为 `0.0.0.0` 或移除后重启，再执行 `diagnose`。
 - 手动传远程 `--base-url` 时，脚本会自动补 `--allow-remote-base-url`。
-- 可选：`--no-auto-start-local-backend`、`--no-auto-install-backend-deps` 用于关闭自动兜底行为。
 - 飞书 OAuth 首次授权仍需用户确认；完成首次授权后可长期无人值守运行。
 
 ## 上架 ClawHub（建议先 dry-run）
@@ -99,7 +97,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 cd integrations/openclaw/skills/larksync_feishu_local_cache
 clawhub login
 clawhub sync --root . --dry-run
-clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.5 --changelog "fix(wsl-runtime): sanitize pythonpath for autonomous local backend startup"
+clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.6 --changelog "fix(security): remove WSL auto-install and auto-start behaviors"
 ```
 
 > 具体发布流程请结合 OpenClaw 官方文档与 `docs/OPENCLAW_SKILL.md`。

@@ -1,5 +1,28 @@
 # DEVELOPMENT LOG
 
+## v0.5.45-openclaw-skill-scan-hardening (2026-02-28)
+- 目标：
+  - 降低 OpenClaw Skill 被 ClawHub Security 误判为 suspicious 的概率，去掉高风险“自安装/自启动”模式。
+- 变更：
+  - `integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py`
+    - 移除依赖自动安装、WSL 本地后端自动拉起、`PYTHONPATH` 净化子进程链路。
+    - 改为纯 Python 实现：读取 `/proc/net/route` 与 `/etc/resolv.conf` 做地址诊断。
+    - 直接加载 `larksync_skill_helper.py` 执行，避免额外子进程转发。
+  - `apps/backend/tests/test_larksync_wsl_helper.py`
+    - 删除旧的自动兜底相关测试，补充 `/proc/net/route` 解析测试。
+  - OpenClaw 文档：
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/SKILL.md`
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/README.md`
+    - `integrations/openclaw/skills/larksync_feishu_local_cache/OPENCLAW_AGENT_GUIDE.md`
+    - `docs/OPENCLAW_SKILL.md`
+    - `docs/USAGE.md`
+    - `README.md`
+    - 统一改为“只诊断 + 安全转发，不自动安装依赖、不自动拉起后端”。
+- 验证：
+  - `python -m pytest apps/backend/tests/test_larksync_skill_helper.py apps/backend/tests/test_larksync_wsl_helper.py`（17 passed）
+- 发布：
+  - 下次 ClawHub 发布示例版本提升为 `0.1.6`。
+
 ## v0.5.44-openclaw-wsl-pythonpath-sanitization (2026-02-24)
 - 目标：
   - 修复 OpenClaw 在 WSL 场景下自动拉起本地后端失败（`pydantic_core` 导入异常）的问题。

@@ -62,7 +62,6 @@ WSL 场景（OpenClaw 在 WSL，LarkSync 在 Windows）推荐入口：
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py diagnose
 
 # 直接执行原有命令（自动探测可达地址；远程地址自动补 --allow-remote-base-url）
-# 若未探测到可达 :8000，会自动在 WSL 本地拉起后端（并自动安装后端依赖）
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-daily --local-path "/mnt/d/Knowledge/FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
 ```
@@ -72,11 +71,10 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 - 若手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改回 `0.0.0.0` 或移除该变量；
 - 防火墙已放行 WSL 网段到 TCP `8000`。
 
-无人值守兜底：
-- 未探测到 Windows 侧可达服务时，默认自动在 WSL 启动本地后端并转向 `localhost:8000`。
-- 默认自动安装后端依赖（首次运行），可通过 `--no-auto-install-backend-deps` 关闭。
-- 本地后端默认使用 `token_store=file`（`data/token_store_wsl.json`）避免 keyring 不可用。
-- 注意：飞书 OAuth 首次授权仍需用户完成；授权完成后可进入无人值守运行。
+安全边界：
+- 未探测到 Windows 侧可达服务时，脚本会输出诊断信息并停止，不会自动在 WSL 安装依赖或启动后端。
+- 请先在 Windows 侧启动 LarkSync（安装包版或开发模式），确认 `:8000` 可达后再重试。
+- 注意：飞书 OAuth 首次授权仍需用户完成；授权完成后可进入日常低频同步运行。
 
 默认安全策略：
 - `base-url` 仅允许 `localhost/127.0.0.1/::1`，避免把云目录 token 发送到未知远端地址。

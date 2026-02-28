@@ -5,7 +5,7 @@
 </p>
 
 本地优先的飞书文档同步工具，用于打通飞书云文档与本地文件系统（Markdown/Office）的协作链路。  
-当前版本：`v0.5.44`（2026-02-18），核心运行形态为托盘常驻 + Web 管理面板。
+当前版本：`v0.5.45`（2026-02-28），核心运行形态为托盘常驻 + Web 管理面板。
 
 ## 项目简介
 LarkSync 面向“云端协作 + 本地知识管理”并行使用的用户场景。你可以继续在飞书中协作，同时把文档体系稳定地纳入本地目录、NAS 和后续 AI 助手工作流中，避免重复搬运和手工同步。
@@ -56,6 +56,7 @@ npm run dev
 ## OpenClaw 集成
 - Skill 目录：`integrations/openclaw/skills/larksync_feishu_local_cache/`
 - 设计目标：通过 LarkSync 低频同步飞书文档到本地，让 OpenClaw 优先本地检索，减少飞书 API 调用次数。
+- WSL helper 已收敛为“诊断 + 安全转发”，不再自动安装依赖或自动拉起后端，降低 ClawHub 安全扫描误报风险。
 
 ## License
 本项目采用 **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)**。  

@@ -71,7 +71,6 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py diagnose
 
 # 自动探测并执行
-# 若未探测到可达 :8000，会自动在 WSL 本地拉起后端（并自动安装后端依赖）
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-daily \
   --local-path "/mnt/d/Knowledge/FeishuMirror" \
@@ -85,13 +84,9 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 
 若所有候选地址均不可达，通常是 Windows 侧 LarkSync 服务未启动/未监听 `:8000`，先启动后再重试。  
 若你手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改为 `0.0.0.0` 或移除后重启。
-当 Windows 侧仍不可达时，`larksync_wsl_helper.py` 会默认尝试在 WSL 本地启动后端并切到 `localhost:8000`。  
-本地启动默认启用 `token_store=file`（`data/token_store_wsl.json`），避免无桌面 keyring 导致凭证不持久。
+当 Windows 侧仍不可达时，`larksync_wsl_helper.py` 会输出诊断信息并停止，不会在 WSL 自动安装依赖或自动拉起后端。  
+请先启动 Windows 侧 LarkSync，再重新执行命令。
 飞书 OAuth 首次授权仍需用户完成；首次授权后可按上述流程无人值守运行。
-
-可选开关：
-- `--no-auto-start-local-backend`：关闭 WSL 本地自动拉起后端。
-- `--no-auto-install-backend-deps`：关闭后端依赖自动安装。
 
 ## 4. 上架 ClawHub
 
@@ -101,7 +96,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 cd integrations/openclaw/skills/larksync_feishu_local_cache
 clawhub login
 clawhub sync --root . --dry-run
-clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.5 --changelog "fix(wsl-runtime): sanitize pythonpath for autonomous local backend startup"
+clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.6 --changelog "fix(security): remove WSL auto-install and auto-start behaviors"
 ```
 
 若发布失败，请先检查：

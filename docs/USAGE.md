@@ -2,12 +2,12 @@
 
 本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
 
-## 0. 当前版本（截至 2026-02-18）
-- 最新发布记录：`v0.5.44`（见 `CHANGELOG.md` 顶部）
-- 当前主线状态：`v0.5.44`（更新检查 404 友好化、公开前仓库清理）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.5.44`
-- 前端版本：`apps/frontend/package.json` 中为 `0.5.44`
-- 根目录版本：`package.json` 中为 `v0.5.44`
+## 0. 当前版本（截至 2026-02-28）
+- 最新发布记录：`v0.5.45`（见 `CHANGELOG.md` 顶部）
+- 当前主线状态：`v0.5.45`（OpenClaw WSL helper 安全收敛：移除自动安装与自动拉起）
+- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.5.45`
+- 前端版本：`apps/frontend/package.json` 中为 `0.5.45`
+- 根目录版本：`package.json` 中为 `v0.5.45`
 
 ## 1. 环境准备
 - Node.js 18+（用于前端）
@@ -386,7 +386,6 @@ WSL 场景（OpenClaw 在 WSL、LarkSync 在 Windows）：
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py diagnose
 
 # 自动探测并执行
-# 若未探测到可达 :8000，会自动在 WSL 本地拉起后端（并自动安装后端依赖）
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-daily \
   --local-path "/mnt/d/Knowledge/FeishuMirror" \
@@ -402,9 +401,8 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 - 诊断会同时探测 `localhost` / `host.docker.internal` / default gateway / `/etc/resolv.conf` nameserver。
 - 若全部不可达，优先排查 Windows 侧 LarkSync 是否已启动并监听 `8000` 端口。
 - 若你手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改为 `0.0.0.0` 或移除后重启。
-- 若 Windows 侧不可达，脚本默认会尝试在 WSL 本地启动后端，并转向 `localhost:8000`。
-- WSL 本地启动默认使用 `token_store=file`（`data/token_store_wsl.json`），避免 keyring 不可用导致凭证丢失。
-- 可用 `--no-auto-start-local-backend` / `--no-auto-install-backend-deps` 关闭自动兜底行为。
+- 若 Windows 侧不可达，脚本会输出诊断信息并停止，不会在 WSL 自动安装依赖或自动拉起后端。
+- 请先在 Windows 侧启动 LarkSync，再重新执行命令。
 - 飞书 OAuth 首次授权仍需要用户确认；首次授权后可无人值守运行。
 
 上架 ClawHub（建议先 dry-run）：
@@ -413,7 +411,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 cd integrations/openclaw/skills/larksync_feishu_local_cache
 clawhub login
 clawhub sync --root . --dry-run
-clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.5 --changelog "fix(wsl-runtime): sanitize pythonpath for autonomous local backend startup"
+clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.6 --changelog "fix(security): remove WSL auto-install and auto-start behaviors"
 ```
 
 详见：`docs/OPENCLAW_SKILL.md`。

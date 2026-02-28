@@ -1,7 +1,7 @@
-# OpenClaw Agent 使用说明（无人值守版）
+# OpenClaw Agent 使用说明（安全收敛版）
 
 本文档面向 OpenClaw 代理本身，不是给人工点点点的教程。  
-目标：让代理在拉取仓库后，尽可能自动完成 LarkSync 同步任务配置与执行。
+目标：让代理在拉取仓库后，按安全边界完成 LarkSync 同步任务配置与执行。
 
 ## 1. 适用场景
 - OpenClaw 在 WSL 运行（最常见）。
@@ -50,17 +50,17 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 - `run-task --task-id <id>`：立即触发
 - `configure-download`：调整周期
 
-## 4. WSL 无人值守说明（关键）
-`larksync_wsl_helper.py` 已内置自动兜底：
-- 探测不到 Windows 侧 `:8000` 时，默认自动在 WSL 本地拉起后端。
-- 本地依赖缺失时，默认自动执行 `pip install -r apps/backend/requirements.txt`。
-- 默认启用文件型 token 存储：
-  - `LARKSYNC_TOKEN_STORE=file`
-  - `LARKSYNC_TOKEN_FILE=data/token_store_wsl.json`
+## 4. WSL 安全边界（关键）
+`larksync_wsl_helper.py` 的职责仅限于：
+- 诊断 `localhost` / `host.docker.internal` / gateway / nameserver 的可达性。
+- 自动补入探测到的 `--base-url`。
+- 对非回环地址自动补 `--allow-remote-base-url`。
 
-可关闭自动兜底（仅调试时使用）：
-- `--no-auto-start-local-backend`
-- `--no-auto-install-backend-deps`
+明确限制：
+- 探测不到 Windows 侧 `:8000` 时，直接返回诊断结果并停止。
+- 不自动执行 `pip install`。
+- 不自动在 WSL 拉起本地后端。
+- 需要用户或外层流程先确保 Windows 侧 LarkSync 已启动。
 
 ## 5. 首次授权边界（必须告知用户）
 - 飞书 OAuth 首次授权必须用户确认，这是平台限制，不是代理故障。
@@ -69,7 +69,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 ## 6. 错误处理规范
 - `HTTP 401/403`：提示重新授权并检查飞书应用权限（用户身份权限）。
 - `HTTP 409`（任务冲突）：优先复用已有任务，不重复创建。
-- 网络不可达：先跑 `diagnose`，再走自动兜底。
+- 网络不可达：先跑 `diagnose`，再提示启动 Windows 侧 LarkSync 后重试。
 
 ## 7. 给用户的最小反馈模板
 - 成功：
