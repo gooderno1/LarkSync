@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.47-release (2026-03-06)
+- 目标：
+  - 发布 `v0.5.47` 稳定版本，并同步产出 Windows 安装包用于 GitHub Release。
+- 包含内容：
+  - `v0.5.47-dev.1`：权限不足提示高对比度修复（主页面 + 新建任务弹窗）。
+  - `v0.5.47-dev.2`：Docx blocks 列表分页参数从 `500` 调整到 `200`，修复飞书 400 报错并补回归测试。
+- 发布动作：
+  - 版本号收敛为稳定版 `v0.5.47`（root/frontend/backend）。
+  - `CHANGELOG.md` 增加 `release: v0.5.47` 记录。
+- 验证：
+  - `python scripts/build_installer.py --nsis`（通过，生成 `dist/LarkSync-Setup-v0.5.47.exe`）
+
 ## v0.5.47-dev.2-docx-list-blocks-page-size-fix (2026-03-06)
 - 目标：
   - 修复用户侧同步时报错：`GET /docx/v1/documents/{id}/blocks?page_size=500` 返回 `400 Bad Request`。
