@@ -19,6 +19,17 @@ def _resolve_project_root() -> Path:
 
 
 project_root = _resolve_project_root()
+tracked_launcher = project_root / "apps" / "tray" / "launcher.py"
+legacy_launcher = project_root / "LarkSync.pyw"
+
+if tracked_launcher.is_file():
+    entry_script = tracked_launcher
+elif legacy_launcher.is_file():
+    entry_script = legacy_launcher
+else:
+    raise FileNotFoundError(
+        f"未找到打包入口脚本：{tracked_launcher} 或 {legacy_launcher}"
+    )
 
 frontend_dist = project_root / "apps" / "frontend" / "dist"
 tray_icons = project_root / "apps" / "tray" / "icons"
@@ -37,7 +48,7 @@ if backend_pyproject.is_file():
     datas.append((str(backend_pyproject), "apps/backend"))
 
 a = Analysis(
-    [str(project_root / "LarkSync.pyw")],
+    [str(entry_script)],
     pathex=[str(project_root), str(project_root / "apps" / "backend")],
     binaries=[],
     datas=datas,

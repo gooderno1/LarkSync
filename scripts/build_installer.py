@@ -207,6 +207,7 @@ def step_platform_installer(nsis: bool = False, dmg: bool = False) -> None:
 def _generate_spec() -> None:
     """生成 PyInstaller spec 文件。"""
     print("  生成 spec 文件...")
+    entry_script = _resolve_entry_script(PROJECT_ROOT)
 
     # 收集前端 dist 文件
     frontend_datas = f"('{DIST_DIR}', 'apps/frontend/dist')" if DIST_DIR.is_dir() else ""
@@ -245,7 +246,7 @@ def _resolve_project_root() -> Path:
 project_root = _resolve_project_root()
 
 a = Analysis(
-    ['{(PROJECT_ROOT / "LarkSync.pyw").as_posix()}'],
+    ['{entry_script.as_posix()}'],
     pathex=[project_root, '{BACKEND_DIR.as_posix()}'],
     binaries=[],
     datas=[
@@ -328,6 +329,21 @@ if sys.platform == 'darwin':
 """
     SPEC_FILE.write_text(spec_content, encoding="utf-8")
     print(f"  ✓ spec 文件: {SPEC_FILE}")
+
+
+def _resolve_entry_script(project_root: Path) -> Path:
+    """解析 PyInstaller 入口脚本，优先使用仓库内受版本控制的 launcher。"""
+    tracked_launcher = project_root / "apps" / "tray" / "launcher.py"
+    if tracked_launcher.is_file():
+        return tracked_launcher
+
+    legacy_launcher = project_root / "LarkSync.pyw"
+    if legacy_launcher.is_file():
+        return legacy_launcher
+
+    raise FileNotFoundError(
+        f"未找到打包入口脚本：{tracked_launcher} 或 {legacy_launcher}"
+    )
 
 
 def _build_nsis() -> None:

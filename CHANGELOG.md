@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-03-06] v0.5.48-dev.1 fix(build,ci): 修复 Windows Release 构建入口脚本缺失导致的 PyInstaller 失败（新增受版本控制入口 `apps/tray/launcher.py`，spec/build 脚本改为优先使用该入口并保留 `LarkSync.pyw` 兼容兜底）
 [2026-03-06] v0.5.47 release: v0.5.47
 [2026-03-06] v0.5.47-dev.2 fix(sync,docx): 修复获取文档块列表使用 `page_size=500` 导致飞书返回 400 的问题，调整为安全分页值并补充回归测试
 [2026-03-06] v0.5.47-dev.1 fix(ui,auth): 提升“权限不足”提示在主页面与新建任务弹窗中的文字对比度，修复浅色主题下看不清的问题

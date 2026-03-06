@@ -44,3 +44,34 @@ def test_build_subprocess_env_removes_invalid_pythonpath() -> None:
 
     assert "PYTHONPATH" not in env
     assert env["LARKSYNC_PROJECT_ROOT"] == r"C:\repo\LarkSync"
+
+
+def test_resolve_entry_script_prefers_tracked_launcher(tmp_path: Path) -> None:
+    tracked = tmp_path / "apps" / "tray" / "launcher.py"
+    tracked.parent.mkdir(parents=True, exist_ok=True)
+    tracked.write_text("print('ok')", encoding="utf-8")
+    legacy = tmp_path / "LarkSync.pyw"
+    legacy.write_text("print('legacy')", encoding="utf-8")
+
+    resolved = bi._resolve_entry_script(tmp_path)
+
+    assert resolved == tracked
+
+
+def test_resolve_entry_script_falls_back_to_legacy(tmp_path: Path) -> None:
+    legacy = tmp_path / "LarkSync.pyw"
+    legacy.write_text("print('legacy')", encoding="utf-8")
+
+    resolved = bi._resolve_entry_script(tmp_path)
+
+    assert resolved == legacy
+
+
+def test_resolve_entry_script_raises_when_missing(tmp_path: Path) -> None:
+    try:
+        bi._resolve_entry_script(tmp_path)
+    except FileNotFoundError as exc:
+        assert "launcher.py" in str(exc)
+        assert "LarkSync.pyw" in str(exc)
+    else:
+        raise AssertionError("expected FileNotFoundError")

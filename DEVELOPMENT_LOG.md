@@ -1,5 +1,24 @@
 # DEVELOPMENT LOG
 
+## v0.5.48-dev.1-build-entrypoint-fix (2026-03-06)
+- 目标：
+  - 修复 GitHub Actions Windows Release 构建失败：`ERROR: script .../LarkSync.pyw not found`。
+- 根因：
+  - `scripts/larksync.spec` 将 PyInstaller 入口硬编码为根目录 `LarkSync.pyw`，但该文件未被 Git 跟踪，CI checkout 后缺失。
+- 变更：
+  - 新增受版本控制入口：`apps/tray/launcher.py`（保留 `--backend` 子进程逻辑，兼容 `BackendManager` 的 frozen 启动方式）。
+  - 更新 `scripts/larksync.spec`：
+    - 优先使用 `apps/tray/launcher.py`；
+    - 若不存在则回退 `LarkSync.pyw`（兼容本地旧环境）。
+  - 更新 `scripts/build_installer.py`：
+    - 新增 `_resolve_entry_script()`，统一入口解析逻辑；
+    - `_generate_spec()` 改为使用解析后的入口路径。
+  - 测试补充：`apps/backend/tests/test_build_installer.py`
+    - 新增入口解析优先级、回退、缺失报错三个用例。
+- 验证：
+  - `python -m pytest tests/test_build_installer.py`（工作目录：`apps/backend`，6 passed）
+  - `python scripts/build_installer.py --nsis --skip-frontend`（通过，生成 `dist/LarkSync-Setup-v0.5.47.exe`）
+
 ## v0.5.47-release (2026-03-06)
 - 目标：
   - 发布 `v0.5.47` 稳定版本，并同步产出 Windows 安装包用于 GitHub Release。
