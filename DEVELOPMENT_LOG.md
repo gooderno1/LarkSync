@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.5.48-release (2026-03-06)
+- 目标：
+  - 发布 `v0.5.48` 稳定版本并输出可下载安装包。
+- 包含内容：
+  - `v0.5.48-dev.1`：修复 CI 中 PyInstaller 入口脚本缺失导致的 Release 构建失败。
+- 发布动作：
+  - 版本收敛为稳定版 `v0.5.48`（root/frontend/backend）。
+  - `CHANGELOG.md` 新增 `release: v0.5.48` 记录。
+- 验证：
+  - `python scripts/build_installer.py --nsis`（通过，生成 `dist/LarkSync-Setup-v0.5.48.exe`）
+
 ## v0.5.48-dev.1-build-entrypoint-fix (2026-03-06)
 - 目标：
   - 修复 GitHub Actions Windows Release 构建失败：`ERROR: script .../LarkSync.pyw not found`。
