@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.5.46-onboarding-auth-back-navigation (2026-03-06)
+- 目标：
+  - 修复首次授权场景中 OAuth 参数填写错误后，界面停留在“连接飞书”步骤且无法返回重配的问题。
+- 根因：
+  - `OnboardingWizard` 的步骤由 `oauthConfigured` 直接推导，Step 2 的“返回上一步”仅执行页面刷新，状态仍会回到 Step 2。
+- 变更：
+  - `apps/frontend/src/components/OnboardingWizard.tsx`
+    - 引入可控步骤状态（`currentStep`），支持用户从 Step 2 直接回退到 Step 1 修改 OAuth 配置。
+    - 保存 OAuth 配置成功后自动前进到 Step 2，减少重复操作。
+    - Step 1 自动回填已保存的 `auth_client_id`，便于排错重试。
+    - Step 2 增加“参数填错可回退重配”提示文案。
+- 验证：
+  - `npm run build`（工作目录：`apps/frontend`，通过）
+  - `python scripts/build_installer.py --nsis`（通过，生成 `dist/LarkSync-Setup-v0.5.46.exe`）
+
 ## v0.5.45-openclaw-skill-scan-hardening (2026-02-28)
 - 目标：
   - 降低 OpenClaw Skill 被 ClawHub Security 误判为 suspicious 的概率，去掉高风险“自安装/自启动”模式。

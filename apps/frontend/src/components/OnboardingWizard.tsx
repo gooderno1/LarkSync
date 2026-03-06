@@ -2,7 +2,7 @@
 /*  首次使用引导向导 — OAuth 配置 + 飞书连接                              */
 /* ------------------------------------------------------------------ */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useConfig } from "../hooks/useConfig";
 import { useAuth } from "../hooks/useAuth";
 import { getLoginUrl } from "../lib/api";
@@ -32,9 +32,25 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState<1 | 2>(
+    oauthConfigured ? 2 : 1
+  );
 
-  /* 当前步骤：根据 oauthConfigured 自动推导 */
-  const currentStep = oauthConfigured ? 2 : 1;
+  useEffect(() => {
+    if (!oauthConfigured) {
+      setCurrentStep(1);
+      return;
+    }
+    if (connected) {
+      setCurrentStep(2);
+    }
+  }, [connected, oauthConfigured]);
+
+  useEffect(() => {
+    if (oauthConfigured && !clientId.trim() && config.auth_client_id?.trim()) {
+      setClientId(config.auth_client_id.trim());
+    }
+  }, [clientId, config.auth_client_id, oauthConfigured]);
 
   /*
    * Redirect URI — 回调地址
@@ -74,6 +90,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
         auth_token_url: FEISHU_TOKEN_URL,
       });
       setClientSecret("");
+      setCurrentStep(2);
       toast("OAuth 配置已保存，请继续连接飞书", "success");
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "保存失败");
@@ -111,7 +128,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
             num={1}
             label="配置应用"
             active={currentStep === 1}
-            done={currentStep > 1}
+            done={oauthConfigured}
           />
           <div
             className={cn(
@@ -237,6 +254,9 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
               <p className="mt-2 max-w-sm text-sm text-zinc-400">
                 OAuth 配置已就绪。点击下方按钮，通过浏览器完成飞书授权，即可开始使用。
               </p>
+              <p className="mt-1 max-w-sm text-xs text-zinc-500">
+                如果 App ID / App Secret 填写错误，可返回上一步直接修改后重试。
+              </p>
             </div>
 
             {authLoading ? (
@@ -268,7 +288,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
                 需要修改 OAuth 配置？
                 <button
                   className="ml-1 font-medium text-[#3370FF] transition hover:text-[#3370FF]/80"
-                  onClick={() => window.location.reload()}
+                  onClick={() => setCurrentStep(1)}
                   type="button"
                 >
                   返回上一步

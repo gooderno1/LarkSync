@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-03-06] v0.5.46 fix(auth,onboarding): 修复首次 OAuth 配置填写错误后卡在“连接飞书”页的问题，支持返回上一步直接修改并重试
 [2026-02-28] v0.5.45 fix(openclaw-skill-security): 收紧 `larksync_wsl_helper.py`，移除 WSL 自动安装依赖与自动拉起后端；改为纯 Python 地址诊断 + 安全转发；同步更新 OpenClaw Skill 文档与 ClawHub 发布示例至 `0.1.6`
 [2026-02-24] v0.5.44 release(openclaw-skill): 发布 `larksync-feishu-local-cache@0.1.5`（`fix(wsl-runtime): sanitize pythonpath for autonomous local backend startup`）
 [2026-02-24] v0.5.44 fix(openclaw,wsl-runtime): 修复 WSL 自动拉起后端时受跨版本 `PYTHONPATH` 污染导致 `pydantic_core` 导入失败；`larksync_wsl_helper.py` 新增运行时 `PYTHONPATH` 净化并应用到依赖安装与后端子进程启动；补充对应测试
