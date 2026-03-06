@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.47-dev.1-permission-alert-contrast (2026-03-06)
+- 目标：
+  - 修复“权限不足”提示在浅色主题下文字对比度不足、可读性差的问题。
+- 变更：
+  - `apps/frontend/src/App.tsx`
+    - 调整主页面 Drive 权限告警卡片的背景、边框与文字配色，正文改为高对比度文本。
+    - 强化“重新授权飞书”按钮样式，避免与背景色混在一起。
+  - `apps/frontend/src/components/NewTaskModal.tsx`
+    - 调整任务弹窗内权限不足提示块的标题/正文/链接颜色，对比度与层级更清晰。
+- 验证：
+  - `npm run build`（工作目录：`apps/frontend`，通过）
+
 ## v0.5.46-onboarding-auth-back-navigation (2026-03-06)
 - 目标：
   - 修复首次授权场景中 OAuth 参数填写错误后，界面停留在“连接飞书”步骤且无法返回重配的问题。

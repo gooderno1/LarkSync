@@ -253,9 +253,9 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
                   <div className="space-y-2">
                     <p className="text-sm text-rose-400">{treeError}</p>
                     {(treeError.includes("Unauthorized") || treeError.includes("权限") || treeError.includes("permission")) && (
-                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 space-y-1.5">
-                        <p className="font-medium">权限不足，请按以下步骤操作：</p>
-                        <ol className="list-decimal list-inside space-y-1 text-amber-300/80">
+                      <div className="space-y-1.5 rounded-lg border border-amber-500/40 bg-amber-500/20 p-3 text-xs">
+                        <p className="font-semibold text-amber-300">权限不足，请按以下步骤操作：</p>
+                        <ol className="list-decimal list-inside space-y-1 text-zinc-200">
                           <li>在飞书开发者后台确认已添加 <code className="bg-zinc-800 px-1 rounded">drive:drive</code> 等权限</li>
                           <li>进入「版本管理与发布」→ 创建版本并发布应用</li>
                           <li>回到 LarkSync → 点击「退出登录」清除旧令牌</li>
@@ -263,7 +263,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
                         </ol>
                         <a href="https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-resolve-error-99991679"
                            target="_blank" rel="noopener noreferrer"
-                           className="inline-block mt-1 text-amber-400 underline hover:text-amber-300">
+                           className="mt-1 inline-block font-medium text-amber-300 underline hover:text-amber-200">
                           查看飞书官方排查指南 →
                         </a>
                       </div>

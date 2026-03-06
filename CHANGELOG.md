@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-03-06] v0.5.47-dev.1 fix(ui,auth): 提升“权限不足”提示在主页面与新建任务弹窗中的文字对比度，修复浅色主题下看不清的问题
 [2026-03-06] v0.5.46 fix(auth,onboarding): 修复首次 OAuth 配置填写错误后卡在“连接飞书”页的问题，支持返回上一步直接修改并重试
 [2026-02-28] v0.5.45 fix(openclaw-skill-security): 收紧 `larksync_wsl_helper.py`，移除 WSL 自动安装依赖与自动拉起后端；改为纯 Python 地址诊断 + 安全转发；同步更新 OpenClaw Skill 文档与 ClawHub 发布示例至 `0.1.6`
 [2026-02-24] v0.5.44 release(openclaw-skill): 发布 `larksync-feishu-local-cache@0.1.5`（`fix(wsl-runtime): sanitize pythonpath for autonomous local backend startup`）

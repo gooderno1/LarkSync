@@ -75,14 +75,14 @@ export default function App() {
         <main className="min-w-0 flex-1 space-y-6">
           {/* Drive 权限不足提示 */}
           {connected && !driveOk && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-200">
-              <p className="font-semibold">飞书云文档权限不足</p>
-              <p className="mt-1 text-xs text-amber-300/80">
-                当前授权令牌缺少 <code className="rounded bg-zinc-800 px-1">drive:drive</code> 等权限。请在飞书开发者后台确认权限已添加，并前往「版本管理与发布」发布应用，然后点击下方按钮重新授权。
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/20 px-5 py-4 text-sm">
+              <p className="font-semibold text-amber-300">飞书云文档权限不足</p>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-200">
+                当前授权令牌缺少 <code className="rounded border border-amber-500/30 bg-zinc-900 px-1 py-0.5 text-zinc-100">drive:drive</code> 等权限。请在飞书开发者后台确认权限已添加，并前往「版本管理与发布」发布应用，然后点击下方按钮重新授权。
               </p>
               <a
                 href="/auth/login?redirect=/"
-                className="mt-2.5 inline-block rounded-lg bg-amber-500/20 px-4 py-1.5 text-xs font-medium text-amber-200 transition hover:bg-amber-500/30"
+                className="mt-2.5 inline-block rounded-lg border border-amber-500/40 bg-amber-500/20 px-4 py-1.5 text-xs font-semibold text-zinc-100 transition hover:bg-amber-500/30"
               >
                 重新授权飞书
               </a>
