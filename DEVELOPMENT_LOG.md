@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.5.47-dev.2-docx-list-blocks-page-size-fix (2026-03-06)
+- 目标：
+  - 修复用户侧同步时报错：`GET /docx/v1/documents/{id}/blocks?page_size=500` 返回 `400 Bad Request`。
+- 根因：
+  - `DocxService.list_blocks()` 使用了过大的分页参数 `page_size=500`，超出飞书接口可接受范围。
+- 变更：
+  - `apps/backend/src/services/docx_service.py`
+    - 将块列表分页参数从 `500` 下调为 `200`（安全值）。
+  - `apps/backend/tests/test_docx_service.py`
+    - 新增 `test_list_blocks_uses_safe_page_size_and_paginates`，校验分页参数与翻页行为。
+- 验证：
+  - `python -m pytest tests/test_docx_service.py`（工作目录：`apps/backend`，35 passed）
+
 ## v0.5.47-dev.1-permission-alert-contrast (2026-03-06)
 - 目标：
   - 修复“权限不足”提示在浅色主题下文字对比度不足、可读性差的问题。

@@ -281,6 +281,38 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_blocks_uses_safe_page_size_and_paginates() -> None:
+    responses = [
+        {
+            "code": 0,
+            "data": {
+                "items": [{"block_id": "root", "block_type": 1}],
+                "has_more": True,
+                "page_token": "next-page",
+            },
+        },
+        {
+            "code": 0,
+            "data": {
+                "items": [{"block_id": "child", "block_type": 2}],
+                "has_more": False,
+            },
+        },
+    ]
+    client = FakeClient(responses)
+    service = DocxService(client=client)
+
+    blocks = await service.list_blocks("doc-safe")
+
+    assert len(blocks) == 2
+    assert client.requests[0][2]["params"]["page_size"] == 200
+    assert client.requests[0][2]["params"]["user_id_type"] == "open_id"
+    assert "page_token" not in client.requests[0][2]["params"]
+    assert client.requests[1][2]["params"]["page_size"] == 200
+    assert client.requests[1][2]["params"]["page_token"] == "next-page"
+
+
+@pytest.mark.asyncio
 async def test_replace_document_content_uploads_local_file_link_as_file_block(tmp_path) -> None:
     attachments_dir = tmp_path / "attachments"
     attachments_dir.mkdir()

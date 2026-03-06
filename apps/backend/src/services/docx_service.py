@@ -229,7 +229,7 @@ class DocxService:
         items: list[dict[str, Any]] = []
         page_token: str | None = None
         while True:
-            params = {"page_size": 500, "user_id_type": user_id_type}
+            params = {"page_size": 200, "user_id_type": user_id_type}
             if page_token:
                 params["page_token"] = page_token
             response = await self._request_json(
