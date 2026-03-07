@@ -54,21 +54,32 @@ def collect_entries_for_release(
 ) -> tuple[ChangelogEntry | None, ChangelogEntry | None, list[ChangelogEntry]]:
     target = normalize_version(target_version)
     release_idx: int | None = None
+    fallback_idx: int | None = None
     for idx, entry in enumerate(entries):
-        if entry.version == target and is_release_marker(entry):
+        if entry.version != target:
+            continue
+        if fallback_idx is None:
+            fallback_idx = idx
+        if is_release_marker(entry):
             release_idx = idx
             break
     if release_idx is None:
-        return None, None, []
+        # 兼容：若缺失 release: 标记，则使用该版本第一条记录作为锚点。
+        if fallback_idx is None:
+            return None, None, []
+        release_idx = fallback_idx
 
     previous_release: ChangelogEntry | None = None
     tail: list[ChangelogEntry] = []
     for entry in entries[release_idx + 1 :]:
-        if is_release_marker(entry):
+        if "-dev." not in entry.version:
             previous_release = entry
             break
         tail.append(entry)
-    return entries[release_idx], previous_release, tail
+
+    # 包含锚点本身（若是 release: 行，会在渲染时被过滤掉）。
+    items = [entries[release_idx], *tail]
+    return entries[release_idx], previous_release, items
 
 
 def _iter_grouped(entries: Iterable[ChangelogEntry]) -> list[tuple[str, list[ChangelogEntry]]]:

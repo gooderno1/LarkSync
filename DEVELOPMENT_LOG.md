@@ -2163,3 +2163,9 @@
 - 结果：`UpdateService` 新增 GitHub Release 资产 `digest` 字段解析（`sha256:...`），并补充“从 Release 正文按目标安装包名解析 sha256”的回退路径；缺少 `.sha256` 附件时仍可安全校验下载包。
 - 测试：`python -m pytest tests/test_update_service.py tests/test_system_update_api.py tests/test_update_scheduler.py -q`（apps/backend，14 passed）。
 - 问题：暂无阻塞问题。
+
+## v0.5.50-dev.2 (2026-03-08)
+- 目标：修复“发布页更新明细为空”与 changelog 最新变更可读性差的问题。
+- 结果：`scripts/release_notes.py` 增加回退策略：当目标版本缺失 `release:` 标记时，按该版本首条记录作为锚点继续归档；并将 `CHANGELOG.md` 最新条目统一置顶，避免版本顺序错位导致发布说明误判。
+- 测试：`python -m pytest apps/backend/tests/test_release_notes.py -q`。
+- 问题：暂无阻塞问题。
