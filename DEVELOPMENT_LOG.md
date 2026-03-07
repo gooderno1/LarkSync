@@ -2151,3 +2151,9 @@
 - 结果：升级 Vite 至 7.3.1，esbuild 漏洞清零；SSOT Schema Reference 与 Task 1.2 字段统一为 file_hash 主键；版本与 CHANGELOG 规范落地。
 - 测试：`python -m pytest`（apps/backend）；`npm audit`（apps/frontend）。
 - 问题：无阻塞问题。
+
+## v0.5.49 (2026-03-07)
+- 目标：修复“本地持续编辑同一文档时重复上传到云端”问题。
+- 结果：`SyncTaskRunner` 的本地上传队列由路径集合升级为“路径+最后变更时间”，周期上传仅消费超过静默窗口（2s）的文件；持续编辑期间会合并为一次稳定后上传。
+- 测试：`python -m pytest tests/test_watcher.py tests/test_watcher_filters.py tests/test_sync_runner.py`（apps/backend，28 passed）。
+- 问题：暂无阻塞问题。

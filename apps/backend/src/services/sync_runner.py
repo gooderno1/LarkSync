@@ -137,7 +137,8 @@ class SyncTaskRunner:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._uploading_paths: set[str] = set()
         self._doc_locks: dict[str, asyncio.Lock] = {}
-        self._pending_uploads: dict[str, set[str]] = {}
+        self._pending_uploads: dict[str, dict[str, float]] = {}
+        self._upload_quiet_window_seconds = 2.0
         self._running_tasks: set[str] = set()
         self._task_meta: dict[str, SyncTaskItem] = {}
         self._initial_upload_scanned: set[str] = set()
@@ -228,9 +229,11 @@ class SyncTaskRunner:
         self._running_tasks.discard(task_id)
         self._stop_watcher(task_id)
 
-    def queue_local_change(self, task_id: str, path: Path) -> None:
-        pending = self._pending_uploads.setdefault(task_id, set())
-        pending.add(str(path))
+    def queue_local_change(
+        self, task_id: str, path: Path, changed_at: float | None = None
+    ) -> None:
+        pending = self._pending_uploads.setdefault(task_id, {})
+        pending[str(path)] = time.time() if changed_at is None else changed_at
 
     async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
         # 首次调度时，全量扫描本地目录，将没有 SyncLink 的文件加入待上传队列
@@ -238,20 +241,29 @@ class SyncTaskRunner:
             self._initial_upload_scanned.add(task.id)
             await self._scan_for_unlinked_files(task)
 
-        pending = self._pending_uploads.get(task.id) or set()
+        pending = self._pending_uploads.get(task.id) or {}
         has_pending_tombstone = await self._has_pending_tombstones(task.id)
-        if not pending and not has_pending_tombstone:
-            return
         if task.id in self._running_tasks:
+            return
+        ready_paths: list[Path] = []
+        if pending:
+            now = time.time()
+            ready_keys = [
+                path
+                for path, changed_at in pending.items()
+                if (now - changed_at) >= self._upload_quiet_window_seconds
+            ]
+            ready_paths = [Path(path) for path in sorted(ready_keys)]
+            for path in ready_keys:
+                pending.pop(path, None)
+        if not ready_paths and not has_pending_tombstone:
             return
         self._running_tasks.add(task.id)
         self._task_meta[task.id] = task
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         self._reset_status(task, status, message="周期上传触发")
-        paths = [Path(path) for path in sorted(pending)]
-        self._pending_uploads[task.id] = set()
         try:
-            await self._run_upload_paths(task, status, paths)
+            await self._run_upload_paths(task, status, ready_paths)
             status.state = "failed" if status.failed_files > 0 else "success"
             status.finished_at = time.time()
         except Exception as exc:
@@ -2294,7 +2306,7 @@ class SyncTaskRunner:
                 continue
             link = await self._link_service.get_by_local_path(str(path))
             if not link:
-                self.queue_local_change(task.id, path)
+                self.queue_local_change(task.id, path, changed_at=0.0)
                 queued += 1
         if queued:
             logger.info(
@@ -2506,7 +2518,7 @@ class SyncTaskRunner:
                     if should_close:
                         await drive_service.close()
             return
-        self.queue_local_change(task.id, path)
+        self.queue_local_change(task.id, path, changed_at=event.timestamp)
         self._record_event(
             status,
             SyncFileEvent(path=str(path), status="queued", message="等待周期上传"),

@@ -999,9 +999,55 @@ async def test_handle_local_event_calls_upload_with_all_dependencies(tmp_path: P
 
     pending = runner._pending_uploads.get(task.id)
     assert pending is not None
-    assert str(path) in pending
+    assert pending[str(path)] == 0.0
     status = runner.get_status(task.id)
     assert status.last_files[-1].status == "queued"
+
+
+@pytest.mark.asyncio
+async def test_run_scheduled_upload_waits_until_file_is_quiet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = SyncTaskRunner()
+    task = SyncTaskItem(
+        id="task-quiet",
+        name="静默窗口测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    path = tmp_path / "note.md"
+    path.write_text("# note", encoding="utf-8")
+    runner.queue_local_change(task.id, path, changed_at=100.0)
+    runner._initial_upload_scanned.add(task.id)
+    uploads: list[list[str]] = []
+
+    async def _capture_upload_paths(task_arg, status_arg, paths):
+        uploads.append([str(item) for item in paths])
+
+    async def _no_pending_tombstones(task_id: str) -> bool:
+        return False
+
+    runner._run_upload_paths = _capture_upload_paths  # type: ignore[method-assign]
+    runner._has_pending_tombstones = _no_pending_tombstones  # type: ignore[method-assign]
+
+    monkeypatch.setattr("src.services.sync_runner.time.time", lambda: 101.5)
+    await runner.run_scheduled_upload(task)
+    assert uploads == []
+    pending = runner._pending_uploads.get(task.id)
+    assert pending is not None and str(path) in pending
+
+    monkeypatch.setattr("src.services.sync_runner.time.time", lambda: 102.1)
+    await runner.run_scheduled_upload(task)
+    assert uploads == [[str(path)]]
+    pending = runner._pending_uploads.get(task.id)
+    assert pending is not None and str(path) not in pending
 
 
 @pytest.mark.asyncio
