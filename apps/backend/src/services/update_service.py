@@ -72,6 +72,22 @@ def is_newer_version(latest: str, current: str) -> bool:
     return (latest_dev or 0) > (current_dev or 0)
 
 
+def parse_sha256_digest_field(value: object) -> str | None:
+    if value is None:
+        return None
+    digest = str(value).strip().lower()
+    if not digest:
+        return None
+    if ":" in digest:
+        algorithm, raw = digest.split(":", 1)
+        if algorithm.strip() != "sha256":
+            return None
+        digest = raw.strip()
+    if re.fullmatch(r"[a-f0-9]{64}", digest):
+        return digest
+    return None
+
+
 def select_asset(assets: list[dict[str, Any]], platform: str) -> UpdateAsset | None:
     suffix = None
     if platform == "win32":
@@ -87,6 +103,7 @@ def select_asset(assets: list[dict[str, Any]], platform: str) -> UpdateAsset | N
                 name=name,
                 url=str(asset.get("browser_download_url", "")),
                 size=asset.get("size"),
+                sha256=parse_sha256_digest_field(asset.get("digest")),
             )
     return None
 
@@ -155,6 +172,29 @@ def extract_sha256_from_text(text: str, target_asset_name: str) -> str | None:
     all_hashes = re.findall(r"(?i)\b[a-f0-9]{64}\b", text)
     if len(all_hashes) == 1:
         return all_hashes[0].lower()
+    return None
+
+
+def extract_sha256_from_release_notes(text: str, target_asset_name: str) -> str | None:
+    # 先复用标准 checksum 文本解析（sha256sum/openssl 风格）。
+    digest = extract_sha256_from_text(text, target_asset_name)
+    if digest:
+        return digest
+
+    # 回退：支持 Markdown 表格/普通行中“文件名 + 64位hash”同一行的发布说明。
+    target = target_asset_name.lower().strip()
+    if not target:
+        return None
+    hash_pattern = re.compile(r"(?i)\b([a-f0-9]{64})\b")
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if target not in line.lower():
+            continue
+        match = hash_pattern.search(line)
+        if match:
+            return match.group(1).lower()
     return None
 
 
@@ -283,6 +323,13 @@ class UpdateService:
                     )
                     if checksum_asset:
                         asset.checksum_url = checksum_asset.url
+                    else:
+                        digest_from_notes = extract_sha256_from_release_notes(
+                            str(release.get("body") or ""),
+                            asset.name,
+                        )
+                        if digest_from_notes:
+                            asset.sha256 = digest_from_notes
 
                 status = UpdateStatus(
                     current_version=current_version,

@@ -2157,3 +2157,9 @@
 - 结果：`SyncTaskRunner` 的本地上传队列由路径集合升级为“路径+最后变更时间”，周期上传仅消费超过静默窗口（2s）的文件；持续编辑期间会合并为一次稳定后上传。
 - 测试：`python -m pytest tests/test_watcher.py tests/test_watcher_filters.py tests/test_sync_runner.py`（apps/backend，28 passed）。
 - 问题：暂无阻塞问题。
+
+## v0.5.50-dev.1 (2026-03-07)
+- 目标：修复自动更新下载阶段误报“缺少 sha256 校验信息”。
+- 结果：`UpdateService` 新增 GitHub Release 资产 `digest` 字段解析（`sha256:...`），并补充“从 Release 正文按目标安装包名解析 sha256”的回退路径；缺少 `.sha256` 附件时仍可安全校验下载包。
+- 测试：`python -m pytest tests/test_update_service.py tests/test_system_update_api.py tests/test_update_scheduler.py -q`（apps/backend，14 passed）。
+- 问题：暂无阻塞问题。
