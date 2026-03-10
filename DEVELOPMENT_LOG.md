@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.50-release (2026-03-11)
+- 目标：
+  - 发布 `v0.5.50` 稳定版本并产出新的 Windows 安装包。
+- 包含内容：
+  - `v0.5.50-dev.1`：自动更新校验链路补齐三层来源，修复缺少 sha256 时下载被阻断。
+  - `v0.5.50-dev.2`：发布说明生成器支持无 `release:` 标记回退归档。
+  - `v0.5.50-dev.3`：修复非 Markdown 文件多次上传后飞书侧持续累积同名重复文件。
+- 发布动作：
+  - 版本号收敛为稳定版 `v0.5.50`（root/frontend/backend）。
+  - `CHANGELOG.md` 新增 `release: v0.5.50` 记录。
+  - 计划构建 Windows NSIS 安装包并推送 `v0.5.50` tag 触发 GitHub Release。
+
 ## v0.5.50-dev.3-sync-upload-dedup (2026-03-11)
 - 目标：
   - 修复本地反复生成/修改同一 PDF 等非 Markdown 文件时，飞书目录不断新增同名副本的问题。
