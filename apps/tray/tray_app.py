@@ -26,6 +26,7 @@ import json
 import urllib.request
 import urllib.error
 import argparse
+from pathlib import Path
 
 # 确保项目根目录在 sys.path 中
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -100,6 +101,48 @@ except Exception as exc:
 
 
 _LOCK_SOCKET: socket.socket | None = None
+
+
+def _data_dir() -> Path:
+    env_dir = os.getenv("LARKSYNC_DATA_DIR")
+    if env_dir:
+        return Path(env_dir).expanduser().resolve()
+    root = Path(_PROJECT_ROOT)
+    if (root / "apps").exists() and (root / "data").exists():
+        return root / "data"
+    if sys.platform == "win32":
+        base = os.getenv("APPDATA")
+        if not base:
+            base = str(Path.home() / "AppData" / "Roaming")
+        return Path(base) / "LarkSync"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "LarkSync"
+    base = os.getenv("XDG_DATA_HOME")
+    if not base:
+        base = str(Path.home() / ".local" / "share")
+    return Path(base) / "LarkSync"
+
+
+def _install_request_path() -> Path:
+    return _data_dir() / "updates" / "install-request.json"
+
+
+def _load_install_request() -> dict[str, str] | None:
+    path = _install_request_path()
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    installer_path = str(payload.get("installer_path", "")).strip()
+    if not installer_path:
+        return None
+    return {"installer_path": installer_path}
+
+
+def _clear_install_request() -> None:
+    _install_request_path().unlink(missing_ok=True)
 
 
 def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
@@ -238,6 +281,8 @@ class LarkSyncTray:
             print("警告：后端启动失败，请检查日志。")
         try:
             while self._running:
+                if self._handle_pending_install_request():
+                    break
                 self._backend.maybe_auto_restart()
                 time.sleep(STATUS_POLL_INTERVAL)
         finally:
@@ -408,12 +453,66 @@ class LarkSyncTray:
         """退出应用。"""
         self.stop()
 
+    def _handle_pending_install_request(self) -> bool:
+        request = _load_install_request()
+        if not request:
+            return False
+        installer_path = request["installer_path"]
+        try:
+            self._schedule_installer_launch(installer_path)
+        except Exception as exc:
+            print(f"警告：启动安装程序失败: {exc}")
+            return False
+        _clear_install_request()
+        self._notify(
+            "正在启动更新安装",
+            "LarkSync 将退出并打开安装包，请按安装向导完成更新。",
+            category="update",
+        )
+        self.stop()
+        return True
+
+    def _schedule_installer_launch(self, installer_path: str) -> None:
+        path = Path(installer_path).expanduser().resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"安装包不存在: {path}")
+
+        if sys.platform == "win32":
+            escaped = str(path).replace("'", "''")
+            creationflags = (
+                getattr(subprocess, "DETACHED_PROCESS", 0)
+                | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            )
+            subprocess.Popen(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-Command",
+                    f"Start-Sleep -Seconds 1; Start-Process -FilePath '{escaped}'",
+                ],
+                creationflags=creationflags,
+                close_fds=True,
+            )
+            return
+
+        if sys.platform == "darwin":
+            subprocess.Popen(["/usr/bin/open", str(path)], close_fds=True)
+            return
+
+        opener = "xdg-open"
+        subprocess.Popen([opener, str(path)], close_fds=True)
+
     # ---- 状态轮询 ----
 
     def _poll_status_loop(self) -> None:
         """后台线程：定期查询后端状态并更新图标。"""
         while self._running:
             try:
+                if self._handle_pending_install_request():
+                    return
                 # 检查后端是否需要重启
                 needs_notify = self._backend.maybe_auto_restart()
                 if needs_notify:

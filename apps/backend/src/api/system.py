@@ -9,6 +9,7 @@ from loguru import logger
 
 from src.api.watcher import watcher_manager
 from src.db.session import dispose_engines
+from src.services.update_install_service import queue_install_request
 from src.services.update_service import UpdateService, UpdateStatus
 from src.services.update_scheduler import UpdateScheduler
 
@@ -21,6 +22,15 @@ class FolderResponse(BaseModel):
 
 class UpdateStatusResponse(UpdateStatus):
     pass
+
+
+class UpdateInstallPayload(BaseModel):
+    download_path: str | None = None
+
+
+class UpdateInstallResponse(BaseModel):
+    queued: bool
+    installer_path: str
 
 
 def _select_folder() -> str | None:
@@ -91,6 +101,25 @@ async def update_download(request: Request) -> UpdateStatusResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return UpdateStatusResponse.model_validate(status.model_dump())
+
+
+@router.post("/update/install", response_model=UpdateInstallResponse)
+async def update_install(
+    payload: UpdateInstallPayload,
+    request: Request,
+) -> UpdateInstallResponse:
+    service = _get_update_service(request)
+    installer_path = (payload.download_path or "").strip()
+    if not installer_path:
+        cached = service.load_cached_status()
+        installer_path = (cached.download_path or "").strip()
+    if not installer_path:
+        raise HTTPException(status_code=400, detail="尚未下载更新包")
+    try:
+        queued = queue_install_request(installer_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return UpdateInstallResponse(queued=True, installer_path=queued.installer_path)
 
 
 async def _shutdown_after_response(app) -> None:

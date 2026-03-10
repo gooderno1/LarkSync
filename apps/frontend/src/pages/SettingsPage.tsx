@@ -15,7 +15,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 
 export function SettingsPage() {
   const { config, configLoading, saveConfig, saving, saveError } = useConfig();
-  const { status, checkUpdate, checking, downloadUpdate, downloading } = useUpdate();
+  const { status, checkUpdate, checking, downloadUpdate, downloading, installUpdate, installing } = useUpdate();
   const { tasks, resetLinks, resettingLinks } = useTasks();
   const { toast } = useToast();
 
@@ -157,12 +157,38 @@ export function SettingsPage() {
     try {
       const result = await downloadUpdate();
       if (result.download_path) {
+        const confirmed = window.confirm(
+          `更新包已下载：\n${result.download_path}\n\n是否现在退出 LarkSync 并启动安装程序？`
+        );
+        if (confirmed) {
+          await installUpdate(result.download_path);
+          toast("正在启动安装程序，LarkSync 即将退出", "success");
+          return;
+        }
         toast(`更新包已下载：${result.download_path}`, "success");
       } else {
         toast("更新包已下载", "success");
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : "下载更新失败", "danger");
+    }
+  };
+
+  const handleInstallDownloadedUpdate = async () => {
+    const downloadPath = status.download_path;
+    if (!downloadPath) {
+      toast("尚未下载更新包", "danger");
+      return;
+    }
+    const confirmed = window.confirm(
+      `即将退出 LarkSync 并启动安装程序：\n${downloadPath}\n\n是否继续？`
+    );
+    if (!confirmed) return;
+    try {
+      await installUpdate(downloadPath);
+      toast("正在启动安装程序，LarkSync 即将退出", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "启动安装失败", "danger");
     }
   };
 
@@ -584,14 +610,26 @@ export function SettingsPage() {
                 </div>
                 {status.update_available ? (
                   <div className="mt-3">
-                    <button
-                      className="rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
-                      onClick={handleDownloadUpdate}
-                      disabled={downloading}
-                      type="button"
-                    >
-                      {downloading ? "下载中..." : "下载更新包"}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
+                        onClick={handleDownloadUpdate}
+                        disabled={downloading || installing}
+                        type="button"
+                      >
+                        {downloading ? "下载中..." : "下载更新包"}
+                      </button>
+                      {status.download_path ? (
+                        <button
+                          className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
+                          onClick={handleInstallDownloadedUpdate}
+                          disabled={installing || downloading}
+                          type="button"
+                        >
+                          {installing ? "启动中..." : "安装已下载更新"}
+                        </button>
+                      ) : null}
+                    </div>
                     {status.download_path ? (
                       <p className="mt-2 text-[11px] text-zinc-500">已下载：{status.download_path}</p>
                     ) : null}
