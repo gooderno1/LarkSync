@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.5.52-release (2026-03-11)
+- 目标：
+  - 发布 `v0.5.52` 稳定版本并产出新的 Windows 安装包。
+- 包含内容：
+  - `v0.5.52-dev.1`：自动更新下载完成后新增“确认安装”安全流程，由托盘退出当前应用并启动安装程序。
+- 发布动作：
+  - 版本号收敛为稳定版 `v0.5.52`（root/frontend/backend）。
+  - `CHANGELOG.md` 新增 `release: v0.5.52` 记录。
+  - 计划构建 Windows NSIS 安装包并推送 `v0.5.52` tag 触发 GitHub Release。
+
 ## v0.5.52-dev.1-safe-update-install (2026-03-11)
 - 目标：
   - 为自动更新增加“确认后安装”的安全流程，避免下载完成后仍需手动去文件夹双击安装包。
