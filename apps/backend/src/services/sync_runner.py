@@ -2055,6 +2055,13 @@ class SyncTaskRunner:
             parent_type="explorer",
         )
         synced_at = time.time()
+        await self._cleanup_replaced_cloud_files(
+            path=path,
+            new_token=result.file_token,
+            parent_token=parent_token,
+            previous_link=link,
+            drive_service=drive_service,
+        )
         await self._link_service.upsert_link(
             local_path=str(path),
             cloud_token=result.file_token,
@@ -2070,6 +2077,52 @@ class SyncTaskRunner:
         )
         status.completed_files += 1
         self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
+
+    async def _cleanup_replaced_cloud_files(
+        self,
+        *,
+        path: Path,
+        new_token: str,
+        parent_token: str,
+        previous_link: SyncLinkItem | None,
+        drive_service: DriveService | None,
+    ) -> None:
+        delete_file = getattr(drive_service, "delete_file", None) if drive_service else None
+        if not callable(delete_file):
+            return
+
+        stale_tokens: list[str] = []
+        seen_tokens: set[str] = set()
+
+        def _append_stale(token: str | None) -> None:
+            normalized = (token or "").strip()
+            if not normalized or normalized == new_token or normalized in seen_tokens:
+                return
+            seen_tokens.add(normalized)
+            stale_tokens.append(normalized)
+
+        if previous_link and previous_link.cloud_type == "file":
+            _append_stale(previous_link.cloud_token)
+
+        if drive_service:
+            try:
+                existing = await self._list_files_all(drive_service, parent_token)
+            except Exception:
+                logger.warning(
+                    "列出云端文件失败，跳过同名副本清理: parent={} path={}",
+                    parent_token,
+                    path,
+                )
+            else:
+                for item in existing:
+                    if item.type == "file" and item.name == path.name:
+                        _append_stale(item.token)
+
+        for token in stale_tokens:
+            try:
+                await delete_file(token, "file")
+            except Exception:
+                logger.warning("删除旧云端文件失败，保留最新映射: token={} path={}", token, path)
 
     async def _bootstrap_block_state(
         self,

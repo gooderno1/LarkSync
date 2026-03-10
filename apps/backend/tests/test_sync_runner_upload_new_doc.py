@@ -232,6 +232,73 @@ async def test_upload_file_updates_link_timestamp(tmp_path: Path, monkeypatch: p
 
 
 @pytest.mark.asyncio
+async def test_upload_file_replaces_previous_cloud_file_and_cleans_same_name_duplicates(
+    tmp_path: Path,
+) -> None:
+    file_path = tmp_path / "report.pdf"
+    file_path.write_bytes(b"new-pdf")
+
+    old_token = "file-old"
+    duplicate_token = "file-duplicate"
+    responses = [
+        DriveFileList(
+            files=[
+                DriveFile(token=old_token, name="report.pdf", type="file"),
+                DriveFile(token=duplicate_token, name="report.pdf", type="file"),
+                DriveFile(token="file-other", name="other.pdf", type="file"),
+            ],
+            has_more=False,
+            next_page_token=None,
+        )
+    ]
+    drive_service = FakeDriveService(responses)
+    link_service = FakeLinkService()
+    await link_service.upsert_link(
+        local_path=str(file_path),
+        cloud_token=old_token,
+        cloud_type="file",
+        task_id="task-upload",
+        updated_at=1.0,
+        cloud_parent_token="fld-1",
+        local_hash="old-hash",
+        local_size=1,
+        local_mtime=1.0,
+    )
+    runner = SyncTaskRunner(
+        file_uploader=FakeFileUploader(),
+        link_service=link_service,
+        drive_service=drive_service,
+    )
+    task = SyncTaskItem(
+        id="task-upload",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_file(
+        task,
+        status,
+        file_path,
+        runner._file_uploader,  # type: ignore[arg-type]
+        drive_service,
+    )
+
+    assert status.failed_files == 0
+    assert status.completed_files == 1
+    assert drive_service.deleted == [(old_token, "file"), (duplicate_token, "file")]
+    assert link_service.links[str(file_path)].cloud_token == "file-token"
+
+
+@pytest.mark.asyncio
 async def test_upload_markdown_reuses_existing_doc_without_new_import(tmp_path: Path) -> None:
     markdown_path = tmp_path / "复用文档.md"
     markdown_path.write_text("# Reuse", encoding="utf-8")

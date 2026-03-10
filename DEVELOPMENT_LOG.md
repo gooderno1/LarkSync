@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.5.50-dev.3-sync-upload-dedup (2026-03-11)
+- 目标：
+  - 修复本地反复生成/修改同一 PDF 等非 Markdown 文件时，飞书目录不断新增同名副本的问题。
+- 根因：
+  - 非 MD 文件上传链路始终调用 `files/upload_all` / 分片上传创建新云端文件，但上传成功后只更新本地 `sync_links` 到新 token，没有回收旧 token 对应文件。
+  - 因此同一路径每次内容变化都会在飞书侧留下历史副本，看起来像“重复上传未生效去重”。
+- 变更：
+  - `apps/backend/src/services/sync_runner.py`
+    - 非 MD 文件上传成功后新增旧云端副本清理逻辑；
+    - 优先删除该本地路径上一次映射的旧 `cloud_token`；
+    - 并在目标云端目录中按同名文件补扫，清理历史残留重复副本，仅保留最新上传结果。
+  - `apps/backend/tests/test_sync_runner_upload_new_doc.py`
+    - 新增回归测试，覆盖“再次上传 PDF 后应清理旧 token 与同名历史副本”。
+- 验证：
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -q`（工作目录：`apps/backend`，11 passed）
+  - `python -m pytest tests/test_sync_runner.py -q`（工作目录：`apps/backend`，24 passed）
+
 ## v0.5.48-release (2026-03-06)
 - 目标：
   - 发布 `v0.5.48` 稳定版本并输出可下载安装包。
