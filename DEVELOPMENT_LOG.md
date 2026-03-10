@@ -1,5 +1,33 @@
 # DEVELOPMENT LOG
 
+## v0.5.51-release (2026-03-11)
+- 目标：
+  - 发布 `v0.5.51` 稳定版本，修复旧客户端自动更新报“缺少 sha256 校验信息”。
+- 包含内容：
+  - `v0.5.51-dev.1`：Release 正文追加安装包 sha256 表，并上传 `.sha256` 校验资产，兼容 `v0.5.49` 等旧版更新器。
+- 发布动作：
+  - 版本号收敛为稳定版 `v0.5.51`（root/frontend/backend）。
+  - `CHANGELOG.md` 新增 `release: v0.5.51` 记录。
+  - 计划构建 Windows NSIS 安装包并推送 `v0.5.51` tag 触发 GitHub Release。
+
+## v0.5.51-dev.1-release-checksum-compat (2026-03-11)
+- 目标：
+  - 修复旧客户端自动更新无法识别 GitHub `asset.digest`，导致升级到 `v0.5.50` 时提示“缺少 sha256 校验信息”。
+- 根因：
+  - `v0.5.49` 及更老客户端不读取 GitHub Release asset 的 `digest` 字段，只支持 `.sha256` 资产或 Release 正文中的哈希文本。
+  - `v0.5.50` Release 仅上传了安装包本体，没有额外 `.sha256` 文件，正文也未包含安装包 sha256，因此旧客户端无法完成校验。
+- 变更：
+  - `scripts/release_notes.py`
+    - 新增 `--asset` 参数，可对发布产物计算 sha256 并追加到 Release 正文“安装包校验”表。
+  - `.github/workflows/release-build.yml`
+    - Windows/macOS 发布任务在构建后自动生成 `.sha256` 资产；
+    - 上传 Release 资产时一并附带 `.sha256`；
+    - 生成 Release Notes 时带入安装包路径，把 sha256 写进正文。
+  - `apps/backend/tests/test_release_notes.py`
+    - 新增 Release 正文 checksum 表与资产哈希收集回归测试。
+- 验证：
+  - `python -m pytest tests/test_release_notes.py tests/test_release.py -q`（工作目录：`apps/backend`，12 passed）
+
 ## v0.5.50-release (2026-03-11)
 - 目标：
   - 发布 `v0.5.50` 稳定版本并产出新的 Windows 安装包。

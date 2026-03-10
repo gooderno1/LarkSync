@@ -69,10 +69,24 @@ jobs:
           LARKSYNC_VERSION: ${{ github.ref_name }}
         run: python scripts/build_installer.py --nsis
 
+      - name: Generate checksum assets
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          for path in Path("dist").glob("LarkSync-Setup-*.exe"):
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              checksum_path = path.with_name(path.name + ".sha256")
+              checksum_path.write_text(f"{digest}  {path.name}\n", encoding="utf-8")
+              print(f"wrote {checksum_path}")
+          PY
+
       - name: Generate release notes
         shell: bash
         run: |
-          python scripts/release_notes.py --version "${GITHUB_REF_NAME}" --output release-notes.md
+          python scripts/release_notes.py --version "${GITHUB_REF_NAME}" --asset "dist/LarkSync-Setup-*.exe" --output release-notes.md
 
       - name: List dist
         run: |
@@ -83,13 +97,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: dist/LarkSync-Setup-*.exe
+          path: |
+            dist/LarkSync-Setup-*.exe
+            dist/LarkSync-Setup-*.exe.sha256
           if-no-files-found: error
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/LarkSync-Setup-*.exe
+          files: |
+            dist/LarkSync-Setup-*.exe
+            dist/LarkSync-Setup-*.exe.sha256
           body_path: release-notes.md
           fail_on_unmatched_files: true
 
@@ -138,10 +156,24 @@ jobs:
           LARKSYNC_VERSION: ${{ github.ref_name }}
         run: python scripts/build_installer.py --dmg
 
+      - name: Generate checksum assets
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          for path in Path("dist").glob("LarkSync-*.dmg"):
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              checksum_path = path.with_name(path.name + ".sha256")
+              checksum_path.write_text(f"{digest}  {path.name}\n", encoding="utf-8")
+              print(f"wrote {checksum_path}")
+          PY
+
       - name: Generate release notes
         shell: bash
         run: |
-          python scripts/release_notes.py --version "${GITHUB_REF_NAME}" --output release-notes.md
+          python scripts/release_notes.py --version "${GITHUB_REF_NAME}" --asset "dist/LarkSync-*.dmg" --output release-notes.md
 
       - name: List dist
         run: |
@@ -153,12 +185,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-installer
-          path: dist/LarkSync-*.dmg
+          path: |
+            dist/LarkSync-*.dmg
+            dist/LarkSync-*.dmg.sha256
           if-no-files-found: error
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/LarkSync-*.dmg
+          files: |
+            dist/LarkSync-*.dmg
+            dist/LarkSync-*.dmg.sha256
           body_path: release-notes.md
           fail_on_unmatched_files: true

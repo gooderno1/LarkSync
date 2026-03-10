@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 from dataclasses import dataclass
@@ -104,6 +105,7 @@ def render_release_notes(
     release_entry: ChangelogEntry | None,
     previous_release: ChangelogEntry | None,
     items: list[ChangelogEntry],
+    asset_checksums: list[tuple[str, str]] | None = None,
 ) -> str:
     normalized_target = normalize_version(target_version)
     lines: list[str] = [f"# LarkSync {normalized_target}", ""]
@@ -129,14 +131,52 @@ def render_release_notes(
             lines.append(f"- [{entry.date}] {entry.message}")
         lines.append("")
 
+    if asset_checksums:
+        lines.append("## 安装包校验")
+        lines.append("")
+        lines.append("| asset | sha256 |")
+        lines.append("| --- | --- |")
+        for asset_name, digest in asset_checksums:
+            lines.append(f"| {asset_name} | `{digest}` |")
+        lines.append("")
+
     return "\n".join(lines).rstrip() + "\n"
 
 
-def build_notes(changelog_path: Path, target_version: str) -> str:
+def compute_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def collect_asset_checksums(asset_paths: Iterable[Path]) -> list[tuple[str, str]]:
+    checksums: list[tuple[str, str]] = []
+    for path in asset_paths:
+        resolved = Path(path)
+        if not resolved.is_file():
+            continue
+        checksums.append((resolved.name, compute_sha256(resolved)))
+    return checksums
+
+
+def build_notes(
+    changelog_path: Path,
+    target_version: str,
+    asset_paths: Iterable[Path] | None = None,
+) -> str:
     text = changelog_path.read_text(encoding="utf-8")
     entries = parse_changelog(text)
     release_entry, previous_release, items = collect_entries_for_release(entries, target_version)
-    return render_release_notes(target_version, release_entry, previous_release, items)
+    checksums = collect_asset_checksums(asset_paths or [])
+    return render_release_notes(
+        target_version,
+        release_entry,
+        previous_release,
+        items,
+        asset_checksums=checksums,
+    )
 
 
 def main() -> int:
@@ -144,6 +184,12 @@ def main() -> int:
     parser.add_argument("--version", default=os.getenv("GITHUB_REF_NAME", ""), help="target release version/tag")
     parser.add_argument("--changelog", default="CHANGELOG.md", help="path to CHANGELOG file")
     parser.add_argument("--output", default="", help="output markdown file path")
+    parser.add_argument(
+        "--asset",
+        action="append",
+        default=[],
+        help="asset file path or glob pattern; can be specified multiple times",
+    )
     args = parser.parse_args()
 
     version = normalize_version(args.version)
@@ -153,7 +199,17 @@ def main() -> int:
     if not changelog_path.exists():
         parser.error(f"CHANGELOG not found: {changelog_path}")
 
-    content = build_notes(changelog_path, version)
+    asset_paths: list[Path] = []
+    for raw in args.asset:
+        matched = sorted(Path().glob(raw))
+        if matched:
+            asset_paths.extend(path.resolve() for path in matched if path.is_file())
+            continue
+        candidate = Path(raw).resolve()
+        if candidate.is_file():
+            asset_paths.append(candidate)
+
+    content = build_notes(changelog_path, version, asset_paths=asset_paths)
     if args.output:
         output_path = Path(args.output).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)

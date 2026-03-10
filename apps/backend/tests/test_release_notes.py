@@ -79,6 +79,35 @@ def test_render_release_notes_groups_multiple_versions() -> None:
     assert "- [2026-02-17] fix(ui): b2" in markdown
 
 
+def test_render_release_notes_appends_asset_checksums() -> None:
+    markdown = release_notes.render_release_notes(
+        target_version="v0.5.51",
+        release_entry=release_notes.ChangelogEntry(
+            date="2026-03-11",
+            version="v0.5.51",
+            message="release: v0.5.51",
+        ),
+        previous_release=release_notes.ChangelogEntry(
+            date="2026-03-11",
+            version="v0.5.50",
+            message="release: v0.5.50",
+        ),
+        items=[
+            release_notes.ChangelogEntry(
+                date="2026-03-11",
+                version="v0.5.51-dev.1",
+                message="fix(update): add checksum assets",
+            )
+        ],
+        asset_checksums=[
+            ("LarkSync-Setup-v0.5.51.exe", "a" * 64),
+        ],
+    )
+
+    assert "## 安装包校验" in markdown
+    assert "| LarkSync-Setup-v0.5.51.exe | `" + ("a" * 64) + "` |" in markdown
+
+
 def test_build_notes_fallback_when_no_target_release_marker(tmp_path: Path) -> None:
     changelog_path = tmp_path / "CHANGELOG.md"
     changelog_path.write_text(
@@ -107,3 +136,28 @@ def test_build_notes_no_target_version_still_fallback_empty(tmp_path: Path) -> N
 
     assert "# LarkSync v0.5.50" in markdown
     assert "未找到可归档的增量条目" in markdown
+
+
+def test_build_notes_collects_asset_checksums(tmp_path: Path) -> None:
+    changelog_path = tmp_path / "CHANGELOG.md"
+    changelog_path.write_text(
+        (
+            "# CHANGELOG\n\n"
+            "[2026-03-11] v0.5.51 release: v0.5.51\n"
+            "[2026-03-11] v0.5.51-dev.1 fix(update): add checksum assets\n"
+            "[2026-03-11] v0.5.50 release: v0.5.50\n"
+        ),
+        encoding="utf-8",
+    )
+    asset_path = tmp_path / "LarkSync-Setup-v0.5.51.exe"
+    asset_path.write_bytes(b"binary")
+
+    markdown = release_notes.build_notes(
+        changelog_path,
+        "v0.5.51",
+        asset_paths=[asset_path],
+    )
+
+    assert "## 安装包校验" in markdown
+    assert "LarkSync-Setup-v0.5.51.exe" in markdown
+    assert release_notes.compute_sha256(asset_path) in markdown
