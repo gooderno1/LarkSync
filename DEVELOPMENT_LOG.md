@@ -2223,6 +2223,12 @@
 - 测试：`python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py tests/test_watcher.py tests/test_watcher_filters.py`（apps/backend，41 passed）。
 - 问题：`scripts/sync_feishu_docs.py` 已执行，但入口页当前未解析到 zip 文档链接，仅刷新了 `docs/feishu/_manifest.json` 的检查结果，后续如需依赖最新 zip 文档需单独跟进页面结构变更。
 
+## v0.5.53 (2026-04-07)
+- 目标：发布稳定版，交付“忽略本地临时文件误上传”的修复用于在线升级。
+- 结果：稳定版收敛 `v0.5.53-dev.1` 的上传过滤修复，发布版本号统一为 `v0.5.53`，用于触发 Windows Release 构建与自动更新分发。
+- 测试：沿用 `v0.5.53-dev.1` 回归结果；发布前额外执行安装包本地构建验证。
+- 问题：等待 GitHub Actions 完成 Release Build 后，安装包与 `.sha256` 才会正式出现在 Release 资产中。
+
 ## v0.1.3-dev.1 (2026-01-27)
 - 目标：实现发布脚本与版本归档机制。
 - 结果：新增 `scripts/release.py`，支持自动更新版本与 CHANGELOG 并执行 Git 提交与推送；新增开发日志规范。
