@@ -1005,6 +1005,67 @@ async def test_handle_local_event_calls_upload_with_all_dependencies(tmp_path: P
 
 
 @pytest.mark.asyncio
+async def test_handle_local_event_ignores_temporary_files(tmp_path: Path) -> None:
+    runner = SyncTaskRunner(link_service=FakeLinkService())
+    task = SyncTaskItem(
+        id="task-temp-event",
+        name="临时文件事件测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    path = tmp_path / "~$会议纪要.docx"
+    path.write_text("temp", encoding="utf-8")
+    event = FileChangeEvent(
+        event_type="created",
+        src_path=str(path),
+        dest_path=None,
+        timestamp=123.0,
+    )
+
+    await runner._handle_local_event(task, event)
+
+    assert runner._pending_uploads.get(task.id) in (None, {})
+    assert runner.get_status(task.id).last_files == []
+
+
+@pytest.mark.asyncio
+async def test_scan_for_unlinked_files_skips_temporary_files(tmp_path: Path) -> None:
+    runner = SyncTaskRunner(link_service=FakeLinkService())
+    task = SyncTaskItem(
+        id="task-temp-scan",
+        name="临时文件扫描测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    temp_path = tmp_path / "draft.md.tmp"
+    temp_path.write_text("temp", encoding="utf-8")
+    real_path = tmp_path / "正式文档.md"
+    real_path.write_text("# real", encoding="utf-8")
+
+    queued = await runner._scan_for_unlinked_files(task)
+
+    pending = runner._pending_uploads.get(task.id)
+    assert queued == 1
+    assert pending is not None
+    assert str(real_path) in pending
+    assert str(temp_path) not in pending
+
+
+@pytest.mark.asyncio
 async def test_run_scheduled_upload_waits_until_file_is_quiet(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -43,6 +43,21 @@ _LEGACY_DOCX_SCAN_BYTES = 262_144
 _CLOUD_MD_MIRROR_FOLDER_NAME = "_LarkSync_MD_Mirror"
 _CLOUD_MD_MIRROR_CACHE_PREFIX = "__md_mirror__"
 _LOCAL_TRASH_DIR_NAME = ".larksync_trash"
+_LOCAL_TEMP_FILE_PREFIXES = ("~$",)
+_LOCAL_TEMP_FILE_SUFFIXES = (
+    ".tmp",
+    ".temp",
+    ".swp",
+    ".swo",
+    ".part",
+    ".crdownload",
+    ".download",
+)
+_LOCAL_TEMP_FILE_NAMES = {
+    ".ds_store",
+    "desktop.ini",
+    "thumbs.db",
+}
 _MD_SYNC_MODE_ENHANCED = "enhanced"
 _MD_SYNC_MODE_DOWNLOAD_ONLY = "download_only"
 _MD_SYNC_MODE_DOC_ONLY = "doc_only"
@@ -90,6 +105,21 @@ class DownloadCandidate:
     target_path: Path
     mtime: float
     export_sub_id: str | None = None
+
+
+def _is_temporary_local_name(name: str) -> bool:
+    lowered = (name or "").strip().lower()
+    if not lowered:
+        return False
+    if lowered in _LOCAL_TEMP_FILE_NAMES:
+        return True
+    if lowered.startswith(_LOCAL_TEMP_FILE_PREFIXES):
+        return True
+    if lowered.startswith(".~lock.") and lowered.endswith("#"):
+        return True
+    if lowered.endswith(_LOCAL_TEMP_FILE_SUFFIXES):
+        return True
+    return False
 
 
 class SyncTaskRunner:
@@ -2371,6 +2401,8 @@ class SyncTaskRunner:
         try:
             relative = path.relative_to(Path(task.local_path))
         except ValueError:
+            return True
+        if _is_temporary_local_name(relative.name):
             return True
         lowered = {part.lower() for part in relative.parts}
         if (

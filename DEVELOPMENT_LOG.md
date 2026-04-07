@@ -2217,6 +2217,12 @@
 - 测试：`python -m pytest`（apps/backend）；`npm audit`（apps/frontend）。
 - 问题：暂无阻塞问题。若 Feishu token 响应字段不同，请提供 JSON 样例以调整解析。
 
+## v0.5.53-dev.1 (2026-04-07)
+- 目标：修复本地对云端同步时误上传 Office 临时文件与系统噪音文件的问题。
+- 结果：`SyncTaskRunner` 新增本地临时文件判定，上传事件与启动补扫都会跳过 `~$` 前缀、`.tmp/.temp/.swp/.part/.crdownload` 后缀、`Thumbs.db` / `desktop.ini` / `.DS_Store` 等文件；补充 watcher 与补扫路径的回归测试。
+- 测试：`python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py tests/test_watcher.py tests/test_watcher_filters.py`（apps/backend，41 passed）。
+- 问题：`scripts/sync_feishu_docs.py` 已执行，但入口页当前未解析到 zip 文档链接，仅刷新了 `docs/feishu/_manifest.json` 的检查结果，后续如需依赖最新 zip 文档需单独跟进页面结构变更。
+
 ## v0.1.3-dev.1 (2026-01-27)
 - 目标：实现发布脚本与版本归档机制。
 - 结果：新增 `scripts/release.py`，支持自动更新版本与 CHANGELOG 并执行 Git 提交与推送；新增开发日志规范。
