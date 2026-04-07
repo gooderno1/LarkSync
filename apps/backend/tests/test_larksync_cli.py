@@ -145,6 +145,145 @@ def test_do_task_update_builds_patch_payload(monkeypatch: pytest.MonkeyPatch) ->
     ]
 
 
+def test_do_bootstrap_cache_requires_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        cli,
+        "do_check",
+        lambda base_url: {
+            "base_url": base_url,
+            "health": {"ok": True, "status_code": 200, "data": {"status": "ok"}},
+            "auth": {
+                "ok": True,
+                "status_code": 200,
+                "data": {"connected": False, "drive_ok": None},
+            },
+            "config": {"ok": True, "status_code": 200, "data": {}},
+            "tasks": {"ok": True, "status_code": 200, "count": 0, "data": []},
+            "ready_for_sync": False,
+        },
+    )
+
+    result = cli.do_bootstrap_cache(
+        base_url="http://localhost:8000",
+        name="Agent Cache",
+        local_path=r"D:\Knowledge\FeishuMirror",
+        cloud_folder_token="fld_test",
+        sync_mode="download_only",
+        download_value=1,
+        download_unit="days",
+        download_time="01:00",
+        run_now=True,
+    )
+
+    assert result["action"] == "bootstrap-cache"
+    assert result["phase"] == "needs_oauth"
+    assert result["completed"] is False
+    assert result["next_step"]["type"] == "complete_oauth"
+    assert result["next_step"]["login_url"] == "http://localhost:8000/auth/login"
+
+
+def test_do_bootstrap_cache_requires_drive_permission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "do_check",
+        lambda base_url: {
+            "base_url": base_url,
+            "health": {"ok": True, "status_code": 200, "data": {"status": "ok"}},
+            "auth": {
+                "ok": True,
+                "status_code": 200,
+                "data": {"connected": True, "drive_ok": False, "account_name": "测试用户"},
+            },
+            "config": {"ok": True, "status_code": 200, "data": {}},
+            "tasks": {"ok": True, "status_code": 200, "count": 0, "data": []},
+            "ready_for_sync": True,
+        },
+    )
+
+    result = cli.do_bootstrap_cache(
+        base_url="http://localhost:8000",
+        name="Agent Cache",
+        local_path=r"D:\Knowledge\FeishuMirror",
+        cloud_folder_token="fld_test",
+        sync_mode="download_only",
+        download_value=1,
+        download_unit="days",
+        download_time="01:00",
+        run_now=False,
+    )
+
+    assert result["phase"] == "needs_drive_permission"
+    assert result["completed"] is False
+    assert result["next_step"]["type"] == "grant_drive_permission"
+
+
+def test_do_bootstrap_cache_runs_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        cli,
+        "do_check",
+        lambda base_url: {
+            "base_url": base_url,
+            "health": {"ok": True, "status_code": 200, "data": {"status": "ok"}},
+            "auth": {
+                "ok": True,
+                "status_code": 200,
+                "data": {"connected": True, "drive_ok": True, "account_name": "测试用户"},
+            },
+            "config": {"ok": True, "status_code": 200, "data": {}},
+            "tasks": {"ok": True, "status_code": 200, "count": 0, "data": []},
+            "ready_for_sync": True,
+        },
+    )
+
+    def _fake_configure_download(*, base_url: str, value: float, unit: str, daily_time: str):
+        calls.append("configure")
+        return {"action": "config-set", "config": {"download_interval_unit": unit}}
+
+    def _fake_create_task(**kwargs):
+        calls.append("create")
+        return {"action": "task-create", "created": True, "task": {"id": "task-1", **kwargs}}
+
+    def _fake_run_task(base_url: str, task_id: str):
+        calls.append("run")
+        return {"action": "task-run", "task_id": task_id, "status": {"state": "queued"}}
+
+    def _fake_task_status(base_url: str, task_id: str):
+        calls.append("status")
+        return {
+            "action": "task-status",
+            "task_id": task_id,
+            "status": {"state": "running", "last_result": "ok"},
+        }
+
+    monkeypatch.setattr(cli, "do_configure_download", _fake_configure_download)
+    monkeypatch.setattr(cli, "do_create_task", _fake_create_task)
+    monkeypatch.setattr(cli, "do_run_task", _fake_run_task)
+    monkeypatch.setattr(cli, "do_get_task_status", _fake_task_status)
+
+    result = cli.do_bootstrap_cache(
+        base_url="http://localhost:8000",
+        name="Agent Cache",
+        local_path=r"D:\Knowledge\FeishuMirror",
+        cloud_folder_token="fld_test",
+        sync_mode="download_only",
+        download_value=1,
+        download_unit="days",
+        download_time="01:00",
+        run_now=True,
+    )
+
+    assert result["phase"] == "configured"
+    assert result["completed"] is True
+    assert result["task"]["task"]["id"] == "task-1"
+    assert result["run_now"]["task_id"] == "task-1"
+    assert result["task_status"]["status"]["state"] == "running"
+    assert calls == ["configure", "create", "run", "status"]
+
+
 def test_main_supports_task_list_command(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -165,3 +304,31 @@ def test_main_supports_task_list_command(
     assert '"ok": true' in payload.lower()
     assert '"action": "task-list"' in payload
 
+
+def test_main_supports_bootstrap_cache_command(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "do_bootstrap_cache",
+        lambda **_: {
+            "action": "bootstrap-cache",
+            "phase": "configured",
+            "completed": True,
+        },
+    )
+
+    exit_code = cli.main(
+        [
+            "bootstrap-cache",
+            "--local-path",
+            r"D:\Knowledge\FeishuMirror",
+            "--cloud-folder-token",
+            "fld_test",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = capsys.readouterr().out
+    assert '"action": "bootstrap-cache"' in payload
+    assert '"completed": true' in payload.lower()

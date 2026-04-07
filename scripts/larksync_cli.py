@@ -651,6 +651,125 @@ def do_bootstrap_daily(
     }
 
 
+def do_bootstrap_cache(
+    *,
+    base_url: str,
+    name: str,
+    local_path: str,
+    cloud_folder_token: str,
+    sync_mode: str,
+    download_value: float,
+    download_unit: str,
+    download_time: str,
+    run_now: bool,
+    enabled: bool = True,
+    update_mode: str = "auto",
+    md_sync_mode: str | None = None,
+    delete_policy: str | None = None,
+    delete_grace_minutes: int | None = None,
+    cloud_folder_name: str | None = None,
+    base_path: str | None = None,
+    is_test: bool = False,
+) -> dict[str, Any]:
+    check_result = do_check(base_url)
+    health = check_result.get("health") if isinstance(check_result, dict) else {}
+    auth = check_result.get("auth") if isinstance(check_result, dict) else {}
+    health_ok = bool(health.get("ok")) if isinstance(health, dict) else False
+    auth_data = auth.get("data") if isinstance(auth, dict) and isinstance(auth.get("data"), dict) else {}
+    normalized_base_url = _normalize_base_url(base_url)
+
+    if not health_ok:
+        return {
+            "action": "bootstrap-cache",
+            "phase": "blocked_backend_unreachable",
+            "completed": False,
+            "ready_for_sync": False,
+            "summary": "LarkSync 后端当前不可达，首次配置已暂停。",
+            "check": check_result,
+            "next_step": {
+                "type": "start_backend",
+                "message": "请先启动 LarkSync（托盘版或 npm run dev），确认 /health 可达后重试。",
+                "health_url": _build_url(normalized_base_url, "/health"),
+            },
+        }
+
+    if not bool(auth_data.get("connected")):
+        return {
+            "action": "bootstrap-cache",
+            "phase": "needs_oauth",
+            "completed": False,
+            "ready_for_sync": False,
+            "summary": "当前尚未完成飞书 OAuth 授权，已暂停首次配置。",
+            "check": check_result,
+            "next_step": {
+                "type": "complete_oauth",
+                "message": "请先在浏览器完成一次飞书授权，完成后重新执行 bootstrap-cache。",
+                "login_url": _build_url(normalized_base_url, "/auth/login"),
+            },
+        }
+
+    if auth_data.get("drive_ok") is False:
+        return {
+            "action": "bootstrap-cache",
+            "phase": "needs_drive_permission",
+            "completed": False,
+            "ready_for_sync": False,
+            "summary": "当前账号已连接，但缺少可用的飞书 Drive 权限，首次配置已暂停。",
+            "check": check_result,
+            "next_step": {
+                "type": "grant_drive_permission",
+                "message": "请检查飞书应用权限范围与当前账号授权状态，确认 Drive 访问权限可用后重试。",
+            },
+        }
+
+    config_result = do_configure_download(
+        base_url=base_url,
+        value=download_value,
+        unit=download_unit,
+        daily_time=download_time,
+    )
+    task_result = do_create_task(
+        base_url=base_url,
+        name=name,
+        local_path=local_path,
+        cloud_folder_token=cloud_folder_token,
+        sync_mode=sync_mode,
+        enabled=enabled,
+        update_mode=update_mode,
+        md_sync_mode=md_sync_mode,
+        delete_policy=delete_policy,
+        delete_grace_minutes=delete_grace_minutes,
+        cloud_folder_name=cloud_folder_name,
+        base_path=base_path,
+        is_test=is_test,
+    )
+
+    run_result: dict[str, Any] | None = None
+    task_status: dict[str, Any] | None = None
+    task = task_result.get("task") if isinstance(task_result, dict) else {}
+    task_id = str(task.get("id", "")).strip() if isinstance(task, dict) else ""
+    if run_now and task_id:
+        run_result = do_run_task(base_url, task_id)
+        task_status = do_get_task_status(base_url, task_id)
+
+    return {
+        "action": "bootstrap-cache",
+        "phase": "configured",
+        "completed": True,
+        "ready_for_sync": True,
+        "summary": "首次本地缓存同步已配置完成。",
+        "check": check_result,
+        "configure_download": config_result,
+        "task": task_result,
+        "run_now": run_result,
+        "task_status": task_status,
+        "next_step": {
+            "type": "use_local_cache",
+            "message": "后续可直接读取本地同步目录；如需立即刷新，可再次执行 task-run。",
+        },
+    }
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LarkSync CLI：为 Agent/Skill 提供统一命令入口")
     parser.add_argument(
@@ -778,6 +897,27 @@ def _build_parser() -> argparse.ArgumentParser:
     bootstrap.add_argument("--download-unit", choices=UNIT_CHOICES, default="days")
     bootstrap.add_argument("--download-time", default="01:00")
     bootstrap.add_argument("--run-now", action="store_true")
+
+    cache = sub.add_parser(
+        "bootstrap-cache",
+        help="面向 Agent 的首次缓存初始化：检查状态、等待 OAuth、配置策略并建任务",
+    )
+    cache.add_argument("--name", default="LarkSync Agent 本地缓存")
+    cache.add_argument("--local-path", required=True)
+    cache.add_argument("--cloud-folder-token", required=True)
+    cache.add_argument("--cloud-folder-name")
+    cache.add_argument("--base-path")
+    cache.add_argument("--sync-mode", choices=MODE_CHOICES, default="download_only")
+    cache.add_argument("--update-mode", choices=TASK_UPDATE_MODE_CHOICES, default="auto")
+    cache.add_argument("--md-sync-mode", choices=TASK_MD_MODE_CHOICES)
+    cache.add_argument("--delete-policy", choices=DELETE_POLICY_CHOICES)
+    cache.add_argument("--delete-grace-minutes", type=int)
+    cache.add_argument("--disabled", action="store_true")
+    cache.add_argument("--is-test", action="store_true")
+    cache.add_argument("--download-value", type=float, default=1.0)
+    cache.add_argument("--download-unit", choices=UNIT_CHOICES, default="days")
+    cache.add_argument("--download-time", default="01:00")
+    cache.add_argument("--run-now", action="store_true")
 
     return parser
 
@@ -947,6 +1087,26 @@ def main(argv: list[str] | None = None) -> int:
                 local_path=str(args.local_path),
                 cloud_folder_token=str(args.cloud_folder_token),
                 sync_mode=str(args.sync_mode),
+                download_value=float(args.download_value),
+                download_unit=str(args.download_unit),
+                download_time=str(args.download_time),
+                run_now=bool(args.run_now),
+            )
+        elif args.command == "bootstrap-cache":
+            result = do_bootstrap_cache(
+                base_url=base_url,
+                name=str(args.name),
+                local_path=str(args.local_path),
+                cloud_folder_token=str(args.cloud_folder_token),
+                cloud_folder_name=args.cloud_folder_name,
+                base_path=args.base_path,
+                sync_mode=str(args.sync_mode),
+                update_mode=str(args.update_mode),
+                md_sync_mode=args.md_sync_mode,
+                delete_policy=args.delete_policy,
+                delete_grace_minutes=args.delete_grace_minutes,
+                enabled=not bool(args.disabled),
+                is_test=bool(args.is_test),
                 download_value=float(args.download_value),
                 download_unit=str(args.download_unit),
                 download_time=str(args.download_time),

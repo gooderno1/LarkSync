@@ -69,6 +69,20 @@ def test_ensure_remote_allow_flag_no_duplicate() -> None:
     assert patched.count("--allow-remote-base-url") == 1
 
 
+def test_ensure_remote_allow_flag_keeps_new_command_position() -> None:
+    args = [
+        "--base-url",
+        "http://172.27.80.1:8000",
+        "bootstrap-cache",
+        "--local-path",
+        "/mnt/d/Knowledge/FeishuMirror",
+        "--cloud-folder-token",
+        "fld_test",
+    ]
+    patched = wsl_helper.ensure_remote_allow_flag(args)
+    assert patched.index("--allow-remote-base-url") < patched.index("bootstrap-cache")
+
+
 def test_select_reachable_base_url() -> None:
     results = [
         wsl_helper.ProbeResult(

@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-07] v0.5.55-dev.2 feat(cli,agent): 新增 `bootstrap-cache` 高层初始化命令与 CLI Agent 契约文档，统一首次接入/OAuth 分支与 OpenClaw 推荐工作流
 [2026-04-07] v0.5.55-dev.1 feat(cli,openclaw): 新增正式 CLI 统一封装授权/配置/任务/日志/更新/冲突等核心能力，并让 OpenClaw helper 复用同一命令面
 [2026-04-07] v0.5.54 release: v0.5.54
 [2026-04-07] v0.5.54-dev.1 fix(update-install): 托盘仅在安装请求成熟后再退出并拉起安装包，修复“已下载更新后点击安装提示 Failed to fetch”

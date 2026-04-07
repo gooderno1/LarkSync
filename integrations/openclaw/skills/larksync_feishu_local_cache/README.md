@@ -47,12 +47,13 @@ integrations/openclaw/skills/larksync_feishu_local_cache/
 ```bash
 python scripts/larksync_cli.py check
 python scripts/larksync_cli.py task-list
-python scripts/larksync_cli.py bootstrap-daily --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
+python scripts/larksync_cli.py bootstrap-cache --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
 ```
 
 说明：
 - `scripts/larksync_cli.py` 适合仓库内 Agent / 自动化统一调用。
 - `larksync_skill_helper.py` 继续保留为 OpenClaw 兼容入口，旧命令别名仍有效。
+- `docs/CLI_AGENT_CONTRACT.md` 约定了 `bootstrap-cache` 等命令的稳定字段，便于 Agent 直接编排。
 
 ## Agent Runbook
 - OpenClaw 代理专用执行说明：[`OPENCLAW_AGENT_GUIDE.md`](./OPENCLAW_AGENT_GUIDE.md)
@@ -67,8 +68,8 @@ python scripts/larksync_cli.py bootstrap-daily --local-path "D:\\Knowledge\\Feis
 # 1) 环境检查
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
 
-# 2) 一键配置每日低频同步（推荐）
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-daily --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
+# 2) 一键初始化本地缓存（推荐）
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-cache --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
 ```
 
 完成后，OpenClaw 可优先读取本地镜像目录，减少飞书 API 请求。
@@ -76,7 +77,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 ## 常用命令
 ```bash
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-daily --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-cache --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
 ```
 
 远程地址（仅可信网络）：
@@ -93,13 +94,13 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 
 # 自动探测并执行原命令
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-daily --local-path "/mnt/d/Knowledge/FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-cache --local-path "/mnt/d/Knowledge/FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
 ```
 
 说明：
 - 若所有候选地址都显示 `UNREACHABLE`，主因通常是 Windows 侧 LarkSync 尚未启动或未监听 8000 端口。
 - 如果 Windows 侧不可达，脚本会输出诊断信息并停止，不会在 WSL 自动安装依赖或自动拉起后端。
-- 请先在 Windows 侧启动 LarkSync，再重新执行 `check` / `bootstrap-daily`。
+- 请先在 Windows 侧启动 LarkSync，再重新执行 `check` / `bootstrap-cache`。
 - Windows 版 LarkSync 默认允许 WSL 通过宿主机地址访问；若你手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改为 `0.0.0.0` 或移除后重启，再执行 `diagnose`。
 - 手动传远程 `--base-url` 时，脚本会自动补 `--allow-remote-base-url`。
 - 飞书 OAuth 首次授权仍需用户确认；完成首次授权后可长期无人值守运行。

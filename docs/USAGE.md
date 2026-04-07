@@ -361,8 +361,8 @@ OpenClaw 代理 runbook：`integrations/openclaw/skills/larksync_feishu_local_ca
 # 检查环境
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
 
-# 一键配置低频下载 + 建任务 + 首次执行
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-daily \
+# 一键初始化本地缓存 + 建任务 + 首次执行
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-cache \
   --local-path "D:\\Knowledge\\FeishuMirror" \
   --cloud-folder-token "<token>" \
   --sync-mode download_only \
@@ -388,7 +388,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 
 # 自动探测并执行
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-daily \
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-cache \
   --local-path "/mnt/d/Knowledge/FeishuMirror" \
   --cloud-folder-token "<token>" \
   --sync-mode download_only \
@@ -415,6 +415,6 @@ clawhub sync --root . --dry-run
 clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.6 --changelog "fix(security): remove WSL auto-install and auto-start behaviors"
 ```
 
-详见：`docs/OPENCLAW_SKILL.md`。
+详见：`docs/OPENCLAW_SKILL.md` 与 `docs/CLI_AGENT_CONTRACT.md`。
 
 本教程会随版本更新持续完善。

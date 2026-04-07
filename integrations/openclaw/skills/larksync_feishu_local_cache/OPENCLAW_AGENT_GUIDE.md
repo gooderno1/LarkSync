@@ -8,7 +8,7 @@
 - OpenClaw 在 macOS/Linux 运行。
 - OpenClaw 在 Windows 运行。
 
-统一原则：优先调用 skill helper，不直接拼 API 请求。
+统一原则：优先调用 skill helper，不直接拼 API 请求；字段契约以 `docs/CLI_AGENT_CONTRACT.md` 为准。
 
 ## 2. 必须使用的命令入口
 - 通用 helper：`scripts/larksync_skill_helper.py`
@@ -35,7 +35,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 3. 若检查通过，执行一键初始化（推荐）：
 
 ```bash
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-daily \
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-cache \
   --local-path "/mnt/d/Knowledge/FeishuMirror" \
   --cloud-folder-token "<TOKEN>" \
   --sync-mode download_only \
@@ -49,6 +49,10 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 - `check`：巡检状态
 - `run-task --task-id <id>`：立即触发
 - `configure-download`：调整周期
+
+说明：
+- `bootstrap-cache` 返回 `phase` 与 `next_step`，Agent 应直接按返回值分支，而不是自己猜测状态。
+- 若必须兼容旧脚本，`bootstrap-daily` 仍可用，但不再是首选首次接入入口。
 
 ## 4. WSL 安全边界（关键）
 `larksync_wsl_helper.py` 的职责仅限于：

@@ -9,6 +9,7 @@ metadata: {"category":"integrations","tags":["openclaw","feishu","larksync","syn
 
 参考：
 - `OPENCLAW_AGENT_GUIDE.md`：面向 OpenClaw 代理的自动执行 runbook（首次授权分支、无人值守分支、失败分支）
+- `docs/CLI_AGENT_CONTRACT.md`：正式 CLI 的稳定命令契约
 
 ## English Overview
 - Purpose: sync Feishu documents to local markdown/files and let OpenClaw read local cache first.
@@ -51,7 +52,7 @@ metadata: {"category":"integrations","tags":["openclaw","feishu","larksync","syn
 python scripts/larksync_cli.py check
 python scripts/larksync_cli.py task-list
 python scripts/larksync_cli.py task-create --name "OpenClaw 每日同步" --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only
-python scripts/larksync_cli.py bootstrap-daily --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
+python scripts/larksync_cli.py bootstrap-cache --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
 ```
 
 OpenClaw 兼容 helper（返回 JSON，便于自动化编排；旧命令别名仍可用）：
@@ -61,7 +62,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py configure-download --download-value 1 --download-unit days --download-time 01:00
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py create-task --name "OpenClaw 每日同步" --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py run-task --task-id "<TASK_ID>"
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-daily --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-cache --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
 ```
 
 WSL 场景（OpenClaw 在 WSL，LarkSync 在 Windows）推荐入口：
@@ -72,7 +73,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 
 # 直接执行原有命令（自动探测可达地址；远程地址自动补 --allow-remote-base-url）
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-daily --local-path "/mnt/d/Knowledge/FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-cache --local-path "/mnt/d/Knowledge/FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
 ```
 
 若全部候选地址不可达，优先确认 Windows 侧：
@@ -95,6 +96,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 
 ## 约束与安全边界
 - 未通过 `check` 之前，不执行任务创建或策略变更。
+- 优先使用 `bootstrap-cache` 作为首次接入命令，让 Agent 根据 `phase` 与 `next_step` 自动分支。
 - 未经用户明确同意，不把 `download_only` 自动切到 `bidirectional`。
 - 若用户要开启双向，必须先告知风险：
   - 本地误改可能上云；

@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.5.55-dev.2 (2026-04-07)
+- 目标：
+  - 为 Agent/Skill 增加可重入的首次缓存初始化命令，并沉淀正式 CLI 契约文档。
+- 结果：
+  - `scripts/larksync_cli.py` 新增 `bootstrap-cache`，可区分 `blocked_backend_unreachable`、`needs_oauth`、`needs_drive_permission`、`configured` 四类阶段，并返回 `next_step` 供 Agent 直接分支。
+  - OpenClaw helper / WSL helper 同步支持 `bootstrap-cache`。
+  - 新增 `docs/CLI_AGENT_CONTRACT.md`，统一 JSON 包装、退出码、推荐工作流与 `bootstrap-cache` 字段契约；OpenClaw 相关文档改为优先推荐该命令。
+- 测试：
+  - `python -m pytest tests/test_larksync_cli.py tests/test_larksync_skill_helper.py tests/test_larksync_wsl_helper.py -q`
+  - `python scripts/larksync_cli.py bootstrap-cache --help`
+  - `python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-cache --help`
+- 问题：
+  - 无阻塞问题。
+
 ## v0.5.55-dev.1 (2026-04-07)
 - 目标：
   - 将 LarkSync 核心能力统一封装为可供 Agent 调用的正式 CLI，并让 OpenClaw Skill 复用同一命令面。

@@ -20,6 +20,7 @@ integrations/openclaw/skills/larksync_feishu_local_cache/
 - `OPENCLAW_AGENT_GUIDE.md`：OpenClaw 代理执行 runbook（推荐优先阅读）
 - `scripts/larksync_cli.py`：仓库正式 CLI（Agent / Skill 统一命令面）
 - `scripts/larksync_skill_helper.py`：自动化辅助脚本
+- `docs/CLI_AGENT_CONTRACT.md`：正式 CLI 的 Agent 调用契约
 
 ## 2. 推荐默认策略（降本优先）
 - 同步模式：`download_only`
@@ -50,9 +51,9 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py --base-url "https://larksync.internal.example" --allow-remote-base-url check
 ```
 
-### 3.2 一键配置低频同步并建任务
+### 3.2 一键初始化本地缓存并建任务（推荐）
 ```bash
-python scripts/larksync_cli.py bootstrap-daily \
+python scripts/larksync_cli.py bootstrap-cache \
   --local-path "D:\\Knowledge\\FeishuMirror" \
   --cloud-folder-token "<你的飞书文件夹 token>" \
   --sync-mode download_only \
@@ -61,7 +62,7 @@ python scripts/larksync_cli.py bootstrap-daily \
   --download-time 01:00 \
   --run-now
 
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-daily \
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-cache \
   --local-path "D:\\Knowledge\\FeishuMirror" \
   --cloud-folder-token "<你的飞书文件夹 token>" \
   --sync-mode download_only \
@@ -70,6 +71,10 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
   --download-time 01:00 \
   --run-now
 ```
+
+说明：
+- `bootstrap-cache` 会先检查后端可达性、OAuth 状态和 Drive 权限；若缺 OAuth，会返回结构化 JSON，让 Agent 直接进入“等待用户授权”分支。
+- `bootstrap-daily` 仍保留，适合历史脚本或更低层的组合调用。
 
 ### 3.3 进阶：双向同步（谨慎）
 ```bash
@@ -93,7 +98,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 
 # 自动探测并执行
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-daily \
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-cache \
   --local-path "/mnt/d/Knowledge/FeishuMirror" \
   --cloud-folder-token "<你的飞书文件夹 token>" \
   --sync-mode download_only \
@@ -127,9 +132,11 @@ clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Loc
 
 ## 5. 常见排查
 - `check` 显示后端不可达：先启动 LarkSync（`npm run dev` 或托盘版）。
-- `auth.connected=false`：先在 LarkSync 完成飞书授权。
+- `bootstrap-cache.phase=needs_oauth`：先在 LarkSync 完成飞书授权，然后重试同一命令。
+- `auth.connected=false`：若只跑了 `check`，也说明要先在 LarkSync 完成飞书授权。
 - 创建任务 409：说明路径映射冲突或已有任务，脚本会尝试复用已有任务。
 - 若需要任务状态/日志/更新/冲突/目录树等更完整能力：直接使用 `python scripts/larksync_cli.py --help`。
+- 若要按稳定字段编排 Agent：优先参考 `docs/CLI_AGENT_CONTRACT.md`。
 
 ## 6. 相关参考
 - OpenClaw Skills 文档：<https://openclaw.ai/docs/skills>

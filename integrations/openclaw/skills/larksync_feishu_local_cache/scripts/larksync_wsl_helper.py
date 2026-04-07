@@ -41,6 +41,7 @@ KNOWN_COMMANDS = {
     "logs-sync",
     "logs-file",
     "run-task",
+    "bootstrap-cache",
     "bootstrap-daily",
 }
 

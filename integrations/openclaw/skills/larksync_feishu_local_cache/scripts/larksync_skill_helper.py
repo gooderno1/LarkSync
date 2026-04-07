@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.larksync_cli import (  # noqa: E402
     ApiResult,
+    do_bootstrap_cache,
     build_download_config_payload,
     build_task_payload,
     do_auth_status,
@@ -53,6 +54,7 @@ __all__ = [
     "build_download_config_payload",
     "build_task_payload",
     "do_auth_status",
+    "do_bootstrap_cache",
     "do_bootstrap_daily",
     "do_check",
     "do_configure_download",
