@@ -101,6 +101,7 @@ except Exception as exc:
 
 
 _LOCK_SOCKET: socket.socket | None = None
+_INSTALL_REQUEST_MIN_AGE_SECONDS = 2.0
 
 
 def _data_dir() -> Path:
@@ -127,7 +128,7 @@ def _install_request_path() -> Path:
     return _data_dir() / "updates" / "install-request.json"
 
 
-def _load_install_request() -> dict[str, str] | None:
+def _load_install_request() -> dict[str, str | float] | None:
     path = _install_request_path()
     if not path.exists():
         return None
@@ -138,7 +139,12 @@ def _load_install_request() -> dict[str, str] | None:
     installer_path = str(payload.get("installer_path", "")).strip()
     if not installer_path:
         return None
-    return {"installer_path": installer_path}
+    created_at_raw = payload.get("created_at")
+    try:
+        created_at = float(created_at_raw) if created_at_raw is not None else 0.0
+    except (TypeError, ValueError):
+        created_at = 0.0
+    return {"installer_path": installer_path, "created_at": created_at}
 
 
 def _clear_install_request() -> None:
@@ -458,6 +464,9 @@ class LarkSyncTray:
         if not request:
             return False
         installer_path = request["installer_path"]
+        created_at = float(request.get("created_at") or 0.0)
+        if created_at > 0 and (time.time() - created_at) < _INSTALL_REQUEST_MIN_AGE_SECONDS:
+            return False
         try:
             self._schedule_installer_launch(installer_path)
         except Exception as exc:

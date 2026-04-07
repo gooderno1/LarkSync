@@ -1,5 +1,27 @@
 # DEVELOPMENT LOG
 
+## v0.5.54-release (2026-04-07)
+- 目标：
+  - 发布 `v0.5.54` 稳定版本，修复“下载完成后点击安装更新报 Failed to fetch”。
+- 包含内容：
+  - `v0.5.54-dev.1`：托盘处理安装请求新增最小成熟期，避免后端过早退出导致前端安装请求中断。
+- 发布动作：
+  - 版本号收敛为稳定版 `v0.5.54`（root/frontend/backend）。
+  - `CHANGELOG.md` 新增 `release: v0.5.54` 记录。
+  - 构建 Windows NSIS 安装包并推送 `v0.5.54` tag 触发 GitHub Release。
+
+## v0.5.54-dev.1-safe-update-install-race (2026-04-07)
+- 目标：
+  - 修复“已下载更新后点击安装”时前端出现 `Failed to fetch` 的竞态问题。
+- 变更：
+  - 托盘读取安装请求时保留 `created_at`，兼容旧请求文件缺省该字段。
+  - 托盘仅在安装请求创建超过 2 秒后才真正退出并启动安装包，确保 `/system/update/install` 能先返回成功响应。
+  - 新增回归测试覆盖“新请求先跳过、成熟请求再执行”。
+- 测试：
+  - `python -m pytest tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_update_service.py tests/test_update_scheduler.py -q`
+- 问题：
+  - 无阻塞问题。
+
 ## v0.5.52-release (2026-03-11)
 - 目标：
   - 发布 `v0.5.52` 稳定版本并产出新的 Windows 安装包。

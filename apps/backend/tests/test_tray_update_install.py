@@ -13,12 +13,7 @@ class _DummyBackend:
         return False
 
 
-def test_tray_processes_install_request_and_stops(monkeypatch, tmp_path: Path) -> None:
-    requested_path = tmp_path / "LarkSync-Setup-v0.5.51.exe"
-    requested_path.write_bytes(b"exe")
-    consumed: list[str] = []
-    stopped: list[bool] = []
-
+def _build_tray() -> tray_app.LarkSyncTray:
     tray = object.__new__(tray_app.LarkSyncTray)
     tray._backend = _DummyBackend()
     tray._running = True
@@ -27,11 +22,24 @@ def test_tray_processes_install_request_and_stops(monkeypatch, tmp_path: Path) -
     tray._current_state = "idle"
     tray._global_paused = False
     tray._last_conflict_count = 0
+    return tray
+
+
+def test_tray_skips_fresh_install_request(monkeypatch, tmp_path: Path) -> None:
+    requested_path = tmp_path / "LarkSync-Setup-v0.5.53.exe"
+    requested_path.write_bytes(b"exe")
+    consumed: list[str] = []
+    stopped: list[bool] = []
+
+    tray = _build_tray()
 
     monkeypatch.setattr(
         tray_app,
         "_load_install_request",
-        lambda: {"installer_path": str(requested_path)},
+        lambda: {
+            "installer_path": str(requested_path),
+            "created_at": 100.0,
+        },
     )
     monkeypatch.setattr(tray_app, "_clear_install_request", lambda: consumed.append("cleared"))
     monkeypatch.setattr(
@@ -41,6 +49,40 @@ def test_tray_processes_install_request_and_stops(monkeypatch, tmp_path: Path) -
     )
     monkeypatch.setattr(tray, "_notify", lambda *args, **kwargs: None)
     monkeypatch.setattr(tray, "stop", lambda: stopped.append(True))
+    monkeypatch.setattr(tray_app.time, "time", lambda: 101.0)
+
+    handled = tray._handle_pending_install_request()
+
+    assert handled is False
+    assert consumed == []
+    assert stopped == []
+
+
+def test_tray_processes_mature_install_request_and_stops(monkeypatch, tmp_path: Path) -> None:
+    requested_path = tmp_path / "LarkSync-Setup-v0.5.51.exe"
+    requested_path.write_bytes(b"exe")
+    consumed: list[str] = []
+    stopped: list[bool] = []
+
+    tray = _build_tray()
+
+    monkeypatch.setattr(
+        tray_app,
+        "_load_install_request",
+        lambda: {
+            "installer_path": str(requested_path),
+            "created_at": 100.0,
+        },
+    )
+    monkeypatch.setattr(tray_app, "_clear_install_request", lambda: consumed.append("cleared"))
+    monkeypatch.setattr(
+        tray,
+        "_schedule_installer_launch",
+        lambda path: consumed.append(str(path)),
+    )
+    monkeypatch.setattr(tray, "_notify", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tray, "stop", lambda: stopped.append(True))
+    monkeypatch.setattr(tray_app.time, "time", lambda: 103.0)
 
     handled = tray._handle_pending_install_request()
 

@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-04-07] v0.5.54 release: v0.5.54
+[2026-04-07] v0.5.54-dev.1 fix(update-install): 托盘仅在安装请求成熟后再退出并拉起安装包，修复“已下载更新后点击安装提示 Failed to fetch”
 [2026-04-07] v0.5.53 release: v0.5.53
 [2026-04-07] v0.5.53-dev.1 fix(sync-upload): 上传链路忽略 Office/编辑器临时文件与系统噪音文件，修复本地对云端误传 `~$`/`.tmp`/`Thumbs.db` 等临时产物
 [2026-03-11] v0.5.52 release: v0.5.52
