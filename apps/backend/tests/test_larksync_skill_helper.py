@@ -91,3 +91,20 @@ def test_validate_base_url_allow_remote_with_opt_in() -> None:
 def test_validate_base_url_invalid_scheme() -> None:
     with pytest.raises(ValueError, match="http 或 https"):
         helper.validate_base_url("ftp://localhost:8000")
+
+
+def test_helper_main_preserves_legacy_command_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[list[str]] = []
+
+    def _fake_main(argv: list[str]) -> int:
+        captured.append(argv)
+        return 0
+
+    monkeypatch.setattr(helper, "_cli_main", _fake_main)
+
+    exit_code = helper.main(["create-task", "--local-path", "D:\\docs", "--cloud-folder-token", "fld"])
+
+    assert exit_code == 0
+    assert captured == [["task-create", "--local-path", "D:\\docs", "--cloud-folder-token", "fld"]]

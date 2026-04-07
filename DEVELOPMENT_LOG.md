@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.5.55-dev.1 (2026-04-07)
+- 目标：
+  - 将 LarkSync 核心能力统一封装为可供 Agent 调用的正式 CLI，并让 OpenClaw Skill 复用同一命令面。
+- 结果：
+  - 新增 `scripts/larksync_cli.py`，统一提供 `check`、`auth-status`、`config-get/config-set`、`task-*`、`drive-tree`、`update-*`、`conflict-*`、`logs-*`、`bootstrap-daily` 等命令。
+  - OpenClaw `larksync_skill_helper.py` 改为兼容包装层，底层直接复用正式 CLI；保留 `create-task` / `run-task` 旧命令别名。
+  - `larksync_wsl_helper.py` 同步扩展命令识别列表，兼容新的 CLI 子命令。
+  - README 与 OpenClaw 相关文档补充正式 CLI 入口和调用示例。
+- 测试：
+  - `python -m pytest tests/test_larksync_cli.py tests/test_larksync_skill_helper.py tests/test_larksync_wsl_helper.py -q`
+  - `python scripts/larksync_cli.py --help`
+  - `python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py --help`
+- 问题：
+  - 无阻塞问题。
+
 ## v0.5.54-release (2026-04-07)
 - 目标：
   - 发布 `v0.5.54` 稳定版本，修复“下载完成后点击安装更新报 Failed to fetch”。

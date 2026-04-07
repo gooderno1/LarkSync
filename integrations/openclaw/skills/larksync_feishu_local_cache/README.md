@@ -42,6 +42,18 @@ integrations/openclaw/skills/larksync_feishu_local_cache/
     larksync_skill_helper.py
 ```
 
+仓库内还提供正式 CLI：
+
+```bash
+python scripts/larksync_cli.py check
+python scripts/larksync_cli.py task-list
+python scripts/larksync_cli.py bootstrap-daily --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
+```
+
+说明：
+- `scripts/larksync_cli.py` 适合仓库内 Agent / 自动化统一调用。
+- `larksync_skill_helper.py` 继续保留为 OpenClaw 兼容入口，旧命令别名仍有效。
+
 ## Agent Runbook
 - OpenClaw 代理专用执行说明：[`OPENCLAW_AGENT_GUIDE.md`](./OPENCLAW_AGENT_GUIDE.md)
 

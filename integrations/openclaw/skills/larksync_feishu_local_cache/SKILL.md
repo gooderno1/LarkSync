@@ -45,7 +45,16 @@ metadata: {"category":"integrations","tags":["openclaw","feishu","larksync","syn
 5. 后续回答用户文档问题时，优先读取本地同步目录。
 
 ## 命令入口
-使用以下脚本作为统一入口（返回 JSON，便于自动化编排）：
+仓库内正式 CLI：
+
+```bash
+python scripts/larksync_cli.py check
+python scripts/larksync_cli.py task-list
+python scripts/larksync_cli.py task-create --name "OpenClaw 每日同步" --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only
+python scripts/larksync_cli.py bootstrap-daily --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only --download-value 1 --download-unit days --download-time 01:00 --run-now
+```
+
+OpenClaw 兼容 helper（返回 JSON，便于自动化编排；旧命令别名仍可用）：
 
 ```bash
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
@@ -96,6 +105,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 - 若接口返回 401/403：提示重新授权飞书并检查“用户身份权限”。
 - 若创建任务冲突（409）：自动复用同路径+同云目录的现有任务并回显任务 ID。
 - 若后端不可达：优先提示启动 LarkSync 安装包版托盘程序（开发者再使用 `npm run dev`）。
+- 若需要任务状态/日志/更新/冲突等更完整操作：优先切换到 `scripts/larksync_cli.py`。
 
 ## 输出规范
 - 对用户：简明中文结论 + 下一步操作。

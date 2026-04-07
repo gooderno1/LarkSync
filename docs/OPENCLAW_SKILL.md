@@ -18,6 +18,7 @@ integrations/openclaw/skills/larksync_feishu_local_cache/
 关键文件：
 - `SKILL.md`：Skill 定义（OpenClaw 识别入口）
 - `OPENCLAW_AGENT_GUIDE.md`：OpenClaw 代理执行 runbook（推荐优先阅读）
+- `scripts/larksync_cli.py`：仓库正式 CLI（Agent / Skill 统一命令面）
 - `scripts/larksync_skill_helper.py`：自动化辅助脚本
 
 ## 2. 推荐默认策略（降本优先）
@@ -33,8 +34,13 @@ integrations/openclaw/skills/larksync_feishu_local_cache/
 
 ### 3.1 检查环境
 ```bash
+python scripts/larksync_cli.py check
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
 ```
+
+说明：
+- `scripts/larksync_cli.py` 是正式 CLI，适合仓库内 Agent / 自动化统一调用。
+- `larksync_skill_helper.py` 保留为 OpenClaw 兼容入口，旧命令如 `create-task` / `run-task` 仍可继续使用。
 
 安全默认值：
 - helper 默认仅允许连接 `localhost/127.0.0.1/::1`。
@@ -46,6 +52,15 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 
 ### 3.2 一键配置低频同步并建任务
 ```bash
+python scripts/larksync_cli.py bootstrap-daily \
+  --local-path "D:\\Knowledge\\FeishuMirror" \
+  --cloud-folder-token "<你的飞书文件夹 token>" \
+  --sync-mode download_only \
+  --download-value 1 \
+  --download-unit days \
+  --download-time 01:00 \
+  --run-now
+
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-daily \
   --local-path "D:\\Knowledge\\FeishuMirror" \
   --cloud-folder-token "<你的飞书文件夹 token>" \
@@ -58,6 +73,12 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 
 ### 3.3 进阶：双向同步（谨慎）
 ```bash
+python scripts/larksync_cli.py task-create \
+  --name "OpenClaw 双向任务" \
+  --local-path "D:\\Knowledge\\FeishuBiSync" \
+  --cloud-folder-token "<token>" \
+  --sync-mode bidirectional
+
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py create-task \
   --name "OpenClaw 双向任务" \
   --local-path "D:\\Knowledge\\FeishuBiSync" \
@@ -108,6 +129,7 @@ clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Loc
 - `check` 显示后端不可达：先启动 LarkSync（`npm run dev` 或托盘版）。
 - `auth.connected=false`：先在 LarkSync 完成飞书授权。
 - 创建任务 409：说明路径映射冲突或已有任务，脚本会尝试复用已有任务。
+- 若需要任务状态/日志/更新/冲突/目录树等更完整能力：直接使用 `python scripts/larksync_cli.py --help`。
 
 ## 6. 相关参考
 - OpenClaw Skills 文档：<https://openclaw.ai/docs/skills>
