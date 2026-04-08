@@ -1286,6 +1286,36 @@ def _workflow_command_default_kwargs(command: str) -> dict[str, Any]:
     return {}
 
 
+def _select_workflow_steps(
+    steps: list[dict[str, Any]],
+    *,
+    from_step: str | None = None,
+    to_step: str | None = None,
+) -> list[dict[str, Any]]:
+    indexed: list[tuple[str, dict[str, Any]]] = []
+    for item in steps:
+        if not isinstance(item, dict):
+            continue
+        step_id = str(item.get("id", "")).strip()
+        if not step_id:
+            continue
+        indexed.append((step_id, item))
+    step_ids = [step_id for step_id, _ in indexed]
+    start_index = 0
+    end_index = len(indexed) - 1
+    if from_step:
+        if from_step not in step_ids:
+            raise ValueError(f"workflow from_step 不存在: {from_step}")
+        start_index = step_ids.index(from_step)
+    if to_step:
+        if to_step not in step_ids:
+            raise ValueError(f"workflow to_step 不存在: {to_step}")
+        end_index = step_ids.index(to_step)
+    if indexed and start_index > end_index:
+        raise ValueError("workflow from_step 不能位于 to_step 之后")
+    return [item for _, item in indexed[start_index:end_index + 1]]
+
+
 def do_execute_workflow(
     *,
     template_name: str,
@@ -1293,31 +1323,51 @@ def do_execute_workflow(
     values: dict[str, Any] | None = None,
     base_url: str,
     dry_run: bool = False,
+    from_step: str | None = None,
+    to_step: str | None = None,
+    continue_on_error: bool = False,
+    output_json_file: Path | None = None,
 ) -> dict[str, Any]:
     plan_result = do_build_workflow_plan(template_name, entrypoint=entrypoint, values=values)
+    workflow = do_get_workflow_template(template_name)["workflow"]
+    selected_steps = _select_workflow_steps(
+        [item for item in workflow.get("steps", []) if isinstance(item, dict)],
+        from_step=from_step,
+        to_step=to_step,
+    )
     if dry_run:
-        return {
+        result = {
             "action": "workflow-execute",
             "template": template_name,
             "entrypoint": entrypoint,
             "dry_run": True,
             "completed": False,
             "executed_steps": 0,
+            "failed_steps": 0,
             "missing_inputs": plan_result["missing_inputs"],
-            "plan": plan_result["plan"],
+            "plan": {**plan_result["plan"], "steps": [step for step in plan_result["plan"]["steps"] if step["id"] in {str(item.get("id", "")) for item in selected_steps}]},
             "results": {},
+            "errors": [],
         }
+        if output_json_file is not None:
+            output_json_file.write_text(
+                json.dumps(result, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        return result
     if plan_result["missing_inputs"]:
         raise ValueError(f"workflow 缺少必要输入: {', '.join(plan_result['missing_inputs'])}")
 
-    workflow = do_get_workflow_template(template_name)["workflow"]
     inputs = dict(plan_result["values"])
     results: dict[str, Any] = {}
     execution_log: list[dict[str, Any]] = []
     executed_steps = 0
-    for step in workflow.get("steps", []):
-        if not isinstance(step, dict):
-            continue
+    errors: list[dict[str, Any]] = []
+    selected_ids = {str(item.get("id", "")) for item in selected_steps}
+    filtered_plan_steps = [
+        step for step in plan_result["plan"]["steps"] if step["id"] in selected_ids
+    ]
+    for step in selected_steps:
         step_id = str(step.get("id", "")).strip()
         command = str(step.get("command", "")).strip()
         if not step_id or not command:
@@ -1331,9 +1381,28 @@ def do_execute_workflow(
         for key, value in defaults.items():
             runtime_args.setdefault(key, value)
         if missing:
-            raise RuntimeError(f"workflow step {step_id} 缺少运行时输入: {', '.join(missing)}")
+            error_payload = {
+                "step_id": step_id,
+                "command": command,
+                "error": f"RuntimeError: workflow step {step_id} 缺少运行时输入: {', '.join(missing)}",
+            }
+            if not continue_on_error:
+                raise RuntimeError(error_payload["error"].split(": ", 1)[1])
+            errors.append(error_payload)
+            continue
         executor = _workflow_command_executor(command)
-        payload = executor(base_url=base_url, **runtime_args)
+        try:
+            payload = executor(base_url=base_url, **runtime_args)
+        except Exception as exc:  # noqa: BLE001
+            error_payload = {
+                "step_id": step_id,
+                "command": command,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+            if not continue_on_error:
+                raise
+            errors.append(error_payload)
+            continue
         results[step_id] = payload
         execution_log.append(
             {
@@ -1343,18 +1412,26 @@ def do_execute_workflow(
             }
         )
         executed_steps += 1
-    return {
+    result = {
         "action": "workflow-execute",
         "template": template_name,
         "entrypoint": entrypoint,
         "dry_run": False,
-        "completed": True,
+        "completed": len(errors) == 0,
         "executed_steps": executed_steps,
+        "failed_steps": len(errors),
         "missing_inputs": [],
-        "plan": plan_result["plan"],
+        "plan": {**plan_result["plan"], "steps": filtered_plan_steps},
         "results": results,
         "execution_log": execution_log,
+        "errors": errors,
     }
+    if output_json_file is not None:
+        output_json_file.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    return result
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1386,6 +1463,10 @@ def _build_parser() -> argparse.ArgumentParser:
     execute.add_argument("--entrypoint", choices=WORKFLOW_ENTRYPOINT_CHOICES, default="cli")
     execute.add_argument("--set", action="append", default=[], help="模板参数，格式 key=value，可重复")
     execute.add_argument("--dry-run", action="store_true", help="仅生成计划，不实际执行")
+    execute.add_argument("--from-step", help="仅从指定 step id 开始执行")
+    execute.add_argument("--to-step", help="仅执行到指定 step id 为止")
+    execute.add_argument("--continue-on-error", action="store_true", help="单步失败后继续执行后续步骤并汇总错误")
+    execute.add_argument("--output-json-file", help="将执行结果写入指定 JSON 文件")
 
     cfg = sub.add_parser("config-set", help="更新配置")
     cfg.add_argument("--download-value", type=float)
@@ -1603,6 +1684,10 @@ def main(argv: list[str] | None = None) -> int:
                 values=_parse_template_set_args(list(args.set or [])),
                 base_url=base_url,
                 dry_run=bool(args.dry_run),
+                from_step=args.from_step,
+                to_step=args.to_step,
+                continue_on_error=bool(args.continue_on_error),
+                output_json_file=Path(args.output_json_file) if args.output_json_file else None,
             )
         elif args.command == "config-set":
             result = do_set_config(base_url, _build_config_payload(args))

@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.5.55-dev.6 (2026-04-08)
+- 目标：
+  - 为工作流执行器补充局部重跑、容错执行与结果落盘控制。
+- 结果：
+  - `workflow-execute` 新增 `from_step` / `to_step`，支持只执行指定步骤区间。
+  - 新增 `continue_on_error`，单步失败后可继续执行并在 `errors` 中汇总失败信息。
+  - 新增 `output_json_file`，可将整份执行结果落盘为 JSON 供 Agent 审计或二次消费。
+- 测试：
+  - `python -m pytest tests/test_larksync_cli.py tests/test_larksync_skill_helper.py tests/test_larksync_wsl_helper.py -q`
+  - `python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run --from-step bootstrap --to-step inspect-task --output-json-file data\\workflow.json --set "local_path=D:\\Knowledge\\FeishuMirror" --set cloud_folder_token=fld_test`
+- 问题：
+  - 当前 `continue_on_error` 仍按线性顺序执行，不会自动跳过对前置失败结果存在强依赖的复杂分支；后续若模板关系图更复杂，需要补显式依赖图。
+
 ## v0.5.55-dev.5 (2026-04-08)
 - 目标：
   - 让 CLI 不只生成工作流计划，还能顺序执行模板步骤并自动衔接动态输入。

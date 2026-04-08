@@ -37,7 +37,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 ```bash
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py workflow-template --template daily-cache
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py workflow-plan --template daily-cache --entrypoint wsl_helper --set "local_path=/mnt/d/Knowledge/FeishuMirror" --set "cloud_folder_token=<TOKEN>"
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py workflow-execute --template daily-cache --dry-run --entrypoint wsl_helper --set "local_path=/mnt/d/Knowledge/FeishuMirror" --set "cloud_folder_token=<TOKEN>"
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py workflow-execute --template daily-cache --dry-run --entrypoint wsl_helper --from-step bootstrap --to-step inspect-task --output-json-file /tmp/larksync-workflow.json --set "local_path=/mnt/d/Knowledge/FeishuMirror" --set "cloud_folder_token=<TOKEN>"
 ```
 
 4. 若检查通过，执行一键初始化（推荐）：
@@ -61,6 +61,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 说明：
 - `bootstrap-cache` 返回 `phase` 与 `next_step`，Agent 应直接按返回值分支，而不是自己猜测状态。
 - `workflow-template` 返回标准步骤和分支建议，`workflow-plan` 返回已灌入参数后的实际执行计划，`workflow-execute` 可直接顺序执行这些步骤。
+- 若只需局部重跑，使用 `--from-step` / `--to-step`；若希望失败后继续汇总其他步骤，使用 `--continue-on-error`。
 - 若必须兼容旧脚本，`bootstrap-daily` 仍可用，但不再是首选首次接入入口。
 
 ## 4. WSL 安全边界（关键）

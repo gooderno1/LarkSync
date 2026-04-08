@@ -87,7 +87,7 @@ CLI 提供两条发现型命令：
 python scripts/larksync_cli.py workflow-template-list
 python scripts/larksync_cli.py workflow-template --template daily-cache
 python scripts/larksync_cli.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
-python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
+python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run --from-step bootstrap --to-step inspect-task --output-json-file data\\workflow.json --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
 ```
 
 当前内置模板：
@@ -113,12 +113,19 @@ python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run
 - `results`：各步骤原始返回值，后续步骤可从中提取动态输入
 - `dry_run=true`：只返回计划，不触发真实执行
 - `completed` / `executed_steps`：实际执行结果摘要
+- `failed_steps` / `errors`：失败步骤汇总
+
+执行控制项：
+- `--from-step` / `--to-step`：只执行指定区间内的步骤
+- `--continue-on-error`：单步失败后继续执行后续步骤，并在结果中汇总错误
+- `--output-json-file`：将整份执行结果落盘为 JSON，便于外层 Agent 审计或二次处理
 
 推荐用法：
 1. `workflow-template-list` 发现有哪些标准流程。
 2. `workflow-template` 查看模板结构和分支。
 3. `workflow-plan` 结合当前参数生成执行计划。
 4. `workflow-execute` 在确认计划无误后执行；需要预演时先加 `--dry-run`。
+5. 若只想重跑一段链路，配合 `--from-step` / `--to-step`；若需要持久化执行痕迹，配合 `--output-json-file`。
 
 ## 5. `bootstrap-cache` 契约
 

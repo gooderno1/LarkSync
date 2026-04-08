@@ -42,7 +42,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 说明：
 - `scripts/larksync_cli.py` 是正式 CLI，适合仓库内 Agent / 自动化统一调用。
 - `larksync_skill_helper.py` 保留为 OpenClaw 兼容入口，旧命令如 `create-task` / `run-task` 仍可继续使用。
-- `workflow-template-list` / `workflow-template` 可用于先发现标准工作流，`workflow-plan` 可生成带参数的执行计划，`workflow-execute` 可直接按计划执行。
+- `workflow-template-list` / `workflow-template` 可用于先发现标准工作流，`workflow-plan` 可生成带参数的执行计划，`workflow-execute` 可直接按计划执行，并支持步骤区间、容错和结果落盘。
 
 安全默认值：
 - helper 默认仅允许连接 `localhost/127.0.0.1/::1`。
@@ -57,7 +57,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 python scripts/larksync_cli.py workflow-template-list
 python scripts/larksync_cli.py workflow-template --template daily-cache
 python scripts/larksync_cli.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<你的飞书文件夹 token>"
-python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<你的飞书文件夹 token>"
+python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run --from-step bootstrap --to-step inspect-task --output-json-file data\\workflow.json --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<你的飞书文件夹 token>"
 python scripts/larksync_cli.py bootstrap-cache \
   --local-path "D:\\Knowledge\\FeishuMirror" \
   --cloud-folder-token "<你的飞书文件夹 token>" \
@@ -69,7 +69,7 @@ python scripts/larksync_cli.py bootstrap-cache \
 
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-template --template daily-cache
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<你的飞书文件夹 token>"
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-execute --template daily-cache --dry-run --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<你的飞书文件夹 token>"
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-execute --template daily-cache --dry-run --continue-on-error --output-json-file data\\workflow.json --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<你的飞书文件夹 token>"
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-cache \
   --local-path "D:\\Knowledge\\FeishuMirror" \
   --cloud-folder-token "<你的飞书文件夹 token>" \
@@ -145,7 +145,7 @@ clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Loc
 - 创建任务 409：说明路径映射冲突或已有任务，脚本会尝试复用已有任务。
 - 若需要任务状态/日志/更新/冲突/目录树等更完整能力：直接使用 `python scripts/larksync_cli.py --help`。
 - 若要按稳定字段编排 Agent：优先参考 `docs/CLI_AGENT_CONTRACT.md`。
-- 若要先拿到推荐执行路径：先执行 `workflow-template-list` 与 `workflow-template --template <name>`；若要直接得到可执行命令，执行 `workflow-plan`；若要让 CLI 直接顺序执行，执行 `workflow-execute`。
+- 若要先拿到推荐执行路径：先执行 `workflow-template-list` 与 `workflow-template --template <name>`；若要直接得到可执行命令，执行 `workflow-plan`；若要让 CLI 直接顺序执行，执行 `workflow-execute`；若只想重跑某几步，补 `--from-step` / `--to-step`。
 
 ## 6. 相关参考
 - OpenClaw Skills 文档：<https://openclaw.ai/docs/skills>

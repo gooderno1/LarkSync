@@ -564,3 +564,145 @@ def test_main_supports_workflow_execute(
     assert exit_code == 0
     payload = capsys.readouterr().out
     assert '"action": "workflow-execute"' in payload
+
+
+def test_do_execute_workflow_respects_step_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        cli,
+        "do_get_task_status",
+        lambda base_url, task_id: calls.append("task-status") or {"task_id": task_id},
+    )
+    monkeypatch.setattr(
+        cli,
+        "do_read_sync_logs",
+        lambda base_url, **kwargs: calls.append("logs-sync") or {"items": [], **kwargs},
+    )
+
+    result = cli.do_execute_workflow(
+        template_name="refresh-cache",
+        entrypoint="cli",
+        values={"task_id": "task-1", "log_limit": 10},
+        base_url="http://localhost:8000",
+        from_step="task-status",
+        to_step="sync-logs",
+    )
+
+    assert result["completed"] is True
+    assert result["executed_steps"] == 2
+    assert list(result["results"]) == ["task-status", "sync-logs"]
+    assert calls == ["task-status", "logs-sync"]
+
+
+def test_do_execute_workflow_continue_on_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def _fail_run_task(base_url: str, task_id: str):
+        calls.append("run-task")
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "do_run_task", _fail_run_task)
+    monkeypatch.setattr(
+        cli,
+        "do_get_task_status",
+        lambda base_url, task_id: calls.append("task-status") or {"task_id": task_id},
+    )
+    monkeypatch.setattr(
+        cli,
+        "do_read_sync_logs",
+        lambda base_url, **kwargs: calls.append("logs-sync") or {"items": [], **kwargs},
+    )
+
+    result = cli.do_execute_workflow(
+        template_name="refresh-cache",
+        entrypoint="cli",
+        values={"task_id": "task-1", "log_limit": 10},
+        base_url="http://localhost:8000",
+        continue_on_error=True,
+    )
+
+    assert result["completed"] is False
+    assert result["failed_steps"] == 1
+    assert result["errors"][0]["step_id"] == "run-task"
+    assert list(result["results"]) == ["task-status", "sync-logs"]
+    assert calls == ["run-task", "task-status", "logs-sync"]
+
+
+def test_do_execute_workflow_writes_output_json_file(
+    tmp_path: Path,
+) -> None:
+    output_path = tmp_path / "workflow.json"
+
+    result = cli.do_execute_workflow(
+        template_name="daily-cache",
+        entrypoint="cli",
+        values={
+            "local_path": r"D:\Knowledge\FeishuMirror",
+            "cloud_folder_token": "fld_test",
+        },
+        base_url="http://localhost:8000",
+        dry_run=True,
+        output_json_file=output_path,
+    )
+
+    assert result["dry_run"] is True
+    assert output_path.is_file()
+    payload = output_path.read_text(encoding="utf-8")
+    assert '"action": "workflow-execute"' in payload
+
+
+def test_main_supports_workflow_execute_controls(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    captured: list[dict[str, object]] = []
+
+    def _fake_execute(**kwargs):
+        captured.append(kwargs)
+        return {"action": "workflow-execute", "completed": False, "executed_steps": 0}
+
+    monkeypatch.setattr(cli, "do_execute_workflow", _fake_execute)
+    output_path = tmp_path / "workflow.json"
+
+    exit_code = cli.main(
+        [
+            "workflow-execute",
+            "--template",
+            "daily-cache",
+            "--from-step",
+            "bootstrap",
+            "--to-step",
+            "inspect-task",
+            "--continue-on-error",
+            "--output-json-file",
+            str(output_path),
+            "--set",
+            r"local_path=D:\Knowledge\FeishuMirror",
+            "--set",
+            "cloud_folder_token=fld_test",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured == [
+        {
+            "template_name": "daily-cache",
+            "entrypoint": "cli",
+            "values": {
+                "local_path": r"D:\Knowledge\FeishuMirror",
+                "cloud_folder_token": "fld_test",
+            },
+            "base_url": "http://localhost:8000",
+            "dry_run": False,
+            "from_step": "bootstrap",
+            "to_step": "inspect-task",
+            "continue_on_error": True,
+            "output_json_file": output_path,
+        }
+    ]
+    payload = capsys.readouterr().out
+    assert '"action": "workflow-execute"' in payload
