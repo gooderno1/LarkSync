@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import base64
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
@@ -89,3 +90,41 @@ def test_tray_processes_mature_install_request_and_stops(monkeypatch, tmp_path: 
     assert handled is True
     assert consumed == [str(requested_path), "cleared"]
     assert stopped == [True]
+
+
+def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: Path) -> None:
+    installer_path = tmp_path / "中文 路径" / "LarkSync's Setup.exe"
+    command = tray_app._build_windows_installer_launch_command(installer_path)
+
+    assert command[0].lower().endswith("powershell.exe") or command[0].lower() == "powershell"
+    assert "-EncodedCommand" in command
+    encoded = command[command.index("-EncodedCommand") + 1]
+    script = base64.b64decode(encoded).decode("utf-16le")
+
+    assert "Start-Process -LiteralPath" in script
+    assert "Start-Sleep -Milliseconds 800" in script
+    assert "LarkSync''s Setup.exe" in script
+
+
+def test_schedule_installer_launch_on_windows_uses_detached_powershell(
+    monkeypatch, tmp_path: Path
+) -> None:
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.55.exe"
+    installer_path.write_bytes(b"exe")
+    calls: list[dict[str, object]] = []
+
+    def _fake_popen(args, **kwargs):
+        calls.append({"args": list(args), **kwargs})
+        class _DummyProc:
+            pid = 1234
+        return _DummyProc()
+
+    monkeypatch.setattr(tray_app.sys, "platform", "win32")
+    monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
+
+    tray = _build_tray()
+    tray._schedule_installer_launch(str(installer_path))
+
+    assert len(calls) == 1
+    assert "-EncodedCommand" in calls[0]["args"]
+    assert calls[0]["close_fds"] is True

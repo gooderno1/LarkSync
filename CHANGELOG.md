@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-08] v0.5.56-dev.1 fix(update-install): Windows 托盘改为使用 `powershell.exe -EncodedCommand` + `Start-Process -LiteralPath` 拉起安装包，并补充安装启动日志，修复“更新包已下载但确认安装后程序退出、安装器未成功启动”
 [2026-04-08] v0.5.55 release: v0.5.55
 [2026-04-08] v0.5.55-dev.8 feat(cli,agent): `workflow-execute` 自动归档到 `data/workflows`，新增 `workflow-run-list/show/prune` 并支持仅凭 `run_id` 恢复执行
 [2026-04-08] v0.5.55-dev.7 feat(cli,agent): `workflow-execute` 新增 `run_id`/`resume-from-file`/`skip-completed`，支持基于已有执行结果恢复并跳过已成功步骤

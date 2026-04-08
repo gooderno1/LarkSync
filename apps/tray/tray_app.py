@@ -13,6 +13,7 @@ LarkSync 系统托盘应用 — 主入口
 from __future__ import annotations
 
 import atexit
+import base64
 import sys
 import os
 import re
@@ -149,6 +150,52 @@ def _load_install_request() -> dict[str, str | float] | None:
 
 def _clear_install_request() -> None:
     _install_request_path().unlink(missing_ok=True)
+
+
+def _append_install_launch_log(message: str) -> None:
+    try:
+        log_path = _data_dir() / "logs" / "update-install.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        with log_path.open("a", encoding="utf-8", errors="ignore") as file:
+            file.write(f"[{timestamp}] {message}\n")
+    except Exception:
+        pass
+
+
+def _resolve_powershell_executable() -> str:
+    if sys.platform != "win32":
+        return "powershell"
+    system_root = os.getenv("SystemRoot", r"C:\Windows")
+    candidates = [
+        Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe",
+        Path(system_root) / "Sysnative" / "WindowsPowerShell" / "v1.0" / "powershell.exe",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return "powershell"
+
+
+def _build_windows_installer_launch_command(path: Path) -> list[str]:
+    escaped = str(path).replace("'", "''")
+    script = (
+        f"$installerPath = '{escaped}'; "
+        "Start-Sleep -Milliseconds 800; "
+        "Start-Process -LiteralPath $installerPath"
+    )
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    return [
+        _resolve_powershell_executable(),
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-EncodedCommand",
+        encoded,
+    ]
 
 
 def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
@@ -468,11 +515,14 @@ class LarkSyncTray:
         if created_at > 0 and (time.time() - created_at) < _INSTALL_REQUEST_MIN_AGE_SECONDS:
             return False
         try:
+            _append_install_launch_log(f"准备启动安装包: {installer_path}")
             self._schedule_installer_launch(installer_path)
         except Exception as exc:
+            _append_install_launch_log(f"启动安装包失败: {installer_path} ({type(exc).__name__}: {exc})")
             print(f"警告：启动安装程序失败: {exc}")
             return False
         _clear_install_request()
+        _append_install_launch_log(f"已调度安装包启动: {installer_path}")
         self._notify(
             "正在启动更新安装",
             "LarkSync 将退出并打开安装包，请按安装向导完成更新。",
@@ -487,21 +537,13 @@ class LarkSyncTray:
             raise FileNotFoundError(f"安装包不存在: {path}")
 
         if sys.platform == "win32":
-            escaped = str(path).replace("'", "''")
             creationflags = (
                 getattr(subprocess, "DETACHED_PROCESS", 0)
                 | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
                 | getattr(subprocess, "CREATE_NO_WINDOW", 0)
             )
             subprocess.Popen(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-WindowStyle",
-                    "Hidden",
-                    "-Command",
-                    f"Start-Sleep -Seconds 1; Start-Process -FilePath '{escaped}'",
-                ],
+                _build_windows_installer_launch_command(path),
                 creationflags=creationflags,
                 close_fds=True,
             )

@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.5.56-dev.1 (2026-04-08)
+
+- 目标：
+  - 修复“更新包已下载，点击确认安装后主程序退出，但安装器没有成功启动”的 Windows 在线升级问题。
+- 结果：
+  - 托盘侧 Windows 安装器启动链路从明文 `powershell -Command` 切换为 `powershell.exe -EncodedCommand`。
+  - 启动命令改用 `Start-Process -LiteralPath`，避免中文路径、单引号或特殊字符路径导致的 PowerShell 解析失败。
+  - 新增 `data/logs/update-install.log`，记录“准备启动安装包 / 已调度启动 / 启动失败”，便于后续定位现场问题。
+  - 补充托盘回归测试，覆盖编码命令构造和 Windows 启动参数。
+- 测试：
+  - `python -m pytest tests/test_tray_update_install.py tests/test_system_update_api.py tests/test_larksync_cli.py -q`
+- 问题：
+  - 当前仅修正 Windows 托盘拉起安装器链路；若仍出现失败，需要结合 `data/logs/update-install.log` 和系统安全软件拦截情况继续排查。
+
 ## v0.5.55 (2026-04-08)
 
 - 发布目标：
