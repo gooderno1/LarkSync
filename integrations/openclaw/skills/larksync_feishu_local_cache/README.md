@@ -54,6 +54,7 @@ python scripts/larksync_cli.py bootstrap-cache --local-path "D:\\Knowledge\\Feis
 - `scripts/larksync_cli.py` 适合仓库内 Agent / 自动化统一调用。
 - `larksync_skill_helper.py` 继续保留为 OpenClaw 兼容入口，旧命令别名仍有效。
 - `docs/CLI_AGENT_CONTRACT.md` 约定了 `bootstrap-cache` 等命令的稳定字段，便于 Agent 直接编排。
+- `workflow-template-list` / `workflow-template` 用于先拿到现成工作流模板，再执行具体命令。
 
 ## Agent Runbook
 - OpenClaw 代理专用执行说明：[`OPENCLAW_AGENT_GUIDE.md`](./OPENCLAW_AGENT_GUIDE.md)
@@ -65,6 +66,9 @@ python scripts/larksync_cli.py bootstrap-cache --local-path "D:\\Knowledge\\Feis
 
 ## 30 秒快速上手
 ```bash
+# 0) 先看可用模板
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-template --template daily-cache
+
 # 1) 环境检查
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
 

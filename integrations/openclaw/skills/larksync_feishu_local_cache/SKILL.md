@@ -40,15 +40,18 @@ metadata: {"category":"integrations","tags":["openclaw","feishu","larksync","syn
 
 ## 默认执行流程
 1. 检查本地 LarkSync 服务与授权状态。
-2. 配置低频下载策略（默认每天一次）。
-3. 创建同步任务（默认 `download_only`）。
-4. 按需触发一次立即同步，建立本地缓存基线。
-5. 后续回答用户文档问题时，优先读取本地同步目录。
+2. 先读取标准工作流模板，确认应执行的命令链。
+3. 配置低频下载策略（默认每天一次）。
+4. 创建同步任务（默认 `download_only`）。
+5. 按需触发一次立即同步，建立本地缓存基线。
+6. 后续回答用户文档问题时，优先读取本地同步目录。
 
 ## 命令入口
 仓库内正式 CLI：
 
 ```bash
+python scripts/larksync_cli.py workflow-template-list
+python scripts/larksync_cli.py workflow-template --template daily-cache
 python scripts/larksync_cli.py check
 python scripts/larksync_cli.py task-list
 python scripts/larksync_cli.py task-create --name "OpenClaw 每日同步" --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only
@@ -58,6 +61,7 @@ python scripts/larksync_cli.py bootstrap-cache --local-path "D:\\Knowledge\\Feis
 OpenClaw 兼容 helper（返回 JSON，便于自动化编排；旧命令别名仍可用）：
 
 ```bash
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-template --template daily-cache
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py configure-download --download-value 1 --download-unit days --download-time 01:00
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py create-task --name "OpenClaw 每日同步" --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only
@@ -97,6 +101,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 ## 约束与安全边界
 - 未通过 `check` 之前，不执行任务创建或策略变更。
 - 优先使用 `bootstrap-cache` 作为首次接入命令，让 Agent 根据 `phase` 与 `next_step` 自动分支。
+- 优先使用 `workflow-template*` 先发现标准工作流，再执行对应命令。
 - 未经用户明确同意，不把 `download_only` 自动切到 `bidirectional`。
 - 若用户要开启双向，必须先告知风险：
   - 本地误改可能上云；

@@ -32,7 +32,13 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 - 明确提示用户“需完成一次飞书 OAuth 授权”。
 - 授权完成后重试步骤 1。
 
-3. 若检查通过，执行一键初始化（推荐）：
+3. 读取标准模板，确认当前要执行哪条工作流：
+
+```bash
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py workflow-template --template daily-cache
+```
+
+4. 若检查通过，执行一键初始化（推荐）：
 
 ```bash
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-cache \
@@ -45,13 +51,14 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
   --run-now
 ```
 
-4. 首次成功后，后续按需执行：
+5. 首次成功后，后续按需执行：
 - `check`：巡检状态
 - `run-task --task-id <id>`：立即触发
 - `configure-download`：调整周期
 
 说明：
 - `bootstrap-cache` 返回 `phase` 与 `next_step`，Agent 应直接按返回值分支，而不是自己猜测状态。
+- `workflow-template` 返回标准步骤和分支建议，适合在执行前先做规划。
 - 若必须兼容旧脚本，`bootstrap-daily` 仍可用，但不再是首选首次接入入口。
 
 ## 4. WSL 安全边界（关键）

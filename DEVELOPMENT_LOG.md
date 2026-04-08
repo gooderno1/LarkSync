@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.5.55-dev.3 (2026-04-08)
+- 目标：
+  - 为 Agent 增加“先发现模板、再执行命令”的标准工作流模板能力。
+- 结果：
+  - `scripts/larksync_cli.py` 新增 `workflow-template-list` 与 `workflow-template`，内置 `daily-cache`、`refresh-cache`、`conflict-audit` 三类模板，输出包含 `entrypoints`、`inputs`、`steps`、`branching`。
+  - OpenClaw helper / WSL helper 同步支持模板命令，便于在 WSL 或 Skill 场景先取模板再执行。
+  - README、CLI 契约文档、OpenClaw Skill 文档改为补充模板发现流程。
+- 测试：
+  - `python -m pytest tests/test_larksync_cli.py tests/test_larksync_skill_helper.py tests/test_larksync_wsl_helper.py -q`
+  - `python scripts/larksync_cli.py workflow-template-list`
+  - `python scripts/larksync_cli.py workflow-template --template daily-cache`
+- 问题：
+  - 无阻塞问题。
+
 ## v0.5.55-dev.2 (2026-04-07)
 - 目标：
   - 为 Agent/Skill 增加可重入的首次缓存初始化命令，并沉淀正式 CLI 契约文档。

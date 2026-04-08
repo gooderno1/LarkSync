@@ -49,6 +49,8 @@
 | --- | --- |
 | `check` | 读取健康、授权、配置、任务概况 |
 | `auth-status` | 单独读取授权状态 |
+| `workflow-template-list` | 枚举内置标准工作流模板 |
+| `workflow-template` | 读取单个工作流模板的结构化定义 |
 | `bootstrap-cache` | 首次缓存初始化的高层命令 |
 | `task-list` | 列出现有同步任务 |
 | `task-status` | 读取单个任务运行状态 |
@@ -75,7 +77,27 @@ WSL 场景推荐入口：
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py <command> [options]
 ```
 
-## 4. `bootstrap-cache` 契约
+## 4.1 标准工作流模板
+
+CLI 提供两条发现型命令：
+
+```bash
+python scripts/larksync_cli.py workflow-template-list
+python scripts/larksync_cli.py workflow-template --template daily-cache
+```
+
+当前内置模板：
+- `daily-cache`：首次接入或新增目录缓存初始化
+- `refresh-cache`：对已有任务执行一次手动刷新并回读状态/日志
+- `conflict-audit`：查询冲突并指导人工决策
+
+模板返回内容包含：
+- `entrypoints`：CLI / helper / WSL helper 的推荐入口
+- `inputs`：工作流输入参数
+- `steps`：标准步骤与推荐命令
+- `branching`：推荐分支处理
+
+## 5. `bootstrap-cache` 契约
 
 命令示例：
 
@@ -118,7 +140,7 @@ python scripts/larksync_cli.py bootstrap-cache \
 - `grant_drive_permission`
 - `use_local_cache`
 
-## 5. 推荐分支处理
+## 6. 推荐分支处理
 
 当 `phase=needs_oauth`：
 - 提示用户完成一次浏览器授权；
@@ -133,7 +155,7 @@ python scripts/larksync_cli.py bootstrap-cache \
 - 如 `run_now=true`，优先读取返回中的 `task_status`；
 - 后续巡检优先使用 `task-status`、`logs-sync`、`conflict-list`。
 
-## 6. 兼容说明
+## 7. 兼容说明
 
 - `bootstrap-daily` 仍保留，适合低层组合调用和历史脚本兼容。
 - OpenClaw helper 的旧别名 `create-task`、`run-task` 继续可用。

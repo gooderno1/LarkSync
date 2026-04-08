@@ -332,3 +332,49 @@ def test_main_supports_bootstrap_cache_command(
     payload = capsys.readouterr().out
     assert '"action": "bootstrap-cache"' in payload
     assert '"completed": true' in payload.lower()
+
+
+def test_do_list_workflow_templates() -> None:
+    result = cli.do_list_workflow_templates()
+
+    assert result["action"] == "workflow-template-list"
+    assert result["total"] >= 3
+    names = {item["name"] for item in result["items"]}
+    assert {"daily-cache", "refresh-cache", "conflict-audit"} <= names
+
+
+def test_do_get_workflow_template_daily_cache() -> None:
+    result = cli.do_get_workflow_template("daily-cache")
+
+    assert result["action"] == "workflow-template"
+    assert result["template"] == "daily-cache"
+    assert result["workflow"]["name"] == "daily-cache"
+    step_commands = [step["command"] for step in result["workflow"]["steps"]]
+    assert "bootstrap-cache" in step_commands
+    assert any(branch["phase"] == "needs_oauth" for branch in result["workflow"]["branching"])
+
+
+def test_do_get_workflow_template_invalid_name() -> None:
+    with pytest.raises(ValueError, match="不支持"):
+        cli.do_get_workflow_template("unknown-template")
+
+
+def test_main_supports_workflow_template_list(
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = cli.main(["workflow-template-list"])
+
+    assert exit_code == 0
+    payload = capsys.readouterr().out
+    assert '"action": "workflow-template-list"' in payload
+
+
+def test_main_supports_workflow_template(
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = cli.main(["workflow-template", "--template", "daily-cache"])
+
+    assert exit_code == 0
+    payload = capsys.readouterr().out
+    assert '"action": "workflow-template"' in payload
+    assert '"template": "daily-cache"' in payload

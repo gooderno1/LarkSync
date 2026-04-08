@@ -20,6 +20,8 @@ KNOWN_COMMANDS = {
     "check",
     "auth-status",
     "config-get",
+    "workflow-template-list",
+    "workflow-template",
     "config-set",
     "configure-download",
     "task-list",

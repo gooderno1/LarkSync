@@ -18,6 +18,7 @@ TASK_UPDATE_MODE_CHOICES = ("auto", "partial", "full")
 DELETE_POLICY_CHOICES = ("off", "safe", "strict")
 LOG_ORDER_CHOICES = ("desc", "asc")
 CONFLICT_ACTION_CHOICES = ("use_local", "use_cloud")
+WORKFLOW_TEMPLATE_CHOICES = ("daily-cache", "refresh-cache", "conflict-audit")
 
 
 @dataclass(frozen=True)
@@ -770,6 +771,178 @@ def do_bootstrap_cache(
     }
 
 
+def _workflow_template_catalog() -> dict[str, dict[str, Any]]:
+    common_entrypoints = {
+        "cli": "python scripts/larksync_cli.py",
+        "helper": (
+            "python integrations/openclaw/skills/larksync_feishu_local_cache/"
+            "scripts/larksync_skill_helper.py"
+        ),
+        "wsl_helper": (
+            "python integrations/openclaw/skills/larksync_feishu_local_cache/"
+            "scripts/larksync_wsl_helper.py"
+        ),
+    }
+    return {
+        "daily-cache": {
+            "name": "daily-cache",
+            "title": "每日缓存初始化",
+            "description": "首次接入或新目录接入时，创建 download_only 缓存任务并按需立即跑一次。",
+            "entrypoints": common_entrypoints,
+            "inputs": [
+                {"name": "local_path", "required": True, "description": "本地缓存目录"},
+                {"name": "cloud_folder_token", "required": True, "description": "飞书云目录 token"},
+                {"name": "download_time", "required": False, "default": "01:00"},
+            ],
+            "steps": [
+                {
+                    "id": "bootstrap",
+                    "title": "初始化缓存任务",
+                    "command": "bootstrap-cache",
+                    "notes": "推荐主入口；会自动处理后端不可达、未授权、缺 Drive 权限等前置分支。",
+                },
+                {
+                    "id": "inspect-task",
+                    "title": "读取任务状态",
+                    "command": "task-status",
+                    "notes": "当 bootstrap-cache 返回 task_id 后，用于确认首次执行状态。",
+                },
+            ],
+            "branching": [
+                {
+                    "phase": "blocked_backend_unreachable",
+                    "next_step_type": "start_backend",
+                    "message": "先启动 LarkSync，再重试 bootstrap-cache。",
+                },
+                {
+                    "phase": "needs_oauth",
+                    "next_step_type": "complete_oauth",
+                    "message": "提示用户完成一次 OAuth，然后重试 bootstrap-cache。",
+                },
+                {
+                    "phase": "needs_drive_permission",
+                    "next_step_type": "grant_drive_permission",
+                    "message": "提示检查飞书应用权限范围与用户授权。",
+                },
+                {
+                    "phase": "configured",
+                    "next_step_type": "use_local_cache",
+                    "message": "任务已可用，后续读取优先走本地缓存目录。",
+                },
+            ],
+        },
+        "refresh-cache": {
+            "name": "refresh-cache",
+            "title": "按需刷新本地缓存",
+            "description": "对已有任务执行一次手动刷新，并读取状态与最近日志。",
+            "entrypoints": common_entrypoints,
+            "inputs": [
+                {"name": "task_id", "required": True, "description": "已有同步任务 ID"},
+                {"name": "log_limit", "required": False, "default": 20},
+            ],
+            "steps": [
+                {
+                    "id": "run-task",
+                    "title": "立即触发任务",
+                    "command": "task-run",
+                    "notes": "用于用户要求“现在同步一次”的场景。",
+                },
+                {
+                    "id": "task-status",
+                    "title": "读取任务运行状态",
+                    "command": "task-status",
+                    "notes": "确认当前是否在运行、最近结果是否成功。",
+                },
+                {
+                    "id": "sync-logs",
+                    "title": "读取最近同步日志",
+                    "command": "logs-sync",
+                    "notes": "失败时优先结合日志定位问题。",
+                },
+            ],
+            "branching": [
+                {
+                    "phase": "success",
+                    "next_step_type": "report_status",
+                    "message": "向用户回报任务已触发，并附上最近状态。",
+                },
+                {
+                    "phase": "error",
+                    "next_step_type": "inspect_logs",
+                    "message": "读取 logs-sync 和 task-status，汇总失败点。",
+                },
+            ],
+        },
+        "conflict-audit": {
+            "name": "conflict-audit",
+            "title": "冲突巡检",
+            "description": "面向双向同步场景，定期拉取冲突列表并按需给出处理建议。",
+            "entrypoints": common_entrypoints,
+            "inputs": [
+                {"name": "include_resolved", "required": False, "default": False},
+            ],
+            "steps": [
+                {
+                    "id": "list-conflicts",
+                    "title": "查询冲突列表",
+                    "command": "conflict-list",
+                    "notes": "日常巡检默认只查未解决冲突。",
+                },
+                {
+                    "id": "read-logs",
+                    "title": "按任务读取同步日志",
+                    "command": "logs-sync",
+                    "notes": "对存在冲突的任务补充上下文。",
+                },
+                {
+                    "id": "resolve-conflict",
+                    "title": "按确认结果解决冲突",
+                    "command": "conflict-resolve",
+                    "notes": "只有在用户明确选择 use_local 或 use_cloud 后才执行。",
+                },
+            ],
+            "branching": [
+                {
+                    "phase": "no_conflict",
+                    "next_step_type": "report_clean",
+                    "message": "当前没有待处理冲突，可结束巡检。",
+                },
+                {
+                    "phase": "has_conflict",
+                    "next_step_type": "request_resolution",
+                    "message": "先给出冲突摘要和风险，不自动替用户选 use_local/use_cloud。",
+                },
+            ],
+        },
+    }
+
+
+def do_list_workflow_templates() -> dict[str, Any]:
+    catalog = _workflow_template_catalog()
+    items = [
+        {
+            "name": item["name"],
+            "title": item["title"],
+            "description": item["description"],
+        }
+        for item in catalog.values()
+    ]
+    return {"action": "workflow-template-list", "items": items, "total": len(items)}
+
+
+def do_get_workflow_template(template_name: str) -> dict[str, Any]:
+    catalog = _workflow_template_catalog()
+    try:
+        workflow = catalog[template_name]
+    except KeyError as exc:
+        raise ValueError(f"workflow template 不支持: {template_name}") from exc
+    return {
+        "action": "workflow-template",
+        "template": template_name,
+        "workflow": workflow,
+    }
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LarkSync CLI：为 Agent/Skill 提供统一命令入口")
     parser.add_argument(
@@ -787,6 +960,9 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("check", help="检查健康、授权、配置与任务概况")
     sub.add_parser("auth-status", help="读取授权状态")
     sub.add_parser("config-get", help="读取当前配置")
+    sub.add_parser("workflow-template-list", help="列出可供 Agent 使用的标准工作流模板")
+    template = sub.add_parser("workflow-template", help="读取单个标准工作流模板")
+    template.add_argument("--template", choices=WORKFLOW_TEMPLATE_CHOICES, required=True)
 
     cfg = sub.add_parser("config-set", help="更新配置")
     cfg.add_argument("--download-value", type=float)
@@ -987,6 +1163,10 @@ def main(argv: list[str] | None = None) -> int:
             result = do_auth_status(base_url)
         elif args.command == "config-get":
             result = do_get_config(base_url)
+        elif args.command == "workflow-template-list":
+            result = do_list_workflow_templates()
+        elif args.command == "workflow-template":
+            result = do_get_workflow_template(str(args.template))
         elif args.command == "config-set":
             result = do_set_config(base_url, _build_config_payload(args))
         elif args.command == "configure-download":

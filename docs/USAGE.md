@@ -358,6 +358,9 @@ OpenClaw 代理 runbook：`integrations/openclaw/skills/larksync_feishu_local_ca
 常用命令：
 
 ```bash
+# 查看内置工作流模板
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-template --template daily-cache
+
 # 检查环境
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
 

@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-08] v0.5.55-dev.3 feat(cli,agent): 新增 `workflow-template-list` / `workflow-template` 标准工作流模板命令，内置 daily-cache、refresh-cache、conflict-audit 三类 Agent 模板
 [2026-04-07] v0.5.55-dev.2 feat(cli,agent): 新增 `bootstrap-cache` 高层初始化命令与 CLI Agent 契约文档，统一首次接入/OAuth 分支与 OpenClaw 推荐工作流
 [2026-04-07] v0.5.55-dev.1 feat(cli,openclaw): 新增正式 CLI 统一封装授权/配置/任务/日志/更新/冲突等核心能力，并让 OpenClaw helper 复用同一命令面
 [2026-04-07] v0.5.54 release: v0.5.54
