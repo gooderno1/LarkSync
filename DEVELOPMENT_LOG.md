@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.5.56 (2026-04-09)
+
+- 发布目标：
+  - 将 `v0.5.56-dev.1` 的 Windows 在线升级修复收口为正式稳定版，解决“更新包已下载、确认安装后程序退出但安装器未成功启动”。
+- 发布内容：
+  - Windows 托盘安装器启动链路改为 `powershell.exe -EncodedCommand`。
+  - 安装命令改用 `Start-Process -LiteralPath`，兼容中文路径、单引号与特殊字符路径。
+  - 新增 `data/logs/update-install.log`，记录安装器启动关键节点，便于复盘现场。
+- 发布验证：
+  - `python -m pytest tests/test_tray_update_install.py tests/test_system_update_api.py tests/test_larksync_cli.py -q`
+  - `python scripts/build_installer.py --nsis`
+- 发布说明：
+  - 稳定版标签为 `v0.5.56`，GitHub Release Windows 安装包将由 `Release Build` 工作流基于 tag 自动构建并上传。
+
 ## v0.5.56-dev.1 (2026-04-08)
 
 - 目标：
