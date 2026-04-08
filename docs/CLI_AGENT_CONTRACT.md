@@ -52,6 +52,9 @@
 | `workflow-template-list` | 枚举内置标准工作流模板 |
 | `workflow-template` | 读取单个工作流模板的结构化定义 |
 | `workflow-plan` | 按模板和参数生成可执行命令计划 |
+| `workflow-run-list` | 列出已归档的工作流执行记录 |
+| `workflow-run-show` | 读取单个工作流执行记录 |
+| `workflow-run-prune` | 清理旧的工作流执行记录 |
 | `workflow-execute` | 按模板与参数顺序执行工作流 |
 | `bootstrap-cache` | 首次缓存初始化的高层命令 |
 | `task-list` | 列出现有同步任务 |
@@ -88,6 +91,7 @@ python scripts/larksync_cli.py workflow-template-list
 python scripts/larksync_cli.py workflow-template --template daily-cache
 python scripts/larksync_cli.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
 python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run --from-step bootstrap --to-step inspect-task --output-json-file data\\workflow.json --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
+python scripts/larksync_cli.py workflow-run-list --limit 10
 ```
 
 当前内置模板：
@@ -114,22 +118,30 @@ python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run
 - `dry_run=true`：只返回计划，不触发真实执行
 - `completed` / `executed_steps`：实际执行结果摘要
 - `failed_steps` / `errors`：失败步骤汇总
+- `run_id` / `run_file`：本次执行的稳定 ID 与标准归档文件路径（自动写入 `data/workflows/<run_id>.json`）
 
 执行控制项：
 - `--from-step` / `--to-step`：只执行指定区间内的步骤
 - `--continue-on-error`：单步失败后继续执行后续步骤，并在结果中汇总错误
 - `--output-json-file`：将整份执行结果落盘为 JSON，便于外层 Agent 审计或二次处理
 - `--run-id`：显式指定本次执行的稳定 ID
-- `--resume-from-file`：从已有 `workflow-execute` 结果文件恢复状态
+- `--resume-from-file`：从已有 `workflow-execute` 结果文件恢复状态；未传时会尝试从 `data/workflows/<run_id>.json` 自动恢复
 - `--skip-completed`：恢复执行时跳过结果中已成功的步骤
+
+运行记录命令：
+- `workflow-run-list --limit N`：按最近保存时间倒序列出执行记录
+- `workflow-run-show --run-id <id>`：读取指定 run 的完整 JSON
+- `workflow-run-prune --keep N`：仅保留最近 N 条标准运行记录
 
 推荐用法：
 1. `workflow-template-list` 发现有哪些标准流程。
 2. `workflow-template` 查看模板结构和分支。
 3. `workflow-plan` 结合当前参数生成执行计划。
 4. `workflow-execute` 在确认计划无误后执行；需要预演时先加 `--dry-run`。
-5. 若只想重跑一段链路，配合 `--from-step` / `--to-step`；若需要持久化执行痕迹，配合 `--output-json-file`。
-6. 若要从上次执行结果恢复，复用 `--run-id` 并传入 `--resume-from-file`；若不想重复跑已成功步骤，再加 `--skip-completed`。
+5. `workflow-execute` 每次真实执行都会自动归档到 `data/workflows/<run_id>.json`；若需要额外产出到别处，再补 `--output-json-file`。
+6. 若只想重跑一段链路，配合 `--from-step` / `--to-step`。
+7. 若要从上次执行结果恢复，复用 `--run-id`；默认会先尝试读取 `data/workflows/<run_id>.json`，若需自定义来源再传 `--resume-from-file`；若不想重复跑已成功步骤，再加 `--skip-completed`。
+8. 若要让外层 Agent 查询历史执行，使用 `workflow-run-list` / `workflow-run-show`；若要定期清理历史，使用 `workflow-run-prune`。
 
 ## 5. `bootstrap-cache` 契约
 

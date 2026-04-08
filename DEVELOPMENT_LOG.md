@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.5.55-dev.8 (2026-04-08)
+
+- 完成工作流运行记录索引化：`workflow-execute` 每次真实执行都会自动写入 `data/workflows/<run_id>.json`。
+- 新增 `workflow-run-list`、`workflow-run-show`、`workflow-run-prune`，便于 Agent 查询执行历史、读取单次结果和清理旧记录。
+- 恢复执行逻辑支持仅凭 `--run-id` 自动从标准运行目录恢复，`--resume-from-file` 退化为可选覆盖源。
+- 更新 README、CLI 契约、OpenClaw Skill 文档与使用示例，统一推荐运行记录目录方案。
+- 验证通过：
+  - `python -m pytest apps/backend/tests/test_larksync_cli.py apps/backend/tests/test_larksync_skill_helper.py apps/backend/tests/test_larksync_wsl_helper.py -q`
+  - `python scripts/larksync_cli.py workflow-run-list --limit 3`
+  - `python scripts/larksync_cli.py workflow-execute --help`
+
 ## v0.5.55-dev.7 (2026-04-08)
 - 目标：
   - 为工作流执行器补充运行 ID、结果恢复与跳过已成功步骤能力。

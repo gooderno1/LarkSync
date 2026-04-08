@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -15,6 +16,11 @@ if spec is None or spec.loader is None:
 cli = importlib.util.module_from_spec(spec)
 sys.modules["larksync_cli"] = cli
 spec.loader.exec_module(cli)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_workflow_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "WORKFLOW_RUNS_DIR", tmp_path / "workflow-runs")
 
 
 def test_validate_base_url_localhost_default() -> None:
@@ -770,6 +776,64 @@ def test_do_execute_workflow_persists_and_resumes_run(
     assert calls == []
 
 
+def test_do_execute_workflow_auto_saves_run_record_and_resumes_by_run_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[str] = []
+
+    def _fake_bootstrap_cache(**kwargs):
+        calls.append("bootstrap-cache")
+        return {
+            "action": "bootstrap-cache",
+            "task": {"task": {"id": "task-1"}},
+            "phase": "configured",
+        }
+
+    def _fake_task_status(base_url: str, task_id: str):
+        calls.append("task-status")
+        return {"action": "task-status", "task_id": task_id, "status": {"state": "running"}}
+
+    monkeypatch.setattr(cli, "do_bootstrap_cache", _fake_bootstrap_cache)
+    monkeypatch.setattr(cli, "do_get_task_status", _fake_task_status)
+    monkeypatch.setattr(cli, "WORKFLOW_RUNS_DIR", tmp_path / "workflow-runs")
+
+    first = cli.do_execute_workflow(
+        template_name="daily-cache",
+        entrypoint="cli",
+        values={
+            "local_path": r"D:\Knowledge\FeishuMirror",
+            "cloud_folder_token": "fld_test",
+        },
+        base_url="http://localhost:8000",
+        dry_run=False,
+    )
+
+    run_file = tmp_path / "workflow-runs" / f"{first['run_id']}.json"
+    assert run_file.is_file()
+    assert Path(first["run_file"]) == run_file
+
+    calls.clear()
+
+    second = cli.do_execute_workflow(
+        template_name="daily-cache",
+        entrypoint="cli",
+        values={
+            "local_path": r"D:\Knowledge\FeishuMirror",
+            "cloud_folder_token": "fld_test",
+        },
+        base_url="http://localhost:8000",
+        dry_run=False,
+        run_id=str(first["run_id"]),
+        skip_completed=True,
+    )
+
+    assert second["resumed"] is True
+    assert second["executed_steps"] == 0
+    assert second["skipped_steps"] == 2
+    assert Path(second["run_file"]) == run_file
+    assert calls == []
+
+
 def test_do_execute_workflow_skip_completed_without_resume_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -858,3 +922,99 @@ def test_main_supports_workflow_execute_resume_options(
     ]
     payload = capsys.readouterr().out
     assert '"run_id": "run-1"' in payload
+
+
+def test_list_show_and_prune_workflow_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "workflow-runs"
+    monkeypatch.setattr(cli, "WORKFLOW_RUNS_DIR", run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "run-1.json").write_text(
+        """
+{
+  "action": "workflow-execute",
+  "run_id": "run-1",
+  "template": "daily-cache",
+  "completed": true,
+  "executed_steps": 2
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    (run_dir / "run-2.json").write_text(
+        """
+{
+  "action": "workflow-execute",
+  "run_id": "run-2",
+  "template": "refresh-cache",
+  "completed": false,
+  "executed_steps": 1
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    (run_dir / "run-1.json").touch()
+    (run_dir / "run-2.json").touch()
+    os.utime(run_dir / "run-1.json", (1, 1))
+    os.utime(run_dir / "run-2.json", (2, 2))
+
+    listed = cli.do_list_workflow_runs(limit=10)
+    assert listed["action"] == "workflow-run-list"
+    assert listed["count"] == 2
+    assert [item["run_id"] for item in listed["items"]] == ["run-2", "run-1"]
+
+    shown = cli.do_show_workflow_run("run-1")
+    assert shown["run_id"] == "run-1"
+    assert shown["template"] == "daily-cache"
+
+    pruned = cli.do_prune_workflow_runs(keep=1)
+    assert pruned == {
+        "action": "workflow-run-prune",
+        "kept": 1,
+        "deleted": ["run-1"],
+        "remaining": 1,
+    }
+    assert not (run_dir / "run-1.json").exists()
+    assert (run_dir / "run-2.json").is_file()
+
+
+def test_main_supports_workflow_run_commands(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "do_list_workflow_runs",
+        lambda limit=20: {
+            "action": "workflow-run-list",
+            "count": 1,
+            "items": [{"run_id": "run-1"}],
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "do_show_workflow_run",
+        lambda run_id: {"action": "workflow-run-show", "run_id": run_id},
+    )
+    monkeypatch.setattr(
+        cli,
+        "do_prune_workflow_runs",
+        lambda keep=20: {
+            "action": "workflow-run-prune",
+            "kept": keep,
+            "deleted": [],
+            "remaining": keep,
+        },
+    )
+
+    list_code = cli.main(["workflow-run-list", "--limit", "5"])
+    list_payload = capsys.readouterr().out
+    show_code = cli.main(["workflow-run-show", "--run-id", "run-1"])
+    show_payload = capsys.readouterr().out
+    prune_code = cli.main(["workflow-run-prune", "--keep", "3"])
+    prune_payload = capsys.readouterr().out
+
+    assert list_code == 0
+    assert '"action": "workflow-run-list"' in list_payload
+    assert show_code == 0
+    assert '"action": "workflow-run-show"' in show_payload
+    assert prune_code == 0
+    assert '"action": "workflow-run-prune"' in prune_payload

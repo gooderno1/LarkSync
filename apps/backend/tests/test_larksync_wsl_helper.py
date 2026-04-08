@@ -123,6 +123,18 @@ def test_ensure_remote_allow_flag_keeps_workflow_execute_position() -> None:
     assert patched.index("--allow-remote-base-url") < patched.index("workflow-execute")
 
 
+def test_ensure_remote_allow_flag_keeps_workflow_run_show_position() -> None:
+    args = [
+        "--base-url",
+        "http://172.27.80.1:8000",
+        "workflow-run-show",
+        "--run-id",
+        "run-1",
+    ]
+    patched = wsl_helper.ensure_remote_allow_flag(args)
+    assert patched.index("--allow-remote-base-url") < patched.index("workflow-run-show")
+
+
 def test_select_reachable_base_url() -> None:
     results = [
         wsl_helper.ProbeResult(

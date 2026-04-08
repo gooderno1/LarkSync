@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import datetime as dt
 import uuid
 import sys
 from dataclasses import dataclass
@@ -21,6 +22,9 @@ LOG_ORDER_CHOICES = ("desc", "asc")
 CONFLICT_ACTION_CHOICES = ("use_local", "use_cloud")
 WORKFLOW_TEMPLATE_CHOICES = ("daily-cache", "refresh-cache", "conflict-audit")
 WORKFLOW_ENTRYPOINT_CHOICES = ("cli", "helper", "wsl_helper")
+ROOT_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = ROOT_DIR / "data"
+WORKFLOW_RUNS_DIR = DATA_DIR / "workflows"
 
 
 @dataclass(frozen=True)
@@ -1327,6 +1331,106 @@ def _load_workflow_resume_payload(path: Path | None) -> dict[str, Any] | None:
     return data
 
 
+def _workflow_run_path(run_id: str) -> Path:
+    return WORKFLOW_RUNS_DIR / f"{run_id}.json"
+
+
+def _save_workflow_run_payload(payload: dict[str, Any]) -> Path:
+    run_id = str(payload.get("run_id", "")).strip()
+    if not run_id:
+        raise ValueError("workflow 结果缺少 run_id，无法保存运行记录")
+    WORKFLOW_RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    path = _workflow_run_path(run_id)
+    payload["run_file"] = str(path)
+    payload["saved_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
+def _load_workflow_resume_payload_for_run(
+    path: Path | None, run_id: str | None = None
+) -> dict[str, Any] | None:
+    if path is not None:
+        return _load_workflow_resume_payload(path)
+    normalized_run_id = str(run_id or "").strip()
+    if not normalized_run_id:
+        return None
+    run_path = _workflow_run_path(normalized_run_id)
+    return _load_workflow_resume_payload(run_path)
+
+
+def _workflow_run_summary(path: Path) -> dict[str, Any]:
+    payload = _load_workflow_resume_payload(path) or {}
+    stat = path.stat()
+    run_id = str(payload.get("run_id", path.stem)).strip() or path.stem
+    return {
+        "run_id": run_id,
+        "template": payload.get("template"),
+        "entrypoint": payload.get("entrypoint"),
+        "completed": payload.get("completed"),
+        "dry_run": payload.get("dry_run"),
+        "executed_steps": payload.get("executed_steps"),
+        "failed_steps": payload.get("failed_steps"),
+        "skipped_steps": payload.get("skipped_steps"),
+        "saved_at": payload.get("saved_at"),
+        "path": str(path),
+        "modified_at": dt.datetime.fromtimestamp(stat.st_mtime, tz=dt.timezone.utc).isoformat(),
+    }
+
+
+def do_list_workflow_runs(limit: int = 20) -> dict[str, Any]:
+    effective_limit = max(0, int(limit))
+    if not WORKFLOW_RUNS_DIR.is_dir():
+        return {"action": "workflow-run-list", "count": 0, "items": []}
+    files = sorted(
+        WORKFLOW_RUNS_DIR.glob("*.json"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
+    items = [_workflow_run_summary(path) for path in files[:effective_limit]]
+    return {"action": "workflow-run-list", "count": len(items), "items": items}
+
+
+def do_show_workflow_run(run_id: str) -> dict[str, Any]:
+    normalized_run_id = str(run_id).strip()
+    if not normalized_run_id:
+        raise ValueError("run_id 不能为空")
+    path = _workflow_run_path(normalized_run_id)
+    payload = _load_workflow_resume_payload(path)
+    if payload is None:
+        raise FileNotFoundError(f"未找到 workflow run: {normalized_run_id}")
+    payload.setdefault("action", "workflow-run-show")
+    payload.setdefault("run_file", str(path))
+    return payload
+
+
+def do_prune_workflow_runs(keep: int = 20) -> dict[str, Any]:
+    effective_keep = max(0, int(keep))
+    if not WORKFLOW_RUNS_DIR.is_dir():
+        return {
+            "action": "workflow-run-prune",
+            "kept": effective_keep,
+            "deleted": [],
+            "remaining": 0,
+        }
+    files = sorted(
+        WORKFLOW_RUNS_DIR.glob("*.json"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
+    deleted: list[str] = []
+    for path in files[effective_keep:]:
+        deleted.append(path.stem)
+        path.unlink(missing_ok=True)
+    remaining = len(list(WORKFLOW_RUNS_DIR.glob("*.json")))
+    return {
+        "action": "workflow-run-prune",
+        "kept": effective_keep,
+        "deleted": deleted,
+        "remaining": remaining,
+    }
+
+
 def do_execute_workflow(
     *,
     template_name: str,
@@ -1350,7 +1454,7 @@ def do_execute_workflow(
         to_step=to_step,
     )
     effective_run_id = (run_id or "").strip() or uuid.uuid4().hex
-    resumed_payload = _load_workflow_resume_payload(resume_from_file)
+    resumed_payload = _load_workflow_resume_payload_for_run(resume_from_file, effective_run_id)
     resumed_results: dict[str, Any] = {}
     resumed_errors: list[dict[str, Any]] = []
     resumed = False
@@ -1370,6 +1474,7 @@ def do_execute_workflow(
             "template": template_name,
             "entrypoint": entrypoint,
             "run_id": effective_run_id,
+            "run_file": None,
             "resumed": resumed,
             "dry_run": True,
             "completed": False,
@@ -1453,6 +1558,7 @@ def do_execute_workflow(
         "template": template_name,
         "entrypoint": entrypoint,
         "run_id": effective_run_id,
+        "run_file": None,
         "resumed": resumed,
         "dry_run": False,
         "completed": len(errors) == 0,
@@ -1465,6 +1571,7 @@ def do_execute_workflow(
         "execution_log": execution_log,
         "errors": errors,
     }
+    _save_workflow_run_payload(result)
     if output_json_file is not None:
         output_json_file.write_text(
             json.dumps(result, ensure_ascii=False, indent=2),
@@ -1497,6 +1604,12 @@ def _build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--template", choices=WORKFLOW_TEMPLATE_CHOICES, required=True)
     plan.add_argument("--entrypoint", choices=WORKFLOW_ENTRYPOINT_CHOICES, default="cli")
     plan.add_argument("--set", action="append", default=[], help="模板参数，格式 key=value，可重复")
+    run_list = sub.add_parser("workflow-run-list", help="列出标准工作流执行记录")
+    run_list.add_argument("--limit", type=int, default=20)
+    run_show = sub.add_parser("workflow-run-show", help="读取单个工作流执行记录")
+    run_show.add_argument("--run-id", required=True)
+    run_prune = sub.add_parser("workflow-run-prune", help="清理过旧工作流执行记录")
+    run_prune.add_argument("--keep", type=int, default=20)
     execute = sub.add_parser("workflow-execute", help="按模板与参数顺序执行工作流")
     execute.add_argument("--template", choices=WORKFLOW_TEMPLATE_CHOICES, required=True)
     execute.add_argument("--entrypoint", choices=WORKFLOW_ENTRYPOINT_CHOICES, default="cli")
@@ -1719,6 +1832,12 @@ def main(argv: list[str] | None = None) -> int:
                 entrypoint=str(args.entrypoint),
                 values=_parse_template_set_args(list(args.set or [])),
             )
+        elif args.command == "workflow-run-list":
+            result = do_list_workflow_runs(limit=int(args.limit))
+        elif args.command == "workflow-run-show":
+            result = do_show_workflow_run(str(args.run_id))
+        elif args.command == "workflow-run-prune":
+            result = do_prune_workflow_runs(keep=int(args.keep))
         elif args.command == "workflow-execute":
             result = do_execute_workflow(
                 template_name=str(args.template),
