@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.5.55-dev.4 (2026-04-08)
+- 目标：
+  - 让 Agent 在拿到模板定义后，能直接生成带参数的执行计划，而不是自己拼命令。
+- 结果：
+  - `scripts/larksync_cli.py` 新增 `workflow-plan`，支持按模板名、入口类型和 `--set key=value` 参数渲染执行计划。
+  - 计划输出包含 `values`、`missing_inputs`、`plan.steps[*].argv`、`command_line`、`dynamic_inputs`，可区分“现在可执行”和“需等待上一步结果”的步骤。
+  - OpenClaw helper / WSL helper 同步支持 `workflow-plan`，README、CLI 契约文档和 Agent runbook 补充模板实例化示例。
+- 测试：
+  - `python -m pytest tests/test_larksync_cli.py tests/test_larksync_skill_helper.py tests/test_larksync_wsl_helper.py -q`
+  - `python scripts/larksync_cli.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set cloud_folder_token=fld_test --set download_time=02:30`
+- 问题：
+  - 无阻塞问题。
+
 ## v0.5.55-dev.3 (2026-04-08)
 - 目标：
   - 为 Agent 增加“先发现模板、再执行命令”的标准工作流模板能力。

@@ -22,6 +22,7 @@ KNOWN_COMMANDS = {
     "config-get",
     "workflow-template-list",
     "workflow-template",
+    "workflow-plan",
     "config-set",
     "configure-download",
     "task-list",

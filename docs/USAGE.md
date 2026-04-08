@@ -360,6 +360,7 @@ OpenClaw 代理 runbook：`integrations/openclaw/skills/larksync_feishu_local_ca
 ```bash
 # 查看内置工作流模板
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-template --template daily-cache
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<token>"
 
 # 检查环境
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check

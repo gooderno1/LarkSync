@@ -19,6 +19,7 @@ DELETE_POLICY_CHOICES = ("off", "safe", "strict")
 LOG_ORDER_CHOICES = ("desc", "asc")
 CONFLICT_ACTION_CHOICES = ("use_local", "use_cloud")
 WORKFLOW_TEMPLATE_CHOICES = ("daily-cache", "refresh-cache", "conflict-audit")
+WORKFLOW_ENTRYPOINT_CHOICES = ("cli", "helper", "wsl_helper")
 
 
 @dataclass(frozen=True)
@@ -792,7 +793,7 @@ def _workflow_template_catalog() -> dict[str, dict[str, Any]]:
             "inputs": [
                 {"name": "local_path", "required": True, "description": "本地缓存目录"},
                 {"name": "cloud_folder_token", "required": True, "description": "飞书云目录 token"},
-                {"name": "download_time", "required": False, "default": "01:00"},
+                {"name": "download_time", "required": False, "default": "01:00", "type": "string"},
             ],
             "steps": [
                 {
@@ -800,12 +801,28 @@ def _workflow_template_catalog() -> dict[str, dict[str, Any]]:
                     "title": "初始化缓存任务",
                     "command": "bootstrap-cache",
                     "notes": "推荐主入口；会自动处理后端不可达、未授权、缺 Drive 权限等前置分支。",
+                    "render": [
+                        {"flag": "--local-path", "input": "local_path"},
+                        {"flag": "--cloud-folder-token", "input": "cloud_folder_token"},
+                        {"flag": "--sync-mode", "value": "download_only"},
+                        {"flag": "--download-value", "value": 1},
+                        {"flag": "--download-unit", "value": "days"},
+                        {"flag": "--download-time", "input": "download_time"},
+                        {"flag": "--run-now", "kind": "flag", "value": True},
+                    ],
                 },
                 {
                     "id": "inspect-task",
                     "title": "读取任务状态",
                     "command": "task-status",
                     "notes": "当 bootstrap-cache 返回 task_id 后，用于确认首次执行状态。",
+                    "render": [
+                        {
+                            "flag": "--task-id",
+                            "from_step": "bootstrap",
+                            "json_path": "task.task.id",
+                        }
+                    ],
                 },
             ],
             "branching": [
@@ -838,7 +855,7 @@ def _workflow_template_catalog() -> dict[str, dict[str, Any]]:
             "entrypoints": common_entrypoints,
             "inputs": [
                 {"name": "task_id", "required": True, "description": "已有同步任务 ID"},
-                {"name": "log_limit", "required": False, "default": 20},
+                {"name": "log_limit", "required": False, "default": 20, "type": "int"},
             ],
             "steps": [
                 {
@@ -846,18 +863,24 @@ def _workflow_template_catalog() -> dict[str, dict[str, Any]]:
                     "title": "立即触发任务",
                     "command": "task-run",
                     "notes": "用于用户要求“现在同步一次”的场景。",
+                    "render": [{"flag": "--task-id", "input": "task_id"}],
                 },
                 {
                     "id": "task-status",
                     "title": "读取任务运行状态",
                     "command": "task-status",
                     "notes": "确认当前是否在运行、最近结果是否成功。",
+                    "render": [{"flag": "--task-id", "input": "task_id"}],
                 },
                 {
                     "id": "sync-logs",
                     "title": "读取最近同步日志",
                     "command": "logs-sync",
                     "notes": "失败时优先结合日志定位问题。",
+                    "render": [
+                        {"flag": "--task-id", "input": "task_id"},
+                        {"flag": "--limit", "input": "log_limit"},
+                    ],
                 },
             ],
             "branching": [
@@ -879,7 +902,7 @@ def _workflow_template_catalog() -> dict[str, dict[str, Any]]:
             "description": "面向双向同步场景，定期拉取冲突列表并按需给出处理建议。",
             "entrypoints": common_entrypoints,
             "inputs": [
-                {"name": "include_resolved", "required": False, "default": False},
+                {"name": "include_resolved", "required": False, "default": False, "type": "bool"},
             ],
             "steps": [
                 {
@@ -887,18 +910,32 @@ def _workflow_template_catalog() -> dict[str, dict[str, Any]]:
                     "title": "查询冲突列表",
                     "command": "conflict-list",
                     "notes": "日常巡检默认只查未解决冲突。",
+                    "render": [
+                        {"flag": "--include-resolved", "input": "include_resolved", "kind": "flag"}
+                    ],
                 },
                 {
                     "id": "read-logs",
                     "title": "按任务读取同步日志",
                     "command": "logs-sync",
                     "notes": "对存在冲突的任务补充上下文。",
+                    "render": [
+                        {
+                            "flag": "--task-ids",
+                            "from_step": "list-conflicts",
+                            "json_path": "items[*].task_id",
+                        }
+                    ],
                 },
                 {
                     "id": "resolve-conflict",
                     "title": "按确认结果解决冲突",
                     "command": "conflict-resolve",
                     "notes": "只有在用户明确选择 use_local 或 use_cloud 后才执行。",
+                    "render": [
+                        {"flag": "--conflict-id", "input": "conflict_id", "required": False},
+                        {"flag": "--action", "input": "resolution_action", "required": False},
+                    ],
                 },
             ],
             "branching": [
@@ -943,6 +980,176 @@ def do_get_workflow_template(template_name: str) -> dict[str, Any]:
     }
 
 
+def _quote_command_arg(value: Any) -> str:
+    text = str(value)
+    escaped = text.replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _parse_template_set_args(items: list[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for item in items:
+        key, sep, value = item.partition("=")
+        if not sep or not key.strip():
+            raise ValueError(f"--set 参数格式无效，必须为 key=value: {item}")
+        result[key.strip()] = value
+    return result
+
+
+def _coerce_template_value(value: Any, declared_type: str | None) -> Any:
+    if declared_type == "bool":
+        if isinstance(value, bool):
+            return value
+        lowered = str(value).strip().lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+        raise ValueError(f"布尔模板参数仅支持 true/false: {value}")
+    if declared_type == "int":
+        return int(value)
+    if declared_type == "float":
+        return float(value)
+    return value
+
+
+def _materialize_template_inputs(
+    workflow: dict[str, Any], values: dict[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    materialized: dict[str, Any] = {}
+    missing: list[str] = []
+    for item in workflow.get("inputs", []):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        if not name:
+            continue
+        declared_type = item.get("type")
+        if name in values:
+            materialized[name] = _coerce_template_value(values[name], declared_type)
+            continue
+        if "default" in item:
+            materialized[name] = _coerce_template_value(item.get("default"), declared_type)
+            continue
+        if bool(item.get("required")):
+            missing.append(name)
+    return materialized, missing
+
+
+def _build_rendered_step(
+    *,
+    step: dict[str, Any],
+    base_command: str,
+    inputs: dict[str, Any],
+    external_missing_inputs: list[str],
+) -> dict[str, Any]:
+    argv = [base_command, str(step.get("command", ""))]
+    missing_inputs: list[str] = []
+    dynamic_inputs: list[dict[str, Any]] = []
+    for spec in step.get("render", []):
+        if not isinstance(spec, dict):
+            continue
+        flag = str(spec.get("flag", "")).strip()
+        if not flag:
+            continue
+        kind = str(spec.get("kind", "value"))
+        if "from_step" in spec:
+            dynamic_inputs.append(
+                {
+                    "flag": flag,
+                    "from_step": spec.get("from_step"),
+                    "json_path": spec.get("json_path"),
+                }
+            )
+            continue
+        required = bool(spec.get("required", True))
+        value = spec.get("value")
+        input_name = spec.get("input")
+        if input_name is not None:
+            if str(input_name) in inputs:
+                value = inputs[str(input_name)]
+            elif required:
+                missing_inputs.append(str(input_name))
+                continue
+            else:
+                value = None
+        if kind == "flag":
+            if bool(value):
+                argv.append(flag)
+            continue
+        if value is None:
+            continue
+        argv.extend([flag, str(value)])
+
+    ready = not external_missing_inputs and not missing_inputs and not dynamic_inputs
+    command_line = " ".join(
+        [_quote_command_arg(part) if index == 0 or index % 2 == 1 and part.startswith("--") is False else part
+         for index, part in enumerate(argv)]
+    )
+    # Rebuild command line with consistent quoting for value positions.
+    rendered_parts: list[str] = []
+    for index, part in enumerate(argv):
+        if index < 2:
+            rendered_parts.append(str(part))
+            continue
+        if part.startswith("--"):
+            rendered_parts.append(part)
+            continue
+        rendered_parts.append(_quote_command_arg(part))
+    command_line = " ".join(rendered_parts)
+    return {
+        "id": step.get("id"),
+        "title": step.get("title"),
+        "command": step.get("command"),
+        "notes": step.get("notes"),
+        "ready": ready,
+        "argv": argv,
+        "command_line": command_line,
+        "missing_inputs": missing_inputs,
+        "dynamic_inputs": dynamic_inputs,
+    }
+
+
+def do_build_workflow_plan(
+    template_name: str,
+    *,
+    entrypoint: str = "cli",
+    values: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if entrypoint not in WORKFLOW_ENTRYPOINT_CHOICES:
+        raise ValueError(f"workflow entrypoint 不支持: {entrypoint}")
+    template_result = do_get_workflow_template(template_name)
+    workflow = template_result["workflow"]
+    raw_values = dict(values or {})
+    materialized_inputs, missing_inputs = _materialize_template_inputs(workflow, raw_values)
+    base_command = str(workflow["entrypoints"][entrypoint])
+    steps = [
+        _build_rendered_step(
+            step=step,
+            base_command=base_command,
+            inputs=materialized_inputs,
+            external_missing_inputs=missing_inputs,
+        )
+        for step in workflow.get("steps", [])
+        if isinstance(step, dict)
+    ]
+    return {
+        "action": "workflow-plan",
+        "template": template_name,
+        "entrypoint": entrypoint,
+        "ready": len(missing_inputs) == 0,
+        "missing_inputs": missing_inputs,
+        "values": materialized_inputs,
+        "plan": {
+            "name": workflow.get("name"),
+            "title": workflow.get("title"),
+            "description": workflow.get("description"),
+            "steps": steps,
+            "branching": workflow.get("branching", []),
+        },
+    }
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LarkSync CLI：为 Agent/Skill 提供统一命令入口")
     parser.add_argument(
@@ -963,6 +1170,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("workflow-template-list", help="列出可供 Agent 使用的标准工作流模板")
     template = sub.add_parser("workflow-template", help="读取单个标准工作流模板")
     template.add_argument("--template", choices=WORKFLOW_TEMPLATE_CHOICES, required=True)
+    plan = sub.add_parser("workflow-plan", help="将工作流模板实例化为可执行命令计划")
+    plan.add_argument("--template", choices=WORKFLOW_TEMPLATE_CHOICES, required=True)
+    plan.add_argument("--entrypoint", choices=WORKFLOW_ENTRYPOINT_CHOICES, default="cli")
+    plan.add_argument("--set", action="append", default=[], help="模板参数，格式 key=value，可重复")
 
     cfg = sub.add_parser("config-set", help="更新配置")
     cfg.add_argument("--download-value", type=float)
@@ -1167,6 +1378,12 @@ def main(argv: list[str] | None = None) -> int:
             result = do_list_workflow_templates()
         elif args.command == "workflow-template":
             result = do_get_workflow_template(str(args.template))
+        elif args.command == "workflow-plan":
+            result = do_build_workflow_plan(
+                str(args.template),
+                entrypoint=str(args.entrypoint),
+                values=_parse_template_set_args(list(args.set or [])),
+            )
         elif args.command == "config-set":
             result = do_set_config(base_url, _build_config_payload(args))
         elif args.command == "configure-download":

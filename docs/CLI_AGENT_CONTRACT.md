@@ -51,6 +51,7 @@
 | `auth-status` | 单独读取授权状态 |
 | `workflow-template-list` | 枚举内置标准工作流模板 |
 | `workflow-template` | 读取单个工作流模板的结构化定义 |
+| `workflow-plan` | 按模板和参数生成可执行命令计划 |
 | `bootstrap-cache` | 首次缓存初始化的高层命令 |
 | `task-list` | 列出现有同步任务 |
 | `task-status` | 读取单个任务运行状态 |
@@ -77,13 +78,14 @@ WSL 场景推荐入口：
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py <command> [options]
 ```
 
-## 4.1 标准工作流模板
+## 4. 工作流模板
 
 CLI 提供两条发现型命令：
 
 ```bash
 python scripts/larksync_cli.py workflow-template-list
 python scripts/larksync_cli.py workflow-template --template daily-cache
+python scripts/larksync_cli.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
 ```
 
 当前内置模板：
@@ -96,6 +98,18 @@ python scripts/larksync_cli.py workflow-template --template daily-cache
 - `inputs`：工作流输入参数
 - `steps`：标准步骤与推荐命令
 - `branching`：推荐分支处理
+
+`workflow-plan` 在 `workflow-template` 基础上进一步输出：
+- `values`：已灌入的模板参数
+- `missing_inputs`：仍缺失的外部输入
+- `plan.steps[*].argv`：结构化参数数组
+- `plan.steps[*].command_line`：可直接复制执行的命令行
+- `plan.steps[*].dynamic_inputs`：依赖上一步运行结果的参数
+
+推荐用法：
+1. `workflow-template-list` 发现有哪些标准流程。
+2. `workflow-template` 查看模板结构和分支。
+3. `workflow-plan` 结合当前参数生成执行计划。
 
 ## 5. `bootstrap-cache` 契约
 

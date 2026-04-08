@@ -378,3 +378,68 @@ def test_main_supports_workflow_template(
     payload = capsys.readouterr().out
     assert '"action": "workflow-template"' in payload
     assert '"template": "daily-cache"' in payload
+
+
+def test_do_build_workflow_plan_daily_cache_helper() -> None:
+    result = cli.do_build_workflow_plan(
+        "daily-cache",
+        entrypoint="helper",
+        values={
+            "local_path": r"D:\Knowledge\FeishuMirror",
+            "cloud_folder_token": "fld_test",
+            "download_time": "02:30",
+        },
+    )
+
+    assert result["action"] == "workflow-plan"
+    assert result["template"] == "daily-cache"
+    assert result["entrypoint"] == "helper"
+    assert result["ready"] is True
+    assert result["missing_inputs"] == []
+    first_step = result["plan"]["steps"][0]
+    assert first_step["ready"] is True
+    assert "larksync_skill_helper.py bootstrap-cache" in first_step["command_line"]
+    assert '--download-time "02:30"' in first_step["command_line"]
+    second_step = result["plan"]["steps"][1]
+    assert second_step["ready"] is False
+    assert second_step["dynamic_inputs"][0]["from_step"] == "bootstrap"
+
+
+def test_do_build_workflow_plan_reports_missing_inputs() -> None:
+    result = cli.do_build_workflow_plan(
+        "daily-cache",
+        entrypoint="cli",
+        values={"local_path": r"D:\Knowledge\FeishuMirror"},
+    )
+
+    assert result["ready"] is False
+    assert "cloud_folder_token" in result["missing_inputs"]
+    assert result["plan"]["steps"][0]["ready"] is False
+
+
+def test_do_build_workflow_plan_invalid_entrypoint() -> None:
+    with pytest.raises(ValueError, match="entrypoint"):
+        cli.do_build_workflow_plan("daily-cache", entrypoint="invalid", values={})
+
+
+def test_main_supports_workflow_plan(
+    capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = cli.main(
+        [
+            "workflow-plan",
+            "--template",
+            "daily-cache",
+            "--entrypoint",
+            "cli",
+            "--set",
+            r"local_path=D:\Knowledge\FeishuMirror",
+            "--set",
+            "cloud_folder_token=fld_test",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = capsys.readouterr().out
+    assert '"action": "workflow-plan"' in payload
+    assert '"template": "daily-cache"' in payload
