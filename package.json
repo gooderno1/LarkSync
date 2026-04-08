@@ -1,7 +1,7 @@
 {
   "name": "larksync-root",
   "private": true,
-  "version": "v0.5.55-dev.8",
+  "version": "v0.5.55",
   "scripts": {
     "dev": "python apps/tray/tray_app.py --dev",
     "cli": "python scripts/larksync_cli.py",

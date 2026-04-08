@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-08] v0.5.55 release: v0.5.55
 [2026-04-08] v0.5.55-dev.8 feat(cli,agent): `workflow-execute` 自动归档到 `data/workflows`，新增 `workflow-run-list/show/prune` 并支持仅凭 `run_id` 恢复执行
 [2026-04-08] v0.5.55-dev.7 feat(cli,agent): `workflow-execute` 新增 `run_id`/`resume-from-file`/`skip-completed`，支持基于已有执行结果恢复并跳过已成功步骤
 [2026-04-08] v0.5.55-dev.6 feat(cli,agent): `workflow-execute` 新增步骤区间、失败后继续与结果 JSON 落盘控制，便于 Agent 局部重跑与审计

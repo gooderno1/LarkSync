@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.5.55 (2026-04-08)
+
+- 发布目标：
+  - 将 `v0.5.55-dev.1` 到 `v0.5.55-dev.8` 的 CLI/Agent/OpenClaw 增量能力收口为正式稳定版。
+- 发布内容：
+  - 正式 CLI 已覆盖授权、配置、任务、日志、更新、冲突与目录树等核心能力，并支持 `bootstrap-cache`、`workflow-template*`、`workflow-plan`、`workflow-execute`。
+  - 工作流执行器支持步骤区间、失败后继续、JSON 落盘、稳定 `run_id`、恢复执行、跳过已成功步骤，以及 `data/workflows/<run_id>.json` 标准运行记录归档。
+  - 新增 `workflow-run-list` / `workflow-run-show` / `workflow-run-prune`，便于 Agent 查询历史执行、读取单次结果和清理旧记录。
+  - OpenClaw helper / WSL helper 已与正式 CLI 命令面对齐，可直接复用相同工作流契约。
+- 发布验证：
+  - `python -m pytest apps/backend/tests/test_larksync_cli.py apps/backend/tests/test_larksync_skill_helper.py apps/backend/tests/test_larksync_wsl_helper.py -q`
+  - `python scripts/build_installer.py --nsis`
+  - `python scripts/larksync_cli.py workflow-run-list --limit 3`
+- 发布说明：
+  - 稳定版标签为 `v0.5.55`，GitHub Release Windows 安装包将由 `Release Build` 工作流基于 tag 自动构建并上传。
+
 ## v0.5.55-dev.8 (2026-04-08)
 
 - 完成工作流运行记录索引化：`workflow-execute` 每次真实执行都会自动写入 `data/workflows/<run_id>.json`。
