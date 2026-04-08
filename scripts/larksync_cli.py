@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+import uuid
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -1316,6 +1317,16 @@ def _select_workflow_steps(
     return [item for _, item in indexed[start_index:end_index + 1]]
 
 
+def _load_workflow_resume_payload(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.is_file():
+        return None
+    raw = path.read_text(encoding="utf-8")
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
 def do_execute_workflow(
     *,
     template_name: str,
@@ -1327,6 +1338,9 @@ def do_execute_workflow(
     to_step: str | None = None,
     continue_on_error: bool = False,
     output_json_file: Path | None = None,
+    run_id: str | None = None,
+    resume_from_file: Path | None = None,
+    skip_completed: bool = False,
 ) -> dict[str, Any]:
     plan_result = do_build_workflow_plan(template_name, entrypoint=entrypoint, values=values)
     workflow = do_get_workflow_template(template_name)["workflow"]
@@ -1335,15 +1349,33 @@ def do_execute_workflow(
         from_step=from_step,
         to_step=to_step,
     )
+    effective_run_id = (run_id or "").strip() or uuid.uuid4().hex
+    resumed_payload = _load_workflow_resume_payload(resume_from_file)
+    resumed_results: dict[str, Any] = {}
+    resumed_errors: list[dict[str, Any]] = []
+    resumed = False
+    if resumed_payload is not None:
+        resumed_run_id = str(resumed_payload.get("run_id", "")).strip()
+        if resumed_run_id and resumed_run_id == effective_run_id:
+            resumed = True
+            payload_results = resumed_payload.get("results")
+            payload_errors = resumed_payload.get("errors")
+            if isinstance(payload_results, dict):
+                resumed_results = dict(payload_results)
+            if isinstance(payload_errors, list):
+                resumed_errors = [item for item in payload_errors if isinstance(item, dict)]
     if dry_run:
         result = {
             "action": "workflow-execute",
             "template": template_name,
             "entrypoint": entrypoint,
+            "run_id": effective_run_id,
+            "resumed": resumed,
             "dry_run": True,
             "completed": False,
             "executed_steps": 0,
             "failed_steps": 0,
+            "skipped_steps": 0,
             "missing_inputs": plan_result["missing_inputs"],
             "plan": {**plan_result["plan"], "steps": [step for step in plan_result["plan"]["steps"] if step["id"] in {str(item.get("id", "")) for item in selected_steps}]},
             "results": {},
@@ -1359,10 +1391,11 @@ def do_execute_workflow(
         raise ValueError(f"workflow 缺少必要输入: {', '.join(plan_result['missing_inputs'])}")
 
     inputs = dict(plan_result["values"])
-    results: dict[str, Any] = {}
+    results: dict[str, Any] = dict(resumed_results)
     execution_log: list[dict[str, Any]] = []
     executed_steps = 0
-    errors: list[dict[str, Any]] = []
+    skipped_steps = 0
+    errors: list[dict[str, Any]] = list(resumed_errors)
     selected_ids = {str(item.get("id", "")) for item in selected_steps}
     filtered_plan_steps = [
         step for step in plan_result["plan"]["steps"] if step["id"] in selected_ids
@@ -1371,6 +1404,9 @@ def do_execute_workflow(
         step_id = str(step.get("id", "")).strip()
         command = str(step.get("command", "")).strip()
         if not step_id or not command:
+            continue
+        if skip_completed and step_id in results:
+            skipped_steps += 1
             continue
         runtime_args, missing = _resolve_step_runtime_args(
             step,
@@ -1416,10 +1452,13 @@ def do_execute_workflow(
         "action": "workflow-execute",
         "template": template_name,
         "entrypoint": entrypoint,
+        "run_id": effective_run_id,
+        "resumed": resumed,
         "dry_run": False,
         "completed": len(errors) == 0,
         "executed_steps": executed_steps,
         "failed_steps": len(errors),
+        "skipped_steps": skipped_steps,
         "missing_inputs": [],
         "plan": {**plan_result["plan"], "steps": filtered_plan_steps},
         "results": results,
@@ -1467,6 +1506,9 @@ def _build_parser() -> argparse.ArgumentParser:
     execute.add_argument("--to-step", help="仅执行到指定 step id 为止")
     execute.add_argument("--continue-on-error", action="store_true", help="单步失败后继续执行后续步骤并汇总错误")
     execute.add_argument("--output-json-file", help="将执行结果写入指定 JSON 文件")
+    execute.add_argument("--run-id", help="显式指定工作流运行 ID；与 resume/skip 配合使用")
+    execute.add_argument("--resume-from-file", help="从已有 workflow-execute JSON 结果恢复执行状态")
+    execute.add_argument("--skip-completed", action="store_true", help="恢复执行时跳过结果中已成功的步骤")
 
     cfg = sub.add_parser("config-set", help="更新配置")
     cfg.add_argument("--download-value", type=float)
@@ -1688,6 +1730,9 @@ def main(argv: list[str] | None = None) -> int:
                 to_step=args.to_step,
                 continue_on_error=bool(args.continue_on_error),
                 output_json_file=Path(args.output_json_file) if args.output_json_file else None,
+                run_id=args.run_id,
+                resume_from_file=Path(args.resume_from_file) if args.resume_from_file else None,
+                skip_completed=bool(args.skip_completed),
             )
         elif args.command == "config-set":
             result = do_set_config(base_url, _build_config_payload(args))

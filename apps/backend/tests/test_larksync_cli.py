@@ -702,7 +702,159 @@ def test_main_supports_workflow_execute_controls(
             "to_step": "inspect-task",
             "continue_on_error": True,
             "output_json_file": output_path,
+            "run_id": None,
+            "resume_from_file": None,
+            "skip_completed": False,
         }
     ]
     payload = capsys.readouterr().out
     assert '"action": "workflow-execute"' in payload
+
+
+def test_do_execute_workflow_persists_and_resumes_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[str] = []
+
+    def _fake_bootstrap_cache(**kwargs):
+        calls.append("bootstrap-cache")
+        return {
+            "action": "bootstrap-cache",
+            "task": {"task": {"id": "task-1"}},
+            "phase": "configured",
+        }
+
+    def _fake_task_status(base_url: str, task_id: str):
+        calls.append("task-status")
+        return {"action": "task-status", "task_id": task_id, "status": {"state": "running"}}
+
+    monkeypatch.setattr(cli, "do_bootstrap_cache", _fake_bootstrap_cache)
+    monkeypatch.setattr(cli, "do_get_task_status", _fake_task_status)
+
+    output_path = tmp_path / "resume.json"
+    first = cli.do_execute_workflow(
+        template_name="daily-cache",
+        entrypoint="cli",
+        values={
+            "local_path": r"D:\Knowledge\FeishuMirror",
+            "cloud_folder_token": "fld_test",
+        },
+        base_url="http://localhost:8000",
+        dry_run=False,
+        output_json_file=output_path,
+    )
+
+    calls.clear()
+
+    second = cli.do_execute_workflow(
+        template_name="daily-cache",
+        entrypoint="cli",
+        values={
+            "local_path": r"D:\Knowledge\FeishuMirror",
+            "cloud_folder_token": "fld_test",
+        },
+        base_url="http://localhost:8000",
+        dry_run=False,
+        run_id=str(first["run_id"]),
+        output_json_file=output_path,
+        resume_from_file=output_path,
+        skip_completed=True,
+    )
+
+    assert first["completed"] is True
+    assert second["completed"] is True
+    assert second["run_id"] == first["run_id"]
+    assert second["resumed"] is True
+    assert second["executed_steps"] == 0
+    assert second["skipped_steps"] == 2
+    assert calls == []
+
+
+def test_do_execute_workflow_skip_completed_without_resume_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        cli,
+        "do_get_task_status",
+        lambda base_url, task_id: calls.append("task-status") or {"task_id": task_id},
+    )
+    monkeypatch.setattr(
+        cli,
+        "do_read_sync_logs",
+        lambda base_url, **kwargs: calls.append("logs-sync") or {"items": [], **kwargs},
+    )
+
+    result = cli.do_execute_workflow(
+        template_name="refresh-cache",
+        entrypoint="cli",
+        values={"task_id": "task-1"},
+        base_url="http://localhost:8000",
+        from_step="task-status",
+        skip_completed=True,
+    )
+
+    assert result["completed"] is True
+    assert result["executed_steps"] == 2
+    assert result["skipped_steps"] == 0
+    assert calls == ["task-status", "logs-sync"]
+
+
+def test_main_supports_workflow_execute_resume_options(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    captured: list[dict[str, object]] = []
+
+    def _fake_execute(**kwargs):
+        captured.append(kwargs)
+        return {
+            "action": "workflow-execute",
+            "completed": True,
+            "executed_steps": 0,
+            "skipped_steps": 2,
+            "run_id": "run-1",
+        }
+
+    monkeypatch.setattr(cli, "do_execute_workflow", _fake_execute)
+    output_path = tmp_path / "workflow.json"
+
+    exit_code = cli.main(
+        [
+            "workflow-execute",
+            "--template",
+            "daily-cache",
+            "--run-id",
+            "run-1",
+            "--resume-from-file",
+            str(output_path),
+            "--skip-completed",
+            "--set",
+            r"local_path=D:\Knowledge\FeishuMirror",
+            "--set",
+            "cloud_folder_token=fld_test",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured == [
+        {
+            "template_name": "daily-cache",
+            "entrypoint": "cli",
+            "values": {
+                "local_path": r"D:\Knowledge\FeishuMirror",
+                "cloud_folder_token": "fld_test",
+            },
+            "base_url": "http://localhost:8000",
+            "dry_run": False,
+            "from_step": None,
+            "to_step": None,
+            "continue_on_error": False,
+            "output_json_file": None,
+            "run_id": "run-1",
+            "resume_from_file": output_path,
+            "skip_completed": True,
+        }
+    ]
+    payload = capsys.readouterr().out
+    assert '"run_id": "run-1"' in payload

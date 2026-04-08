@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.5.55-dev.7 (2026-04-08)
+- 目标：
+  - 为工作流执行器补充运行 ID、结果恢复与跳过已成功步骤能力。
+- 结果：
+  - `workflow-execute` 新增 `run_id`，可为同一条执行链提供稳定标识。
+  - 新增 `resume_from_file`，可从上一次 `workflow-execute` 的 JSON 结果恢复 `results/errors`。
+  - 新增 `skip_completed`，恢复执行时可直接跳过已成功步骤，避免重复触发已完成动作。
+- 测试：
+  - `python -m pytest tests/test_larksync_cli.py tests/test_larksync_skill_helper.py tests/test_larksync_wsl_helper.py -q`
+  - `python scripts/larksync_cli.py workflow-execute --template daily-cache --run-id demo-run --resume-from-file data\\workflow.json --skip-completed --set "local_path=D:\\Knowledge\\FeishuMirror" --set cloud_folder_token=fld_test`
+- 问题：
+  - 当前恢复逻辑以单个结果文件为事实来源，还没有做多次 run 的索引管理；后续若要批量审计，需要单独加 run 目录或状态仓库。
+
 ## v0.5.55-dev.6 (2026-04-08)
 - 目标：
   - 为工作流执行器补充局部重跑、容错执行与结果落盘控制。

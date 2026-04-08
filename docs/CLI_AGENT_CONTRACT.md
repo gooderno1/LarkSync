@@ -119,6 +119,9 @@ python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run
 - `--from-step` / `--to-step`：只执行指定区间内的步骤
 - `--continue-on-error`：单步失败后继续执行后续步骤，并在结果中汇总错误
 - `--output-json-file`：将整份执行结果落盘为 JSON，便于外层 Agent 审计或二次处理
+- `--run-id`：显式指定本次执行的稳定 ID
+- `--resume-from-file`：从已有 `workflow-execute` 结果文件恢复状态
+- `--skip-completed`：恢复执行时跳过结果中已成功的步骤
 
 推荐用法：
 1. `workflow-template-list` 发现有哪些标准流程。
@@ -126,6 +129,7 @@ python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run
 3. `workflow-plan` 结合当前参数生成执行计划。
 4. `workflow-execute` 在确认计划无误后执行；需要预演时先加 `--dry-run`。
 5. 若只想重跑一段链路，配合 `--from-step` / `--to-step`；若需要持久化执行痕迹，配合 `--output-json-file`。
+6. 若要从上次执行结果恢复，复用 `--run-id` 并传入 `--resume-from-file`；若不想重复跑已成功步骤，再加 `--skip-completed`。
 
 ## 5. `bootstrap-cache` 契约
 

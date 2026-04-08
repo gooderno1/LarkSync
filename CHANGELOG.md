@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-08] v0.5.55-dev.7 feat(cli,agent): `workflow-execute` 新增 `run_id`/`resume-from-file`/`skip-completed`，支持基于已有执行结果恢复并跳过已成功步骤
 [2026-04-08] v0.5.55-dev.6 feat(cli,agent): `workflow-execute` 新增步骤区间、失败后继续与结果 JSON 落盘控制，便于 Agent 局部重跑与审计
 [2026-04-08] v0.5.55-dev.5 feat(cli,agent): 新增 `workflow-execute` 工作流执行器，可顺序执行模板步骤并把上一步结果自动注入下一步动态参数
 [2026-04-08] v0.5.55-dev.4 feat(cli,agent): 新增 `workflow-plan` 模板实例化命令，可将标准工作流渲染为带参数、带动态依赖提示的可执行命令计划
