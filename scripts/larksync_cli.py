@@ -802,9 +802,21 @@ def _workflow_template_catalog() -> dict[str, dict[str, Any]]:
                     "command": "bootstrap-cache",
                     "notes": "推荐主入口；会自动处理后端不可达、未授权、缺 Drive 权限等前置分支。",
                     "render": [
+                        {"flag": "--name", "value": "LarkSync Agent 本地缓存"},
                         {"flag": "--local-path", "input": "local_path"},
                         {"flag": "--cloud-folder-token", "input": "cloud_folder_token"},
+                        {"flag": "--cloud-folder-name", "input": "cloud_folder_name", "required": False},
+                        {"flag": "--base-path", "input": "base_path", "required": False},
                         {"flag": "--sync-mode", "value": "download_only"},
+                        {"flag": "--update-mode", "value": "auto"},
+                        {"flag": "--md-sync-mode", "input": "md_sync_mode", "required": False},
+                        {"flag": "--delete-policy", "input": "delete_policy", "required": False},
+                        {
+                            "flag": "--delete-grace-minutes",
+                            "input": "delete_grace_minutes",
+                            "required": False,
+                        },
+                        {"flag": "--is-test", "kind": "flag", "input": "is_test", "required": False},
                         {"flag": "--download-value", "value": 1},
                         {"flag": "--download-unit", "value": "days"},
                         {"flag": "--download-time", "input": "download_time"},
@@ -980,6 +992,34 @@ def do_get_workflow_template(template_name: str) -> dict[str, Any]:
     }
 
 
+def _extract_json_path(payload: Any, path: str) -> Any:
+    current = payload
+    for part in path.split("."):
+        if current is None:
+            return None
+        if part.endswith("[*]"):
+            key = part[:-3]
+            if not isinstance(current, dict):
+                return None
+            current = current.get(key)
+            if not isinstance(current, list):
+                return None
+            continue
+        if isinstance(current, list):
+            extracted: list[Any] = []
+            for item in current:
+                if isinstance(item, dict):
+                    extracted.append(item.get(part))
+                else:
+                    extracted.append(None)
+            current = extracted
+            continue
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
 def _quote_command_arg(value: Any) -> str:
     text = str(value)
     escaped = text.replace('"', '\\"')
@@ -1150,6 +1190,173 @@ def do_build_workflow_plan(
     }
 
 
+def _resolve_step_runtime_args(
+    step: dict[str, Any],
+    *,
+    inputs: dict[str, Any],
+    prior_results: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    values: dict[str, Any] = {}
+    missing: list[str] = []
+    for spec in step.get("render", []):
+        if not isinstance(spec, dict):
+            continue
+        flag = str(spec.get("flag", "")).strip()
+        if not flag:
+            continue
+        normalized_flag = flag.lstrip("-").replace("-", "_")
+        kind = str(spec.get("kind", "value"))
+        value = spec.get("value")
+        input_name = spec.get("input")
+        required = bool(spec.get("required", True))
+        if "from_step" in spec:
+            source_step = str(spec.get("from_step"))
+            source_payload = prior_results.get(source_step)
+            if source_payload is None:
+                missing.append(f"{source_step}:{spec.get('json_path')}")
+                continue
+            value = _extract_json_path(source_payload, str(spec.get("json_path", "")))
+            if value in (None, "", []):
+                missing.append(f"{source_step}:{spec.get('json_path')}")
+                continue
+        elif input_name is not None:
+            if str(input_name) in inputs:
+                value = inputs[str(input_name)]
+            elif required:
+                missing.append(str(input_name))
+                continue
+            else:
+                value = None
+        if kind == "flag":
+            values[normalized_flag] = bool(value)
+            continue
+        if value is None:
+            continue
+        values[normalized_flag] = value
+    return values, missing
+
+
+def _workflow_command_executor(command: str):
+    mapping = {
+        "bootstrap-cache": do_bootstrap_cache,
+        "task-status": lambda **kwargs: do_get_task_status(
+            str(kwargs["base_url"]), str(kwargs["task_id"])
+        ),
+        "task-run": lambda **kwargs: do_run_task(str(kwargs["base_url"]), str(kwargs["task_id"])),
+        "logs-sync": lambda **kwargs: do_read_sync_logs(
+            str(kwargs["base_url"]),
+            limit=int(kwargs.get("limit", 50)),
+            offset=int(kwargs.get("offset", 0)),
+            status=str(kwargs.get("status", "")),
+            statuses=list(kwargs.get("statuses", [])),
+            search=str(kwargs.get("search", "")),
+            task_id=str(kwargs.get("task_id", "")),
+            task_ids=list(kwargs.get("task_ids", [])),
+            order=str(kwargs.get("order", "desc")),
+        ),
+        "conflict-list": lambda **kwargs: do_list_conflicts(
+            str(kwargs["base_url"]),
+            include_resolved=bool(kwargs.get("include_resolved", False)),
+        ),
+        "conflict-resolve": lambda **kwargs: do_resolve_conflict(
+            str(kwargs["base_url"]),
+            str(kwargs["conflict_id"]),
+            str(kwargs["action"]),
+        ),
+    }
+    try:
+        return mapping[command]
+    except KeyError as exc:
+        raise ValueError(f"workflow execute 暂不支持命令: {command}") from exc
+
+
+def _workflow_command_default_kwargs(command: str) -> dict[str, Any]:
+    if command == "bootstrap-cache":
+        return {
+            "name": "LarkSync Agent 本地缓存",
+            "cloud_folder_name": None,
+            "base_path": None,
+            "update_mode": "auto",
+            "md_sync_mode": None,
+            "delete_policy": None,
+            "delete_grace_minutes": None,
+            "enabled": True,
+            "is_test": False,
+        }
+    return {}
+
+
+def do_execute_workflow(
+    *,
+    template_name: str,
+    entrypoint: str = "cli",
+    values: dict[str, Any] | None = None,
+    base_url: str,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    plan_result = do_build_workflow_plan(template_name, entrypoint=entrypoint, values=values)
+    if dry_run:
+        return {
+            "action": "workflow-execute",
+            "template": template_name,
+            "entrypoint": entrypoint,
+            "dry_run": True,
+            "completed": False,
+            "executed_steps": 0,
+            "missing_inputs": plan_result["missing_inputs"],
+            "plan": plan_result["plan"],
+            "results": {},
+        }
+    if plan_result["missing_inputs"]:
+        raise ValueError(f"workflow 缺少必要输入: {', '.join(plan_result['missing_inputs'])}")
+
+    workflow = do_get_workflow_template(template_name)["workflow"]
+    inputs = dict(plan_result["values"])
+    results: dict[str, Any] = {}
+    execution_log: list[dict[str, Any]] = []
+    executed_steps = 0
+    for step in workflow.get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        step_id = str(step.get("id", "")).strip()
+        command = str(step.get("command", "")).strip()
+        if not step_id or not command:
+            continue
+        runtime_args, missing = _resolve_step_runtime_args(
+            step,
+            inputs=inputs,
+            prior_results=results,
+        )
+        defaults = _workflow_command_default_kwargs(command)
+        for key, value in defaults.items():
+            runtime_args.setdefault(key, value)
+        if missing:
+            raise RuntimeError(f"workflow step {step_id} 缺少运行时输入: {', '.join(missing)}")
+        executor = _workflow_command_executor(command)
+        payload = executor(base_url=base_url, **runtime_args)
+        results[step_id] = payload
+        execution_log.append(
+            {
+                "step_id": step_id,
+                "command": command,
+                "runtime_args": runtime_args,
+            }
+        )
+        executed_steps += 1
+    return {
+        "action": "workflow-execute",
+        "template": template_name,
+        "entrypoint": entrypoint,
+        "dry_run": False,
+        "completed": True,
+        "executed_steps": executed_steps,
+        "missing_inputs": [],
+        "plan": plan_result["plan"],
+        "results": results,
+        "execution_log": execution_log,
+    }
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LarkSync CLI：为 Agent/Skill 提供统一命令入口")
     parser.add_argument(
@@ -1174,6 +1381,11 @@ def _build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--template", choices=WORKFLOW_TEMPLATE_CHOICES, required=True)
     plan.add_argument("--entrypoint", choices=WORKFLOW_ENTRYPOINT_CHOICES, default="cli")
     plan.add_argument("--set", action="append", default=[], help="模板参数，格式 key=value，可重复")
+    execute = sub.add_parser("workflow-execute", help="按模板与参数顺序执行工作流")
+    execute.add_argument("--template", choices=WORKFLOW_TEMPLATE_CHOICES, required=True)
+    execute.add_argument("--entrypoint", choices=WORKFLOW_ENTRYPOINT_CHOICES, default="cli")
+    execute.add_argument("--set", action="append", default=[], help="模板参数，格式 key=value，可重复")
+    execute.add_argument("--dry-run", action="store_true", help="仅生成计划，不实际执行")
 
     cfg = sub.add_parser("config-set", help="更新配置")
     cfg.add_argument("--download-value", type=float)
@@ -1383,6 +1595,14 @@ def main(argv: list[str] | None = None) -> int:
                 str(args.template),
                 entrypoint=str(args.entrypoint),
                 values=_parse_template_set_args(list(args.set or [])),
+            )
+        elif args.command == "workflow-execute":
+            result = do_execute_workflow(
+                template_name=str(args.template),
+                entrypoint=str(args.entrypoint),
+                values=_parse_template_set_args(list(args.set or [])),
+                base_url=base_url,
+                dry_run=bool(args.dry_run),
             )
         elif args.command == "config-set":
             result = do_set_config(base_url, _build_config_payload(args))

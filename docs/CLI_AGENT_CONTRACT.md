@@ -52,6 +52,7 @@
 | `workflow-template-list` | 枚举内置标准工作流模板 |
 | `workflow-template` | 读取单个工作流模板的结构化定义 |
 | `workflow-plan` | 按模板和参数生成可执行命令计划 |
+| `workflow-execute` | 按模板与参数顺序执行工作流 |
 | `bootstrap-cache` | 首次缓存初始化的高层命令 |
 | `task-list` | 列出现有同步任务 |
 | `task-status` | 读取单个任务运行状态 |
@@ -86,6 +87,7 @@ CLI 提供两条发现型命令：
 python scripts/larksync_cli.py workflow-template-list
 python scripts/larksync_cli.py workflow-template --template daily-cache
 python scripts/larksync_cli.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
+python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
 ```
 
 当前内置模板：
@@ -106,10 +108,17 @@ python scripts/larksync_cli.py workflow-plan --template daily-cache --entrypoint
 - `plan.steps[*].command_line`：可直接复制执行的命令行
 - `plan.steps[*].dynamic_inputs`：依赖上一步运行结果的参数
 
+`workflow-execute` 在 `workflow-plan` 基础上进一步提供：
+- `execution_log`：实际执行的步骤与运行时参数
+- `results`：各步骤原始返回值，后续步骤可从中提取动态输入
+- `dry_run=true`：只返回计划，不触发真实执行
+- `completed` / `executed_steps`：实际执行结果摘要
+
 推荐用法：
 1. `workflow-template-list` 发现有哪些标准流程。
 2. `workflow-template` 查看模板结构和分支。
 3. `workflow-plan` 结合当前参数生成执行计划。
+4. `workflow-execute` 在确认计划无误后执行；需要预演时先加 `--dry-run`。
 
 ## 5. `bootstrap-cache` 契约
 

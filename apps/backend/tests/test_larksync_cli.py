@@ -443,3 +443,124 @@ def test_main_supports_workflow_plan(
     payload = capsys.readouterr().out
     assert '"action": "workflow-plan"' in payload
     assert '"template": "daily-cache"' in payload
+
+
+def test_do_execute_workflow_resolves_dynamic_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def _fake_bootstrap_cache(**kwargs):
+        calls.append(("bootstrap-cache", kwargs))
+        return {
+            "action": "bootstrap-cache",
+            "task": {"task": {"id": "task-1"}},
+            "phase": "configured",
+        }
+
+    def _fake_task_status(base_url: str, task_id: str):
+        calls.append(("task-status", {"base_url": base_url, "task_id": task_id}))
+        return {"action": "task-status", "task_id": task_id, "status": {"state": "running"}}
+
+    monkeypatch.setattr(cli, "do_bootstrap_cache", _fake_bootstrap_cache)
+    monkeypatch.setattr(cli, "do_get_task_status", _fake_task_status)
+
+    result = cli.do_execute_workflow(
+        template_name="daily-cache",
+        entrypoint="cli",
+        values={
+            "local_path": r"D:\Knowledge\FeishuMirror",
+            "cloud_folder_token": "fld_test",
+        },
+        base_url="http://localhost:8000",
+        dry_run=False,
+    )
+
+    assert result["action"] == "workflow-execute"
+    assert result["completed"] is True
+    assert result["executed_steps"] == 2
+    assert result["results"]["bootstrap"]["task"]["task"]["id"] == "task-1"
+    assert result["results"]["inspect-task"]["task_id"] == "task-1"
+    assert calls == [
+        (
+            "bootstrap-cache",
+            {
+                "base_url": "http://localhost:8000",
+                "name": "LarkSync Agent 本地缓存",
+                "local_path": r"D:\Knowledge\FeishuMirror",
+                "cloud_folder_token": "fld_test",
+                "cloud_folder_name": None,
+                "base_path": None,
+                "sync_mode": "download_only",
+                "update_mode": "auto",
+                "md_sync_mode": None,
+                "delete_policy": None,
+                "delete_grace_minutes": None,
+                "enabled": True,
+                "is_test": False,
+                "download_value": 1.0,
+                "download_unit": "days",
+                "download_time": "01:00",
+                "run_now": True,
+            },
+        ),
+        ("task-status", {"base_url": "http://localhost:8000", "task_id": "task-1"}),
+    ]
+
+
+def test_do_execute_workflow_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    called = {"value": False}
+
+    def _fake_bootstrap_cache(**kwargs):
+        called["value"] = True
+        return kwargs
+
+    monkeypatch.setattr(cli, "do_bootstrap_cache", _fake_bootstrap_cache)
+
+    result = cli.do_execute_workflow(
+        template_name="daily-cache",
+        entrypoint="helper",
+        values={
+            "local_path": r"D:\Knowledge\FeishuMirror",
+            "cloud_folder_token": "fld_test",
+        },
+        base_url="http://localhost:8000",
+        dry_run=True,
+    )
+
+    assert result["dry_run"] is True
+    assert result["executed_steps"] == 0
+    assert result["completed"] is False
+    assert called["value"] is False
+    assert result["plan"]["steps"][0]["ready"] is True
+
+
+def test_main_supports_workflow_execute(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "do_execute_workflow",
+        lambda **_: {
+            "action": "workflow-execute",
+            "template": "daily-cache",
+            "completed": True,
+            "executed_steps": 1,
+        },
+    )
+
+    exit_code = cli.main(
+        [
+            "workflow-execute",
+            "--template",
+            "daily-cache",
+            "--set",
+            r"local_path=D:\Knowledge\FeishuMirror",
+            "--set",
+            "cloud_folder_token=fld_test",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = capsys.readouterr().out
+    assert '"action": "workflow-execute"' in payload

@@ -53,6 +53,7 @@ metadata: {"category":"integrations","tags":["openclaw","feishu","larksync","syn
 python scripts/larksync_cli.py workflow-template-list
 python scripts/larksync_cli.py workflow-template --template daily-cache
 python scripts/larksync_cli.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
+python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
 python scripts/larksync_cli.py check
 python scripts/larksync_cli.py task-list
 python scripts/larksync_cli.py task-create --name "OpenClaw 每日同步" --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only
@@ -64,6 +65,7 @@ OpenClaw 兼容 helper（返回 JSON，便于自动化编排；旧命令别名�
 ```bash
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-template --template daily-cache
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
+python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-execute --template daily-cache --dry-run --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<TOKEN>"
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py configure-download --download-value 1 --download-unit days --download-time 01:00
 python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py create-task --name "OpenClaw 每日同步" --local-path "D:\\Knowledge\\FeishuMirror" --cloud-folder-token "<TOKEN>" --sync-mode download_only
@@ -103,7 +105,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 ## 约束与安全边界
 - 未通过 `check` 之前，不执行任务创建或策略变更。
 - 优先使用 `bootstrap-cache` 作为首次接入命令，让 Agent 根据 `phase` 与 `next_step` 自动分支。
-- 优先使用 `workflow-template*` 先发现标准工作流，再用 `workflow-plan` 生成带参数的命令计划。
+- 优先使用 `workflow-template*` 先发现标准工作流，再用 `workflow-plan` 生成带参数的命令计划；确认后可交给 `workflow-execute` 顺序执行。
 - 未经用户明确同意，不把 `download_only` 自动切到 `bidirectional`。
 - 若用户要开启双向，必须先告知风险：
   - 本地误改可能上云；

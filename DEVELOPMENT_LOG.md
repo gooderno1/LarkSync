@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.5.55-dev.5 (2026-04-08)
+- 目标：
+  - 让 CLI 不只生成工作流计划，还能顺序执行模板步骤并自动衔接动态输入。
+- 结果：
+  - `scripts/larksync_cli.py` 新增 `workflow-execute`，支持按模板执行步骤、从上一步 JSON 结果提取动态字段，并提供 `dry_run` 预演模式。
+  - 执行结果新增 `execution_log` 与 `results`，便于 Agent 继续编排后续动作。
+  - OpenClaw helper / WSL helper 与相关文档同步支持 `workflow-execute`。
+- 测试：
+  - `python -m pytest tests/test_larksync_cli.py tests/test_larksync_skill_helper.py tests/test_larksync_wsl_helper.py -q`
+  - `python scripts/larksync_cli.py workflow-execute --template daily-cache --dry-run --set "local_path=D:\\Knowledge\\FeishuMirror" --set cloud_folder_token=fld_test`
+- 问题：
+  - 当前 JSON 路径提取实现面向现有模板字段，若后续模板引入更复杂的嵌套或过滤表达式，需要再扩展路径语法。
+
 ## v0.5.55-dev.4 (2026-04-08)
 - 目标：
   - 让 Agent 在拿到模板定义后，能直接生成带参数的执行计划，而不是自己拼命令。
