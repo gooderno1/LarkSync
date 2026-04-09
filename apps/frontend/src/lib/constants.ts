@@ -22,6 +22,14 @@ export const mdSyncModeLabels: Record<string, string> = {
   doc_only: "仅云文档上传",
 };
 
+export function syncModeSupportsUpload(syncMode: string): boolean {
+  return syncMode === "bidirectional" || syncMode === "upload_only";
+}
+
+export function syncModeSupportsDownload(syncMode: string): boolean {
+  return syncMode === "bidirectional" || syncMode === "download_only";
+}
+
 export const intervalUnitLabels: Record<string, string> = {
   seconds: "秒",
   hours: "小时",

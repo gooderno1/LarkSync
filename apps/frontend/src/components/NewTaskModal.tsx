@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { apiFetch } from "../lib/api";
 import { useDriveTree } from "../hooks/useDriveTree";
 import { useAuth } from "../hooks/useAuth";
-import { mdSyncModeLabels, modeLabels, updateModeLabels } from "../lib/constants";
+import { mdSyncModeLabels, modeLabels, syncModeSupportsUpload, updateModeLabels } from "../lib/constants";
 import { TreeNode } from "./TreeNode";
 import { IconRefresh, IconFolder, IconCloud, IconArrowRightLeft, IconArrowDown, IconArrowUp } from "./Icons";
 import { useToast } from "./ui/toast";
@@ -44,6 +44,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
   const [folderPickError, setFolderPickError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const taskUploadEnabled = syncModeSupportsUpload(taskSyncMode);
 
   const pickLocalFolder = () => {
     setFolderPickLoading(true);
@@ -104,7 +105,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
           base_path: taskBasePath.trim() || null,
           sync_mode: taskSyncMode,
           update_mode: taskUpdateMode,
-          md_sync_mode: taskMdSyncMode,
+          md_sync_mode: taskUploadEnabled ? taskMdSyncMode : "download_only",
           delete_policy: taskDeletePolicy,
           delete_grace_minutes:
             taskDeletePolicy === "strict"
@@ -340,7 +341,12 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
                           ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
                           : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
                       )}
-                      onClick={() => setTaskSyncMode(value)}
+                      onClick={() => {
+                        setTaskSyncMode(value);
+                        if (value === "download_only") {
+                          setTaskMdSyncMode("download_only");
+                        }
+                      }}
                       type="button"
                     >
                       <Icon className="h-5 w-5" />
@@ -379,49 +385,57 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-zinc-400">MD 上传模式</label>
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                  {[
-                    {
-                      value: "enhanced",
-                      label: "增强 MD 上传",
-                      desc: "上传云文档并维护云端 MD 副本",
-                    },
-                    {
-                      value: "download_only",
-                      label: "MD 仅下载",
-                      desc: "仅云端下行，不执行本地 MD 上行",
-                    },
-                    {
-                      value: "doc_only",
-                      label: "仅云文档上传",
-                      desc: "仅更新云文档，不保留云端 MD 副本",
-                    },
-                  ].map(({ value, label, desc }) => (
-                    <button
-                      key={value}
-                      className={cn(
-                        "rounded-xl border p-3 text-left transition",
-                        taskMdSyncMode === value
-                          ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                          : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
-                      )}
-                      onClick={() =>
-                        setTaskMdSyncMode(
-                          value as "enhanced" | "download_only" | "doc_only"
-                        )
-                      }
-                      type="button"
-                    >
-                      <p className="text-xs font-medium">{label}</p>
-                      <p className="mt-0.5 text-[10px] text-zinc-600">{desc}</p>
-                    </button>
-                  ))}
-                </div>
-                {taskMdSyncMode === "doc_only" ? (
-                  <p className="mt-2 text-[11px] text-amber-300">
-                    提示：仅云文档上传会经历 Markdown 转换，复杂内容可能存在格式损耗风险。
-                  </p>
-                ) : null}
+                {taskUploadEnabled ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                      {[
+                        {
+                          value: "enhanced",
+                          label: "增强 MD 上传",
+                          desc: "上传云文档并维护云端 MD 副本",
+                        },
+                        {
+                          value: "download_only",
+                          label: "MD 仅下载",
+                          desc: "仅云端下行，不执行本地 MD 上行",
+                        },
+                        {
+                          value: "doc_only",
+                          label: "仅云文档上传",
+                          desc: "仅更新云文档，不保留云端 MD 副本",
+                        },
+                      ].map(({ value, label, desc }) => (
+                        <button
+                          key={value}
+                          className={cn(
+                            "rounded-xl border p-3 text-left transition",
+                            taskMdSyncMode === value
+                              ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
+                              : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
+                          )}
+                          onClick={() =>
+                            setTaskMdSyncMode(
+                              value as "enhanced" | "download_only" | "doc_only"
+                            )
+                          }
+                          type="button"
+                        >
+                          <p className="text-xs font-medium">{label}</p>
+                          <p className="mt-0.5 text-[10px] text-zinc-600">{desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                    {taskMdSyncMode === "doc_only" ? (
+                      <p className="mt-2 text-[11px] text-amber-300">
+                        提示：仅云文档上传会经历 Markdown 转换，复杂内容可能存在格式损耗风险。
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 px-4 py-3 text-xs text-zinc-500">
+                    当前任务为仅下载，不会执行任何本地 Markdown 上行，因此无需配置 MD 上传模式。
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -473,7 +487,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
                   <span className="text-zinc-500">更新模式</span>
                   <span className="text-zinc-200">{updateModeLabels[taskUpdateMode]}</span>
                   <span className="text-zinc-500">MD 模式</span>
-                  <span className="text-zinc-200">{mdSyncModeLabels[taskMdSyncMode]}</span>
+                  <span className="text-zinc-200">{taskUploadEnabled ? mdSyncModeLabels[taskMdSyncMode] : "不适用（仅下载）"}</span>
                   <span className="text-zinc-500">删除策略</span>
                   <span className="text-zinc-200">{taskDeletePolicy}</span>
                 </div>

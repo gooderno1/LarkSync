@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.5.57-dev.2 (2026-04-09)
+
+- 目标：
+  - 收起 `download_only` / `upload_only` 场景下不适用的前端配置项，避免用户在仅下载任务里继续看到 MD 上传选项。
+- 结果：
+  - `SettingsPage` 按同步模式区分“本地上行”和“云端下行”配置，禁用方向改为说明文案而非继续显示无效输入控件。
+  - `NewTaskModal` 在 `download_only` 下隐藏 MD 上传模式选择，并在创建任务时强制提交 `md_sync_mode=download_only`。
+  - `TasksPage` 在 `download_only` 任务中将 MD 模式摘要显示为“不适用（仅下载）”，管理区不再提供 MD 上传模式配置。
+- 测试：
+  - `npm run build --prefix apps/frontend`
+
 ## v0.5.57-dev.1 (2026-04-09)
 
 - 目标：

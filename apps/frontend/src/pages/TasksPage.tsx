@@ -8,6 +8,7 @@ import { formatTimestamp } from "../lib/formatters";
 import {
   mdSyncModeLabels,
   modeLabels,
+  syncModeSupportsUpload,
   updateModeLabels,
   stateLabels,
   stateTones,
@@ -132,6 +133,8 @@ export function TasksPage() {
             const localPathExpanded = Boolean(expandedPaths[pathKey(task.id, "local")]);
             const cloudPathExpanded = Boolean(expandedPaths[pathKey(task.id, "cloud")]);
             const cloudPath = task.cloud_folder_name || task.cloud_folder_token || "-";
+            const effectiveSyncMode = localSyncModeMap[task.id] || task.sync_mode;
+            const taskUploadEnabled = syncModeSupportsUpload(effectiveSyncMode);
             const effectiveMdSyncMode = (
               localMdSyncModeMap[task.id] ||
               task.md_sync_mode ||
@@ -174,7 +177,7 @@ export function TasksPage() {
                       更新：{updateModeLabels[task.update_mode || "auto"]}
                     </span>
                     <span className="rounded-lg border border-zinc-700 px-3 py-1">
-                      MD：{mdSyncModeLabels[task.md_sync_mode || "enhanced"]}
+                      MD：{task.sync_mode === "download_only" ? "不适用（仅下载）" : mdSyncModeLabels[task.md_sync_mode || "enhanced"]}
                     </span>
                     <span className="rounded-lg border border-zinc-700 px-3 py-1">
                       删除：{task.delete_policy || "safe"}
@@ -345,42 +348,50 @@ export function TasksPage() {
                     </div>
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                       <p className="text-xs uppercase tracking-widest text-zinc-500">MD 上传模式</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <select
-                          className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-xs text-zinc-200 outline-none"
-                          value={effectiveMdSyncMode}
-                          onChange={(e) =>
-                            setLocalMdSyncModeMap((prev) => ({
-                              ...prev,
-                              [task.id]: e.target.value,
-                            }))
-                          }
-                        >
-                          <option value="enhanced">增强 MD 上传</option>
-                          <option value="download_only">MD 仅下载</option>
-                          <option value="doc_only">仅云文档上传</option>
-                        </select>
-                        <button
-                          className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                          onClick={() => {
-                            updateMdSyncMode({
-                              id: task.id,
-                              md_sync_mode: effectiveMdSyncMode,
-                            });
-                            toast("MD 上传模式已更新", "success");
-                          }}
-                          type="button"
-                        >
-                          应用
-                        </button>
-                      </div>
-                      <p className="mt-2 text-[11px] text-zinc-500">
-                        {effectiveMdSyncMode === "enhanced"
-                          ? "增强：上传云文档，并维护云端 MD 副本目录。"
-                          : effectiveMdSyncMode === "download_only"
-                            ? "仅下载：不执行本地 MD 上行，适合把飞书作为默认编辑端。"
-                            : "仅云文档：只更新云文档，不保留云端 MD 副本（复杂格式可能有损耗）。"}
-                      </p>
+                      {taskUploadEnabled ? (
+                        <>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <select
+                              className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-xs text-zinc-200 outline-none"
+                              value={effectiveMdSyncMode}
+                              onChange={(e) =>
+                                setLocalMdSyncModeMap((prev) => ({
+                                  ...prev,
+                                  [task.id]: e.target.value,
+                                }))
+                              }
+                            >
+                              <option value="enhanced">增强 MD 上传</option>
+                              <option value="download_only">MD 仅下载</option>
+                              <option value="doc_only">仅云文档上传</option>
+                            </select>
+                            <button
+                              className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                              onClick={() => {
+                                updateMdSyncMode({
+                                  id: task.id,
+                                  md_sync_mode: effectiveMdSyncMode,
+                                });
+                                toast("MD 上传模式已更新", "success");
+                              }}
+                              type="button"
+                            >
+                              应用
+                            </button>
+                          </div>
+                          <p className="mt-2 text-[11px] text-zinc-500">
+                            {effectiveMdSyncMode === "enhanced"
+                              ? "增强：上传云文档，并维护云端 MD 副本目录。"
+                              : effectiveMdSyncMode === "download_only"
+                                ? "仅下载：不执行本地 MD 上行，适合把飞书作为默认编辑端。"
+                                : "仅云文档：只更新云文档，不保留云端 MD 副本（复杂格式可能有损耗）。"}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="mt-3 text-sm leading-6 text-zinc-400">
+                          当前任务为仅下载，不会执行本地 Markdown 上行，因此不显示 MD 上传配置。
+                        </p>
+                      )}
                     </div>
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                       <p className="text-xs uppercase tracking-widest text-zinc-500">删除策略</p>

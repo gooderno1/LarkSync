@@ -7,7 +7,7 @@ import { useConfig } from "../hooks/useConfig";
 import { useUpdate } from "../hooks/useUpdate";
 import { useTasks } from "../hooks/useTasks";
 import { formatIntervalLabel } from "../lib/formatters";
-import { modeLabels } from "../lib/constants";
+import { modeLabels, syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
 import { useToast } from "../components/ui/toast";
 import { IconCopy, IconArrowUp, IconArrowDown, IconArrowRightLeft } from "../components/Icons";
 import { cn } from "../lib/utils";
@@ -40,6 +40,8 @@ export function SettingsPage() {
   const [updateCheckIntervalHours, setUpdateCheckIntervalHours] = useState("24");
   const [allowDevToStable, setAllowDevToStable] = useState(false);
   const [deviceDisplayName, setDeviceDisplayName] = useState("");
+  const uploadEnabled = syncModeSupportsUpload(syncMode);
+  const downloadEnabled = syncModeSupportsDownload(syncMode);
 
   // Redirect URI 自动生成（origin 即后端地址，生产模式前后端同源）
   const redirectUri = useMemo(() => {
@@ -287,8 +289,13 @@ export function SettingsPage() {
           <div>
             <h2 className="text-lg font-semibold text-zinc-50">同步策略</h2>
             <p className="mt-1 text-xs text-zinc-400">
-              当前：本地上行每 {formatIntervalLabel(uploadValue || "60", uploadUnit, uploadTime)}，云端下行每{" "}
-              {formatIntervalLabel(downloadValue || "1", downloadUnit, downloadTime)}
+              当前：
+              {uploadEnabled
+                ? ` 本地上行每 ${formatIntervalLabel(uploadValue || "60", uploadUnit, uploadTime)}，`
+                : " 本地上行已关闭，"}
+              {downloadEnabled
+                ? ` 云端下行每 ${formatIntervalLabel(downloadValue || "1", downloadUnit, downloadTime)}`
+                : " 云端下行已关闭"}
             </p>
           </div>
         </div>
@@ -331,40 +338,48 @@ export function SettingsPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">本地上行</p>
-                <p className="text-xs text-zinc-500">本地变更推送到云端的频率</p>
+                <p className="text-xs text-zinc-500">
+                  {uploadEnabled ? "本地变更推送到云端的频率" : "当前默认模式为仅下载，本地上行配置不适用"}
+                </p>
               </div>
             </div>
-            <div className="mt-4 flex items-center gap-2">
-              <span className="text-xs text-zinc-400 shrink-0">每</span>
-              <input
-                className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                type="number"
-                min="0"
-                step="0.5"
-                value={uploadValue}
-                onChange={(e) => setUploadValue(e.target.value)}
-              />
-              <select
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none"
-                value={uploadUnit}
-                onChange={(e) => setUploadUnit(e.target.value)}
-              >
-                <option value="seconds">秒</option>
-                <option value="hours">小时</option>
-                <option value="days">天</option>
-              </select>
-              {uploadUnit === "days" ? (
-                <>
-                  <span className="text-xs text-zinc-400 shrink-0">于</span>
-                  <input
-                    className="w-24 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                    type="time"
-                    value={uploadTime}
-                    onChange={(e) => setUploadTime(e.target.value)}
-                  />
-                </>
-              ) : null}
-            </div>
+            {uploadEnabled ? (
+              <div className="mt-4 flex items-center gap-2">
+                <span className="text-xs text-zinc-400 shrink-0">每</span>
+                <input
+                  className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={uploadValue}
+                  onChange={(e) => setUploadValue(e.target.value)}
+                />
+                <select
+                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none"
+                  value={uploadUnit}
+                  onChange={(e) => setUploadUnit(e.target.value)}
+                >
+                  <option value="seconds">秒</option>
+                  <option value="hours">小时</option>
+                  <option value="days">天</option>
+                </select>
+                {uploadUnit === "days" ? (
+                  <>
+                    <span className="text-xs text-zinc-400 shrink-0">于</span>
+                    <input
+                      className="w-24 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
+                      type="time"
+                      value={uploadTime}
+                      onChange={(e) => setUploadTime(e.target.value)}
+                    />
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-3 text-xs text-zinc-500">
+                仅下载模式不会使用本地上行频率；切回“双向同步”或“仅上传”后再配置即可。
+              </div>
+            )}
           </div>
 
           {/* 云端下行 */}
@@ -375,40 +390,48 @@ export function SettingsPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-zinc-200">云端下行</p>
-                <p className="text-xs text-zinc-500">从云端拉取更新到本地的频率</p>
+                <p className="text-xs text-zinc-500">
+                  {downloadEnabled ? "从云端拉取更新到本地的频率" : "当前默认模式为仅上传，云端下行配置不适用"}
+                </p>
               </div>
             </div>
-            <div className="mt-4 flex items-center gap-2">
-              <span className="text-xs text-zinc-400 shrink-0">每</span>
-              <input
-                className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                type="number"
-                min="0"
-                step="0.5"
-                value={downloadValue}
-                onChange={(e) => setDownloadValue(e.target.value)}
-              />
-              <select
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none"
-                value={downloadUnit}
-                onChange={(e) => setDownloadUnit(e.target.value)}
-              >
-                <option value="seconds">秒</option>
-                <option value="hours">小时</option>
-                <option value="days">天</option>
-              </select>
-              {downloadUnit === "days" ? (
-                <>
-                  <span className="text-xs text-zinc-400 shrink-0">于</span>
-                  <input
-                    className="w-24 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                    type="time"
-                    value={downloadTime}
-                    onChange={(e) => setDownloadTime(e.target.value)}
-                  />
-                </>
-              ) : null}
-            </div>
+            {downloadEnabled ? (
+              <div className="mt-4 flex items-center gap-2">
+                <span className="text-xs text-zinc-400 shrink-0">每</span>
+                <input
+                  className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={downloadValue}
+                  onChange={(e) => setDownloadValue(e.target.value)}
+                />
+                <select
+                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none"
+                  value={downloadUnit}
+                  onChange={(e) => setDownloadUnit(e.target.value)}
+                >
+                  <option value="seconds">秒</option>
+                  <option value="hours">小时</option>
+                  <option value="days">天</option>
+                </select>
+                {downloadUnit === "days" ? (
+                  <>
+                    <span className="text-xs text-zinc-400 shrink-0">于</span>
+                    <input
+                      className="w-24 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
+                      type="time"
+                      value={downloadTime}
+                      onChange={(e) => setDownloadTime(e.target.value)}
+                    />
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-3 text-xs text-zinc-500">
+                仅上传模式不会使用云端下行频率；切回“双向同步”或“仅下载”后再配置即可。
+              </div>
+            )}
           </div>
         </div>
 
