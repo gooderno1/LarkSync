@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.5.57-dev.1 (2026-04-09)
+
+- 目标：
+  - 修复 `download_only` 任务在历史/脏 `md_sync_mode` 配置下仍尝试创建云端 `_LarkSync_MD_Mirror` 的问题。
+- 结果：
+  - `SyncTaskRunner` 的 Markdown 上传与云端 MD 镜像判定新增 `sync_mode` 保护。
+  - 当任务为 `download_only` 时，无论 `md_sync_mode` 是 `enhanced`、空值还是遗留配置，都不会创建或写入云端 MD 镜像目录。
+  - 补充回归测试，覆盖 `download_only + md_sync_mode=enhanced` 时仍必须只下载、不回写云端。
+- 测试：
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py -q`
+
 ## v0.5.56 (2026-04-09)
 
 - 发布目标：

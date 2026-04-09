@@ -392,6 +392,76 @@ async def test_runner_download_skips_internal_md_mirror_folder(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_runner_download_only_never_creates_cloud_md_mirror_even_if_md_mode_is_enhanced(
+    tmp_path: Path,
+) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="doc-main",
+                name="主文档",
+                type="docx",
+                modified_time="1700000000",
+            )
+        ],
+    )
+
+    class DriveWithForbiddenMirror(FakeDriveService):
+        def __init__(self, tree: DriveNode) -> None:
+            super().__init__(tree)
+            self.created_folders: list[tuple[str, str]] = []
+
+        async def list_files(
+            self,
+            folder_token: str,
+            page_token: str | None = None,
+            page_size: int = 200,
+        ) -> DriveFileList:
+            return DriveFileList(files=[], has_more=False, next_page_token=None)
+
+        async def create_folder(self, parent_token: str, name: str) -> str:
+            self.created_folders.append((parent_token, name))
+            raise RuntimeError(f"创建云端文件夹失败: forbidden. (name={name})")
+
+    drive = DriveWithForbiddenMirror(tree)
+    runner = SyncTaskRunner(
+        drive_service=drive,
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_uploader=FakeFileUploader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(),
+    )
+    task = SyncTaskItem(
+        id="task-download-only-md-enhanced",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        md_sync_mode="enhanced",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner.run_task(task)
+
+    status = runner.get_status(task.id)
+    assert status.state == "success"
+    assert status.failed_files == 0
+    assert status.completed_files == 1
+    assert not drive.created_folders
+    assert (tmp_path / "主文档.md").exists()
+
+
+@pytest.mark.asyncio
 async def test_runner_download_prefers_persisted_link_when_cloud_has_duplicates(tmp_path: Path) -> None:
     tree = DriveNode(
         token="root",

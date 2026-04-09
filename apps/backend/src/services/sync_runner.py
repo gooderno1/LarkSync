@@ -1401,9 +1401,13 @@ class SyncTaskRunner:
         )
 
     def _should_upload_markdown_doc(self, task: SyncTaskItem) -> bool:
+        if task.sync_mode == "download_only":
+            return False
         return self._resolve_md_sync_mode(task) != _MD_SYNC_MODE_DOWNLOAD_ONLY
 
     def _should_sync_md_cloud_mirror(self, task: SyncTaskItem) -> bool:
+        if task.sync_mode == "download_only":
+            return False
         return self._resolve_md_sync_mode(task) == _MD_SYNC_MODE_ENHANCED
 
     async def _sync_markdown_mirror_copy(
