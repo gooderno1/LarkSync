@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-04-09] v0.5.58 release: v0.5.58
+[2026-04-09] v0.5.58-dev.1 fix(update-install): Windows 在线升级安装改为优先使用 ShellExecute (`os.startfile`) 直接拉起安装包，失败时再回退 PowerShell，修复“程序已退出但安装器未成功启动”
 [2026-04-09] v0.5.57 release: v0.5.57
 [2026-04-09] v0.5.57-dev.2 fix(frontend): 设置页、新建任务与任务管理页按同步模式收起不适用配置，避免 `download_only` 任务继续显示 MD 上传相关选项
 [2026-04-09] v0.5.57-dev.1 fix(sync-download): `download_only` 模式下禁用云端 MD 镜像创建/回写，修复仍尝试创建 `_LarkSync_MD_Mirror` 并返回 forbidden 的问题

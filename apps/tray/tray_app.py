@@ -198,6 +198,14 @@ def _build_windows_installer_launch_command(path: Path) -> list[str]:
     ]
 
 
+def _startfile_windows_installer(path: Path) -> bool:
+    launcher = getattr(os, "startfile", None)
+    if launcher is None:
+        return False
+    launcher(str(path))
+    return True
+
+
 def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
     """等待端口变为可用，返回是否成功。"""
     deadline = time.time() + timeout
@@ -537,6 +545,14 @@ class LarkSyncTray:
             raise FileNotFoundError(f"安装包不存在: {path}")
 
         if sys.platform == "win32":
+            try:
+                if _startfile_windows_installer(path):
+                    _append_install_launch_log(f"使用 ShellExecute 启动安装包: {path}")
+                    return
+            except OSError as exc:
+                _append_install_launch_log(
+                    f"ShellExecute 启动失败，回退 PowerShell: {path} ({type(exc).__name__}: {exc})"
+                )
             creationflags = (
                 getattr(subprocess, "DETACHED_PROCESS", 0)
                 | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)

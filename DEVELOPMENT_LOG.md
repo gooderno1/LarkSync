@@ -1,5 +1,30 @@
 # DEVELOPMENT LOG
 
+## v0.5.58 (2026-04-09)
+
+- 发布目标：
+  - 修复 Windows 在线升级时“程序已退出，但安装包未被成功拉起”的残留问题，并发布新的稳定版。
+- 发布内容：
+  - 托盘处理安装请求时，Windows 端改为优先使用 `os.startfile`（ShellExecute）直接启动安装包。
+  - 若 ShellExecute 失败，再回退到现有的 PowerShell `Start-Process -LiteralPath` 方案，避免单一路径失效。
+  - 安装启动日志现在会记录是否走了 ShellExecute 或 PowerShell 回退路径，便于后续排查现场。
+- 发布验证：
+  - `python -m pytest tests/test_tray_update_install.py tests/test_system_update_api.py -q`
+  - `python scripts/build_installer.py --nsis`
+- 发布说明：
+  - 稳定版标签为 `v0.5.58`，GitHub Release 资产由 tag 触发的 `Release Build` 工作流自动生成并上传。
+
+## v0.5.58-dev.1 (2026-04-09)
+
+- 目标：
+  - 修复自动升级安装包已下载但托盘退出后安装器仍未被成功拉起的问题。
+- 结果：
+  - `tray_app.py` 新增 Windows 原生安装启动路径，优先通过 `os.startfile` 交给 ShellExecute 直接拉起安装包。
+  - 保留 PowerShell `-EncodedCommand` + `Start-Process -LiteralPath` 作为失败兜底。
+  - 补充 pytest，覆盖“优先使用 startfile”和“startfile 失败时回退 PowerShell”两类场景。
+- 测试：
+  - `python -m pytest tests/test_tray_update_install.py tests/test_system_update_api.py -q`
+
 ## v0.5.57 (2026-04-09)
 
 - 发布目标：

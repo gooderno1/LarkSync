@@ -128,3 +128,61 @@ def test_schedule_installer_launch_on_windows_uses_detached_powershell(
     assert len(calls) == 1
     assert "-EncodedCommand" in calls[0]["args"]
     assert calls[0]["close_fds"] is True
+
+
+def test_schedule_installer_launch_on_windows_prefers_startfile(
+    monkeypatch, tmp_path: Path
+) -> None:
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.57.exe"
+    installer_path.write_bytes(b"exe")
+    startfile_calls: list[str] = []
+    popen_calls: list[list[str]] = []
+
+    def _fake_startfile(path: str, operation: str | None = None) -> None:
+        startfile_calls.append(path)
+
+    def _fake_popen(args, **kwargs):
+        popen_calls.append(list(args))
+        class _DummyProc:
+            pid = 4321
+        return _DummyProc()
+
+    monkeypatch.setattr(tray_app.sys, "platform", "win32")
+    monkeypatch.setattr(tray_app.os, "startfile", _fake_startfile, raising=False)
+    monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
+
+    tray = _build_tray()
+    tray._schedule_installer_launch(str(installer_path))
+
+    assert startfile_calls == [str(installer_path.resolve())]
+    assert popen_calls == []
+
+
+def test_schedule_installer_launch_on_windows_falls_back_when_startfile_fails(
+    monkeypatch, tmp_path: Path
+) -> None:
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.57.exe"
+    installer_path.write_bytes(b"exe")
+    startfile_calls: list[str] = []
+    popen_calls: list[dict[str, object]] = []
+
+    def _fake_startfile(path: str, operation: str | None = None) -> None:
+        startfile_calls.append(path)
+        raise OSError("shell execute failed")
+
+    def _fake_popen(args, **kwargs):
+        popen_calls.append({"args": list(args), **kwargs})
+        class _DummyProc:
+            pid = 5678
+        return _DummyProc()
+
+    monkeypatch.setattr(tray_app.sys, "platform", "win32")
+    monkeypatch.setattr(tray_app.os, "startfile", _fake_startfile, raising=False)
+    monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
+
+    tray = _build_tray()
+    tray._schedule_installer_launch(str(installer_path))
+
+    assert startfile_calls == [str(installer_path.resolve())]
+    assert len(popen_calls) == 1
+    assert "-EncodedCommand" in popen_calls[0]["args"]
