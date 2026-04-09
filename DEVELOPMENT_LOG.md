@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.5.57 (2026-04-09)
+
+- 发布目标：
+  - 将 `v0.5.57-dev.1` 和 `v0.5.57-dev.2` 收口为正式稳定版，交付 `download_only` 任务的云端镜像修复与同步模式感知配置优化。
+- 发布内容：
+  - `download_only` 模式下彻底禁用云端 `_LarkSync_MD_Mirror` 的创建与回写，避免历史 `md_sync_mode` 脏配置触发 forbidden。
+  - 设置页、新建任务与任务管理页按同步模式收起不适用的上传/下载配置，减少仅下载和仅上传场景中的误操作。
+- 发布验证：
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+- 发布说明：
+  - 稳定版标签为 `v0.5.57`，GitHub Release 资产由 tag 触发的 `Release Build` 工作流自动生成并上传。
+
 ## v0.5.57-dev.2 (2026-04-09)
 
 - 目标：
