@@ -831,6 +831,7 @@ class DocxService:
     @staticmethod
     def _sanitize_block(block: dict[str, Any]) -> dict[str, Any]:
         cleaned = dict(block)
+        original_children = list(block.get("children") or [])
         cleaned.pop("block_id", None)
         cleaned.pop("parent_id", None)
         cleaned.pop("children", None)
@@ -838,12 +839,33 @@ class DocxService:
             table = cleaned.get("table")
             if isinstance(table, dict):
                 table = dict(table)
-                table.pop("cells", None)
                 prop = table.get("property")
                 if isinstance(prop, dict):
                     prop = dict(prop)
                     prop.pop("merge_info", None)
+                    row_size = _safe_int(prop.get("row_size"))
+                    col_size = _safe_int(prop.get("column_size"))
                     table["property"] = prop
+                else:
+                    row_size = 0
+                    col_size = 0
+                cells = table.get("cells")
+                if not (isinstance(cells, list) and cells):
+                    matrix: list[list[str]] = []
+                    if (
+                        original_children
+                        and row_size > 0
+                        and col_size > 0
+                        and len(original_children) >= row_size * col_size
+                    ):
+                        matrix = [
+                            original_children[row * col_size : (row + 1) * col_size]
+                            for row in range(row_size)
+                        ]
+                    elif original_children:
+                        matrix = _group_cells_by_row_token(original_children)
+                    if matrix:
+                        table["cells"] = matrix
                 cleaned["table"] = table
         return cleaned
 

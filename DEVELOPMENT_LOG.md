@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.59-dev.1 (2026-04-14)
+
+- 目标：
+  - 修复 Markdown 上行到飞书时，遇到表格块创建失败并返回 `1770001 invalid param` 的问题。
+- 结果：
+  - `docx_service.py` 调整表格块清洗逻辑：创建 table block 时不再移除 `table.cells`。
+  - 当转换结果仅包含表格 `children` 与 `row_size/column_size` 时，会按行列自动补出 `table.cells` 矩阵后再请求飞书接口。
+  - 保留运行时字段清理逻辑，继续去除 `block_id`、`parent_id`、`children` 与 `merge_info`，避免把服务端返回的只读字段原样回传。
+  - `test_docx_service.py` 新增/更新回归测试，覆盖表格块清洗与创建请求 payload。
+- 测试：
+  - `python -m pytest apps/backend/tests/test_docx_service.py -q`
+
 ## v0.5.58 (2026-04-09)
 
 - 发布目标：

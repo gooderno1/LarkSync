@@ -838,12 +838,16 @@ async def test_partial_update_table_children_flattens_nested_cells() -> None:
     assert service.children_map.get("t1") == ["cell1", "cell2", "cell3"]
 
 
-def test_sanitize_block_strips_table_cells() -> None:
+def test_sanitize_block_keeps_table_cells_but_strips_runtime_fields() -> None:
     block = {
         "block_id": "tbl1",
         "block_type": BLOCK_TYPE_TABLE,
         "table": {
-            "property": {"row_size": 2, "column_size": 2},
+            "property": {
+                "row_size": 2,
+                "column_size": 2,
+                "merge_info": [{"row_span": 2, "col_span": 1}],
+            },
             "cells": [["c1", "c2"], ["c3", "c4"]],
         },
         "children": ["c1", "c2", "c3", "c4"],
@@ -851,7 +855,8 @@ def test_sanitize_block_strips_table_cells() -> None:
     cleaned = DocxService._sanitize_block(block)
     assert "block_id" not in cleaned
     assert "children" not in cleaned
-    assert "cells" not in cleaned["table"]
+    assert cleaned["table"]["cells"] == [["c1", "c2"], ["c3", "c4"]]
+    assert "merge_info" not in cleaned["table"]["property"]
 
 
 def test_patch_table_properties_reshapes_flat_cells() -> None:
@@ -947,6 +952,11 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
     await service.replace_document_content("doc-table", "| A | B |", update_mode="full")
 
     urls = [req[1] for req in client.requests]
+    create_call = next(req for req in client.requests if req[1].endswith("/blocks/root/children"))
+    table_payload = create_call[2]["json"]["children"][0]["table"]
+    assert table_payload["property"]["row_size"] == 1
+    assert table_payload["property"]["column_size"] == 2
+    assert table_payload["cells"] == [["c1", "c2"]]
     assert any(url.endswith("/blocks/cellA/children") for url in urls)
     assert any(url.endswith("/blocks/cellB/children") for url in urls)
     assert not any(url.endswith("/blocks/new_table/children") for url in urls)
