@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.5.59-dev.2 (2026-04-14)
+
+- 目标：
+  - 修复真实 Markdown 文档上行时，大表格在飞书 `create children` 接口返回 `1770001 invalid param` 后会导致整篇替换中止的问题。
+- 结果：
+  - 回退 `docx_service.py` 中“创建表格时回传 `table.cells`”的尝试，确认飞书并不接受该字段。
+  - 保持 table create 请求仅发送 `table.property`，继续清理 `merge_info` 等只读字段。
+  - 当单个 table block 创建失败时，新增降级逻辑：把原表格重新渲染为 Markdown，并包装为 fenced code block 后再次创建，避免单个大表格拖垮整篇文档上传。
+  - `test_docx_service.py` 补充回归测试，覆盖“表格创建失败后自动降级为代码块”的链路。
+  - 使用真实文件 `软件设计说明书.md` 做隔离云端复测：抽样 20x5 表格与整篇文档均上传成功，测试文档分别位于 `_Codex_TableSmoke_20260414-112935` 和 `_Codex_FullRetest_20260414-113156` 目录下。
+- 测试：
+  - `python -m pytest apps/backend/tests/test_docx_service.py -q`
+  - 真实文件隔离复测：
+    - 表格烟测文档 `WrgEdywMXocDgvx47UncX9a7nA3`
+    - 整篇复测文档 `QHFJdAUySoPzs7xbyQXciwUenvd`
+
 ## v0.5.59-dev.1 (2026-04-14)
 
 - 目标：

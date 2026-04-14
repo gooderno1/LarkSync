@@ -838,7 +838,7 @@ async def test_partial_update_table_children_flattens_nested_cells() -> None:
     assert service.children_map.get("t1") == ["cell1", "cell2", "cell3"]
 
 
-def test_sanitize_block_keeps_table_cells_but_strips_runtime_fields() -> None:
+def test_sanitize_block_strips_table_cells() -> None:
     block = {
         "block_id": "tbl1",
         "block_type": BLOCK_TYPE_TABLE,
@@ -855,7 +855,7 @@ def test_sanitize_block_keeps_table_cells_but_strips_runtime_fields() -> None:
     cleaned = DocxService._sanitize_block(block)
     assert "block_id" not in cleaned
     assert "children" not in cleaned
-    assert cleaned["table"]["cells"] == [["c1", "c2"], ["c3", "c4"]]
+    assert "cells" not in cleaned["table"]
     assert "merge_info" not in cleaned["table"]["property"]
 
 
@@ -956,10 +956,84 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
     table_payload = create_call[2]["json"]["children"][0]["table"]
     assert table_payload["property"]["row_size"] == 1
     assert table_payload["property"]["column_size"] == 2
-    assert table_payload["cells"] == [["c1", "c2"]]
+    assert "cells" not in table_payload
     assert any(url.endswith("/blocks/cellA/children") for url in urls)
     assert any(url.endswith("/blocks/cellB/children") for url in urls)
     assert not any(url.endswith("/blocks/new_table/children") for url in urls)
+
+
+@pytest.mark.asyncio
+async def test_replace_document_content_falls_back_to_code_block_when_table_create_invalid() -> None:
+    class TableFallbackService(DocxService):
+        def __init__(self) -> None:
+            super().__init__(client=FakeClient([]))
+            self.calls: list[tuple[str, str, dict]] = []
+            self.fallback_markdowns: list[str] = []
+
+        async def _request_json(self, method: str, url: str, **kwargs):
+            self.calls.append((method, url, kwargs))
+            if method == "GET" and url.endswith("/open-apis/docx/v1/documents/doc-fallback/blocks"):
+                return {
+                    "data": {
+                        "items": [{"block_id": "root", "block_type": 1, "children": []}],
+                        "has_more": False,
+                    }
+                }
+            if method == "POST" and url.endswith("/open-apis/docx/v1/documents/blocks/convert"):
+                content = kwargs["json"]["content"]
+                if content.startswith("```markdown\n| A | B |"):
+                    self.fallback_markdowns.append(content)
+                    return {
+                        "data": {
+                            "first_level_block_ids": ["fb1"],
+                            "blocks": [
+                                {"block_id": "fb1", "block_type": 14, "code": {"language": "markdown"}}
+                            ],
+                        }
+                    }
+                return {
+                    "data": {
+                        "first_level_block_ids": ["t1"],
+                        "blocks": [
+                            {
+                                "block_id": "t1",
+                                "block_type": 31,
+                                "children": ["c1", "c2"],
+                                "table": {"property": {"row_size": 1, "column_size": 2}},
+                            },
+                            {"block_id": "c1", "block_type": 32, "children": ["p1"], "table_cell": {}},
+                            {"block_id": "c2", "block_type": 32, "children": ["p2"], "table_cell": {}},
+                            {"block_id": "p1", "block_type": 2, "text": {"elements": [{"text_run": {"content": "A"}}]}},
+                            {"block_id": "p2", "block_type": 2, "text": {"elements": [{"text_run": {"content": "B"}}]}},
+                        ],
+                    }
+                }
+            if method == "POST" and url.endswith("/open-apis/docx/v1/documents/doc-fallback/blocks/root/children"):
+                child = kwargs["json"]["children"][0]
+                if child.get("block_type") == 31:
+                    request = httpx.Request(method, url)
+                    response = httpx.Response(
+                        400,
+                        json={"code": 1770001, "msg": "invalid param"},
+                        request=request,
+                    )
+                    raise httpx.HTTPStatusError("invalid", request=request, response=response)
+                return {"data": {"children": [{"block_id": "ok1"}]}}
+            raise AssertionError(f"unexpected call: {method} {url}")
+
+    service = TableFallbackService()
+
+    await service.replace_document_content("doc-fallback", "| A | B |\n| --- | --- |\n| 1 | 2 |", update_mode="full")
+
+    root_creates = [
+        call for call in service.calls
+        if call[0] == "POST"
+        and call[1].endswith("/open-apis/docx/v1/documents/doc-fallback/blocks/root/children")
+    ]
+    assert len(root_creates) == 2
+    assert root_creates[0][2]["json"]["children"][0]["block_type"] == 31
+    assert root_creates[1][2]["json"]["children"][0]["block_type"] != 31
+    assert service.fallback_markdowns == ["```markdown\n| A | B |\n| --- | --- |\n```"]
 
 
 @pytest.mark.asyncio

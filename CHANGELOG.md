@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-14] v0.5.59-dev.2 fix(docx-upload): Markdown 上行遇到飞书大表格 `1770001 invalid param` 时自动降级为代码块重试，避免整篇文档上传中止
 [2026-04-14] v0.5.59-dev.1 fix(docx-upload): 创建表格块时保留并补齐 `table.cells`，修复 Markdown 含表格时飞书返回 `1770001 invalid param`
 [2026-04-09] v0.5.58 release: v0.5.58
 [2026-04-09] v0.5.58-dev.1 fix(update-install): Windows 在线升级安装改为优先使用 ShellExecute (`os.startfile`) 直接拉起安装包，失败时再回退 PowerShell，修复“程序已退出但安装器未成功启动”

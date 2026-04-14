@@ -597,7 +597,20 @@ class DocxService:
             if not chunk:
                 return
             block_id = chunk[0]
-            block = self._sanitize_block(block_map[block_id])
+            raw_block = block_map[block_id]
+            if raw_block.get("block_type") == BLOCK_TYPE_TABLE:
+                fallback_applied = await self._fallback_table_block_as_code(
+                    document_id=document_id,
+                    parent_block_id=parent_block_id,
+                    table_block_id=block_id,
+                    block_map=block_map,
+                    user_id_type=user_id_type,
+                    insert_index=insert_index,
+                    error_flag=error_flag,
+                )
+                if fallback_applied:
+                    return
+            block = self._sanitize_block(raw_block)
             logger.error(
                 "无效块已跳过: document_id={} parent={} block_id={} block_type={} keys={} payload={}",
                 document_id,
@@ -635,6 +648,72 @@ class DocxService:
             file_paths=file_paths,
             error_flag=error_flag,
         )
+
+    async def _fallback_table_block_as_code(
+        self,
+        *,
+        document_id: str,
+        parent_block_id: str,
+        table_block_id: str,
+        block_map: dict[str, dict[str, Any]],
+        user_id_type: str,
+        insert_index: int,
+        error_flag: dict[str, bool] | None = None,
+    ) -> bool:
+        table_block = block_map.get(table_block_id)
+        if not table_block:
+            return False
+        parser = DocxParser(list(block_map.values()))
+        table_markdown = parser.table_markdown(table_block).strip()
+        if not table_markdown:
+            logger.warning(
+                "表格降级失败，无法生成 Markdown: document_id={} block_id={}",
+                document_id,
+                table_block_id,
+            )
+            return False
+        fallback_markdown = f"```markdown\n{table_markdown}\n```"
+        logger.warning(
+            "表格块创建失败，降级为代码块重试: document_id={} parent={} block_id={}",
+            document_id,
+            parent_block_id,
+            table_block_id,
+        )
+        try:
+            convert = await self.convert_markdown(
+                fallback_markdown, user_id_type=user_id_type
+            )
+            convert = self._normalize_convert(convert)
+            fallback_block_map = {
+                block_id: block
+                for block in convert.blocks
+                if isinstance((block_id := block.get("block_id")), str)
+            }
+            fallback_children_map = {
+                block_id: _extract_children_ids(block)
+                for block_id, block in fallback_block_map.items()
+            }
+            await self._create_children_recursive(
+                document_id=document_id,
+                parent_block_id=parent_block_id,
+                child_ids=convert.first_level_block_ids,
+                block_map=fallback_block_map,
+                children_map=fallback_children_map,
+                user_id_type=user_id_type,
+                insert_index=insert_index,
+                image_paths=None,
+                file_paths=None,
+                error_flag=error_flag,
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "表格降级重试失败: document_id={} block_id={} error={}",
+                document_id,
+                table_block_id,
+                exc,
+            )
+            return False
 
     async def _populate_table_cells(
         self,
@@ -831,7 +910,6 @@ class DocxService:
     @staticmethod
     def _sanitize_block(block: dict[str, Any]) -> dict[str, Any]:
         cleaned = dict(block)
-        original_children = list(block.get("children") or [])
         cleaned.pop("block_id", None)
         cleaned.pop("parent_id", None)
         cleaned.pop("children", None)
@@ -839,33 +917,12 @@ class DocxService:
             table = cleaned.get("table")
             if isinstance(table, dict):
                 table = dict(table)
+                table.pop("cells", None)
                 prop = table.get("property")
                 if isinstance(prop, dict):
                     prop = dict(prop)
                     prop.pop("merge_info", None)
-                    row_size = _safe_int(prop.get("row_size"))
-                    col_size = _safe_int(prop.get("column_size"))
                     table["property"] = prop
-                else:
-                    row_size = 0
-                    col_size = 0
-                cells = table.get("cells")
-                if not (isinstance(cells, list) and cells):
-                    matrix: list[list[str]] = []
-                    if (
-                        original_children
-                        and row_size > 0
-                        and col_size > 0
-                        and len(original_children) >= row_size * col_size
-                    ):
-                        matrix = [
-                            original_children[row * col_size : (row + 1) * col_size]
-                            for row in range(row_size)
-                        ]
-                    elif original_children:
-                        matrix = _group_cells_by_row_token(original_children)
-                    if matrix:
-                        table["cells"] = matrix
                 cleaned["table"] = table
         return cleaned
 
