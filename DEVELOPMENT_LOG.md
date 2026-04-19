@@ -1,5 +1,52 @@
 # DEVELOPMENT LOG
 
+## v0.5.59 release (2026-04-19)
+
+- 目标：
+  - 发布 `v0.5.59` 稳定版，交付 Markdown 上行大表格改走飞书原生导入、HTML 内嵌图片上传与同名旧文档清理能力。
+- 结果：
+  - 根目录 `package.json`、前端 `apps/frontend/package.json` 与后端 `apps/backend/pyproject.toml` 版本统一提升到 `v0.5.59 / 0.5.59`。
+  - 发布前已完成真实云端回归，确认需求规格说明书保留原生表格，设计说明书保留原生表格与图片块。
+  - 云端同名旧文档已清理，仅保留最新稳定测试文档。
+
+## v0.5.59-dev.4 (2026-04-19)
+
+- 目标：
+  - 修复 `算电融合项目软件需求规格说明书-V1.1.md` 这类标准 pipe-table 文档在块级上行时仍被飞书 `1770001 invalid param` 拦截并降级为代码块的问题。
+  - 修复大文档改走导入链路后，导入轮询仅等待 10 秒导致程序误判失败的问题。
+  - 验证真实业务文档在新策略下既能保留原生表格，也能保留图片块。
+- 结果：
+  - `docx_service.py` 新增 Markdown 表格超限检测，基于本地实测阈值将 `row_size > 8` 的表格标记为不适合飞书块级建表。
+  - `sync_runner.py` 新增“超限表格自动导入重建”策略：检测到此类 Markdown 后，不再调用块级 `replace_document_content()`，而是通过飞书原生 Markdown 导入创建新文档、替换本地映射并删除旧云端文档。
+  - 将 `SyncTaskRunner` 的 Markdown 导入轮询默认时长从 10 秒提升到 60 秒，覆盖《软件设计说明书-V1.1》这类大文档的真实导入耗时。
+  - `test_docx_service.py` 补充“表格超限检测”单测；`test_sync_runner_upload_new_doc.py` 补充“已存在云端文档时，超限表格自动导入重建并迁移映射”的回归测试。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py tests/test_sync_runner_upload_new_doc.py tests/test_sync_runner.py tests/test_sync_runner_block_update.py -q`
+  - 真实云端验证：
+    - `算电融合项目软件需求规格说明书-V1.1.md` 重新导入后生成新文档 `BBPwdaSXSoOkZ8xmf15cjudXnCb`，云端块统计 `table_blocks=1`、`code_blocks=0`。
+    - `软件设计说明书-V1.1.md` 重新导入后生成新文档 `ISqmdgXWdoUj18xzhehcCtoBnPb`，云端块统计 `table_blocks=136`、`image_blocks=23`、`code_blocks=0`。
+
+## v0.5.59-dev.3 (2026-04-19)
+
+- 目标：
+  - 修复 `算电融合项目软件需求规格说明书-V1.1.md` 上行时仍被飞书 `1770001 invalid param` 拦截的问题。
+  - 让带 `FIGURE:x-y` 标记的 HTML 内嵌 `data:image/svg+xml;base64,...` 图片能进入真实图片上传链路，而不是作为普通 HTML 原样传给飞书。
+  - 避免 `figures/`、`插图/` 里的源图再次被同步器当作独立附件重复上传并报 `unknown error`。
+- 结果：
+  - `docx_service.py` 移除表格创建时自动补写的 `table.property.column_width`，保留 `row_size/column_size` 与 `cells` 规整逻辑，避免继续向飞书发送触发 `1770001` 的表格参数。
+  - 新增 HTML `<img src=\"data:image/...\">` 预处理：优先按 `FIGURE:x-y` 在本地 `figures/`、`插图/`、`assets/` 中寻找对应 `fig-x-y.drawio.png` 等图片资源；找不到时再把 data URI 落为临时图片文件，并统一走既有图片 placeholder + 飞书图片上传链路。
+  - `sync_runner.py` 新增对 `figures/` 与 `插图/` 目录的忽略规则，避免嵌入源图被当普通附件重复上传。
+  - `test_docx_service.py` 补充回归测试，覆盖“HTML 内嵌图优先复用本地 PNG”“HTML 内嵌图真实进入图片回填链路”“表格属性不再注入 column_width”。
+  - `test_sync_runner.py` 补充回归测试，覆盖 `figures/` / `插图/` 的忽略逻辑。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py -q`
+  - `python -m pytest tests/test_sync_runner.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest tests/test_sync_runner_block_update.py -q`
+  - 真实云端验证：
+    - 直接覆盖上传 `算电融合项目软件需求规格说明书-V1.1.md` 到 `Adw5d3qfJodkA4xvSIxctWAgn2u` 成功；飞书对表格 create 仍返回 `1770001` 时，已自动降级为代码块继续完成整篇替换。
+    - 探针文档 `LarkSync图片上传探针-20260419.md` 成功创建并上传到 `DP1Sdgo3IoyXhDx1p9xcOhzYnPd`，云端块统计为 `table_blocks=1`、`image_blocks=1`，证明 HTML 内嵌图已进入真实图片上传链路；探针文档已在验证后删除。
+
 ## v0.5.59-dev.2 (2026-04-14)
 
 - 目标：

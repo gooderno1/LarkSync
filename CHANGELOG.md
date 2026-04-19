@@ -1,5 +1,8 @@
 # CHANGELOG
 
+[2026-04-19] v0.5.59 release: v0.5.59
+[2026-04-19] v0.5.59-dev.4 fix(sync-upload): Markdown 上行检测到飞书块级建表行数超限时，自动改走飞书原生 Markdown 导入重建并替换旧文档，修复需求/设计说明书这类大表格文档继续降级为代码块的问题，同时将导入轮询默认时长延长到 60 秒以覆盖大文档导入
+[2026-04-19] v0.5.59-dev.3 fix(sync-upload): Markdown 上行不再为飞书表格创建请求注入 `column_width`，HTML 内嵌 `data:image/...` 图片改为优先复用本地 `figures/插图` 资源并进入图片上传链路，同时忽略 `figures/插图` 源图目录的独立附件上传
 [2026-04-14] v0.5.59-dev.2 fix(docx-upload): Markdown 上行遇到飞书大表格 `1770001 invalid param` 时自动降级为代码块重试，避免整篇文档上传中止
 [2026-04-14] v0.5.59-dev.1 fix(docx-upload): 创建表格块时保留并补齐 `table.cells`，修复 Markdown 含表格时飞书返回 `1770001 invalid param`
 [2026-04-09] v0.5.58 release: v0.5.58

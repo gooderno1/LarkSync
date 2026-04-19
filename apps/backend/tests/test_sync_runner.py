@@ -1135,6 +1135,32 @@ async def test_scan_for_unlinked_files_skips_temporary_files(tmp_path: Path) -> 
     assert str(temp_path) not in pending
 
 
+def test_should_ignore_path_skips_embedded_figure_source_dirs(tmp_path: Path) -> None:
+    runner = SyncTaskRunner(link_service=FakeLinkService())
+    task = SyncTaskItem(
+        id="task-ignore-figures",
+        name="忽略插图目录测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    figure_path = tmp_path / "figures" / "fig-2-1.drawio.png"
+    figure_path.parent.mkdir()
+    figure_path.write_bytes(b"img")
+    embed_path = tmp_path / "插图" / "fig-2-1.drawio.svg"
+    embed_path.parent.mkdir()
+    embed_path.write_text("<svg/>", encoding="utf-8")
+
+    assert runner._should_ignore_path(task, figure_path) is True
+    assert runner._should_ignore_path(task, embed_path) is True
+
+
 @pytest.mark.asyncio
 async def test_run_scheduled_upload_waits_until_file_is_quiet(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

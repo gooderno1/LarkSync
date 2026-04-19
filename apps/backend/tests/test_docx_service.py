@@ -6,6 +6,7 @@ from src.services.docx_service import (
     ConvertResult,
     DocxService,
     _build_create_chunks,
+    has_markdown_table_exceeding_create_limit,
     _normalize_image_ref,
     _normalize_markdown_for_convert,
     _patch_table_properties,
@@ -278,6 +279,99 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
     assert patch_call[0] == "PATCH"
     assert patch_call[1].endswith("/open-apis/docx/v1/documents/doc789/blocks/n2")
     assert patch_call[2]["json"] == {"replace_image": {"token": "img-token"}}
+
+
+def test_build_image_placeholders_prefers_local_figure_png_for_embedded_html_image(
+    tmp_path,
+) -> None:
+    figures_dir = tmp_path / "figures"
+    figures_dir.mkdir()
+    image_path = figures_dir / "fig-2-1.drawio.png"
+    image_path.write_bytes(b"png")
+    service = DocxService(client=FakeClient([]))
+
+    markdown = (
+        '<!-- FIGURE:2-1:START -->\n'
+        '<img alt="图 2-1" src="data:image/svg+xml;base64,PHN2Zy8+" />\n'
+        "<!-- FIGURE:2-1:END -->"
+    )
+
+    processed, placeholders, image_paths = service._build_image_placeholders(
+        markdown, tmp_path
+    )
+
+    assert "<img" not in processed
+    assert len(placeholders) == 1
+    assert next(iter(image_paths.values())) == image_path
+
+
+@pytest.mark.asyncio
+async def test_replace_document_content_uploads_embedded_html_images(tmp_path) -> None:
+    figures_dir = tmp_path / "figures"
+    figures_dir.mkdir()
+    image_path = figures_dir / "fig-2-1.drawio.png"
+    image_path.write_bytes(b"img")
+    placeholder = f"[[LARKSYNC_IMAGE:{hashlib.sha1(str(image_path).encode('utf-8')).hexdigest()}]]"
+
+    responses = [
+        {
+            "code": 0,
+            "data": {
+                "items": [
+                    {"block_id": "root", "block_type": 1, "children": ["c1"]}
+                ],
+                "has_more": False,
+            },
+        },
+        {
+            "code": 0,
+            "data": {
+                "first_level_block_ids": ["t1", "t2", "t3"],
+                "blocks": [
+                    {"block_id": "t1", "block_type": 2, "text": {"elements": []}},
+                    {
+                        "block_id": "t2",
+                        "block_type": 2,
+                        "text": {"elements": [{"text_run": {"content": placeholder}}]},
+                    },
+                    {"block_id": "t3", "block_type": 2, "text": {"elements": []}},
+                ],
+            },
+        },
+        {
+            "code": 0,
+            "data": {
+                "children": [{"block_id": "n1"}]
+            },
+        },
+        {"code": 0, "data": {"children": [{"block_id": "n2"}]}},
+        {"code": 0, "data": {"file_token": "img-token"}},
+        {"code": 0, "data": {"block": {"block_id": "n2"}}},
+        {"code": 0, "data": {"children": [{"block_id": "n3"}]}},
+        {"code": 0, "data": {"document_revision_id": 1, "client_token": "t"}},
+    ]
+    client = FakeClient(responses)
+    service = DocxService(client=client)
+
+    markdown = (
+        "段落一\n\n"
+        "<!-- FIGURE:2-1:START -->\n"
+        '<img alt="图 2-1" src="data:image/svg+xml;base64,PHN2Zy8+" />\n'
+        "<!-- FIGURE:2-1:END -->\n\n"
+        "段落二"
+    )
+
+    await service.replace_document_content(
+        "doc-html-img", markdown, base_path=tmp_path.as_posix(), update_mode="full"
+    )
+
+    upload_call = next(
+        call
+        for call in client.requests
+        if call[1].endswith("/open-apis/drive/v1/medias/upload_all")
+    )
+    assert upload_call[2]["data"]["parent_node"] == "n2"
+    assert upload_call[2]["files"]["file"][0] == "fig-2-1.drawio.png"
 
 
 @pytest.mark.asyncio
@@ -846,6 +940,7 @@ def test_sanitize_block_strips_table_cells() -> None:
             "property": {
                 "row_size": 2,
                 "column_size": 2,
+                "column_width": [365, 365],
                 "merge_info": [{"row_span": 2, "col_span": 1}],
             },
             "cells": [["c1", "c2"], ["c3", "c4"]],
@@ -857,6 +952,7 @@ def test_sanitize_block_strips_table_cells() -> None:
     assert "children" not in cleaned
     assert "cells" not in cleaned["table"]
     assert "merge_info" not in cleaned["table"]["property"]
+    assert "column_width" not in cleaned["table"]["property"]
 
 
 def test_patch_table_properties_reshapes_flat_cells() -> None:
@@ -883,6 +979,47 @@ def test_patch_table_properties_reshapes_flat_cells() -> None:
     assert table["cells"] == [["row1colA", "row1colB"], ["row2colA", "row2colB"]]
     assert table["property"]["row_size"] == 2
     assert table["property"]["column_size"] == 2
+
+
+def test_patch_table_properties_does_not_add_column_width() -> None:
+    convert = ConvertResult(
+        first_level_block_ids=["t1"],
+        blocks=[
+            {
+                "block_id": "t1",
+                "block_type": BLOCK_TYPE_TABLE,
+                "table": {"cells": ["row1colA", "row1colB"]},
+            },
+        ],
+    )
+
+    patched = _patch_table_properties(convert, "| a |\n| --- |\n| 1 |")
+    table = next(block for block in patched.blocks if block.get("block_id") == "t1")["table"]
+    prop = table["property"]
+
+    assert prop["row_size"] == 2
+    assert prop["column_size"] == 1
+    assert "column_width" not in prop
+
+
+def test_has_markdown_table_exceeding_create_limit() -> None:
+    within_limit = "\n".join(
+        [
+            "| H1 | H2 |",
+            "| --- | --- |",
+            *[f"| r{i}c1 | r{i}c2 |" for i in range(1, 8)],
+        ]
+    )
+    over_limit = "\n".join(
+        [
+            "| H1 | H2 |",
+            "| --- | --- |",
+            *[f"| r{i}c1 | r{i}c2 |" for i in range(1, 10)],
+        ]
+    )
+
+    assert has_markdown_table_exceeding_create_limit(within_limit) is False
+    assert has_markdown_table_exceeding_create_limit(over_limit) is True
 
 
 @pytest.mark.asyncio

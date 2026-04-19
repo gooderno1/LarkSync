@@ -349,6 +349,86 @@ async def test_upload_markdown_reuses_existing_doc_without_new_import(tmp_path: 
 
 
 @pytest.mark.asyncio
+async def test_upload_markdown_reimports_existing_doc_when_table_exceeds_block_limit(
+    tmp_path: Path,
+) -> None:
+    markdown_path = tmp_path / "大表格文档.md"
+    markdown_path.write_text(
+        "\n".join(
+            [
+                "| H1 | H2 |",
+                "| --- | --- |",
+                *[f"| r{i}c1 | r{i}c2 |" for i in range(1, 10)],
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    old_doc = DriveFile(token="doc-old", name="大表格文档", type="docx")
+    new_doc = DriveFile(token="doc-new", name="大表格文档", type="docx")
+    responses = [
+        DriveFileList(files=[old_doc], has_more=False, next_page_token=None),
+        DriveFileList(files=[old_doc, new_doc], has_more=False, next_page_token=None),
+        DriveFileList(files=[old_doc, new_doc], has_more=False, next_page_token=None),
+    ]
+
+    link_service = FakeLinkService()
+    await link_service.upsert_link(
+        local_path=str(markdown_path),
+        cloud_token="doc-old",
+        cloud_type="docx",
+        task_id="task-1",
+        updated_at=0.0,
+        cloud_parent_token="fld-1",
+    )
+
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService(responses),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+    )
+    runner._block_service = FakeBlockService()
+    runner._import_poll_attempts = 2
+    runner._import_poll_interval = 0.0
+
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.failed_files == 0
+    assert status.completed_files == 1
+    assert runner._docx_service.replace_calls == []
+    assert runner._import_task_service.calls[0]["file_name"] == "大表格文档"
+    assert runner._drive_service.deleted == [("file-token", "file"), ("doc-old", "docx")]
+    assert link_service.links[str(markdown_path)].cloud_token == "doc-new"
+    assert runner._block_service.storage[(str(markdown_path), "doc-old")] == []
+    assert runner._block_service.storage[(str(markdown_path), "doc-new")]
+
+
+@pytest.mark.asyncio
 async def test_upload_markdown_syncs_md_copy_to_cloud_mirror_folder(tmp_path: Path) -> None:
     markdown_path = tmp_path / "镜像文档.md"
     markdown_path.write_text("# Mirror", encoding="utf-8")

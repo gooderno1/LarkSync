@@ -14,7 +14,10 @@ from loguru import logger
 
 from src.core.config import ConfigManager, DeletePolicy
 from src.services.bitable_service import BitableService
-from src.services.docx_service import DocxService
+from src.services.docx_service import (
+    DocxService,
+    has_markdown_table_exceeding_create_limit,
+)
 from src.services.drive_service import DriveFile, DriveNode, DriveService
 from src.services.sheet_service import SheetService
 from src.services.file_downloader import FileDownloader
@@ -138,7 +141,7 @@ class SyncTaskRunner:
         import_task_service: ImportTaskService | None = None,
         export_task_service: ExportTaskService | None = None,
         event_store: SyncEventStore | None = None,
-        import_poll_attempts: int = 10,
+        import_poll_attempts: int = 60,
         import_poll_interval: float = 1.0,
         export_poll_attempts: int = 20,
         export_poll_interval: float = 1.0,
@@ -1252,6 +1255,7 @@ class SyncTaskRunner:
                     )
                 )
                 return
+        markdown = path.read_text(encoding="utf-8")
         base_path = path.parent.as_posix()
         mtime = path.stat().st_mtime
         file_hash = calculate_file_hash(path)
@@ -1278,6 +1282,7 @@ class SyncTaskRunner:
                 )
                 return
         update_mode = task.update_mode or "auto"
+        requires_reimport = self._should_reimport_markdown_doc(markdown)
         if link.cloud_type not in {"docx", "doc"}:
             status.failed_files += 1
             self._record_event(status, 
@@ -1288,6 +1293,8 @@ class SyncTaskRunner:
                 )
             )
             return
+        if requires_reimport and update_mode == "partial":
+            raise RuntimeError("partial 模式不支持超限表格文档，请改用 auto/full")
         if (not imported_doc) and (not block_states) and update_mode in {"auto", "partial"}:
             await self._bootstrap_block_state(
                 path=path,
@@ -1297,13 +1304,32 @@ class SyncTaskRunner:
             )
         lock = self._doc_locks.setdefault(link.cloud_token, asyncio.Lock())
         async with lock:
-            markdown = path.read_text(encoding="utf-8")
             logger.info(
                 "上传文档: task_id={} path={} token={}",
                 task.id,
                 path,
                 link.cloud_token,
             )
+            if requires_reimport and not imported_doc:
+                logger.info(
+                    "检测到超限表格，改用导入重建: task_id={} path={} token={}",
+                    task.id,
+                    path,
+                    link.cloud_token,
+                )
+                new_link = await self._reimport_cloud_doc_for_markdown(
+                    task=task,
+                    status=status,
+                    path=path,
+                    old_link=link,
+                    file_uploader=file_uploader,
+                    drive_service=drive_service,
+                    import_task_service=import_task_service,
+                )
+                if not new_link:
+                    raise RuntimeError("导入重建云端文档失败")
+                link = new_link
+                imported_doc = True
             if imported_doc:
                 await self._rebuild_block_state(
                     task=task,
@@ -1382,6 +1408,10 @@ class SyncTaskRunner:
         status.completed_files += 1
         self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
         logger.info("上传完成: task_id={} path={}", task.id, path)
+
+    @staticmethod
+    def _should_reimport_markdown_doc(markdown: str) -> bool:
+        return has_markdown_table_exceeding_create_limit(markdown)
 
     @staticmethod
     def _supports_md_cloud_mirror(drive_service: DriveService) -> bool:
@@ -2250,6 +2280,102 @@ class SyncTaskRunner:
         self._record_event(status, 
             SyncFileEvent(path=str(path), status="creating", message="创建云端文档")
         )
+        doc_token = await self._import_markdown_doc(
+            task=task,
+            status=status,
+            path=path,
+            parent_token=parent_token,
+            file_uploader=file_uploader,
+            drive_service=drive_service,
+            import_task_service=import_task_service,
+        )
+        if not doc_token:
+            return None, False
+
+        link = await self._link_service.upsert_link(
+            local_path=str(path),
+            cloud_token=doc_token,
+            cloud_type="docx",
+            task_id=task.id,
+            updated_at=0.0,
+            cloud_parent_token=parent_token,
+        )
+        self._record_event(status, 
+            SyncFileEvent(path=str(path), status="created", message="云端文档已创建")
+        )
+        return link, True
+
+    async def _reimport_cloud_doc_for_markdown(
+        self,
+        *,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        path: Path,
+        old_link: SyncLinkItem,
+        file_uploader: FileUploader,
+        drive_service: DriveService,
+        import_task_service: ImportTaskService,
+    ) -> SyncLinkItem | None:
+        parent_token = await self._resolve_cloud_parent(task, path, drive_service)
+        self._record_event(
+            status,
+            SyncFileEvent(path=str(path), status="reimporting", message="检测到超限表格，改用导入重建"),
+        )
+        doc_token = await self._import_markdown_doc(
+            task=task,
+            status=status,
+            path=path,
+            parent_token=parent_token,
+            file_uploader=file_uploader,
+            drive_service=drive_service,
+            import_task_service=import_task_service,
+        )
+        if not doc_token:
+            return None
+        await self._block_service.replace_blocks(str(path), old_link.cloud_token, [])
+        await self._cleanup_duplicate_docs_by_name(
+            drive_service=drive_service,
+            parent_token=parent_token,
+            expected_name=path.stem,
+            keep_token=doc_token,
+            path=path,
+        )
+        return await self._link_service.upsert_link(
+            local_path=str(path),
+            cloud_token=doc_token,
+            cloud_type="docx",
+            task_id=task.id,
+            updated_at=old_link.updated_at,
+            cloud_parent_token=parent_token,
+            local_hash=old_link.local_hash,
+            local_size=old_link.local_size,
+            local_mtime=old_link.local_mtime,
+            cloud_revision=old_link.cloud_revision,
+            cloud_mtime=old_link.cloud_mtime,
+        )
+
+    async def _import_markdown_doc(
+        self,
+        *,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        path: Path,
+        parent_token: str,
+        file_uploader: FileUploader,
+        drive_service: DriveService,
+        import_task_service: ImportTaskService,
+    ) -> str | None:
+        suffix = path.suffix.lower().lstrip(".")
+        if not suffix:
+            self._record_event(
+                status,
+                SyncFileEvent(
+                    path=str(path),
+                    status="failed",
+                    message="Markdown 文件缺少扩展名",
+                ),
+            )
+            return None
         existing_tokens = await self._list_folder_tokens(
             drive_service, parent_token
         )
@@ -2280,7 +2406,7 @@ class SyncTaskRunner:
                 parent_token=parent_token,
                 source_name=path.name,
             )
-            return None, False
+            return None
         except Exception as exc:
             self._record_event(status, 
                 SyncFileEvent(path=str(path), status="failed", message=str(exc))
@@ -2292,7 +2418,7 @@ class SyncTaskRunner:
                 parent_token=parent_token,
                 source_name=path.name,
             )
-            return None, False
+            return None
 
         doc_token = await self._wait_for_imported_doc(
             drive_service=drive_service,
@@ -2315,20 +2441,41 @@ class SyncTaskRunner:
                     message="导入任务完成但未找到新文档",
                 )
             )
-            return None, False
+            return None
+        return doc_token
 
-        link = await self._link_service.upsert_link(
-            local_path=str(path),
-            cloud_token=doc_token,
-            cloud_type="docx",
-            task_id=task.id,
-            updated_at=0.0,
-            cloud_parent_token=parent_token,
-        )
-        self._record_event(status, 
-            SyncFileEvent(path=str(path), status="created", message="云端文档已创建")
-        )
-        return link, True
+    async def _cleanup_duplicate_docs_by_name(
+        self,
+        *,
+        drive_service: DriveService,
+        parent_token: str,
+        expected_name: str,
+        keep_token: str,
+        path: Path,
+    ) -> None:
+        items = await self._list_files_all(drive_service, parent_token)
+        for item in items:
+            if item.type not in {"docx", "doc"}:
+                continue
+            if item.name != expected_name or item.token == keep_token:
+                continue
+            try:
+                await drive_service.delete_file(item.token, item.type)
+            except Exception:
+                logger.warning(
+                    "删除同名旧文档失败，保留新文档: keep_token={} stale_token={} path={}",
+                    keep_token,
+                    item.token,
+                    path,
+                )
+                continue
+            self._doc_locks.pop(item.token, None)
+            logger.info(
+                "已清理同名旧文档: keep_token={} stale_token={} path={}",
+                keep_token,
+                item.token,
+                path,
+            )
 
     async def _cleanup_import_source_file(
         self,
@@ -2412,6 +2559,8 @@ class SyncTaskRunner:
         if (
             "assets" in lowered
             or "attachments" in lowered
+            or "figures" in lowered
+            or "插图" in relative.parts
             or _LOCAL_TRASH_DIR_NAME.lower() in lowered
             or _CLOUD_MD_MIRROR_FOLDER_NAME.lower() in lowered
         ):

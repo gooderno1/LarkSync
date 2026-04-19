@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import difflib
 import hashlib
 import re
+import tempfile
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
@@ -44,6 +47,20 @@ class MarkdownSegment:
 
 
 _IMAGE_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
+_HTML_IMAGE_PATTERN = re.compile(r"<img\b[^>]*>", re.IGNORECASE | re.DOTALL)
+_HTML_IMAGE_SRC_PATTERN = re.compile(
+    r"""\bsrc\s*=\s*(?P<quote>["'])(?P<src>.*?)(?P=quote)""",
+    re.IGNORECASE | re.DOTALL,
+)
+TABLE_BLOCK_CREATE_MAX_ROWS = 8
+_FIGURE_START_PATTERN = re.compile(
+    r"<!--\s*FIGURE:(?P<id>[\w.-]+):START\s*-->",
+    re.IGNORECASE,
+)
+_FIGURE_END_PATTERN = re.compile(
+    r"<!--\s*FIGURE:(?P<id>[\w.-]+):END\s*-->",
+    re.IGNORECASE,
+)
 _LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]*]\(([^)]+)\)")
 _LIST_PREFIX_PATTERN = re.compile(
     r"^(?P<quote>(?:>\s*)*)(?P<indent>[ \t]+)(?P<body>(?:[-*+]\s+|\d+[.)]\s+).+)$"
@@ -921,6 +938,7 @@ class DocxService:
                 prop = table.get("property")
                 if isinstance(prop, dict):
                     prop = dict(prop)
+                    prop.pop("column_width", None)
                     prop.pop("merge_info", None)
                     table["property"] = prop
                 cleaned["table"] = table
@@ -1080,6 +1098,27 @@ class DocxService:
             placeholders[placeholder] = ref
             image_paths[placeholder] = image_path
             processed = processed.replace(raw, placeholder)
+        for match in _HTML_IMAGE_PATTERN.finditer(markdown):
+            raw = match.group(0)
+            src_match = _HTML_IMAGE_SRC_PATTERN.search(raw)
+            if not src_match:
+                continue
+            ref = src_match.group("src").strip()
+            if _is_remote_link(ref) and not ref.lower().startswith("data:"):
+                continue
+            image_path = self._resolve_html_image_path(
+                ref=ref,
+                markdown=markdown,
+                offset=match.start(),
+                base_path=base_path,
+            )
+            if image_path is None or not image_path.exists() or not image_path.is_file():
+                processed = processed.replace(raw, "[图片缺失: 嵌入图片]", 1)
+                continue
+            placeholder = f"[[LARKSYNC_IMAGE:{_hash_text(str(image_path))}]]"
+            placeholders[placeholder] = ref
+            image_paths[placeholder] = image_path
+            processed = processed.replace(raw, placeholder, 1)
         return processed, placeholders, image_paths
 
     def _build_file_placeholders(
@@ -1105,6 +1144,27 @@ class DocxService:
             file_paths[placeholder] = file_path
             processed = processed.replace(raw, placeholder)
         return processed, placeholders, file_paths
+
+    def _resolve_html_image_path(
+        self,
+        *,
+        ref: str,
+        markdown: str,
+        offset: int,
+        base_path: str | Path | None,
+    ) -> Path | None:
+        figure_id = _find_figure_id_for_offset(markdown, offset)
+        local_figure = _find_local_figure_asset(base_path, figure_id)
+        if local_figure is not None:
+            return local_figure
+        if ref.lower().startswith("data:"):
+            return _write_data_image_to_temp(ref, figure_id=figure_id)
+        if _is_remote_link(ref):
+            return None
+        image_path = self._resolve_image_path(ref, base_path)
+        if image_path.exists() and image_path.is_file():
+            return image_path
+        return None
 
     def _replace_placeholders_with_images(
         self,
@@ -1864,12 +1924,6 @@ def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertRes
                         prop["column_size"] = col_size
                         updated = True
 
-        if row_size > 0 and col_size > 0:
-            prop = dict(prop)
-            if not prop.get("column_width"):
-                prop["column_width"] = [183 for _ in range(col_size)]
-                updated = True
-
         if updated:
             table = dict(table)
             table["property"] = prop
@@ -1936,6 +1990,14 @@ def _extract_markdown_table_specs(markdown: str) -> list[tuple[int, int]]:
     return tables
 
 
+def has_markdown_table_exceeding_create_limit(
+    markdown: str,
+    *,
+    max_rows: int = TABLE_BLOCK_CREATE_MAX_ROWS,
+) -> bool:
+    return any(rows > max_rows for rows, _ in _extract_markdown_table_specs(markdown))
+
+
 def _is_table_separator(line: str) -> bool:
     if "|" not in line:
         return False
@@ -1963,3 +2025,95 @@ def _safe_int(value: object) -> int:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0
+
+
+def _find_figure_id_for_offset(markdown: str, offset: int) -> str | None:
+    last_start: re.Match[str] | None = None
+    for match in _FIGURE_START_PATTERN.finditer(markdown):
+        if match.start() > offset:
+            break
+        last_start = match
+    if last_start is None:
+        return None
+    end_match = _FIGURE_END_PATTERN.search(markdown, last_start.end())
+    if end_match is not None and offset > end_match.start():
+        return None
+    return last_start.group("id")
+
+
+def _find_local_figure_asset(
+    base_path: str | Path | None,
+    figure_id: str | None,
+) -> Path | None:
+    if base_path is None or not figure_id:
+        return None
+    base_dir = Path(base_path)
+    if base_dir.is_file():
+        base_dir = base_dir.parent
+    candidate_dirs = [
+        base_dir,
+        base_dir / "figures",
+        base_dir / "插图",
+        base_dir / "assets",
+    ]
+    suffixes = (
+        ".drawio.png",
+        ".png",
+        ".drawio.jpg",
+        ".jpg",
+        ".jpeg",
+        ".drawio.webp",
+        ".webp",
+        ".drawio.svg",
+        ".svg",
+    )
+    for directory in candidate_dirs:
+        for suffix in suffixes:
+            candidate = directory / f"fig-{figure_id}{suffix}"
+            if candidate.exists() and candidate.is_file():
+                return candidate
+    return None
+
+
+def _write_data_image_to_temp(ref: str, *, figure_id: str | None) -> Path | None:
+    match = re.match(
+        r"^data:(?P<mime>[^;,]+)(?P<encoding>;base64)?,(?P<data>.*)$",
+        ref,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if match is None:
+        return None
+    mime = match.group("mime").lower()
+    raw_data = match.group("data")
+    try:
+        if match.group("encoding"):
+            payload = base64.b64decode(raw_data, validate=False)
+        else:
+            payload = unquote(raw_data).encode("utf-8")
+    except (binascii.Error, ValueError):
+        return None
+    if not payload:
+        return None
+    suffix = _suffix_for_data_mime(mime)
+    digest = _hash_text(ref)
+    name = f"{figure_id or 'embedded'}-{digest[:12]}{suffix}"
+    target_dir = Path(tempfile.gettempdir()) / "larksync-embedded-images"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / name
+    if not target.exists():
+        target.write_bytes(payload)
+    return target
+
+
+def _suffix_for_data_mime(mime: str) -> str:
+    if mime == "image/svg+xml":
+        return ".svg"
+    if mime == "image/png":
+        return ".png"
+    if mime == "image/jpeg":
+        return ".jpg"
+    if mime == "image/webp":
+        return ".webp"
+    if mime == "image/gif":
+        return ".gif"
+    return ".bin"
