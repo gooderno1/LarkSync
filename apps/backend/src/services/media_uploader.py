@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 import zlib
 from pathlib import Path
 from typing import Any
@@ -50,7 +51,8 @@ class MediaUploader:
             "size": str(len(file_bytes)),
             "checksum": self._adler32(file_bytes),
         }
-        files = {"file": (path.name, file_bytes)}
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        files = {"file": (path.name, file_bytes, content_type)}
         response = await self._request_json(
             "POST",
             f"{self._base_url}/open-apis/drive/v1/medias/upload_all",

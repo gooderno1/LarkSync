@@ -255,7 +255,7 @@ async def test_upload_new_markdown_with_local_image_runs_block_replace_after_imp
 
     assert status.failed_files == 0
     assert runner._docx_service.replace_calls[0][0] == "doc-new"
-    assert "#local-images-v1" in (
+    assert "#local-images-v2" in (
         link_service.links[str(markdown_path)].cloud_revision or ""
     )
 
@@ -329,7 +329,7 @@ async def test_upload_markdown_with_local_image_repairs_same_hash_link_once(
     assert status.skipped_files == 0
     assert status.completed_files == 1
     assert runner._docx_service.replace_calls[0][0] == "doc-existing"
-    assert "#local-images-v1" in (
+    assert "#local-images-v2" in (
         link_service.links[str(markdown_path)].cloud_revision or ""
     )
 

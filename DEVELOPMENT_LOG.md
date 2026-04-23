@@ -1,5 +1,25 @@
 # DEVELOPMENT LOG
 
+## v0.5.62 release (2026-04-23)
+
+- 目标：
+  - 发布 `v0.5.62` 稳定版，交付飞书图片块已创建但前端显示“无法导入该图片”的修复。
+- 结果：
+  - 根目录 `package.json`、前端 `apps/frontend/package.json` 与后端 `apps/backend/pyproject.toml` 版本统一提升到 `v0.5.62 / 0.5.62`。
+  - 发布内容基于 `v0.5.62-dev.1`：Markdown 图片素材上传时显式携带 MIME，并通过 `#local-images-v2` 触发旧 `v1` 修复标记文档重新上传图片 token。
+
+## v0.5.62-dev.1 (2026-04-23)
+
+- 目标：
+  - 修复目标飞书文档 `JYtPdpNuCoQAyzxJWgRcy8bQnrg` 中图片块已有 token 但前端无法渲染的问题。
+  - 确保《软件设计说明书-V1.4》后续自动上传时，插图素材以飞书可识别的图片 MIME 写入。
+- 结果：
+  - `MediaUploader.upload_image()` 上传 multipart file 时改为传入三元组 `(filename, bytes, content_type)`，PNG 等图片会显式携带 `image/png`。
+  - `sync_runner.py` 将本地图片一次性修复标记从 `#local-images-v1` 升级到 `#local-images-v2`，避免已写入旧标记的同 hash 文档跳过重传。
+  - 现场对飞书目标文档 `JYtPdpNuCoQAyzxJWgRcy8bQnrg` 的 37 个图片块重新上传本地 PNG 并回填 token，回查确认 `image_blocks=37`、`with_tokens=37`。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py apps/backend/tests/test_media_uploader.py apps/backend/tests/test_sync_runner.py apps/backend/tests/test_sync_runner_upload_new_doc.py -q`
+
 ## v0.5.61 release (2026-04-23)
 
 - 目标：

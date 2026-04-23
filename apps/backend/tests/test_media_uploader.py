@@ -40,3 +40,4 @@ async def test_upload_image_uses_media_upload_all(tmp_path) -> None:
     assert kwargs["data"]["size"] == str(len(b"pngdata"))
     assert kwargs["data"]["checksum"] == MediaUploader._adler32(b"pngdata")
     assert "files" in kwargs
+    assert kwargs["files"]["file"] == ("logo.png", b"pngdata", "image/png")

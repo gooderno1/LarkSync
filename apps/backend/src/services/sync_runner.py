@@ -39,7 +39,7 @@ from src.services.watcher import FileChangeEvent, WatcherService
 
 SyncState = Literal["idle", "running", "success", "failed", "cancelled"]
 SYNC_LOG_LIMIT = 200
-_LOCAL_IMAGE_UPLOAD_REVISION_MARKER = "#local-images-v1"
+_LOCAL_IMAGE_UPLOAD_REVISION_MARKER = "#local-images-v2"
 _MARKDOWN_IMAGE_REF_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
 _HTML_IMAGE_REF_PATTERN = re.compile(
     r"""<img\b[^>]*\bsrc\s*=\s*(?P<quote>["'])(?P<src>.*?)(?P=quote)[^>]*>""",

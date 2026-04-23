@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-04-23] v0.5.62 release: v0.5.62
+[2026-04-23] v0.5.62-dev.1 fix(sync-upload): Markdown 图片素材上传到飞书 `drive/v1/medias/upload_all` 时为 multipart file 显式写入 MIME（如 `image/png`），并将本地图片修复标记升级到 `#local-images-v2` 以强制重传旧 `v1` 图片 token，修复飞书 Docx 前端显示“无法导入该图片”的问题
 [2026-04-23] v0.5.61 release: v0.5.61
 [2026-04-23] v0.5.61-dev.1 fix(sync-upload): Markdown 上行遇到“超限表格 + 本地图片”时不再走飞书原生 Markdown 导入，改走块级覆盖以确保本地图片上传为飞书图片块；首次导入创建后若检测到本地图片会立即执行块级覆盖；历史同 hash 缺图文档会强制执行一次图片修复覆盖并写入 `#local-images-v1` 修复标记
 [2026-04-23] v0.5.60 release: v0.5.60
