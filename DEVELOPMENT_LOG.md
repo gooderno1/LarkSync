@@ -1,5 +1,13 @@
 # DEVELOPMENT LOG
 
+## v0.5.61 release (2026-04-23)
+
+- 目标：
+  - 发布 `v0.5.61` 稳定版，交付原目录《软件设计说明书-V1.4》插图上传修复。
+- 结果：
+  - 根目录 `package.json`、前端 `apps/frontend/package.json` 与后端 `apps/backend/pyproject.toml` 版本统一提升到 `v0.5.61 / 0.5.61`。
+  - 发布内容基于 `v0.5.61-dev.1`：含本地图片的 Markdown 不再因超限表格走原生导入丢图，历史同 hash 缺图文档会执行一次块级修复。
+
 ## v0.5.61-dev.1 (2026-04-23)
 
 - 目标：
