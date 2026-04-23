@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import re
 import shutil
 import time
 from datetime import datetime
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Literal
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from loguru import logger
 
@@ -38,6 +39,12 @@ from src.services.watcher import FileChangeEvent, WatcherService
 
 SyncState = Literal["idle", "running", "success", "failed", "cancelled"]
 SYNC_LOG_LIMIT = 200
+_LOCAL_IMAGE_UPLOAD_REVISION_MARKER = "#local-images-v1"
+_MARKDOWN_IMAGE_REF_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
+_HTML_IMAGE_REF_PATTERN = re.compile(
+    r"""<img\b[^>]*\bsrc\s*=\s*(?P<quote>["'])(?P<src>.*?)(?P=quote)[^>]*>""",
+    re.IGNORECASE | re.DOTALL,
+)
 _LEGACY_DOCX_PLACEHOLDER_MARKERS = (
     "sheet_token:",
     "内嵌表格（sheet_token:",
@@ -1259,16 +1266,26 @@ class SyncTaskRunner:
         base_path = path.parent.as_posix()
         mtime = path.stat().st_mtime
         file_hash = calculate_file_hash(path)
+        has_uploadable_images = self._has_uploadable_markdown_images(
+            markdown, base_path
+        )
+        local_images_repaired = _has_local_image_upload_revision(link.cloud_revision)
         block_states = await self._block_service.list_blocks(str(path), link.cloud_token)
         if block_states:
-            if all(item.file_hash == file_hash for item in block_states):
+            if all(item.file_hash == file_hash for item in block_states) and (
+                not has_uploadable_images or local_images_repaired
+            ):
                 status.skipped_files += 1
                 self._record_event(status, 
                     SyncFileEvent(path=str(path), status="skipped", message="内容未变化")
                 )
                 return
         else:
-            if link.local_hash and link.local_hash == file_hash:
+            if (
+                link.local_hash
+                and link.local_hash == file_hash
+                and (not has_uploadable_images or local_images_repaired)
+            ):
                 status.skipped_files += 1
                 self._record_event(
                     status,
@@ -1282,7 +1299,9 @@ class SyncTaskRunner:
                 )
                 return
         update_mode = task.update_mode or "auto"
-        requires_reimport = self._should_reimport_markdown_doc(markdown)
+        requires_reimport = self._should_reimport_markdown_doc(
+            markdown, has_uploadable_images=has_uploadable_images
+        )
         if link.cloud_type not in {"docx", "doc"}:
             status.failed_files += 1
             self._record_event(status, 
@@ -1331,6 +1350,19 @@ class SyncTaskRunner:
                 link = new_link
                 imported_doc = True
             if imported_doc:
+                if has_uploadable_images:
+                    logger.info(
+                        "导入创建后检测到本地图片，改用块级覆盖: task_id={} path={} token={}",
+                        task.id,
+                        path,
+                        link.cloud_token,
+                    )
+                    await docx_service.replace_document_content(
+                        link.cloud_token,
+                        markdown,
+                        base_path=base_path,
+                        update_mode="full",
+                    )
                 await self._rebuild_block_state(
                     task=task,
                     docx_service=docx_service,
@@ -1388,7 +1420,11 @@ class SyncTaskRunner:
             local_hash=file_hash,
             local_size=path.stat().st_size,
             local_mtime=path.stat().st_mtime,
-            cloud_revision=self._build_cloud_revision(link.cloud_token, synced_at),
+            cloud_revision=self._build_cloud_revision(
+                link.cloud_token,
+                synced_at,
+                local_images_uploaded=has_uploadable_images,
+            ),
             cloud_mtime=synced_at,
         )
         if self._should_sync_md_cloud_mirror(task):
@@ -1410,8 +1446,24 @@ class SyncTaskRunner:
         logger.info("上传完成: task_id={} path={}", task.id, path)
 
     @staticmethod
-    def _should_reimport_markdown_doc(markdown: str) -> bool:
-        return has_markdown_table_exceeding_create_limit(markdown)
+    def _should_reimport_markdown_doc(
+        markdown: str, *, has_uploadable_images: bool = False
+    ) -> bool:
+        return has_markdown_table_exceeding_create_limit(
+            markdown
+        ) and not has_uploadable_images
+
+    @staticmethod
+    def _has_uploadable_markdown_images(markdown: str, base_path: str | Path | None) -> bool:
+        for match in _MARKDOWN_IMAGE_REF_PATTERN.finditer(markdown):
+            ref = _normalize_markdown_resource_ref(match.group(1))
+            if _is_uploadable_markdown_image_ref(ref, base_path):
+                return True
+        for match in _HTML_IMAGE_REF_PATTERN.finditer(markdown):
+            ref = (match.group("src") or "").strip()
+            if _is_uploadable_markdown_image_ref(ref, base_path):
+                return True
+        return False
 
     @staticmethod
     def _supports_md_cloud_mirror(drive_service: DriveService) -> bool:
@@ -1529,13 +1581,19 @@ class SyncTaskRunner:
         return bool(pending)
 
     @staticmethod
-    def _build_cloud_revision(cloud_token: str, cloud_mtime: float | None) -> str | None:
+    def _build_cloud_revision(
+        cloud_token: str,
+        cloud_mtime: float | None,
+        *,
+        local_images_uploaded: bool = False,
+    ) -> str | None:
         token = (cloud_token or "").strip()
         if not token:
             return None
+        suffix = _LOCAL_IMAGE_UPLOAD_REVISION_MARKER if local_images_uploaded else ""
         if cloud_mtime is None:
-            return token
-        return f"{token}@{int(cloud_mtime * 1000)}"
+            return f"{token}{suffix}"
+        return f"{token}@{int(cloud_mtime * 1000)}{suffix}"
 
     @staticmethod
     def _get_local_signature(path: Path) -> tuple[str, int, float] | None:
@@ -3076,6 +3134,65 @@ def _contains_legacy_docx_placeholder(local_path: Path) -> bool:
     except OSError:
         return False
     return any(marker in snippet for marker in _LEGACY_DOCX_PLACEHOLDER_MARKERS)
+
+
+def _has_local_image_upload_revision(revision: str | None) -> bool:
+    return bool(revision and _LOCAL_IMAGE_UPLOAD_REVISION_MARKER in revision)
+
+
+def _normalize_markdown_resource_ref(raw: str) -> str:
+    ref = raw.strip()
+    if ref.startswith("<") and ref.endswith(">"):
+        ref = ref[1:-1].strip()
+    return re.sub(r"""\s+(?:"[^"]*"|'[^']*'|\([^()]*\))\s*$""", "", ref)
+
+
+def _is_uploadable_markdown_image_ref(
+    ref: str, base_path: str | Path | None
+) -> bool:
+    lowered = ref.strip().lower()
+    if lowered.startswith("data:image/"):
+        return True
+    if _is_remote_or_anchor_resource(lowered):
+        return False
+    path = _resolve_markdown_resource_path(ref, base_path)
+    return path.exists() and path.is_file()
+
+
+def _is_remote_or_anchor_resource(lowered_ref: str) -> bool:
+    return (
+        lowered_ref.startswith("http://")
+        or lowered_ref.startswith("https://")
+        or lowered_ref.startswith("mailto:")
+        or lowered_ref.startswith("tel:")
+        or lowered_ref.startswith("#")
+    )
+
+
+def _resolve_markdown_resource_path(ref: str, base_path: str | Path | None) -> Path:
+    normalized = ref.strip()
+    parsed = urlparse(normalized)
+    if parsed.scheme.lower() == "file":
+        normalized = parsed.path or ""
+        if parsed.netloc:
+            normalized = f"//{parsed.netloc}{normalized}"
+    else:
+        normalized = normalized.split("#", 1)[0].split("?", 1)[0]
+    normalized = unquote(normalized).replace("\\ ", " ").strip()
+    if (
+        normalized.startswith("/")
+        and len(normalized) >= 3
+        and normalized[1].isalpha()
+        and normalized[2] == ":"
+    ):
+        normalized = normalized[1:]
+    path = Path(normalized)
+    if not path.is_absolute() and base_path:
+        base = Path(base_path)
+        if base.is_file():
+            base = base.parent
+        path = base / path
+    return path.expanduser()
 
 
 def _resolve_target(node: DriveNode) -> tuple[str, str]:

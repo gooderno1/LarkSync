@@ -5,7 +5,9 @@ import pytest
 from src.services.docx_service import ConvertResult
 from src.services.drive_service import DriveFile, DriveFileList
 from src.services.file_uploader import UploadResult
+from src.services.file_hash import calculate_file_hash
 from src.services.import_task_service import ImportTaskCreateResult
+from src.services.sync_block_service import BlockStateItem
 from src.services.sync_link_service import SyncLinkItem
 from src.services.sync_runner import SyncTaskRunner, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
@@ -197,6 +199,139 @@ async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
     assert runner._file_uploader.calls[0][1] == "fld-1"
     assert runner._import_task_service.calls[0]["file_extension"] == "md"
     assert runner._drive_service.deleted == [("file-token", "file")]
+
+
+@pytest.mark.asyncio
+async def test_upload_new_markdown_with_local_image_runs_block_replace_after_import(
+    tmp_path: Path,
+) -> None:
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir()
+    (assets_dir / "logo.png").write_bytes(b"img")
+    markdown_path = tmp_path / "图片文档.md"
+    markdown_path.write_text("# Title\n\n![](assets/logo.png)", encoding="utf-8")
+
+    new_doc = DriveFile(token="doc-new", name="图片文档", type="docx")
+    responses = [
+        DriveFileList(files=[], has_more=False, next_page_token=None),
+        DriveFileList(files=[], has_more=False, next_page_token=None),
+        DriveFileList(files=[new_doc], has_more=False, next_page_token=None),
+    ]
+    link_service = FakeLinkService()
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService(responses),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+    )
+    runner._block_service = FakeBlockService()
+    runner._import_poll_attempts = 3
+    runner._import_poll_interval = 0.0
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.failed_files == 0
+    assert runner._docx_service.replace_calls[0][0] == "doc-new"
+    assert "#local-images-v1" in (
+        link_service.links[str(markdown_path)].cloud_revision or ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_upload_markdown_with_local_image_repairs_same_hash_link_once(
+    tmp_path: Path,
+) -> None:
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir()
+    (assets_dir / "logo.png").write_bytes(b"img")
+    markdown_path = tmp_path / "图片修复.md"
+    markdown_path.write_text("# Title\n\n![](assets/logo.png)", encoding="utf-8")
+    file_hash = calculate_file_hash(markdown_path)
+
+    link_service = FakeLinkService()
+    link_service.links[str(markdown_path)] = SyncLinkItem(
+        local_path=str(markdown_path),
+        cloud_token="doc-existing",
+        cloud_type="docx",
+        task_id="task-1",
+        updated_at=0.0,
+        local_hash=file_hash,
+        cloud_revision="doc-existing@1",
+    )
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService([]),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+    )
+    runner._block_service = FakeBlockService()
+    runner._block_service.storage[(str(markdown_path), "doc-existing")] = [
+        BlockStateItem(
+            file_hash=file_hash,
+            local_path=str(markdown_path),
+            cloud_token="doc-existing",
+            block_index=0,
+            block_hash="old",
+            block_count=1,
+            updated_at=0.0,
+            created_at=0.0,
+        )
+    ]
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.skipped_files == 0
+    assert status.completed_files == 1
+    assert runner._docx_service.replace_calls[0][0] == "doc-existing"
+    assert "#local-images-v1" in (
+        link_service.links[str(markdown_path)].cloud_revision or ""
+    )
 
 
 @pytest.mark.asyncio

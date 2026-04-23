@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.5.61-dev.1 (2026-04-23)
+
+- 目标：
+  - 修复原目录《软件设计说明书-V1.4》首次上传或重传后插图仍失败的问题。
+  - 处理“超限表格需要导入重建”和“本地相对图片必须块级上传”之间的策略冲突。
+- 结果：
+  - `sync_runner.py` 新增本地图片检测：Markdown 含可上传本地图片时，即使存在超限表格也不走飞书原生 Markdown 导入重建，改走块级覆盖链路，确保图片通过 `MediaUploader` 上传并回填图片块。
+  - 首次创建 Markdown 云端文档仍用导入任务创建空壳/初始文档，但检测到本地图片后会立即执行 `replace_document_content(..., update_mode="full")` 做块级覆盖。
+  - 对历史已导入但缺图的同 hash 文档，增加一次性修复标记 `#local-images-v1`：没有该标记时不因 hash 相同跳过，会强制执行一次块级图片修复；成功后写入标记避免后续重复上传。
+  - 本地探针确认原目录 `软件设计说明书-V1.4.md` 判定 `has_uploadable_images=True`、`should_reimport=False`。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py apps/backend/tests/test_sync_runner.py apps/backend/tests/test_sync_runner_upload_new_doc.py -q`
+
 ## v0.5.60 release (2026-04-23)
 
 - 目标：
