@@ -1,5 +1,14 @@
 # DEVELOPMENT LOG
 
+## v0.5.60 release (2026-04-23)
+
+- 目标：
+  - 发布 `v0.5.60` 稳定版，交付 Markdown 迁移缺图兜底与《软件设计说明书-V1.4》图片目录补齐。
+- 结果：
+  - 根目录 `package.json`、前端 `apps/frontend/package.json` 与后端 `apps/backend/pyproject.toml` 版本统一提升到 `v0.5.60 / 0.5.60`。
+  - 当前业务文档目录已补齐 `figures/V1.4-GPT-image-2` 37 张 PNG；本地探针确认 `image_paths=37`、`missing_markers=0`。
+  - 稳定版基于 `v0.5.60-dev.1` 修复提交发布。
+
 ## v0.5.60-dev.1 (2026-04-23)
 
 - 目标：
