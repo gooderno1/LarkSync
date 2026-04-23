@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-04-23] v0.5.63 release: v0.5.63
+[2026-04-23] v0.5.63-dev.1 fix(sync-upload): Markdown 图片素材回填飞书图片块时同步写入按源图计算的等比 `width/height`（最大宽度 820px），修复空图片块默认 `1460x220` 导致插图比例被拉伸的问题；现场修正目标文档 `JYtPdpNuCoQAyzxJWgRcy8bQnrg` 的 37 个图片块显示尺寸
 [2026-04-23] v0.5.62 release: v0.5.62
 [2026-04-23] v0.5.62-dev.1 fix(sync-upload): Markdown 图片素材上传到飞书 `drive/v1/medias/upload_all` 时为 multipart file 显式写入 MIME（如 `image/png`），并将本地图片修复标记升级到 `#local-images-v2` 以强制重传旧 `v1` 图片 token，修复飞书 Docx 前端显示“无法导入该图片”的问题
 [2026-04-23] v0.5.61 release: v0.5.61

@@ -6,6 +6,7 @@ from src.services.docx_service import (
     ConvertResult,
     DocxService,
     _build_create_chunks,
+    _get_image_display_size,
     has_markdown_table_exceeding_create_limit,
     _normalize_image_ref,
     _normalize_markdown_for_convert,
@@ -296,6 +297,38 @@ async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
     assert patch_call[0] == "PATCH"
     assert patch_call[1].endswith("/open-apis/docx/v1/documents/doc789/blocks/n2")
     assert patch_call[2]["json"] == {"replace_image": {"token": "img-token"}}
+
+
+@pytest.mark.asyncio
+async def test_replace_image_block_preserves_source_ratio(tmp_path) -> None:
+    from PIL import Image
+
+    image_path = tmp_path / "wide.png"
+    Image.new("RGB", (2000, 1000), color="white").save(image_path)
+    client = FakeClient([{"code": 0, "data": {"block": {"block_id": "img1"}}}])
+    service = DocxService(client=client)
+
+    await service._replace_image_block(
+        document_id="doc123",
+        block_id="img1",
+        token="img-token",
+        image_path=image_path,
+        user_id_type="open_id",
+    )
+
+    assert client.requests[0][2]["json"] == {
+        "replace_image": {"token": "img-token", "width": 820, "height": 410}
+    }
+
+
+def test_get_image_display_size_reads_svg_viewbox(tmp_path) -> None:
+    image_path = tmp_path / "diagram.svg"
+    image_path.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 800"></svg>',
+        encoding="utf-8",
+    )
+
+    assert _get_image_display_size(image_path) == (820, 410)
 
 
 def test_build_image_placeholders_prefers_local_figure_png_for_embedded_html_image(

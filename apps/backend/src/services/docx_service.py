@@ -52,6 +52,7 @@ _HTML_IMAGE_SRC_PATTERN = re.compile(
     r"""\bsrc\s*=\s*(?P<quote>["'])(?P<src>.*?)(?P=quote)""",
     re.IGNORECASE | re.DOTALL,
 )
+_IMAGE_DISPLAY_MAX_WIDTH = 820
 TABLE_BLOCK_CREATE_MAX_ROWS = 8
 _FIGURE_START_PATTERN = re.compile(
     r"<!--\s*FIGURE:(?P<id>[\w.-]+):START\s*-->",
@@ -445,6 +446,7 @@ class DocxService:
                             document_id=document_id,
                             block_id=new_id,
                             token=token,
+                            image_path=image_path,
                             user_id_type=user_id_type,
                         )
                     except MediaUploadError as exc:
@@ -989,13 +991,18 @@ class DocxService:
         document_id: str,
         block_id: str,
         token: str,
+        image_path: Path | None = None,
         user_id_type: str,
     ) -> None:
+        replace_image: dict[str, Any] = {"token": token}
+        display_size = _get_image_display_size(image_path)
+        if display_size is not None:
+            replace_image["width"], replace_image["height"] = display_size
         await self._request_json(
             "PATCH",
             f"{self._base_url}/open-apis/docx/v1/documents/{document_id}/blocks/{block_id}",
             params={"document_revision_id": -1, "user_id_type": user_id_type},
-            json={"replace_image": {"token": token}},
+            json={"replace_image": replace_image},
         )
 
     async def _replace_file_block(
@@ -2043,6 +2050,65 @@ def _safe_int(value: object) -> int:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0
+
+
+def _get_image_display_size(image_path: Path | None) -> tuple[int, int] | None:
+    if image_path is None or not image_path.exists() or not image_path.is_file():
+        return None
+    size = _read_image_pixel_size(image_path)
+    if size is None:
+        return None
+    width, height = size
+    if width <= 0 or height <= 0:
+        return None
+    display_width = min(width, _IMAGE_DISPLAY_MAX_WIDTH)
+    display_height = max(1, round(display_width * height / width))
+    return display_width, display_height
+
+
+def _read_image_pixel_size(image_path: Path) -> tuple[int, int] | None:
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as image:
+            width, height = image.size
+        return int(width), int(height)
+    except Exception:
+        if image_path.suffix.lower() != ".svg":
+            return None
+    text = image_path.read_text(encoding="utf-8", errors="ignore")
+    width = _parse_svg_length(_match_svg_attr(text, "width"))
+    height = _parse_svg_length(_match_svg_attr(text, "height"))
+    if width and height:
+        return width, height
+    view_box = _match_svg_attr(text, "viewBox")
+    if not view_box:
+        return None
+    parts = re.split(r"[\s,]+", view_box.strip())
+    if len(parts) != 4:
+        return None
+    try:
+        return round(float(parts[2])), round(float(parts[3]))
+    except ValueError:
+        return None
+
+
+def _match_svg_attr(text: str, attr: str) -> str | None:
+    match = re.search(
+        rf"\b{re.escape(attr)}\s*=\s*['\"](?P<value>[^'\"]+)['\"]",
+        text,
+        re.IGNORECASE,
+    )
+    return match.group("value") if match else None
+
+
+def _parse_svg_length(value: str | None) -> int | None:
+    if not value:
+        return None
+    match = re.match(r"^\s*(?P<number>\d+(?:\.\d+)?)", value)
+    if match is None:
+        return None
+    return round(float(match.group("number")))
 
 
 def _find_figure_id_for_offset(markdown: str, offset: int) -> str | None:

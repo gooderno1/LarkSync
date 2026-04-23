@@ -1,5 +1,25 @@
 # DEVELOPMENT LOG
 
+## v0.5.63 release (2026-04-23)
+
+- 目标：
+  - 发布 `v0.5.63` 稳定版，交付飞书图片块比例修复。
+- 结果：
+  - 根目录 `package.json`、前端 `apps/frontend/package.json` 与后端 `apps/backend/pyproject.toml` 版本统一提升到 `v0.5.63 / 0.5.63`。
+  - 发布内容基于 `v0.5.63-dev.1`：图片 token 回填时同步写入等比 `width/height`，避免飞书空图片块默认尺寸造成横向拉伸。
+
+## v0.5.63-dev.1 (2026-04-23)
+
+- 目标：
+  - 修复目标飞书文档 `JYtPdpNuCoQAyzxJWgRcy8bQnrg` 中插图上传成功但显示比例不正确的问题。
+- 结果：
+  - `DocxService._replace_image_block()` 支持传入本地图片路径，并在 `replace_image` payload 中写入等比显示尺寸。
+  - 新增图片尺寸读取逻辑：优先用 Pillow 读取 PNG/JPEG/WebP 等位图尺寸，SVG 则回退读取 `width/height` 或 `viewBox`。
+  - 显示宽度最大限制为 820px，小图保持原宽，大图按比例缩放高度。
+  - 现场回填目标文档 37 个图片块尺寸，回查确认 `fig-2-1=820x410`、`fig-3-1=820x547`、其余 16:9 图为 `820x461` 等。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py apps/backend/tests/test_media_uploader.py apps/backend/tests/test_sync_runner.py apps/backend/tests/test_sync_runner_upload_new_doc.py -q`
+
 ## v0.5.62 release (2026-04-23)
 
 - 目标：
