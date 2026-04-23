@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.5.60-dev.1 (2026-04-23)
+
+- 目标：
+  - 修复《软件设计说明书-V1.4》迁移目录后，Markdown 图片引用仍指向 `figures/V1.4-GPT-image-2/fig-*.png`，但当前目录缺少该图片子目录，导致飞书上行缺图的问题。
+  - 增强 Markdown 普通图片路径解析，避免同类 `fig-数字` 源图迁移后被降级为缺图文本。
+- 结果：
+  - `docx_service.py` 新增普通 Markdown 图片路径兜底：原始相对路径不存在时，从文件名提取 `fig-2-1` 等图号，并在文档同级 `figures/`、`插图/`、`assets/` 中查找 `fig-2-1.drawio.png` / `fig-2-1.png` 等真实源图。
+  - 将历史同步目录中的 `figures/V1.4-GPT-image-2` 37 张 PNG 补回当前《软件设计说明书》目录，保证 `软件设计说明书-V1.4.md` 的原始引用路径也完整可用。
+  - 本地探针确认 `软件设计说明书-V1.4.md` 可解析 `image_paths=37`，`missing_markers=0`。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py apps/backend/tests/test_sync_runner.py apps/backend/tests/test_sync_runner_upload_new_doc.py -q`
+
 ## v0.5.59 release (2026-04-19)
 
 - 目标：

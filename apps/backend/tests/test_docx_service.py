@@ -77,6 +77,23 @@ def test_resolve_image_path_supports_file_url_and_encoded_relative_path(tmp_path
     assert next(iter(image_paths.values())) == image_path
 
 
+def test_build_image_placeholders_falls_back_to_local_figure_asset(tmp_path) -> None:
+    figures_dir = tmp_path / "插图"
+    figures_dir.mkdir()
+    image_path = figures_dir / "fig-2-1.drawio.png"
+    image_path.write_bytes(b"img")
+    service = DocxService(client=FakeClient([]))
+
+    markdown = "![](figures/V1.4-GPT-image-2/fig-2-1.png)"
+    processed, placeholders, image_paths = service._build_image_placeholders(
+        markdown, tmp_path
+    )
+
+    assert "[图片缺失" not in processed
+    assert len(placeholders) == 1
+    assert next(iter(image_paths.values())) == image_path
+
+
 @pytest.mark.asyncio
 async def test_replace_document_content_clears_and_creates() -> None:
     responses = [

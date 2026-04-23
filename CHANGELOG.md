@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-23] v0.5.60-dev.1 fix(sync-upload): Markdown 上行遇到失效的 `fig-数字` 图片相对路径时，按图号回退查找同级 `figures/`、`插图/`、`assets/` 中的真实源图；补齐《软件设计说明书-V1.4》迁移后缺失的 `V1.4-GPT-image-2` 图片目录，确保 37 张图片均可进入飞书图片上传链路
 [2026-04-19] v0.5.59 release: v0.5.59
 [2026-04-19] v0.5.59-dev.4 fix(sync-upload): Markdown 上行检测到飞书块级建表行数超限时，自动改走飞书原生 Markdown 导入重建并替换旧文档，修复需求/设计说明书这类大表格文档继续降级为代码块的问题，同时将导入轮询默认时长延长到 60 秒以覆盖大文档导入
 [2026-04-19] v0.5.59-dev.3 fix(sync-upload): Markdown 上行不再为飞书表格创建请求注入 `column_width`，HTML 内嵌 `data:image/...` 图片改为优先复用本地 `figures/插图` 资源并进入图片上传链路，同时忽略 `figures/插图` 源图目录的独立附件上传

@@ -1090,7 +1090,7 @@ class DocxService:
             ref = _normalize_image_ref(match.group(1))
             if _is_remote_image(ref):
                 continue
-            image_path = self._resolve_image_path(ref, base_path)
+            image_path = self._resolve_markdown_image_path(ref, base_path)
             if not image_path.exists() or not image_path.is_file():
                 processed = processed.replace(raw, f"[图片缺失: {ref}]")
                 continue
@@ -1165,6 +1165,24 @@ class DocxService:
         if image_path.exists() and image_path.is_file():
             return image_path
         return None
+
+    def _resolve_markdown_image_path(
+        self, ref: str, base_path: str | Path | None
+    ) -> Path:
+        image_path = self._resolve_image_path(ref, base_path)
+        if image_path.exists() and image_path.is_file():
+            return image_path
+        local_figure = _find_local_figure_asset(
+            base_path, _extract_figure_id_from_image_ref(ref)
+        )
+        if local_figure is not None:
+            logger.info(
+                "Markdown 图片路径失效，已按图号匹配本地资源: ref={} resolved={}",
+                ref,
+                local_figure,
+            )
+            return local_figure
+        return image_path
 
     def _replace_placeholders_with_images(
         self,
@@ -2039,6 +2057,15 @@ def _find_figure_id_for_offset(markdown: str, offset: int) -> str | None:
     if end_match is not None and offset > end_match.start():
         return None
     return last_start.group("id")
+
+
+def _extract_figure_id_from_image_ref(ref: str) -> str | None:
+    normalized = unquote(ref).split("#", 1)[0].split("?", 1)[0]
+    name = Path(normalized.replace("\\", "/")).name
+    match = re.search(r"\bfig[-_](?P<id>\d+(?:[-_]\d+)+)", name, re.IGNORECASE)
+    if match is None:
+        return None
+    return match.group("id").replace("_", "-")
 
 
 def _find_local_figure_asset(
