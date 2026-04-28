@@ -18,7 +18,6 @@ import type { NavKey } from "./types";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavKey>("dashboard");
-  const [globalPaused, setGlobalPaused] = useState(false);
 
   /* ---------- 连接与配置状态检测 ---------- */
   const { connected, driveOk, loading: authLoading } = useAuth();
@@ -91,10 +90,7 @@ export default function App() {
           {/* 仅仪表盘渲染完整 Header banner */}
           {activeTab === "dashboard" ? (
             <>
-              <Header
-                globalPaused={globalPaused}
-                onTogglePause={() => setGlobalPaused((prev) => !prev)}
-              />
+              <Header />
               <DashboardPage onNavigate={setActiveTab} />
             </>
           ) : null}

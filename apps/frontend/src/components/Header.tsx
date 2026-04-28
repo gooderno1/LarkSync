@@ -3,18 +3,21 @@
 /* ------------------------------------------------------------------ */
 
 import { useAuth } from "../hooks/useAuth";
+import { useTasks } from "../hooks/useTasks";
 import { StatusPill } from "./StatusPill";
 import { ThemeToggle } from "./ThemeToggle";
-import { IconPlay, IconPause } from "./Icons";
-import { cn } from "../lib/utils";
 
-type HeaderProps = {
-  globalPaused: boolean;
-  onTogglePause: () => void;
-};
-
-export function Header({ globalPaused, onTogglePause }: HeaderProps) {
+export function Header() {
   const { connected, loading } = useAuth();
+  const { tasks, statusMap } = useTasks();
+  const runningTasks = tasks.filter((task) => statusMap[task.id]?.state === "running");
+  const enabledTasks = tasks.filter((task) => task.enabled);
+  const taskStatusLabel =
+    runningTasks.length > 0
+      ? `正在同步 ${runningTasks.length} 个任务`
+      : enabledTasks.length > 0
+        ? "当前无运行任务"
+        : "暂无启用任务";
 
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6">
@@ -29,19 +32,11 @@ export function Header({ globalPaused, onTogglePause }: HeaderProps) {
           tone={connected ? "success" : loading ? "info" : "danger"}
           dot
         />
-        <button
-          className={cn(
-            "inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition",
-            globalPaused
-              ? "bg-amber-500/20 text-amber-300"
-              : "bg-emerald-500/20 text-emerald-300"
-          )}
-          onClick={onTogglePause}
-          type="button"
-        >
-          {globalPaused ? <IconPlay className="h-3.5 w-3.5" /> : <IconPause className="h-3.5 w-3.5" />}
-          {globalPaused ? "已暂停" : "运行中"}
-        </button>
+        <StatusPill
+          label={taskStatusLabel}
+          tone={runningTasks.length > 0 ? "info" : enabledTasks.length > 0 ? "neutral" : "warning"}
+          dot={runningTasks.length > 0}
+        />
         <ThemeToggle />
       </div>
     </header>

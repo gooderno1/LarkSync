@@ -17,7 +17,7 @@ import { StatusPill } from "../components/StatusPill";
 import { StatCardSkeleton } from "../components/Skeleton";
 import { EmptyState } from "../components/EmptyState";
 import { ModeIcon, IconRefresh, IconTasks, IconArrowRightLeft, IconConflicts, IconActivity } from "../components/Icons";
-import type { SyncLogEntry, NavKey } from "../types";
+import type { SyncLogEntry, NavKey, SyncTask, SyncTaskStatus } from "../types";
 
 type SyncLogResponse = {
   total: number;
@@ -39,6 +39,24 @@ type SyncLogResponseRaw = {
 };
 
 type Props = { onNavigate: (tab: NavKey) => void };
+
+function getStatusActivityTime(status?: SyncTaskStatus | null): number | null {
+  return status?.finished_at ?? status?.started_at ?? null;
+}
+
+function getTaskActivityTime(
+  task: SyncTask,
+  status: SyncTaskStatus | undefined,
+  latestLogTime?: number
+): number {
+  return (
+    getStatusActivityTime(status) ??
+    task.last_run_at ??
+    latestLogTime ??
+    task.updated_at ??
+    task.created_at
+  );
+}
 
 export function DashboardPage({ onNavigate }: Props) {
   const { connected } = useAuth();
@@ -87,6 +105,13 @@ export function DashboardPage({ onNavigate }: Props) {
   // Prefer WS entries when available, fallback to polling
   const baseEntries = historyEntries.length > 0 ? historyEntries : pollingEntries;
   const syncLogEntries = wsEntries.length > 0 ? wsEntries : baseEntries;
+  const latestLogTimeByTask = useMemo(() => {
+    const mapped: Record<string, number> = {};
+    for (const entry of syncLogEntries) {
+      mapped[entry.taskId] = Math.max(mapped[entry.taskId] ?? 0, entry.timestamp);
+    }
+    return mapped;
+  }, [syncLogEntries]);
 
   const today = new Date();
   const todayCount = syncLogEntries.filter((e) => isSameDay(e.timestamp, today)).length;
@@ -94,6 +119,69 @@ export function DashboardPage({ onNavigate }: Props) {
   const enabledTasks = tasks.filter((t) => t.enabled).length;
   const runningTasks = tasks.filter((t) => statusMap[t.id]?.state === "running").length;
   const unresolvedConflicts = conflicts.filter((c) => !c.resolved).length;
+  const runningTaskList = useMemo(
+    () => tasks.filter((task) => statusMap[task.id]?.state === "running"),
+    [tasks, statusMap]
+  );
+  const recentTaskList = useMemo(
+    () =>
+      [...tasks]
+        .filter((task) => statusMap[task.id]?.state !== "running")
+        .sort(
+          (a, b) =>
+            getTaskActivityTime(b, statusMap[b.id], latestLogTimeByTask[b.id]) -
+            getTaskActivityTime(a, statusMap[a.id], latestLogTimeByTask[a.id])
+        )
+        .slice(0, runningTaskList.length > 0 ? 3 : 4),
+    [tasks, statusMap, latestLogTimeByTask, runningTaskList.length]
+  );
+
+  const renderTaskCard = (task: SyncTask) => {
+    const st = statusMap[task.id];
+    const stateKey = !task.enabled ? "paused" : st?.state || "idle";
+    const progressState = computeTaskProgress(st);
+    const progress = progressState.progress;
+    const activityTime = getTaskActivityTime(task, st, latestLogTimeByTask[task.id]);
+    return (
+      <div key={task.id} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-zinc-100">{task.name || task.local_path}</p>
+            <p className="text-xs text-zinc-400">本地：{task.local_path}</p>
+            <p className="text-xs text-zinc-500" title={task.cloud_folder_token}>云端：{task.cloud_folder_name || task.cloud_folder_token}</p>
+          </div>
+          <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-zinc-300">
+          <span className="inline-flex items-center gap-2">
+            <ModeIcon mode={task.sync_mode} className="h-3.5 w-3.5" />
+            {modeLabels[task.sync_mode] || task.sync_mode}
+          </span>
+          <span className="text-zinc-600">|</span>
+          <span>更新：{updateModeLabels[task.update_mode || "auto"]}</span>
+          <span className="text-zinc-600">|</span>
+          <span>最近活动：{formatShortTime(activityTime)}</span>
+        </div>
+        {progress !== null ? (
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-xs text-zinc-400">
+              <span>进度 {progress}%</span>
+              <span>已处理 {progressState.processed}/{progressState.effectiveTotal}</span>
+            </div>
+            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        ) : null}
+        {st ? (
+          <p className="mt-2 text-xs text-zinc-500">
+            完成 {st.completed_files}，失败 {st.failed_files}，跳过 {st.skipped_files}
+          </p>
+        ) : null}
+        {st?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{st.last_error}</p> : null}
+      </div>
+    );
+  };
 
   return (
     <section className="space-y-6 animate-fade-up">
@@ -107,19 +195,19 @@ export function DashboardPage({ onNavigate }: Props) {
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="今日同步" value={`${todayCount}`} hint="按日志统计" tone="success" icon={<IconRefresh className="h-4 w-4" />} />
-        <StatCard label="启用任务" value={`${enabledTasks}`} hint={runningTasks ? `运行中 ${runningTasks} 个` : "当前无运行任务"} tone="info" icon={<IconTasks className="h-4 w-4" />} />
+        <StatCard label="启用任务" value={`${enabledTasks}`} hint={runningTasks ? `正在同步 ${runningTasks} 个` : enabledTasks ? `已启用 ${enabledTasks} 个，当前空闲` : "暂无启用任务"} tone="info" icon={<IconTasks className="h-4 w-4" />} />
         <StatCard label="最近同步" value={lastSync ? formatShortTime(lastSync.timestamp) : "暂无"} hint={lastSync ? lastSync.taskName : "等待任务触发"} tone="neutral" icon={<IconArrowRightLeft className="h-4 w-4" />} />
         <StatCard label="待处理冲突" value={`${unresolvedConflicts}`} hint={unresolvedConflicts ? "请尽快处理" : "暂无冲突"} tone={unresolvedConflicts ? "warning" : "neutral"} icon={<IconConflicts className="h-4 w-4" />} />
       </div>
 
       {/* Two-column: tasks + logs */}
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-        {/* Active tasks */}
+        {/* Task overview */}
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-50">活跃任务</h2>
-              <p className="mt-1 text-xs text-zinc-400">展示最近活跃的同步任务与状态摘要。</p>
+              <h2 className="text-lg font-semibold text-zinc-50">任务概览</h2>
+              <p className="mt-1 text-xs text-zinc-400">分开展示当前运行任务和最近同步任务。</p>
             </div>
             <div className="flex gap-2">
               <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={refreshTasks} type="button">
@@ -139,44 +227,28 @@ export function DashboardPage({ onNavigate }: Props) {
                 <p className="mt-3 text-sm text-zinc-500">暂无同步任务，请先创建。</p>
               </div>
             ) : (
-              tasks.slice(0, 4).map((task) => {
-                const st = statusMap[task.id];
-                const stateKey = !task.enabled ? "paused" : st?.state || "idle";
-                const progressState = computeTaskProgress(st);
-                const progress = progressState.progress;
-                return (
-                  <div key={task.id} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-zinc-100">{task.name || task.local_path}</p>
-                        <p className="text-xs text-zinc-400">本地：{task.local_path}</p>
-                        <p className="text-xs text-zinc-500" title={task.cloud_folder_token}>云端：{task.cloud_folder_name || task.cloud_folder_token}</p>
-                      </div>
-                      <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-zinc-300">
-                      <span className="inline-flex items-center gap-2">
-                        <ModeIcon mode={task.sync_mode} className="h-3.5 w-3.5" />
-                        {modeLabels[task.sync_mode] || task.sync_mode}
-                      </span>
-                      <span className="text-zinc-600">|</span>
-                      <span>更新：{updateModeLabels[task.update_mode || "auto"]}</span>
-                    </div>
-                    {progress !== null ? (
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between text-xs text-zinc-400">
-                          <span>进度 {progress}%</span>
-                          <span>{progressState.completed}/{progressState.effectiveTotal}</span>
-                        </div>
-                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
-                          <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
-                        </div>
-                      </div>
-                    ) : null}
-                    {st?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{st.last_error}</p> : null}
+              <>
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-zinc-300">当前运行</span>
+                    <span className="text-zinc-500">{runningTaskList.length ? `${runningTaskList.length} 个任务` : "无运行任务"}</span>
                   </div>
-                );
-              })
+                  {runningTaskList.length > 0 ? (
+                    <div className="space-y-3">{runningTaskList.map(renderTaskCard)}</div>
+                  ) : (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-5 text-center text-sm text-zinc-500">
+                      当前无运行任务。
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-zinc-300">最近同步</span>
+                    <span className="text-zinc-500">按最近活动排序</span>
+                  </div>
+                  <div className="space-y-3">{recentTaskList.map(renderTaskCard)}</div>
+                </div>
+              </>
             )}
           </div>
         </div>

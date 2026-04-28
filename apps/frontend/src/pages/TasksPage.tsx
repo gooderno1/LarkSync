@@ -129,7 +129,7 @@ export function TasksPage() {
             const progress = progressState.progress;
             const isRunning = st?.state === "running";
             const isExpanded = Boolean(expanded[task.id]);
-            const lastSyncTime = st?.finished_at ?? st?.started_at ?? null;
+            const lastSyncTime = st?.finished_at ?? st?.started_at ?? task.last_run_at ?? null;
             const localPathExpanded = Boolean(expandedPaths[pathKey(task.id, "local")]);
             const cloudPathExpanded = Boolean(expandedPaths[pathKey(task.id, "cloud")]);
             const cloudPath = task.cloud_folder_name || task.cloud_folder_token || "-";
@@ -270,7 +270,7 @@ export function TasksPage() {
                 {/* Meta */}
                 <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
                   <span>最近同步：{lastSyncTime ? formatTimestamp(lastSyncTime) : "暂无"}</span>
-                  {st ? <span>完成 {st.completed_files}/{progressState.effectiveTotal}，失败 {st.failed_files}，跳过 {st.skipped_files}</span> : null}
+                  {st ? <span>已处理 {progressState.processed}/{progressState.effectiveTotal}，完成 {st.completed_files}，失败 {st.failed_files}，跳过 {st.skipped_files}</span> : null}
                   {progress !== null ? <span>完成率：{progress}%</span> : null}
                 </div>
                 {st?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{st.last_error}</p> : null}
