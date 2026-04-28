@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-28] v0.6.0 release: v0.6.0
 [2026-04-28] v0.6.0-dev.1 feat(sync-safety): 新建任务或距离上次运行超过 48 小时的任务会先执行一轮无删除补齐，跳过删除墓碑创建/执行并记录 `last_run_at`，降低首次运行和长时间离线后的误删除风险
 [2026-04-28] v0.5.64-dev.1 fix(feishu-client): 飞书统一请求客户端新增 500/502/503/504 临时服务端错误指数退避重试，修复 `docx/v1/documents/blocks/convert` 偶发 502 会直接中断 Markdown 上行的问题
 [2026-04-23] v0.5.63 release: v0.5.63
