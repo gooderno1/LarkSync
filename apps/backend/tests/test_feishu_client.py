@@ -28,6 +28,11 @@ def _response(status_code: int, payload: dict) -> httpx.Response:
     return httpx.Response(status_code=status_code, json=payload, request=request)
 
 
+def _text_response(status_code: int, text: str) -> httpx.Response:
+    request = httpx.Request("POST", "https://open.feishu.cn/mock")
+    return httpx.Response(status_code=status_code, text=text, request=request)
+
+
 @pytest.mark.asyncio
 async def test_request_with_retry_retries_on_frequency_limit_code() -> None:
     client = FeishuClient(auth_service=FakeAuthService(), max_retries=3, backoff_base=0.0)
@@ -43,6 +48,40 @@ async def test_request_with_retry_retries_on_frequency_limit_code() -> None:
 
     assert response.status_code == 200
     assert payload["code"] == 0
+    assert client._client.calls == 2  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_request_with_retry_retries_on_transient_gateway_error() -> None:
+    client = FeishuClient(auth_service=FakeAuthService(), max_retries=3, backoff_base=0.0)
+    client._client = FakeHttpClient(  # type: ignore[assignment]
+        [
+            _text_response(502, "Bad Gateway"),
+            _response(200, {"code": 0, "data": {"ok": True}}),
+        ]
+    )
+
+    response = await client.request_with_retry("POST", "https://open.feishu.cn/mock")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["code"] == 0
+    assert client._client.calls == 2  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_request_with_retry_returns_last_transient_error_after_retries() -> None:
+    client = FeishuClient(auth_service=FakeAuthService(), max_retries=2, backoff_base=0.0)
+    client._client = FakeHttpClient(  # type: ignore[assignment]
+        [
+            _text_response(502, "Bad Gateway"),
+            _text_response(503, "Service Unavailable"),
+        ]
+    )
+
+    response = await client.request_with_retry("POST", "https://open.feishu.cn/mock")
+
+    assert response.status_code == 503
     assert client._client.calls == 2  # type: ignore[attr-defined]
 
 

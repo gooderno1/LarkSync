@@ -6,6 +6,7 @@ import httpx
 from src.services.auth_service import AuthService
 
 RETRYABLE_API_CODES = {1061045, 99991400}
+RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
 
 
 class FeishuClient:
@@ -29,12 +30,17 @@ class FeishuClient:
         return await self._client.request(method, url, headers=headers, **kwargs)
 
     async def request_with_retry(self, method: str, url: str, **kwargs):
-        max_retries = kwargs.pop("max_retries", self._max_retries)
+        max_retries = max(1, kwargs.pop("max_retries", self._max_retries))
         for attempt in range(max_retries):
             response = await self.request(method, url, **kwargs)
+            should_retry = response.status_code in RETRYABLE_STATUS_CODES
             if response.status_code == 429:
-                await self._sleep_backoff(attempt, response)
-                continue
+                should_retry = True
+            if should_retry:
+                if attempt < max_retries - 1:
+                    await self._sleep_backoff(attempt, response)
+                    continue
+                return response
             try:
                 payload = response.json()
             except Exception:
@@ -43,8 +49,10 @@ class FeishuClient:
                 code = payload.get("code")
                 message = str(payload.get("msg", "")).lower()
                 if code in RETRYABLE_API_CODES or "frequency limit" in message:
-                    await self._sleep_backoff(attempt, response)
-                    continue
+                    if attempt < max_retries - 1:
+                        await self._sleep_backoff(attempt, response)
+                        continue
+                    return response
             return response
         return response
 

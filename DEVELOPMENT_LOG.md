@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.5.64-dev.1 (2026-04-28)
+
+- 目标：
+  - 修复 Markdown 上行调用飞书 `docx/v1/documents/blocks/convert` 偶发 `502 Bad Gateway` 时任务直接失败的问题。
+- 结果：
+  - `FeishuClient.request_with_retry()` 新增 500/502/503/504 临时服务端错误重试，继续复用 `Retry-After` 与指数退避策略。
+  - 保留普通 4xx 错误的快速失败行为，避免掩盖参数、权限等确定性问题。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_feishu_client.py -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py apps/backend/tests/test_feishu_client.py -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py`
+
 ## v0.5.63 release (2026-04-23)
 
 - 目标：
