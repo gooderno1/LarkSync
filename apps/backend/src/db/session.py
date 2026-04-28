@@ -97,6 +97,13 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
             )
             await _ensure_column(
                 conn,
+                table="sync_tasks",
+                column="last_run_at",
+                column_type="REAL",
+                default_value=None,
+            )
+            await _ensure_column(
+                conn,
                 table="sync_links",
                 column="cloud_parent_token",
                 column_type="TEXT",
@@ -203,6 +210,13 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
                 table="sync_tasks",
                 column="delete_grace_minutes",
                 column_type="INTEGER",
+                default_value=None,
+            )
+            await _ensure_column(
+                conn,
+                table="sync_tasks",
+                column="last_run_at",
+                column_type="REAL",
                 default_value=None,
             )
             await _ensure_column(

@@ -51,6 +51,7 @@ export type SyncTask = {
   enabled: boolean;
   created_at: number;
   updated_at: number;
+  last_run_at?: number | null;
 };
 
 export type SyncFileEvent = {

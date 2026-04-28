@@ -88,6 +88,7 @@ class SyncTask(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+    last_run_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
 
 
 class SyncBlockState(Base):

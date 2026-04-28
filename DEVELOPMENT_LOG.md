@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.6.0-dev.1 (2026-04-28)
+
+- 目标：
+  - 将版本推进到 `v0.6.0-dev.1`。
+  - 修复新建任务或长时间未运行任务在第一次恢复同步时，因一侧扫描/映射缺失而误判删除的问题。
+- 结果：
+  - `sync_tasks` 新增 `last_run_at`，并在任务完成后记录运行时间。
+  - 任务运行前若 `last_run_at` 为空或距今超过 48 小时，会先执行一轮无删除补齐。
+  - 无删除补齐阶段复用现有下载/上传链路，但跳过删除墓碑创建与待删除墓碑执行；完成后再进入常规同步。
+  - `SyncTaskResponse` 与前端 `SyncTask` 类型补齐 `last_run_at` 字段。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_task_service.py apps/backend/tests/test_sync_runner.py::test_run_task_performs_additive_reconcile_for_new_task apps/backend/tests/test_sync_runner.py::test_run_task_skips_additive_reconcile_when_recently_run apps/backend/tests/test_sync_runner.py::test_download_additive_mode_does_not_enqueue_cloud_missing_delete -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_runner.py apps/backend/tests/test_sync_runner_upload_new_doc.py apps/backend/tests/test_sync_runner_block_update.py apps/backend/tests/test_sync_task_service.py apps/backend/tests/test_db_session.py apps/backend/tests/test_db.py -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.5.64-dev.1 (2026-04-28)
 
 - 目标：

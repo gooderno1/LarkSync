@@ -38,6 +38,7 @@ class SyncTaskItem:
     enabled: bool
     created_at: float
     updated_at: float
+    last_run_at: float | None = None
     md_sync_mode: str = _MD_SYNC_MODE_ENHANCED
     delete_policy: str | None = None
     delete_grace_minutes: int | None = None
@@ -111,6 +112,7 @@ class SyncTaskService:
             enabled=enabled,
             created_at=now,
             updated_at=now,
+            last_run_at=None,
         )
         async with self._session_maker() as session:
             await self._validate_task_mapping(
@@ -259,6 +261,22 @@ class SyncTaskService:
             if not self._owner_matches(record):
                 return False
             await session.delete(record)
+            await session.commit()
+            return True
+
+    async def mark_task_run(
+        self, task_id: str, run_at: float | None = None
+    ) -> bool:
+        async with self._session_maker() as session:
+            record = await session.get(SyncTask, task_id)
+            if not record:
+                return False
+            self._migrate_owner_open_id_if_local(record)
+            if not self._owner_matches(record):
+                return False
+            now = time.time() if run_at is None else float(run_at)
+            record.last_run_at = now
+            record.updated_at = now
             await session.commit()
             return True
 
@@ -514,6 +532,7 @@ class SyncTaskService:
             enabled=record.enabled,
             created_at=record.created_at,
             updated_at=record.updated_at,
+            last_run_at=record.last_run_at,
             owner_device_id=record.owner_device_id,
             owner_open_id=record.owner_open_id,
         )

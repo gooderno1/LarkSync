@@ -13,7 +13,12 @@ from src.services.export_task_service import (
     ExportTaskResult,
 )
 from src.services.sync_link_service import SyncLinkItem
-from src.services.sync_runner import SyncTaskRunner, _merge_synced_link_map, _parse_mtime
+from src.services.sync_runner import (
+    SyncTaskRunner,
+    SyncTaskStatus,
+    _merge_synced_link_map,
+    _parse_mtime,
+)
 from src.services.sync_task_service import SyncTaskItem
 from src.services.watcher import FileChangeEvent
 
@@ -235,6 +240,126 @@ class FakeLinkService:
         before = len(self._persisted)
         self._persisted = [item for item in self._persisted if item.local_path != local_path]
         return before != len(self._persisted)
+
+
+class FakeRunStampService:
+    def __init__(self) -> None:
+        self.marked: list[tuple[str, float | None]] = []
+
+    async def mark_task_run(self, task_id: str, run_at: float | None = None) -> bool:
+        self.marked.append((task_id, run_at))
+        return True
+
+
+class GuardProbeRunner(SyncTaskRunner):
+    def __init__(self, task_service) -> None:
+        super().__init__(task_service=task_service)
+        self.calls: list[tuple[str, bool]] = []
+
+    async def _run_download(self, task, status, *, allow_deletes: bool = True) -> None:
+        self.calls.append(("download", allow_deletes))
+
+    async def _run_upload(self, task, status, *, allow_deletes: bool = True) -> None:
+        self.calls.append(("upload", allow_deletes))
+
+
+@pytest.mark.asyncio
+async def test_run_task_performs_additive_reconcile_for_new_task() -> None:
+    task_service = FakeRunStampService()
+    runner = GuardProbeRunner(task_service=task_service)
+    task = SyncTaskItem(
+        id="task-new",
+        name="新任务",
+        local_path="C:/docs",
+        cloud_folder_token="fld",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+        last_run_at=None,
+    )
+
+    await runner.run_task(task)
+
+    assert runner.calls == [
+        ("download", False),
+        ("upload", False),
+        ("download", True),
+        ("upload", True),
+    ]
+    assert task_service.marked and task_service.marked[0][0] == "task-new"
+
+
+@pytest.mark.asyncio
+async def test_run_task_skips_additive_reconcile_when_recently_run() -> None:
+    task_service = FakeRunStampService()
+    runner = GuardProbeRunner(task_service=task_service)
+    task = SyncTaskItem(
+        id="task-recent",
+        name="近期任务",
+        local_path="C:/docs",
+        cloud_folder_token="fld",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+        last_run_at=time.time(),
+    )
+
+    await runner.run_task(task)
+
+    assert runner.calls == [("download", True), ("upload", True)]
+    assert task_service.marked and task_service.marked[0][0] == "task-recent"
+
+
+@pytest.mark.asyncio
+async def test_download_additive_mode_does_not_enqueue_cloud_missing_delete(
+    tmp_path: Path,
+) -> None:
+    stale_local = tmp_path / "stale.md"
+    link = SyncLinkItem(
+        local_path=str(stale_local),
+        cloud_token="doc-missing",
+        cloud_type="docx",
+        task_id="task-1",
+        updated_at=100.0,
+        local_hash="hash",
+    )
+    tombstone_service = FakeTombstoneService()
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(
+            DriveNode(token="root", name="根目录", type="folder", children=[])
+        ),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        link_service=FakeLinkService([link]),
+        tombstone_service=tombstone_service,
+    )
+    status = SyncTaskStatus(task_id="task-1")
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner._run_download(task, status, allow_deletes=False)
+
+    assert tombstone_service.created == []
 
 
 @pytest.mark.asyncio

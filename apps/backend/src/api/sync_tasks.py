@@ -71,6 +71,7 @@ class SyncTaskResponse(BaseModel):
     enabled: bool
     created_at: float
     updated_at: float
+    last_run_at: float | None = None
 
     @classmethod
     def from_item(cls, item: SyncTaskItem) -> "SyncTaskResponse":
@@ -92,7 +93,7 @@ class MarkdownReplaceRequest(BaseModel):
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 service = SyncTaskService()
-runner = SyncTaskRunner()
+runner = SyncTaskRunner(task_service=service)
 event_store = SyncEventStore()
 
 

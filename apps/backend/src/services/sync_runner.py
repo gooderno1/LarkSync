@@ -76,6 +76,7 @@ _MD_SYNC_MODE_VALUES = {
     _MD_SYNC_MODE_DOWNLOAD_ONLY,
     _MD_SYNC_MODE_DOC_ONLY,
 }
+_STARTUP_ADD_ONLY_THRESHOLD_SECONDS = 48 * 3600
 
 
 @dataclass
@@ -148,6 +149,7 @@ class SyncTaskRunner:
         import_task_service: ImportTaskService | None = None,
         export_task_service: ExportTaskService | None = None,
         event_store: SyncEventStore | None = None,
+        task_service: object | None = None,
         import_poll_attempts: int = 60,
         import_poll_interval: float = 1.0,
         export_poll_attempts: int = 20,
@@ -167,6 +169,7 @@ class SyncTaskRunner:
         self._import_task_service = import_task_service
         self._export_task_service = export_task_service
         self._event_store = event_store or SyncEventStore()
+        self._task_service = task_service
         self._import_poll_attempts = max(1, import_poll_attempts)
         self._import_poll_interval = max(0.0, import_poll_interval)
         self._export_poll_attempts = max(1, export_poll_attempts)
@@ -303,6 +306,7 @@ class SyncTaskRunner:
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         self._reset_status(task, status, message="周期上传触发")
         try:
+            await self._run_additive_reconciliation_if_needed(task, status)
             await self._run_upload_paths(task, status, ready_paths)
             status.state = "failed" if status.failed_files > 0 else "success"
             status.finished_at = time.time()
@@ -311,6 +315,8 @@ class SyncTaskRunner:
             status.last_error = str(exc)
             status.finished_at = time.time()
         finally:
+            if status.state != "cancelled":
+                await self._mark_task_run(task)
             self._record_event(
                 status,
                 SyncFileEvent(
@@ -335,6 +341,7 @@ class SyncTaskRunner:
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         self._reset_status(task, status, message="定时下载触发")
         try:
+            await self._run_additive_reconciliation_if_needed(task, status)
             await self._run_download(task, status)
             status.state = "failed" if status.failed_files > 0 else "success"
             status.finished_at = time.time()
@@ -343,6 +350,8 @@ class SyncTaskRunner:
             status.last_error = str(exc)
             status.finished_at = time.time()
         finally:
+            if status.state != "cancelled":
+                await self._mark_task_run(task)
             self._record_event(
                 status,
                 SyncFileEvent(
@@ -383,6 +392,7 @@ class SyncTaskRunner:
         self._task_meta[task.id] = task
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         try:
+            await self._run_additive_reconciliation_if_needed(task, status)
             if task.sync_mode == "download_only":
                 await self._run_download(task, status)
             elif task.sync_mode == "upload_only":
@@ -406,6 +416,8 @@ class SyncTaskRunner:
             status.last_error = str(exc)
             status.finished_at = time.time()
         finally:
+            if status.state != "cancelled":
+                await self._mark_task_run(task)
             if status.state == "cancelled":
                 message = "任务已取消"
             else:
@@ -427,7 +439,73 @@ class SyncTaskRunner:
             self._tasks.pop(task.id, None)
             self._running_tasks.discard(task.id)
 
-    async def _run_download(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
+    async def _run_additive_reconciliation_if_needed(
+        self, task: SyncTaskItem, status: SyncTaskStatus
+    ) -> None:
+        if not self._task_service:
+            return
+        if not self._needs_additive_reconciliation(task):
+            return
+        last_run = task.last_run_at
+        reason = "新建任务" if last_run is None else "距离上次运行超过 48 小时"
+        self._record_event(
+            status,
+            SyncFileEvent(
+                path=task.local_path,
+                status="reconcile_started",
+                message=f"{reason}，先执行无删除补齐",
+            ),
+            task,
+        )
+        logger.info(
+            "启动无删除补齐: task_id={} mode={} last_run_at={}",
+            task.id,
+            task.sync_mode,
+            last_run,
+        )
+        if task.sync_mode in {"bidirectional", "download_only"}:
+            await self._run_download(task, status, allow_deletes=False)
+        if task.sync_mode in {"bidirectional", "upload_only"}:
+            await self._run_upload(task, status, allow_deletes=False)
+        self._record_event(
+            status,
+            SyncFileEvent(
+                path=task.local_path,
+                status="reconcile_finished",
+                message="无删除补齐完成，继续执行本次常规同步",
+            ),
+            task,
+        )
+
+    @staticmethod
+    def _needs_additive_reconciliation(task: SyncTaskItem) -> bool:
+        last_run = task.last_run_at
+        if last_run is None:
+            return True
+        try:
+            return (time.time() - float(last_run)) > _STARTUP_ADD_ONLY_THRESHOLD_SECONDS
+        except (TypeError, ValueError):
+            return True
+
+    async def _mark_task_run(self, task: SyncTaskItem) -> None:
+        service = self._task_service
+        if not service:
+            return
+        mark_task_run = getattr(service, "mark_task_run", None)
+        if not callable(mark_task_run):
+            return
+        try:
+            await mark_task_run(task.id, run_at=time.time())
+        except Exception:
+            logger.exception("更新任务运行时间失败: task_id={}", task.id)
+
+    async def _run_download(
+        self,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        *,
+        allow_deletes: bool = True,
+    ) -> None:
         self._task_meta[task.id] = task
         drive_service = self._drive_service or DriveService()
         docx_service = self._docx_service or DocxService()
@@ -484,12 +562,13 @@ class SyncTaskRunner:
             )
             known_cloud_tokens = {item.effective_token for item in selected_candidates}
             selected_cloud_paths = {str(item.target_path) for item in selected_candidates}
-            await self._enqueue_cloud_missing_deletes(
-                task=task,
-                status=status,
-                persisted_links=persisted_links,
-                cloud_paths=selected_cloud_paths,
-            )
+            if allow_deletes:
+                await self._enqueue_cloud_missing_deletes(
+                    task=task,
+                    status=status,
+                    persisted_links=persisted_links,
+                    cloud_paths=selected_cloud_paths,
+                )
             status.total_files = len(selected_candidates) + len(duplicated_candidates)
 
             for duplicated in duplicated_candidates:
@@ -704,12 +783,13 @@ class SyncTaskRunner:
                         effective_token,
                         exc,
                     )
-            await self._process_pending_deletes(
-                task=task,
-                status=status,
-                drive_service=drive_service,
-                known_cloud_tokens=known_cloud_tokens,
-            )
+            if allow_deletes:
+                await self._process_pending_deletes(
+                    task=task,
+                    status=status,
+                    drive_service=drive_service,
+                    known_cloud_tokens=known_cloud_tokens,
+                )
         finally:
             for service in owned_services:
                 close = getattr(service, "close", None)
@@ -1041,7 +1121,13 @@ class SyncTaskRunner:
         )
         raise RuntimeError(f"导出任务超时{status_hint}")
 
-    async def _run_upload(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
+    async def _run_upload(
+        self,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        *,
+        allow_deletes: bool = True,
+    ) -> None:
         self._task_meta[task.id] = task
         docx_service = self._docx_service or DocxService()
         file_uploader = self._file_uploader or FileUploader()
@@ -1060,7 +1146,8 @@ class SyncTaskRunner:
         try:
             if task.sync_mode == "upload_only":
                 await self._prefill_links_from_cloud(task, drive_service)
-            await self._enqueue_missing_local_deletes(task=task, status=status)
+            if allow_deletes:
+                await self._enqueue_missing_local_deletes(task=task, status=status)
             files = list(self._iter_local_files(task))
             logger.info(
                 "上传阶段: task_id={} files={}", task.id, len(files)
@@ -1093,11 +1180,12 @@ class SyncTaskRunner:
                         path,
                         exc,
                     )
-            await self._process_pending_deletes(
-                task=task,
-                status=status,
-                drive_service=drive_service,
-            )
+            if allow_deletes:
+                await self._process_pending_deletes(
+                    task=task,
+                    status=status,
+                    drive_service=drive_service,
+                )
         finally:
             for service in owned_services:
                 close = getattr(service, "close", None)
@@ -1109,6 +1197,8 @@ class SyncTaskRunner:
         task: SyncTaskItem,
         status: SyncTaskStatus,
         paths: Iterable[Path],
+        *,
+        allow_deletes: bool = True,
     ) -> None:
         docx_service = self._docx_service or DocxService()
         file_uploader = self._file_uploader or FileUploader()
@@ -1127,7 +1217,8 @@ class SyncTaskRunner:
         try:
             if task.sync_mode == "upload_only":
                 await self._prefill_links_from_cloud(task, drive_service)
-            await self._enqueue_missing_local_deletes(task=task, status=status)
+            if allow_deletes:
+                await self._enqueue_missing_local_deletes(task=task, status=status)
             path_list = list(paths)
             status.total_files += len(path_list)
             for path in path_list:
@@ -1157,11 +1248,12 @@ class SyncTaskRunner:
                         path,
                         exc,
                     )
-            await self._process_pending_deletes(
-                task=task,
-                status=status,
-                drive_service=drive_service,
-            )
+            if allow_deletes:
+                await self._process_pending_deletes(
+                    task=task,
+                    status=status,
+                    drive_service=drive_service,
+                )
         finally:
             for service in owned_services:
                 close = getattr(service, "close", None)

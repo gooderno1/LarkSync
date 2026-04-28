@@ -25,10 +25,34 @@ async def test_create_and_list_tasks(tmp_path) -> None:
     assert item.update_mode == "auto"
     assert item.md_sync_mode == "enhanced"
     assert item.is_test is False
+    assert item.last_run_at is None
 
     items = await service.list_tasks()
     assert len(items) == 1
     assert items[0].cloud_folder_token == "fld123"
+    assert items[0].last_run_at is None
+
+
+@pytest.mark.asyncio
+async def test_mark_task_run_updates_last_run_at(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'test.db').as_posix()}"
+    await init_db(db_url)
+    service = SyncTaskService(session_maker=get_session_maker(db_url))
+
+    item = await service.create_task(
+        name="任务A",
+        local_path="C:/docs",
+        cloud_folder_token="fld123",
+        base_path="C:/docs",
+        sync_mode="bidirectional",
+        enabled=True,
+    )
+
+    updated = await service.mark_task_run(item.id, run_at=12345.0)
+    listed = await service.list_tasks()
+
+    assert updated is True
+    assert listed[0].last_run_at == 12345.0
 
 
 @pytest.mark.asyncio
