@@ -5,6 +5,7 @@ import difflib
 import re
 import shutil
 import time
+import uuid
 from datetime import datetime
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -99,6 +100,7 @@ class SyncTaskStatus:
     failed_files: int = 0
     skipped_files: int = 0
     last_error: str | None = None
+    current_run_id: str | None = None
     last_files: list[SyncFileEvent] = field(default_factory=list)
 
     def record_event(self, event: SyncFileEvent, limit: int = SYNC_LOG_LIMIT) -> None:
@@ -218,6 +220,11 @@ class SyncTaskRunner:
                 status=event.status,
                 path=event.path,
                 message=event.message,
+                run_id=(
+                    status.current_run_id
+                    if status.current_run_id and event.status != "queued"
+                    else None
+                ),
             )
         )
 
@@ -375,6 +382,7 @@ class SyncTaskRunner:
         status.state = "running"
         status.started_at = time.time()
         status.finished_at = None
+        status.current_run_id = str(uuid.uuid4())
         status.total_files = 0
         status.completed_files = 0
         status.failed_files = 0

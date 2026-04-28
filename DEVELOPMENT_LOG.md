@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.6.1-dev.4 (2026-04-28)
+
+- 目标：
+  - 继续完善日志中心，让页面基于后端真实任务诊断数据展示当前同步情况，而不是由前端从日志片段中临时推断。
+- 结果：
+  - 同步事件新增 `run_id`，任务运行开始时生成本次运行 ID，便于按运行批次追踪事件。
+  - 后端新增任务概览与单任务诊断接口，统一返回任务配置、运行状态、当前处理文件、最近事件统计和问题事件。
+  - 同步日志查询支持按 `run_id` / `run_ids` 过滤，保留任务、状态、搜索等既有过滤能力。
+  - 日志中心前端切换为使用后端诊断接口，左侧任务列表、右侧运行概览和问题摘要均使用同一份后端诊断结果。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_event_store.py apps/backend/tests/test_tray_status.py -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.6.1-dev.3 (2026-04-28)
 
 - 目标：

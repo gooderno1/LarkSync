@@ -12,7 +12,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.core.config import ConfigManager
-from src.services.sync_runner import SyncTaskStatus
+from src.services.sync_event_store import SyncEventRecord, SyncEventStore
+from src.services.sync_runner import SyncFileEvent, SyncTaskStatus
 
 
 @pytest.fixture
@@ -141,3 +142,89 @@ def test_create_task_rejects_duplicate_mapping(tray_client: TestClient, tmp_path
     duplicate["cloud_folder_token"] = "token-b"
     resp = tray_client.post("/sync/tasks", json=duplicate)
     assert resp.status_code == 409
+
+
+def test_sync_task_overview_and_diagnostics(
+    tray_client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    import src.api.sync_tasks as sync_tasks
+
+    local_dir = tmp_path / "diagnostics-local"
+    local_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "name": "诊断任务",
+        "local_path": str(local_dir),
+        "cloud_folder_token": "token-diagnostics",
+        "cloud_folder_name": "云端诊断",
+        "base_path": None,
+        "sync_mode": "bidirectional",
+        "update_mode": "auto",
+        "enabled": False,
+    }
+    created = tray_client.post("/sync/tasks", json=payload)
+    assert created.status_code == 200
+    task_id = created.json()["id"]
+
+    store = SyncEventStore(tmp_path / "sync-events.jsonl")
+    monkeypatch.setattr(sync_tasks, "event_store", store)
+    status = SyncTaskStatus(
+        task_id=task_id,
+        state="running",
+        started_at=10.0,
+        total_files=3,
+        completed_files=1,
+        failed_files=1,
+        skipped_files=1,
+        last_error="boom",
+        current_run_id="run-1",
+        last_files=[
+            SyncFileEvent(path=str(local_dir), status="started", timestamp=10.0),
+            SyncFileEvent(path=str(local_dir / "a.md"), status="uploaded", timestamp=11.0),
+        ],
+    )
+    monkeypatch.setattr(sync_tasks.runner, "list_statuses", lambda: {task_id: status})
+    monkeypatch.setattr(sync_tasks.runner, "get_status", lambda _task_id: status)
+
+    store.append(
+        SyncEventRecord(
+            timestamp=11.0,
+            task_id=task_id,
+            task_name="诊断任务",
+            status="uploaded",
+            path=str(local_dir / "a.md"),
+            message="ok",
+            run_id="run-1",
+        )
+    )
+    store.append(
+        SyncEventRecord(
+            timestamp=12.0,
+            task_id=task_id,
+            task_name="诊断任务",
+            status="failed",
+            path=str(local_dir / "b.md"),
+            message="boom",
+            run_id="run-1",
+        )
+    )
+
+    overview = tray_client.get("/sync/tasks/overview")
+    assert overview.status_code == 200
+    item = overview.json()[0]
+    assert item["task"]["id"] == task_id
+    assert item["status"]["current_run_id"] == "run-1"
+    assert item["counts"]["processed"] == 3
+    assert item["counts"]["uploaded"] == 1
+    assert item["problem_count"] >= 1
+    assert item["current_file"]["status"] == "uploaded"
+
+    diagnostics = tray_client.get(f"/sync/tasks/{task_id}/diagnostics?limit=10")
+    assert diagnostics.status_code == 200
+    body = diagnostics.json()
+    assert body["overview"]["task"]["id"] == task_id
+    assert body["recent_events"][0]["run_id"] == "run-1"
+    assert body["problems"][0]["status"] == "failed"
+
+    by_run = tray_client.get("/sync/logs/sync?run_id=run-1")
+    assert by_run.status_code == 200
+    assert by_run.json()["total"] == 2

@@ -5,7 +5,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useConflicts } from "../hooks/useConflicts";
-import { useTasks } from "../hooks/useTasks";
 import { formatTimestamp, formatShortTime } from "../lib/formatters";
 import { modeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
 import { computeTaskProgress } from "../lib/progress";
@@ -16,7 +15,7 @@ import { IconRefresh, IconConflicts, IconCopy, IconTasks, IconActivity } from ".
 import { useToast } from "../components/ui/toast";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { SyncLogEntry, SyncTask, SyncTaskStatus, Tone } from "../types";
+import type { SyncLogEntry, SyncTaskDiagnostics, SyncTaskOverview, Tone } from "../types";
 
 type FileLogEntry = {
   timestamp: string;
@@ -47,6 +46,7 @@ type SyncLogEntryRaw = {
   status: string;
   path: string;
   message?: string | null;
+  run_id?: string | null;
 };
 
 type SyncLogResponseRaw = {
@@ -58,6 +58,11 @@ type SyncLogResponseRaw = {
     retention_days?: number;
     warn_size_mb?: number;
   } | null;
+};
+
+type SyncTaskDiagnosticsRaw = Omit<SyncTaskDiagnostics, "recent_events" | "problems"> & {
+  recent_events: SyncLogEntryRaw[];
+  problems: SyncLogEntryRaw[];
 };
 
 type TaskViewFilter = "all" | "running" | "problem" | "disabled" | "recent";
@@ -75,19 +80,32 @@ const EVENT_FILTERS: Array<{ value: EventFilter; label: string }> = [
   { value: "skipped", label: "跳过记录" },
 ];
 
+function mapSyncLogEntry(item: SyncLogEntryRaw): SyncLogEntry {
+  return {
+    taskId: item.task_id,
+    taskName: item.task_name,
+    timestamp: item.timestamp,
+    status: item.status,
+    path: item.path,
+    message: item.message ?? null,
+    runId: item.run_id ?? null,
+  };
+}
+
 function mapSyncLogResponse(raw: SyncLogResponseRaw): SyncLogResponse {
   return {
     total: raw.total,
-    items: raw.items.map((item) => ({
-      taskId: item.task_id,
-      taskName: item.task_name,
-      timestamp: item.timestamp,
-      status: item.status,
-      path: item.path,
-      message: item.message ?? null,
-    })),
+    items: raw.items.map(mapSyncLogEntry),
     warning: raw.warning ?? null,
     meta: raw.meta ?? null,
+  };
+}
+
+function mapSyncTaskDiagnostics(raw: SyncTaskDiagnosticsRaw): SyncTaskDiagnostics {
+  return {
+    overview: raw.overview,
+    recent_events: raw.recent_events.map(mapSyncLogEntry),
+    problems: raw.problems.map(mapSyncLogEntry),
   };
 }
 
@@ -120,12 +138,15 @@ function shortPath(value: string, maxChars = 72): string {
   return `...${text.slice(-maxChars)}`;
 }
 
-function latestStatusTime(status?: SyncTaskStatus | null): number | null {
-  return status?.finished_at ?? status?.started_at ?? null;
-}
-
-function taskActivityTime(task: SyncTask, status?: SyncTaskStatus, latestLogTime?: number): number {
-  return latestStatusTime(status) ?? task.last_run_at ?? latestLogTime ?? task.updated_at ?? task.created_at;
+function diagnosticActivityTime(overview: SyncTaskOverview): number {
+  return (
+    overview.last_event_at ??
+    overview.status.finished_at ??
+    overview.status.started_at ??
+    overview.task.last_run_at ??
+    overview.task.updated_at ??
+    overview.task.created_at
+  );
 }
 
 function buildStatusParams(filter: EventFilter): string[] {
@@ -137,7 +158,6 @@ function buildStatusParams(filter: EventFilter): string[] {
 
 export function LogCenterPage() {
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflict } = useConflicts();
-  const { tasks, taskLoading, statusMap, refreshTasks, refreshStatus } = useTasks();
   const { toast } = useToast();
 
   const [logTab, setLogTab] = useState<"tasks" | "file-logs" | "conflicts">("tasks");
@@ -155,91 +175,59 @@ export function LogCenterPage() {
   const [fileLogPageSize, setFileLogPageSize] = useState(50);
   const [fileLogOrder, setFileLogOrder] = useState<"asc" | "desc">("desc");
 
-  const overviewLogsQuery = useQuery<SyncLogResponse>({
-    queryKey: ["sync-log-diagnostics-overview"],
-    queryFn: async () => {
-      const raw = await apiFetch<SyncLogResponseRaw>("/sync/logs/sync?limit=800&order=desc");
-      return mapSyncLogResponse(raw);
-    },
+  const overviewQuery = useQuery<SyncTaskOverview[]>({
+    queryKey: ["sync-task-overview"],
+    queryFn: () => apiFetch<SyncTaskOverview[]>("/sync/tasks/overview"),
     enabled: logTab === "tasks",
     staleTime: 5_000,
     refetchInterval: logTab === "tasks" ? 5_000 : false,
-    placeholderData: { total: 0, items: [] },
+    placeholderData: [],
   });
 
-  const overviewEntries = overviewLogsQuery.data?.items || [];
+  const overviewItems = overviewQuery.data || [];
 
-  const latestLogTimeByTask = useMemo(() => {
-    const mapped: Record<string, number> = {};
-    for (const entry of overviewEntries) {
-      mapped[entry.taskId] = Math.max(mapped[entry.taskId] ?? 0, entry.timestamp);
-    }
-    return mapped;
-  }, [overviewEntries]);
-
-  const problemCountByTask = useMemo(() => {
-    const mapped: Record<string, number> = {};
-    for (const entry of overviewEntries) {
-      if (PROBLEM_STATUSES.has(entry.status)) {
-        mapped[entry.taskId] = (mapped[entry.taskId] ?? 0) + 1;
-      }
-    }
-    return mapped;
-  }, [overviewEntries]);
-
-  const sortedTasks = useMemo(
-    () =>
-      [...tasks].sort(
-        (a, b) =>
-          taskActivityTime(b, statusMap[b.id], latestLogTimeByTask[b.id]) -
-          taskActivityTime(a, statusMap[a.id], latestLogTimeByTask[a.id])
-      ),
-    [tasks, statusMap, latestLogTimeByTask]
+  const sortedOverviews = useMemo(
+    () => [...overviewItems].sort((a, b) => diagnosticActivityTime(b) - diagnosticActivityTime(a)),
+    [overviewItems]
   );
 
   useEffect(() => {
-    if (sortedTasks.length === 0) {
+    if (sortedOverviews.length === 0) {
       setSelectedTaskId(null);
       return;
     }
-    if (!selectedTaskId || !sortedTasks.some((task) => task.id === selectedTaskId)) {
-      setSelectedTaskId(sortedTasks[0].id);
+    if (!selectedTaskId || !sortedOverviews.some((overview) => overview.task.id === selectedTaskId)) {
+      setSelectedTaskId(sortedOverviews[0].task.id);
     }
-  }, [selectedTaskId, sortedTasks]);
+  }, [selectedTaskId, sortedOverviews]);
 
-  const filteredTasks = useMemo(() => {
+  const filteredOverviews = useMemo(() => {
     const search = taskSearch.trim().toLowerCase();
-    return sortedTasks.filter((task) => {
-      const status = statusMap[task.id];
-      const hasProblem = Boolean(status?.last_error) || (problemCountByTask[task.id] ?? 0) > 0;
+    return sortedOverviews.filter((overview) => {
+      const { task, status } = overview;
+      const hasProblem = Boolean(status.last_error) || overview.problem_count > 0;
       if (taskViewFilter === "running" && status?.state !== "running") return false;
       if (taskViewFilter === "problem" && !hasProblem) return false;
       if (taskViewFilter === "disabled" && task.enabled) return false;
-      if (taskViewFilter === "recent" && !latestLogTimeByTask[task.id] && !task.last_run_at) return false;
+      if (taskViewFilter === "recent" && !overview.last_event_at && !task.last_run_at && !status.started_at) return false;
       if (!search) return true;
       return [task.name, task.local_path, task.cloud_folder_name, task.cloud_folder_token]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(search));
     });
-  }, [sortedTasks, taskSearch, taskViewFilter, statusMap, problemCountByTask, latestLogTimeByTask]);
+  }, [sortedOverviews, taskSearch, taskViewFilter]);
 
-  const selectedTask = sortedTasks.find((task) => task.id === selectedTaskId) || null;
-  const selectedStatus = selectedTask ? statusMap[selectedTask.id] : undefined;
+  const selectedOverview = sortedOverviews.find((overview) => overview.task.id === selectedTaskId) || null;
 
-  const selectedSummaryQuery = useQuery<SyncLogResponse>({
-    queryKey: ["sync-log-task-summary", selectedTaskId],
+  const selectedDiagnosticsQuery = useQuery<SyncTaskDiagnostics>({
+    queryKey: ["sync-task-diagnostics", selectedTaskId],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set("limit", "800");
-      params.set("order", "desc");
-      if (selectedTaskId) params.append("task_ids", selectedTaskId);
-      const raw = await apiFetch<SyncLogResponseRaw>(`/sync/logs/sync?${params.toString()}`);
-      return mapSyncLogResponse(raw);
+      const raw = await apiFetch<SyncTaskDiagnosticsRaw>(`/sync/tasks/${selectedTaskId}/diagnostics?limit=800`);
+      return mapSyncTaskDiagnostics(raw);
     },
     enabled: logTab === "tasks" && Boolean(selectedTaskId),
     staleTime: 5_000,
     refetchInterval: logTab === "tasks" ? 5_000 : false,
-    placeholderData: { total: 0, items: [] },
   });
 
   const selectedEventsQuery = useQuery<SyncLogResponse>({
@@ -263,10 +251,13 @@ export function LogCenterPage() {
     placeholderData: { total: 0, items: [] },
   });
 
-  const selectedSummaryEntries = selectedSummaryQuery.data?.items || [];
+  const activeOverview = selectedDiagnosticsQuery.data?.overview ?? selectedOverview;
+  const selectedTask = activeOverview?.task ?? null;
+  const selectedStatus = activeOverview?.status;
+  const selectedSummaryEntries = selectedDiagnosticsQuery.data?.recent_events || [];
   const selectedTimelineEntries = selectedEventsQuery.data?.items || [];
   const selectedTimelineTotal = selectedEventsQuery.data?.total || 0;
-  const selectedProblems = selectedSummaryEntries.filter((entry) => PROBLEM_STATUSES.has(entry.status));
+  const selectedProblems = selectedDiagnosticsQuery.data?.problems || [];
   const actionCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const entry of selectedSummaryEntries) {
@@ -276,10 +267,10 @@ export function LogCenterPage() {
   }, [selectedSummaryEntries]);
 
   const progress = computeTaskProgress(selectedStatus);
-  const currentFile = selectedStatus?.last_files
-    ?.slice()
-    .reverse()
-    .find((event) => !["started", "success", "failed", "cancelled"].includes(event.status));
+  const currentFile = activeOverview?.current_file ?? null;
+  const diagnosticCounts = activeOverview?.counts;
+  const lastActivityAt =
+    selectedStatus?.finished_at ?? selectedStatus?.started_at ?? selectedTask?.last_run_at ?? activeOverview?.last_event_at ?? null;
   const selectedStateKey = selectedTask
     ? (!selectedTask.enabled ? "paused" : selectedStatus?.state || "idle")
     : "idle";
@@ -309,10 +300,8 @@ export function LogCenterPage() {
   const resetFileLogPage = () => setFileLogPage(1);
 
   const refreshDiagnostics = () => {
-    refreshTasks();
-    refreshStatus();
-    overviewLogsQuery.refetch();
-    selectedSummaryQuery.refetch();
+    overviewQuery.refetch();
+    selectedDiagnosticsQuery.refetch();
     selectedEventsQuery.refetch();
   };
 
@@ -395,19 +384,19 @@ export function LogCenterPage() {
               ))}
             </div>
             <div className="mt-4 max-h-[660px] space-y-2 overflow-auto pr-1 log-scroll-area">
-              {taskLoading ? (
+              {overviewQuery.isLoading ? (
                 [1, 2, 3, 4].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-zinc-800/50" />)
-              ) : filteredTasks.length === 0 ? (
+              ) : filteredOverviews.length === 0 ? (
                 <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 py-8 text-center">
                   <IconTasks className="mx-auto h-10 w-10 text-zinc-700" />
                   <p className="mt-3 text-sm text-zinc-500">暂无匹配任务。</p>
                 </div>
               ) : (
-                filteredTasks.map((task) => {
-                  const status = statusMap[task.id];
+                filteredOverviews.map((overview) => {
+                  const { task, status } = overview;
                   const stateKey = !task.enabled ? "paused" : status?.state || "idle";
-                  const hasProblem = Boolean(status?.last_error) || (problemCountByTask[task.id] ?? 0) > 0;
-                  const activityTime = taskActivityTime(task, status, latestLogTimeByTask[task.id]);
+                  const hasProblem = Boolean(status?.last_error) || overview.problem_count > 0;
+                  const activityTime = diagnosticActivityTime(overview);
                   return (
                     <button
                       key={task.id}
@@ -437,7 +426,7 @@ export function LogCenterPage() {
                         {hasProblem ? (
                           <>
                             <span className="text-zinc-700">|</span>
-                            <span className="text-rose-400">问题 {problemCountByTask[task.id] ?? 1}</span>
+                            <span className="text-rose-400">问题 {Math.max(overview.problem_count, 1)}</span>
                           </>
                         ) : null}
                       </div>
@@ -465,6 +454,9 @@ export function LogCenterPage() {
                       </div>
                       <p className="mt-2 break-all text-xs text-zinc-500">{selectedTask.local_path}</p>
                       <p className="mt-1 break-all text-xs text-zinc-600">云端：{selectedTask.cloud_folder_name || selectedTask.cloud_folder_token}</p>
+                      {selectedStatus?.current_run_id ? (
+                        <p className="mt-1 break-all text-xs text-zinc-600">运行 ID：{selectedStatus.current_run_id}</p>
+                      ) : null}
                     </div>
                     <button
                       className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
@@ -479,9 +471,7 @@ export function LogCenterPage() {
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                       <p className="text-xs text-zinc-500">最近运行</p>
                       <p className="mt-2 text-sm font-semibold text-zinc-100">
-                        {selectedStatus?.finished_at || selectedStatus?.started_at || selectedTask.last_run_at
-                          ? formatTimestamp(selectedStatus?.finished_at ?? selectedStatus?.started_at ?? selectedTask.last_run_at ?? 0)
-                          : "暂无"}
+                        {lastActivityAt ? formatTimestamp(lastActivityAt) : "暂无"}
                       </p>
                     </div>
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
@@ -496,9 +486,11 @@ export function LogCenterPage() {
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                       <p className="text-xs text-zinc-500">最近 800 条事件</p>
                       <p className="mt-2 text-sm font-semibold text-zinc-100">
-                        上传 {actionCounts.uploaded ?? 0} / 下载 {actionCounts.downloaded ?? 0}
+                        上传 {diagnosticCounts?.uploaded ?? actionCounts.uploaded ?? 0} / 下载 {diagnosticCounts?.downloaded ?? actionCounts.downloaded ?? 0}
                       </p>
-                      <p className="mt-1 text-xs text-zinc-500">跳过 {actionCounts.skipped ?? 0}，失败 {selectedProblems.length}</p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        跳过 {diagnosticCounts?.skipped ?? actionCounts.skipped ?? 0}，失败 {diagnosticCounts?.failed ?? selectedProblems.length}
+                      </p>
                     </div>
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                       <p className="text-xs text-zinc-500">当前处理</p>
@@ -532,7 +524,10 @@ export function LogCenterPage() {
                       selectedProblems.slice(0, 6).map((entry, index) => (
                         <div key={`${entry.timestamp}-${index}`} className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
                           <div className="flex flex-wrap items-center justify-between gap-3">
-                            <p className="text-xs text-zinc-500">{formatTimestamp(entry.timestamp)}</p>
+                            <p className="text-xs text-zinc-500">
+                              {formatTimestamp(entry.timestamp)}
+                              {entry.runId ? <span className="ml-2 text-zinc-700">运行 {entry.runId}</span> : null}
+                            </p>
                             <StatusPill label={statusLabelMap[entry.status] || entry.status} tone="danger" />
                           </div>
                           <p className="mt-2 break-all text-xs text-zinc-300">{entry.path}</p>
@@ -593,6 +588,7 @@ export function LogCenterPage() {
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0 space-y-1">
                               <p className="text-xs text-zinc-500">{formatTimestamp(entry.timestamp)}</p>
+                              {entry.runId ? <p className="text-[11px] text-zinc-700">运行 {entry.runId}</p> : null}
                               <p className="break-all text-xs text-zinc-400">{entry.path}</p>
                             </div>
                             <StatusPill label={statusLabelMap[entry.status] || entry.status} tone={statusTone(entry.status)} />

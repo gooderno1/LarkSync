@@ -19,6 +19,7 @@ class SyncEventRecord:
     status: str
     path: str
     message: str | None = None
+    run_id: str | None = None
 
 
 class SyncEventStore:
@@ -38,6 +39,7 @@ class SyncEventStore:
             "status": record.status,
             "path": record.path,
             "message": record.message,
+            "run_id": record.run_id,
         }
         try:
             self._log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -80,6 +82,8 @@ class SyncEventStore:
         search: str,
         task_id: str,
         task_ids: list[str] | None = None,
+        run_id: str = "",
+        run_ids: list[str] | None = None,
         order: str = "desc",
     ) -> tuple[int, list[SyncEventRecord]]:
         max_items = offset + limit
@@ -93,10 +97,16 @@ class SyncEventStore:
         task_filters = {
             value.strip() for value in (task_ids or []) if value and value.strip()
         }
+        run_filter = run_id.strip()
+        run_filters = {
+            value.strip() for value in (run_ids or []) if value and value.strip()
+        }
         if status_filter:
             status_filters.add(status_filter)
         if task_filter:
             task_filters.add(task_filter)
+        if run_filter:
+            run_filters.add(run_filter)
         search_filter = search.strip().lower()
 
         if order_normalized not in {"asc", "desc"}:
@@ -107,6 +117,8 @@ class SyncEventStore:
                 return False
             if task_filters and record.task_id not in task_filters:
                 return False
+            if run_filters and (record.run_id or "") not in run_filters:
+                return False
             if not search_filter:
                 return True
             target = " ".join(
@@ -114,6 +126,7 @@ class SyncEventStore:
                     record.task_name,
                     record.path,
                     record.message or "",
+                    record.run_id or "",
                 ]
             ).lower()
             return search_filter in target
@@ -228,8 +241,11 @@ def _record_from_payload(payload: object) -> SyncEventRecord | None:
     status = str(payload.get("status") or "")
     path = str(payload.get("path") or "")
     message = payload.get("message")
+    run_id = payload.get("run_id")
     if message is not None:
         message = str(message)
+    if run_id is not None:
+        run_id = str(run_id)
     if not task_id or not status or not path:
         return None
     return SyncEventRecord(
@@ -239,6 +255,7 @@ def _record_from_payload(payload: object) -> SyncEventRecord | None:
         status=status,
         path=path,
         message=message,
+        run_id=run_id,
     )
 
 

@@ -71,7 +71,38 @@ export type SyncTaskStatus = {
   failed_files: number;
   skipped_files: number;
   last_error?: string | null;
+  current_run_id?: string | null;
   last_files: SyncFileEvent[];
+};
+
+export type SyncTaskDiagnosticCounts = {
+  total: number;
+  processed: number;
+  completed: number;
+  failed: number;
+  skipped: number;
+  uploaded: number;
+  downloaded: number;
+  deleted: number;
+  conflicts: number;
+  delete_pending: number;
+  delete_failed: number;
+};
+
+export type SyncTaskOverview = {
+  task: SyncTask;
+  status: SyncTaskStatus;
+  last_event_at?: number | null;
+  last_result?: string | null;
+  problem_count: number;
+  counts: SyncTaskDiagnosticCounts;
+  current_file?: SyncFileEvent | null;
+};
+
+export type SyncTaskDiagnostics = {
+  overview: SyncTaskOverview;
+  recent_events: SyncLogEntry[];
+  problems: SyncLogEntry[];
 };
 
 export type CloudSelection = {
@@ -91,4 +122,5 @@ export type SyncLogEntry = {
   status: string;
   path: string;
   message?: string | null;
+  runId?: string | null;
 };

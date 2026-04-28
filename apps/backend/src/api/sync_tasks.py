@@ -10,7 +10,7 @@ from src.core.config import ConfigManager, DeletePolicy, SyncMode
 from src.core.logging import get_log_file
 from src.services.docx_service import DocxService, DocxServiceError
 from src.services.log_reader import prune_log_file, read_log_entries
-from src.services.sync_event_store import SyncEventStore
+from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_link_service import SyncLinkService
 from src.services.sync_runner import SyncFileEvent, SyncTaskRunner, SyncTaskStatus
 from src.services.sync_task_service import (
@@ -95,6 +95,9 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 service = SyncTaskService()
 runner = SyncTaskRunner(task_service=service)
 event_store = SyncEventStore()
+_PROBLEM_STATUSES = {"failed", "delete_failed", "conflict", "cancelled"}
+_TERMINAL_STATUSES = {"success", "failed", "cancelled"}
+_CURRENT_FILE_EXCLUDED_STATUSES = {"started", "success", "failed", "cancelled"}
 
 
 class SyncFileEventResponse(BaseModel):
@@ -123,6 +126,7 @@ class SyncTaskStatusResponse(BaseModel):
     failed_files: int
     skipped_files: int
     last_error: str | None = None
+    current_run_id: str | None = None
     last_files: list[SyncFileEventResponse] = Field(default_factory=list)
 
     @classmethod
@@ -137,8 +141,115 @@ class SyncTaskStatusResponse(BaseModel):
             failed_files=status.failed_files,
             skipped_files=status.skipped_files,
             last_error=status.last_error,
+            current_run_id=status.current_run_id,
             last_files=[SyncFileEventResponse.from_event(evt) for evt in status.last_files],
         )
+
+
+class SyncTaskDiagnosticCounts(BaseModel):
+    total: int = 0
+    processed: int = 0
+    completed: int = 0
+    failed: int = 0
+    skipped: int = 0
+    uploaded: int = 0
+    downloaded: int = 0
+    deleted: int = 0
+    conflicts: int = 0
+    delete_pending: int = 0
+    delete_failed: int = 0
+
+
+class SyncTaskOverviewResponse(BaseModel):
+    task: SyncTaskResponse
+    status: SyncTaskStatusResponse
+    last_event_at: float | None = None
+    last_result: str | None = None
+    problem_count: int = 0
+    counts: SyncTaskDiagnosticCounts
+    current_file: SyncFileEventResponse | None = None
+
+
+class SyncLogEntry(BaseModel):
+    task_id: str
+    task_name: str
+    timestamp: float
+    status: str
+    path: str
+    message: str | None = None
+    run_id: str | None = None
+
+
+class SyncTaskDiagnosticsResponse(BaseModel):
+    overview: SyncTaskOverviewResponse
+    recent_events: list[SyncLogEntry] = Field(default_factory=list)
+    problems: list[SyncLogEntry] = Field(default_factory=list)
+
+
+def _sync_log_entry_from_record(record: SyncEventRecord) -> SyncLogEntry:
+    return SyncLogEntry(
+        task_id=record.task_id,
+        task_name=record.task_name,
+        timestamp=record.timestamp,
+        status=record.status,
+        path=record.path,
+        message=record.message,
+        run_id=record.run_id,
+    )
+
+
+def _current_file_from_status(status: SyncTaskStatus) -> SyncFileEventResponse | None:
+    for event in reversed(status.last_files):
+        if event.status not in _CURRENT_FILE_EXCLUDED_STATUSES:
+            return SyncFileEventResponse.from_event(event)
+    return None
+
+
+def _build_task_overview(
+    *,
+    task: SyncTaskItem,
+    status: SyncTaskStatus,
+    records: list[SyncEventRecord],
+) -> SyncTaskOverviewResponse:
+    event_counts: dict[str, int] = {}
+    for record in records:
+        event_counts[record.status] = event_counts.get(record.status, 0) + 1
+    problem_count = sum(
+        count for event_status, count in event_counts.items()
+        if event_status in _PROBLEM_STATUSES
+    )
+    if status.last_error and problem_count == 0:
+        problem_count = 1
+    processed = max(0, status.completed_files + status.failed_files + status.skipped_files)
+    last_result = next(
+        (record.status for record in records if record.status in _TERMINAL_STATUSES),
+        status.state if status.state in _TERMINAL_STATUSES else None,
+    )
+    last_event_at = records[0].timestamp if records else (
+        status.finished_at or status.started_at or task.last_run_at
+    )
+    counts = SyncTaskDiagnosticCounts(
+        total=status.total_files,
+        processed=processed,
+        completed=status.completed_files,
+        failed=max(status.failed_files, event_counts.get("failed", 0)),
+        skipped=status.skipped_files,
+        uploaded=event_counts.get("uploaded", 0),
+        downloaded=event_counts.get("downloaded", 0),
+        deleted=event_counts.get("deleted", 0),
+        conflicts=event_counts.get("conflict", 0),
+        delete_pending=event_counts.get("delete_pending", 0),
+        delete_failed=event_counts.get("delete_failed", 0),
+    )
+    return SyncTaskOverviewResponse(
+        task=SyncTaskResponse.from_item(task),
+        status=SyncTaskStatusResponse.from_status(status),
+        last_event_at=last_event_at,
+        last_result=last_result,
+        problem_count=problem_count,
+        counts=counts,
+        current_file=_current_file_from_status(status),
+    )
 
 
 @router.get("/tasks", response_model=list[SyncTaskResponse])
@@ -151,6 +262,69 @@ async def list_tasks() -> list[SyncTaskResponse]:
 async def list_task_status() -> list[SyncTaskStatusResponse]:
     statuses = runner.list_statuses()
     return [SyncTaskStatusResponse.from_status(status) for status in statuses.values()]
+
+
+@router.get("/tasks/overview", response_model=list[SyncTaskOverviewResponse])
+async def list_task_overview() -> list[SyncTaskOverviewResponse]:
+    items = await service.list_tasks()
+    statuses = runner.list_statuses()
+    _, recent_records = event_store.read_events(
+        limit=2000,
+        offset=0,
+        status="",
+        search="",
+        task_id="",
+        order="desc",
+    )
+    records_by_task: dict[str, list[SyncEventRecord]] = {}
+    for record in recent_records:
+        records_by_task.setdefault(record.task_id, []).append(record)
+    return [
+        _build_task_overview(
+            task=item,
+            status=statuses.get(item.id) or SyncTaskStatus(task_id=item.id),
+            records=records_by_task.get(item.id, []),
+        )
+        for item in items
+    ]
+
+
+@router.get("/tasks/{task_id}/diagnostics", response_model=SyncTaskDiagnosticsResponse)
+async def get_task_diagnostics(
+    task_id: str,
+    limit: int = Query(default=200, ge=1, le=1000, description="返回事件条数"),
+) -> SyncTaskDiagnosticsResponse:
+    item = await service.get_task(task_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Task not found")
+    status = runner.get_status(task_id)
+    _, recent_records = event_store.read_events(
+        limit=limit,
+        offset=0,
+        status="",
+        search="",
+        task_id=task_id,
+        order="desc",
+    )
+    _, problem_records = event_store.read_events(
+        limit=100,
+        offset=0,
+        status="",
+        statuses=sorted(_PROBLEM_STATUSES),
+        search="",
+        task_id=task_id,
+        order="desc",
+    )
+    overview = _build_task_overview(
+        task=item,
+        status=status,
+        records=recent_records,
+    )
+    return SyncTaskDiagnosticsResponse(
+        overview=overview,
+        recent_events=[_sync_log_entry_from_record(record) for record in recent_records],
+        problems=[_sync_log_entry_from_record(record) for record in problem_records],
+    )
 
 
 @router.post("/tasks", response_model=SyncTaskResponse)
@@ -299,15 +473,6 @@ class LogFileResponse(BaseModel):
     items: list[LogFileEntry]
 
 
-class SyncLogEntry(BaseModel):
-    task_id: str
-    task_name: str
-    timestamp: float
-    status: str
-    path: str
-    message: str | None = None
-
-
 class SyncLogResponse(BaseModel):
     total: int
     items: list[SyncLogEntry]
@@ -324,6 +489,8 @@ async def read_sync_logs(
     search: str = Query(default="", description="关键词搜索"),
     task_id: str = Query(default="", description="任务 ID 过滤"),
     task_ids: list[str] = Query(default_factory=list, description="任务 ID 多选过滤"),
+    run_id: str = Query(default="", description="运行 ID 过滤"),
+    run_ids: list[str] = Query(default_factory=list, description="运行 ID 多选过滤"),
     order: str = Query(default="desc", description="排序: desc=最新优先, asc=最早优先"),
 ) -> SyncLogResponse:
     """读取同步日志（持久化 JSONL）。"""
@@ -340,19 +507,11 @@ async def read_sync_logs(
         search=search,
         task_id=task_id,
         task_ids=task_ids,
+        run_id=run_id,
+        run_ids=run_ids,
         order=order,
     )
-    items = [
-        SyncLogEntry(
-            task_id=entry.task_id,
-            task_name=entry.task_name,
-            timestamp=entry.timestamp,
-            status=entry.status,
-            path=entry.path,
-            message=entry.message,
-        )
-        for entry in entries
-    ]
+    items = [_sync_log_entry_from_record(entry) for entry in entries]
     file_size = event_store.file_size_bytes()
     warning: str | None = None
     if warn_size_mb > 0:

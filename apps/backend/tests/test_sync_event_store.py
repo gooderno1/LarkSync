@@ -95,6 +95,7 @@ def test_sync_event_store_supports_multi_status_and_task_filters(tmp_path: Path)
             status="uploaded",
             path="/tmp/b.md",
             message=None,
+            run_id="run-2",
         )
     )
     store.append(
@@ -121,6 +122,20 @@ def test_sync_event_store_supports_multi_status_and_task_filters(tmp_path: Path)
     assert total == 2
     assert [item.task_id for item in items] == ["task-3", "task-2"]
     assert [item.status for item in items] == ["failed", "uploaded"]
+
+    total, items = store.read_events(
+        limit=10,
+        offset=0,
+        status="",
+        statuses=[],
+        search="",
+        task_id="",
+        task_ids=[],
+        run_id="run-2",
+        order="desc",
+    )
+    assert total == 1
+    assert items[0].run_id == "run-2"
 
 
 def test_sync_event_store_order_and_pagination(tmp_path: Path) -> None:
