@@ -29,6 +29,7 @@ from src.services.markdown_blocks import hash_block, split_markdown_blocks
 from src.services.path_sanitizer import sanitize_filename, sanitize_path_segment
 from src.services.import_task_service import ImportTaskError, ImportTaskService
 from src.services.export_task_service import ExportTaskError, ExportTaskResult, ExportTaskService
+from src.services.conflict_service import ConflictService
 from src.services.sync_block_service import BlockStateItem, SyncBlockService
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
@@ -150,6 +151,7 @@ class SyncTaskRunner:
         export_task_service: ExportTaskService | None = None,
         event_store: SyncEventStore | None = None,
         task_service: object | None = None,
+        conflict_service: ConflictService | None = None,
         import_poll_attempts: int = 60,
         import_poll_interval: float = 1.0,
         export_poll_attempts: int = 20,
@@ -170,6 +172,7 @@ class SyncTaskRunner:
         self._export_task_service = export_task_service
         self._event_store = event_store or SyncEventStore()
         self._task_service = task_service
+        self._conflict_service = conflict_service or ConflictService()
         self._import_poll_attempts = max(1, import_poll_attempts)
         self._import_poll_interval = max(0.0, import_poll_interval)
         self._export_poll_attempts = max(1, export_poll_attempts)
@@ -1361,6 +1364,16 @@ class SyncTaskRunner:
         has_uploadable_images = self._has_uploadable_markdown_images(
             markdown, base_path
         )
+        if await self._block_markdown_upload_when_cloud_changed(
+            task=task,
+            status=status,
+            path=path,
+            link=link,
+            file_hash=file_hash,
+            markdown=markdown,
+            drive_service=drive_service,
+        ):
+            return
         local_images_repaired = _has_local_image_upload_revision(link.cloud_revision)
         block_states = await self._block_service.list_blocks(str(path), link.cloud_token)
         if block_states:
@@ -1536,6 +1549,137 @@ class SyncTaskRunner:
         status.completed_files += 1
         self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
         logger.info("上传完成: task_id={} path={}", task.id, path)
+
+    async def _block_markdown_upload_when_cloud_changed(
+        self,
+        *,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        path: Path,
+        link: SyncLinkItem,
+        file_hash: str,
+        markdown: str,
+        drive_service: DriveService,
+    ) -> bool:
+        """双向同步上传前校验云端是否相对本地基线已变化。"""
+        if task.sync_mode != "bidirectional":
+            return False
+        if link.cloud_type not in {"docx", "doc"}:
+            return False
+
+        baseline_mtime = self._cloud_mtime_baseline(link)
+        try:
+            cloud_mtime = await self._fetch_linked_cloud_mtime(
+                task=task,
+                path=path,
+                link=link,
+                drive_service=drive_service,
+            )
+        except Exception as exc:
+            status.failed_files += 1
+            status.last_error = f"上传前云端状态校验失败: {exc}"
+            self._record_event(
+                status,
+                SyncFileEvent(
+                    path=str(path),
+                    status="failed",
+                    message="上传前无法确认云端是否更新，已阻止覆盖",
+                ),
+            )
+            logger.warning(
+                "上传前云端状态校验失败，阻止覆盖: task_id={} path={} token={} error={}",
+                task.id,
+                path,
+                link.cloud_token,
+                exc,
+            )
+            return True
+
+        if cloud_mtime is None or cloud_mtime <= baseline_mtime + 1.0:
+            return False
+
+        db_hash = link.local_hash or ""
+        if db_hash and db_hash == file_hash:
+            status.skipped_files += 1
+            self._record_event(
+                status,
+                SyncFileEvent(
+                    path=str(path),
+                    status="skipped",
+                    message="云端已更新，等待下载",
+                ),
+            )
+            logger.info(
+                "云端已更新且本地未变，跳过上传等待下载: task_id={} path={} token={} cloud_mtime={} baseline={}",
+                task.id,
+                path,
+                link.cloud_token,
+                cloud_mtime,
+                baseline_mtime,
+            )
+            return True
+
+        await self._conflict_service.add_conflict(
+            local_path=str(path),
+            cloud_token=link.cloud_token,
+            local_hash=file_hash,
+            db_hash=db_hash,
+            cloud_version=self._mtime_to_version(cloud_mtime),
+            db_version=self._mtime_to_version(baseline_mtime),
+            local_preview=self._preview_markdown(markdown),
+            cloud_preview=None,
+        )
+        status.skipped_files += 1
+        self._record_event(
+            status,
+            SyncFileEvent(
+                path=str(path),
+                status="conflict",
+                message="云端已更新，已阻止本地覆盖",
+            ),
+        )
+        logger.warning(
+            "检测到云端先于上传发生变化，已记录冲突并阻止覆盖: task_id={} path={} token={} cloud_mtime={} baseline={}",
+            task.id,
+            path,
+            link.cloud_token,
+            cloud_mtime,
+            baseline_mtime,
+        )
+        return True
+
+    async def _fetch_linked_cloud_mtime(
+        self,
+        *,
+        task: SyncTaskItem,
+        path: Path,
+        link: SyncLinkItem,
+        drive_service: DriveService,
+    ) -> float | None:
+        parent_token = link.cloud_parent_token
+        if not parent_token:
+            parent_token = await self._resolve_cloud_parent(task, path, drive_service)
+        items = await self._list_files_all(drive_service, parent_token)
+        for item in items:
+            if item.token == link.cloud_token:
+                if item.modified_time is None:
+                    return None
+                return _parse_mtime(item.modified_time)
+        return None
+
+    @staticmethod
+    def _cloud_mtime_baseline(link: SyncLinkItem) -> float:
+        if link.cloud_mtime is not None:
+            return float(link.cloud_mtime)
+        return float(link.updated_at or 0.0)
+
+    @staticmethod
+    def _mtime_to_version(mtime: float) -> int:
+        return int(max(0.0, mtime) * 1000)
+
+    @staticmethod
+    def _preview_markdown(markdown: str, limit: int = 2000) -> str:
+        return markdown[:limit]
 
     @staticmethod
     def _should_reimport_markdown_doc(

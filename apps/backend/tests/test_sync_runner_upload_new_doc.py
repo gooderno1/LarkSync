@@ -144,6 +144,15 @@ class FakeBlockService:
         self.storage[(local_path, cloud_token)] = list(items)
 
 
+class FakeConflictService:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def add_conflict(self, **kwargs):
+        self.calls.append(kwargs)
+        return None
+
+
 @pytest.mark.asyncio
 async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
     markdown_path = tmp_path / "测试文档.md"
@@ -481,6 +490,78 @@ async def test_upload_markdown_reuses_existing_doc_without_new_import(tmp_path: 
     assert runner._file_uploader.calls == []
     assert runner._docx_service.replace_calls[0][0] == "doc-existing"
     assert runner._drive_service.deleted == []
+
+
+@pytest.mark.asyncio
+async def test_upload_markdown_blocks_bidirectional_overwrite_when_cloud_changed(
+    tmp_path: Path,
+) -> None:
+    markdown_path = tmp_path / "冲突文档.md"
+    markdown_path.write_text("# Baseline", encoding="utf-8")
+    baseline_hash = calculate_file_hash(markdown_path)
+    markdown_path.write_text("# Local edit", encoding="utf-8")
+
+    link_service = FakeLinkService()
+    link_service.links[str(markdown_path)] = SyncLinkItem(
+        local_path=str(markdown_path),
+        cloud_token="doc-existing",
+        cloud_type="docx",
+        task_id="task-1",
+        updated_at=1000.0,
+        cloud_parent_token="fld-1",
+        local_hash=baseline_hash,
+        cloud_mtime=1000.0,
+    )
+    cloud_doc = DriveFile(
+        token="doc-existing",
+        name="冲突文档",
+        type="docx",
+        modified_time="1005",
+    )
+    conflict_service = FakeConflictService()
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService(
+            [DriveFileList(files=[cloud_doc], has_more=False, next_page_token=None)]
+        ),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+        conflict_service=conflict_service,
+    )
+    runner._block_service = FakeBlockService()
+
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="full",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.completed_files == 0
+    assert status.skipped_files == 1
+    assert runner._docx_service.replace_calls == []
+    assert len(conflict_service.calls) == 1
+    assert conflict_service.calls[0]["cloud_token"] == "doc-existing"
+    assert any(event.status == "conflict" for event in status.last_files)
 
 
 @pytest.mark.asyncio

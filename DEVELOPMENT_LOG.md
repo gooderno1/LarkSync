@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.6.1-dev.1 (2026-04-28)
+
+- 目标：
+  - 修复双向同步 Markdown 上行在云端已更新时仍可能覆盖飞书云文档的问题。
+- 结果：
+  - Markdown 上行进入覆盖前会按 `sync_links` 的云端基线复核飞书目录中的当前 `modified_time`。
+  - 若云端相对本地同步基线已更新且本地也有变化，会跳过上传、记录冲突，并写入同步事件“云端已更新，已阻止本地覆盖”。
+  - 若云端已更新但本地内容未变化，会跳过上传并等待后续下载阶段拉取云端版本。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_runner_upload_new_doc.py -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_runner.py apps/backend/tests/test_sync_runner_upload_new_doc.py apps/backend/tests/test_sync_runner_block_update.py -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.6.0 release (2026-04-28)
 
 - 目标：
