@@ -48,6 +48,13 @@ export const statusLabelMap: Record<string, string> = {
   success: "完成",
   cancelled: "取消",
   mirrored: "镜像",
+  queued: "等待上传",
+  conflict: "冲突",
+  linked: "关联文档",
+  creating: "创建中",
+  created: "已创建",
+  reimporting: "导入重建",
+  bootstrapped: "初始化块状态",
 };
 
 export const stateLabels: Record<string, string> = {
