@@ -13,6 +13,7 @@
   - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests -q`
   - `npm run build --prefix apps/frontend`
   - `python scripts/build_installer.py`
+  - `python scripts/build_installer.py --nsis`
 
 ## v0.5.63 release (2026-04-23)
 
