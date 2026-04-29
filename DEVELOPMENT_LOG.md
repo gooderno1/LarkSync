@@ -2861,8 +2861,14 @@
 - 结果：`scripts/release_notes.py` 增加回退策略：当目标版本缺失 `release:` 标记时，按该版本首条记录作为锚点继续归档；并将 `CHANGELOG.md` 最新条目统一置顶，避免版本顺序错位导致发布说明误判。
 - 测试：`python -m pytest apps/backend/tests/test_release_notes.py -q`。
 - 问题：暂无阻塞问题。
-## v0.6.3-dev.3 (2026-04-29)
-- 目标：修复本地新建 Markdown 首次创建飞书文档后，被同一轮双向上传误判为“云端已更新”冲突的问题。
-- 结果：`SyncTaskRunner` 在创建或导入重建云端文档成功后，会立即把 `local_hash`、`local_mtime`、`local_size`、`cloud_mtime`、`cloud_revision` 和 `updated_at` 写回 `sync_links`；同时 imported_doc 分支不再被“内容未变化 / 本地未变更”提前短路，避免首次创建后的自冲突。
-- 测试：`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_runner_upload_new_doc.py apps/backend/tests/test_sync_runner.py -p pytest_asyncio.plugin -q`。
-- 问题：当前安装目录里的正式版仍是 `v0.6.2`，要实际带上这次修复还需要后续重新安装或发布新版本。
+## v0.6.4-dev.1 (2026-04-29)
+
+- 目标：
+  - 修复本地新建 Markdown 首次创建飞书文档后，被同一轮双向上传误判为“云端已更新”冲突的问题。
+- 结果：
+  - `SyncTaskRunner` 在创建或导入重建云端文档成功后，会立即把 `local_hash`、`local_mtime`、`local_size`、`cloud_mtime`、`cloud_revision` 和 `updated_at` 写回 `sync_links`。
+  - `imported_doc` 分支不再被“内容未变化 / 本地未变更”提前短路，避免首次创建后的自冲突。
+- 测试：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_runner_upload_new_doc.py apps/backend/tests/test_sync_runner.py -p pytest_asyncio.plugin -q`
+- 问题：
+  - 当前安装目录里的正式版仍是 `v0.6.2`，要实际带上这次修复还需要后续重新安装或发布新版本。
