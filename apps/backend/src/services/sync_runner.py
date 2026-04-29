@@ -769,6 +769,7 @@ class SyncTaskRunner:
                             base_dir=target_dir,
                             link_map=link_map,
                         )
+                        self._silence_path(task.id, target_path)
                         self._file_writer.write_markdown(target_path, markdown, mtime)
                         signature = self._get_local_signature(target_path)
                         await link_service.upsert_link(
@@ -813,6 +814,7 @@ class SyncTaskRunner:
                         )
                     elif effective_type in _EXPORT_EXTENSION_MAP:
                         export_extension = _EXPORT_EXTENSION_MAP[effective_type]
+                        self._silence_path(task.id, target_path)
                         await self._download_exported_file(
                             export_task_service=export_task_service,
                             file_downloader=file_downloader,
@@ -843,8 +845,9 @@ class SyncTaskRunner:
                             SyncFileEvent(
                                 path=str(target_path), status="downloaded"
                             )
-                        )
+                            )
                     elif effective_type == "file":
+                        self._silence_path(task.id, target_path)
                         await file_downloader.download(
                             file_token=effective_token,
                             file_name=target_path.name,

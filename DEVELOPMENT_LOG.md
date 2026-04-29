@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.6.3-dev.2 (2026-04-29)
+
+- 目标：
+  - 修复双向同步中“云端下载写本地后被 watcher 误判成用户本地修改，随后又触发上传反向覆盖云端”的回流问题。
+- 结果：
+  - 下载链路在写本地文件前就会先静默 watcher，不再等写入完成后才补静默；覆盖 `docx/doc -> markdown`、导出型文件、普通附件三条下载分支。
+  - 新增回归测试，明确约束本地写入发生时目标路径必须已经处于 watcher 静默状态，避免后续再出现“下载自己触发上传”的时序回退。
+- 测试：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_runner.py -p pytest_asyncio.plugin -q`
+
 ## v0.6.3-dev.1 (2026-04-29)
 
 - 目标：

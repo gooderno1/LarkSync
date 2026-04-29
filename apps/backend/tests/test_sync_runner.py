@@ -250,6 +250,35 @@ class FakeWatcher:
         self.silenced.append((str(path), ttl_seconds))
 
 
+class GuardedFileWriter:
+    def __init__(self, watcher: FakeWatcher) -> None:
+        self._watcher = watcher
+
+    def write_markdown(self, path: Path, content: str, mtime: float) -> None:
+        assert str(path) in {item[0] for item in self._watcher.silenced}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        os.utime(path, (mtime, mtime))
+
+
+class GuardedFileDownloader(FakeFileDownloader):
+    def __init__(self, watcher: FakeWatcher) -> None:
+        super().__init__()
+        self._watcher = watcher
+
+    async def download(self, file_token: str, file_name: str, target_dir: Path, mtime: float):
+        path = target_dir / file_name
+        assert str(path) in {item[0] for item in self._watcher.silenced}
+        await super().download(file_token, file_name, target_dir, mtime)
+
+    async def download_exported_file(
+        self, file_token: str, file_name: str, target_dir: Path, mtime: float
+    ):
+        path = target_dir / file_name
+        assert str(path) in {item[0] for item in self._watcher.silenced}
+        await super().download_exported_file(file_token, file_name, target_dir, mtime)
+
+
 class FakeRunStampService:
     def __init__(self) -> None:
         self.marked: list[tuple[str, float | None]] = []
@@ -461,6 +490,109 @@ async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     assert (tmp_path / "子目录" / "note.md").exists()
     assert (tmp_path / "快捷方式文件").exists()
     assert downloader.calls[-1][0] == "file-target"
+
+
+@pytest.mark.asyncio
+async def test_run_download_silences_docx_before_local_write(tmp_path: Path) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="doc-1",
+                name="设计文档",
+                type="docx",
+                modified_time="1700000000000",
+            )
+        ],
+    )
+    watcher = FakeWatcher()
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=GuardedFileWriter(watcher),
+        link_service=FakeLinkService(),
+    )
+    task = SyncTaskItem(
+        id="task-docx-silence",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="full",
+        md_sync_mode="download_only",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    runner._watchers[task.id] = watcher  # type: ignore[assignment]
+    status = runner.get_status(task.id)
+
+    await runner._run_download(task, status)
+
+    assert (tmp_path / "设计文档.md").exists()
+    assert str(tmp_path / "设计文档.md") in {item[0] for item in watcher.silenced}
+
+
+@pytest.mark.asyncio
+async def test_run_download_silences_binary_targets_before_local_write(tmp_path: Path) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="file-1",
+                name="spec.pdf",
+                type="file",
+                modified_time="1700000000",
+            ),
+            DriveNode(
+                token="sheet-1",
+                name="表格",
+                type="sheet",
+                modified_time="1700000000",
+            ),
+        ],
+    )
+    watcher = FakeWatcher()
+    downloader = GuardedFileDownloader(watcher)
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=downloader,
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(),
+        export_task_service=FakeExportTaskService(),
+    )
+    task = SyncTaskItem(
+        id="task-file-silence",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        md_sync_mode="download_only",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    runner._watchers[task.id] = watcher  # type: ignore[assignment]
+    status = runner.get_status(task.id)
+
+    await runner._run_download(task, status)
+
+    silenced = {item[0] for item in watcher.silenced}
+    assert str(tmp_path / "spec.pdf") in silenced
+    assert str(tmp_path / "表格.xlsx") in silenced
 
 
 @pytest.mark.asyncio
