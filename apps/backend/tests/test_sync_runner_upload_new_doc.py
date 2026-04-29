@@ -157,19 +157,26 @@ class FakeConflictService:
 async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
     markdown_path = tmp_path / "测试文档.md"
     markdown_path.write_text("# Title", encoding="utf-8")
+    file_hash = calculate_file_hash(markdown_path)
 
-    new_doc = DriveFile(token="doc-new", name="测试文档", type="docx")
+    new_doc = DriveFile(
+        token="doc-new",
+        name="测试文档",
+        type="docx",
+        modified_time="1001",
+    )
     responses = [
         DriveFileList(files=[], has_more=False, next_page_token=None),
         DriveFileList(files=[], has_more=False, next_page_token=None),
         DriveFileList(files=[new_doc], has_more=False, next_page_token=None),
     ]
+    link_service = FakeLinkService()
 
     runner = SyncTaskRunner(
         docx_service=FakeDocxService(),
         file_uploader=FakeFileUploader(),
         drive_service=FakeDriveService(responses),
-        link_service=FakeLinkService(),
+        link_service=link_service,
         import_task_service=FakeImportTaskService(),
     )
     runner._block_service = FakeBlockService()
@@ -208,6 +215,10 @@ async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
     assert runner._file_uploader.calls[0][1] == "fld-1"
     assert runner._import_task_service.calls[0]["file_extension"] == "md"
     assert runner._drive_service.deleted == [("file-token", "file")]
+    assert link_service.calls[0].updated_at == 1001.0
+    assert link_service.calls[0].cloud_mtime == 1001.0
+    assert link_service.calls[0].local_hash == file_hash
+    assert link_service.calls[0].cloud_revision == "doc-new@1001000"
 
 
 @pytest.mark.asyncio
@@ -562,6 +573,73 @@ async def test_upload_markdown_blocks_bidirectional_overwrite_when_cloud_changed
     assert len(conflict_service.calls) == 1
     assert conflict_service.calls[0]["cloud_token"] == "doc-existing"
     assert any(event.status == "conflict" for event in status.last_files)
+
+
+@pytest.mark.asyncio
+async def test_upload_markdown_new_doc_initializes_baseline_before_bidirectional_guard(
+    tmp_path: Path,
+) -> None:
+    markdown_path = tmp_path / "首次创建文档.md"
+    markdown_path.write_text("# Local only", encoding="utf-8")
+
+    new_doc = DriveFile(
+        token="doc-new",
+        name="首次创建文档",
+        type="docx",
+        modified_time="1005",
+    )
+    responses = [
+        DriveFileList(files=[], has_more=False, next_page_token=None),
+        DriveFileList(files=[], has_more=False, next_page_token=None),
+        DriveFileList(files=[new_doc], has_more=False, next_page_token=None),
+        DriveFileList(files=[new_doc], has_more=False, next_page_token=None),
+    ]
+    link_service = FakeLinkService()
+    conflict_service = FakeConflictService()
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService(responses),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+        conflict_service=conflict_service,
+    )
+    runner._block_service = FakeBlockService()
+    runner._import_poll_attempts = 3
+    runner._import_poll_interval = 0.0
+
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.failed_files == 0
+    assert status.completed_files == 1
+    assert status.skipped_files == 0
+    assert conflict_service.calls == []
+    assert all(event.status != "conflict" for event in status.last_files)
+    assert link_service.calls[0].cloud_mtime == 1005.0
+    assert link_service.calls[0].updated_at == 1005.0
 
 
 @pytest.mark.asyncio
