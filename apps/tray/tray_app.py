@@ -28,6 +28,7 @@ import urllib.request
 import urllib.error
 import argparse
 from pathlib import Path
+from typing import Any
 
 # 确保项目根目录在 sys.path 中
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -107,6 +108,7 @@ except Exception as exc:
 
 _LOCK_SOCKET: socket.socket | None = None
 _INSTALL_REQUEST_MIN_AGE_SECONDS = 2.0
+_INSTALL_HANDOFF_TIMEOUT_SECONDS = 15.0
 
 
 def _data_dir() -> Path:
@@ -133,6 +135,10 @@ def _install_request_path() -> Path:
     return update_data_dir() / "install-request.json"
 
 
+def _install_handoff_path() -> Path:
+    return update_data_dir() / "install-handoff.json"
+
+
 def _load_install_request() -> dict[str, str | float | bool] | None:
     path = _install_request_path()
     if not path.exists():
@@ -152,6 +158,7 @@ def _load_install_request() -> dict[str, str | float | bool] | None:
     silent = bool(payload.get("silent", False))
     restart_path = str(payload.get("restart_path", "")).strip()
     return {
+        "request_id": str(payload.get("request_id", "")).strip(),
         "installer_path": installer_path,
         "created_at": created_at,
         "silent": silent,
@@ -163,6 +170,10 @@ def _clear_install_request() -> None:
     _install_request_path().unlink(missing_ok=True)
 
 
+def _clear_install_handoff() -> None:
+    _install_handoff_path().unlink(missing_ok=True)
+
+
 def _append_install_launch_log(message: str) -> None:
     try:
         log_path = update_logs_dir() / "update-install.log"
@@ -172,6 +183,35 @@ def _append_install_launch_log(message: str) -> None:
             file.write(f"[{timestamp}] {message}\n")
     except Exception:
         pass
+
+
+def _read_install_handoff() -> dict[str, Any] | None:
+    path = _install_handoff_path()
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def _wait_for_install_handoff(
+    request_id: str,
+    *,
+    timeout: float = _INSTALL_HANDOFF_TIMEOUT_SECONDS,
+) -> dict[str, Any] | None:
+    if not request_id:
+        return None
+    deadline = time.time() + max(timeout, 0.1)
+    while time.time() < deadline:
+        payload = _read_install_handoff()
+        if payload and str(payload.get("request_id", "")).strip() == request_id:
+            return payload
+        time.sleep(0.2)
+    return None
 
 
 def _resolve_powershell_executable() -> str:
@@ -194,15 +234,21 @@ def _build_windows_installer_launch_command(
     silent: bool = False,
     restart_path: Path | None = None,
     log_path: Path | None = None,
+    handoff_path: Path | None = None,
+    request_id: str = "",
 ) -> list[str]:
     installer_escaped = str(path).replace("'", "''")
     restart_escaped = str(restart_path).replace("'", "''") if restart_path else ""
     log_escaped = str(log_path).replace("'", "''") if log_path else ""
+    handoff_escaped = str(handoff_path).replace("'", "''") if handoff_path else ""
+    request_escaped = request_id.replace("'", "''")
     silent_literal = "$true" if silent else "$false"
     script = (
         f"$installerPath = '{installer_escaped}'; "
         f"$restartPath = '{restart_escaped}'; "
         f"$logPath = '{log_escaped}'; "
+        f"$handoffPath = '{handoff_escaped}'; "
+        f"$requestId = '{request_escaped}'; "
         f"$silentInstall = {silent_literal}; "
         "function Write-InstallLog([string]$message) { "
         "if ([string]::IsNullOrWhiteSpace($logPath)) { return }; "
@@ -213,16 +259,40 @@ def _build_windows_installer_launch_command(
         "Add-Content -LiteralPath $logPath -Value \"[$timestamp] $message\" -Encoding UTF8 "
         "} catch {} "
         "}; "
+        "function Write-Handoff([string]$stage, [string]$message, [int]$exitCode = 0) { "
+        "if ([string]::IsNullOrWhiteSpace($handoffPath)) { return }; "
+        "try { "
+        "$parent = Split-Path -Parent $handoffPath; "
+        "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
+        "$payload = @{ request_id = $requestId; stage = $stage; message = $message; exit_code = $exitCode; timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } | ConvertTo-Json -Compress; "
+        "Set-Content -LiteralPath $handoffPath -Value $payload -Encoding UTF8 "
+        "} catch {} "
+        "}; "
+        "Write-Handoff 'helper_started' 'helper process started'; "
         "$argumentList = @(); "
         "if ($silentInstall) { $argumentList += '/S' }; "
         "Write-InstallLog (\"启动安装器请求: installer=\" + $installerPath + \" silent=\" + $silentInstall); "
-        "$process = Start-Process -LiteralPath $installerPath -ArgumentList $argumentList -PassThru; "
+        "try { "
+        "$process = Start-Process -LiteralPath $installerPath -ArgumentList $argumentList -PassThru -ErrorAction Stop; "
+        "} catch { "
+        "$message = $_.Exception.Message; "
+        "Write-Handoff 'launch_failed' $message 0; "
+        "Write-InstallLog (\"启动安装器失败: \" + $message); "
+        "if (-not [string]::IsNullOrWhiteSpace($restartPath)) { Start-Process -LiteralPath $restartPath; Write-InstallLog (\"安装器未启动，已恢复当前版本: \" + $restartPath) }; "
+        "exit 1 "
+        "}; "
+        "Write-Handoff 'installer_started' ('pid=' + $process.Id) 0; "
         "Write-InstallLog (\"安装器进程已启动 pid=\" + $process.Id); "
         "Wait-Process -Id $process.Id; "
         "$process.Refresh(); "
         "$exitCode = $process.ExitCode; "
         "Write-InstallLog (\"安装器进程已退出 exit_code=\" + $exitCode); "
-        "if ($exitCode -ne 0) { exit $exitCode }; "
+        "if ($exitCode -ne 0) { "
+        "Write-Handoff 'install_failed' ('exit_code=' + $exitCode) $exitCode; "
+        "if (-not [string]::IsNullOrWhiteSpace($restartPath)) { Start-Process -LiteralPath $restartPath; Write-InstallLog (\"安装失败，已恢复当前版本: \" + $restartPath) }; "
+        "exit $exitCode "
+        "}; "
+        "Write-Handoff 'install_succeeded' 'installer completed successfully' $exitCode; "
         "if (-not [string]::IsNullOrWhiteSpace($restartPath)) { "
         "Start-Sleep -Milliseconds 1200; "
         "Start-Process -LiteralPath $restartPath; "
@@ -563,6 +633,7 @@ class LarkSyncTray:
         request = _load_install_request()
         if not request:
             return False
+        request_id = str(request.get("request_id") or "").strip()
         installer_path = request["installer_path"]
         silent = bool(request.get("silent", False))
         restart_path = str(request.get("restart_path") or "").strip() or None
@@ -570,6 +641,7 @@ class LarkSyncTray:
         if created_at > 0 and (time.time() - created_at) < _INSTALL_REQUEST_MIN_AGE_SECONDS:
             return False
         try:
+            _clear_install_handoff()
             _append_install_launch_log(
                 f"准备启动安装包: {installer_path} (silent={silent} restart={restart_path or '-'})"
             )
@@ -577,10 +649,17 @@ class LarkSyncTray:
                 installer_path,
                 silent=silent,
                 restart_path=restart_path,
+                request_id=request_id,
             )
         except Exception as exc:
             _append_install_launch_log(f"启动安装包失败: {installer_path} ({type(exc).__name__}: {exc})")
             print(f"警告：启动安装程序失败: {exc}")
+            _clear_install_request()
+            self._notify(
+                "更新安装启动失败",
+                "安装程序未能成功接管，本次更新已取消，请重新下载后再试。",
+                category="update",
+            )
             return False
         _clear_install_request()
         _append_install_launch_log(f"已调度安装包启动: {installer_path}")
@@ -598,6 +677,7 @@ class LarkSyncTray:
         *,
         silent: bool = False,
         restart_path: str | None = None,
+        request_id: str = "",
     ) -> None:
         path = Path(installer_path).expanduser().resolve()
         if not path.is_file():
@@ -621,10 +701,20 @@ class LarkSyncTray:
                         silent=True,
                         restart_path=restart_target,
                         log_path=update_logs_dir() / "update-install.log",
+                        handoff_path=_install_handoff_path(),
+                        request_id=request_id,
                     ),
                     creationflags=creationflags,
                     close_fds=True,
                 )
+                handoff = _wait_for_install_handoff(request_id)
+                if not handoff:
+                    raise RuntimeError("静默安装接管超时，安装程序未返回接管确认")
+                stage = str(handoff.get("stage") or "").strip()
+                if stage == "helper_started" or stage == "installer_started":
+                    return
+                message = str(handoff.get("message") or "").strip() or "静默安装接管失败"
+                raise RuntimeError(message)
                 return
             try:
                 if _startfile_windows_installer(path):

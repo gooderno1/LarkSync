@@ -83,6 +83,7 @@ def test_system_update_install_endpoint_writes_install_request(
 
     request = load_install_request()
     assert request is not None
+    assert request.request_id
     assert Path(request.installer_path) == installer_path.resolve()
     assert request.silent is True
     assert Path(request.restart_path) == restart_path.resolve()

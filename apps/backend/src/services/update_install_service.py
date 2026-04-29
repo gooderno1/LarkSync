@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from src.core.paths import update_data_dir
 
 
 class UpdateInstallRequest(BaseModel):
+    request_id: str
     installer_path: str
     created_at: float
     silent: bool = True
@@ -38,6 +40,7 @@ def queue_install_request(
         resolved_restart_path = str(restart_target)
 
     request = UpdateInstallRequest(
+        request_id=uuid.uuid4().hex,
         installer_path=str(path),
         created_at=float(created_at if created_at is not None else time.time()),
         silent=bool(silent),

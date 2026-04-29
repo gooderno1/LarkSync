@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.6.3-dev.1 (2026-04-29)
+
+- 目标：
+  - 修复 Windows 静默更新里“主程序已退出，但安装器并未真正接管”的链路缺口。
+  - 避免坏掉的安装请求在新版本启动后被反复消费，导致托盘持续尝试一个不存在的安装包。
+- 结果：
+  - 安装请求新增 `request_id`，托盘发起静默更新前会清理旧 handoff 状态，并等待 detached PowerShell helper 写入“已接管 / 安装器已启动 / 启动失败”的明确回执；只有 helper 成功接管后，主程序才会退出。
+  - helper 启动安装器失败、安装器非零退出时，会记录 handoff 状态与安装日志，并尝试恢复拉起当前版本，避免“程序先退了，但后续没人管”的中断状态。
+  - 托盘处理坏掉的 `install-request.json` 时会直接清理请求并弹出失败通知，不再每 5 秒重复尝试一个已不存在的安装包。
+- 测试：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_update_service.py apps/backend/tests/test_system_update_api.py apps/backend/tests/test_tray_update_install.py -p pytest_asyncio.plugin -q`
+
 ## v0.6.2 release (2026-04-29)
 
 - 目标：

@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-29] v0.6.3-dev.1 fix(auto-update): Windows 静默更新改为“helper 接管成功后再退出主程序”；helper 会先写接管回执，再启动安装器并记录启动/退出结果，安装器未拉起或非零退出时会恢复拉起当前版本；坏掉的 install-request 会自动清理，避免程序反复退出或死循环重试
 [2026-04-29] v0.6.2 release: v0.6.2
 [2026-04-29] v0.6.2-dev.5 fix(conflict-resolution): 冲突管理的“使用本地 / 使用云端”改为真正触发定向同步；本地优先会强制上传当前本地文件覆盖云端，云端优先会强制下载当前云端版本覆盖本地，执行失败时不会提前把冲突标记为已解决
 [2026-04-29] v0.6.2-dev.4 feat(auto-update): Windows 自动更新默认改走 NSIS 静默安装，托盘用 detached PowerShell helper 等待安装器退出后自动重启新版本，并记录静默安装 PID、退出码与重启动作
