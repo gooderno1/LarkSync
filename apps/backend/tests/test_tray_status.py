@@ -49,7 +49,20 @@ def tray_client(tmp_path, monkeypatch) -> Generator[TestClient, None, None]:
     importlib.import_module("src.main")
 
 
-def test_tray_status_conflict_count(tray_client: TestClient) -> None:
+def test_tray_status_conflict_count(
+    tray_client: TestClient, monkeypatch
+) -> None:
+    import src.api.conflicts as conflicts_api
+
+    async def fake_resolve_conflict(conflict_id: str, action: str, *, runner):
+        return await conflicts_api.service.resolve(conflict_id, action)
+
+    monkeypatch.setattr(
+        conflicts_api.resolution_service,
+        "resolve_conflict",
+        fake_resolve_conflict,
+    )
+
     # 创建一条冲突记录
     payload = {
         "local_path": "/tmp/demo.md",

@@ -128,6 +128,13 @@ class ConflictService:
             visible_records.append(record)
         return [self._to_item(record) for record in visible_records]
 
+    async def get_conflict(self, conflict_id: str) -> ConflictItem | None:
+        async with self._session_maker() as session:
+            record = await session.get(ConflictRecord, conflict_id)
+            if not record:
+                return None
+            return self._to_item(record)
+
     async def resolve(self, conflict_id: str, action: str) -> ConflictItem | None:
         async with self._session_maker() as session:
             record = await session.get(ConflictRecord, conflict_id)

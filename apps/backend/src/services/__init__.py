@@ -1,5 +1,9 @@
 from .auth_service import AuthService, AuthError
 from .drive_service import DriveNode, DriveService
+from .conflict_resolution_service import (
+    ConflictResolutionError,
+    ConflictResolutionService,
+)
 from .conflict_service import ConflictItem, ConflictService
 from .docx_service import DocxService, DocxServiceError
 from .event_hub import EventHub
@@ -29,6 +33,8 @@ __all__ = [
     "AuthError",
     "DriveNode",
     "DriveService",
+    "ConflictResolutionError",
+    "ConflictResolutionService",
     "ConflictItem",
     "ConflictService",
     "DocxService",

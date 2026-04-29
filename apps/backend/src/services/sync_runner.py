@@ -289,6 +289,87 @@ class SyncTaskRunner:
         pending = self._pending_uploads.setdefault(task_id, {})
         pending[str(path)] = time.time() if changed_at is None else changed_at
 
+    async def run_conflict_upload(
+        self,
+        task: SyncTaskItem,
+        path: Path,
+    ) -> SyncTaskStatus:
+        return await self._run_manual_resolution(
+            task,
+            message=f"冲突处理：使用本地版本 {path.name}",
+            executor=lambda status: self._run_upload_paths(
+                task,
+                status,
+                [path],
+                allow_deletes=False,
+                force_paths={str(path)},
+            ),
+        )
+
+    async def run_conflict_download(
+        self,
+        task: SyncTaskItem,
+        path: Path,
+        cloud_token: str,
+    ) -> SyncTaskStatus:
+        return await self._run_manual_resolution(
+            task,
+            message=f"冲突处理：使用云端版本 {path.name}",
+            executor=lambda status: self._run_download(
+                task,
+                status,
+                allow_deletes=False,
+                selected_paths={str(path)},
+                selected_cloud_tokens={cloud_token},
+                force_paths={str(path)},
+            ),
+        )
+
+    async def _run_manual_resolution(
+        self,
+        task: SyncTaskItem,
+        *,
+        message: str,
+        executor,
+    ) -> SyncTaskStatus:
+        if task.id in self._running_tasks:
+            raise RuntimeError("任务运行中，请稍后再试")
+        self._running_tasks.add(task.id)
+        self._task_meta[task.id] = task
+        status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
+        self._reset_status(task, status, message=message)
+        try:
+            await executor(status)
+            status.state = "failed" if status.failed_files > 0 else "success"
+            status.finished_at = time.time()
+            return status
+        except Exception as exc:
+            status.state = "failed"
+            status.last_error = str(exc)
+            status.finished_at = time.time()
+            raise
+        finally:
+            if status.state == "running":
+                status.state = "failed" if status.failed_files > 0 else "success"
+                status.finished_at = time.time()
+            if status.state != "cancelled":
+                await self._mark_task_run(task)
+            self._record_event(
+                status,
+                SyncFileEvent(
+                    path=task.local_path,
+                    status=status.state,
+                    message=(
+                        f"完成: total={status.total_files} "
+                        f"ok={status.completed_files} "
+                        f"failed={status.failed_files} "
+                        f"skipped={status.skipped_files}"
+                    ),
+                ),
+                task,
+            )
+            self._running_tasks.discard(task.id)
+
     async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
         # 首次调度时，全量扫描本地目录，将没有 SyncLink 的文件加入待上传队列
         if task.id not in self._initial_upload_scanned:
@@ -517,6 +598,9 @@ class SyncTaskRunner:
         status: SyncTaskStatus,
         *,
         allow_deletes: bool = True,
+        selected_paths: set[str] | None = None,
+        selected_cloud_tokens: set[str] | None = None,
+        force_paths: set[str] | None = None,
     ) -> None:
         self._task_meta[task.id] = task
         drive_service = self._drive_service or DriveService()
@@ -572,6 +656,25 @@ class SyncTaskRunner:
                 candidates,
                 persisted_by_path,
             )
+            if selected_paths or selected_cloud_tokens:
+                selected_candidates = [
+                    item
+                    for item in selected_candidates
+                    if self._matches_download_selection(
+                        item,
+                        selected_paths=selected_paths,
+                        selected_cloud_tokens=selected_cloud_tokens,
+                    )
+                ]
+                duplicated_candidates = [
+                    item
+                    for item in duplicated_candidates
+                    if self._matches_download_selection(
+                        item,
+                        selected_paths=selected_paths,
+                        selected_cloud_tokens=selected_cloud_tokens,
+                    )
+                ]
             known_cloud_tokens = {item.effective_token for item in selected_candidates}
             selected_cloud_paths = {str(item.target_path) for item in selected_candidates}
             if allow_deletes:
@@ -611,7 +714,8 @@ class SyncTaskRunner:
                 target_path = candidate.target_path
                 mtime = candidate.mtime
                 persisted = persisted_by_path.get(str(target_path))
-                if self._should_skip_download_for_local_newer(
+                forced = bool(force_paths and str(target_path) in force_paths)
+                if (not forced) and self._should_skip_download_for_local_newer(
                     task=task,
                     local_path=target_path,
                     cloud_mtime=mtime,
@@ -632,7 +736,7 @@ class SyncTaskRunner:
                         target_path.stat().st_mtime,
                     )
                     continue
-                if self._should_skip_download_for_unchanged(
+                if (not forced) and self._should_skip_download_for_unchanged(
                     local_path=target_path,
                     cloud_mtime=mtime,
                     persisted=persisted,
@@ -1211,6 +1315,7 @@ class SyncTaskRunner:
         paths: Iterable[Path],
         *,
         allow_deletes: bool = True,
+        force_paths: set[str] | None = None,
     ) -> None:
         docx_service = self._docx_service or DocxService()
         file_uploader = self._file_uploader or FileUploader()
@@ -1243,6 +1348,7 @@ class SyncTaskRunner:
                         file_uploader,
                         drive_service,
                         import_task_service,
+                        force=bool(force_paths and str(path) in force_paths),
                     )
                 except Exception as exc:
                     status.failed_files += 1
@@ -1281,6 +1387,8 @@ class SyncTaskRunner:
         file_uploader: FileUploader,
         drive_service: DriveService,
         import_task_service: ImportTaskService,
+        *,
+        force: bool = False,
     ) -> None:
         key = str(path)
         if key in self._uploading_paths:
@@ -1326,9 +1434,17 @@ class SyncTaskRunner:
                     file_uploader,
                     drive_service,
                     import_task_service,
+                    force=force,
                 )
                 return
-            await self._upload_file(task, status, path, file_uploader, drive_service)
+            await self._upload_file(
+                task,
+                status,
+                path,
+                file_uploader,
+                drive_service,
+                force=force,
+            )
         finally:
             self._uploading_paths.discard(key)
 
@@ -1341,10 +1457,19 @@ class SyncTaskRunner:
         file_uploader: FileUploader,
         drive_service: DriveService,
         import_task_service: ImportTaskService,
+        *,
+        force: bool = False,
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
         if link and link.cloud_type == "file":
-            await self._upload_file(task, status, path, file_uploader, drive_service)
+            await self._upload_file(
+                task,
+                status,
+                path,
+                file_uploader,
+                drive_service,
+                force=force,
+            )
             return
         imported_doc = False
         if not link:
@@ -1381,6 +1506,7 @@ class SyncTaskRunner:
             file_hash=file_hash,
             markdown=markdown,
             drive_service=drive_service,
+            force=force,
         ):
             return
         local_images_repaired = _has_local_image_upload_revision(link.cloud_revision)
@@ -1406,7 +1532,7 @@ class SyncTaskRunner:
                     SyncFileEvent(path=str(path), status="skipped", message="内容未变化"),
                 )
                 return
-            if task.sync_mode != "upload_only" and mtime <= (link.updated_at + 1.0):
+            if (not force) and task.sync_mode != "upload_only" and mtime <= (link.updated_at + 1.0):
                 status.skipped_files += 1
                 self._record_event(status, 
                     SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
@@ -1569,8 +1695,17 @@ class SyncTaskRunner:
         file_hash: str,
         markdown: str,
         drive_service: DriveService,
+        force: bool = False,
     ) -> bool:
         """双向同步上传前校验云端是否相对本地基线已变化。"""
+        if force:
+            logger.info(
+                "冲突处理按本地优先强制覆盖云端: task_id={} path={} token={}",
+                task.id,
+                path,
+                link.cloud_token,
+            )
+            return False
         if task.sync_mode != "bidirectional":
             return False
         if link.cloud_type not in {"docx", "doc"}:
@@ -2416,6 +2551,8 @@ class SyncTaskRunner:
         path: Path,
         file_uploader: FileUploader,
         drive_service: DriveService | None = None,
+        *,
+        force: bool = False,
     ) -> None:
         link = await self._link_service.get_by_local_path(str(path))
         signature = self._get_local_signature(path)
@@ -2441,6 +2578,7 @@ class SyncTaskRunner:
                 return
             if (
                 task.sync_mode != "upload_only"
+                and not force
                 and not link.local_hash
                 and file_mtime <= (link.updated_at + 1.0)
             ):
@@ -2921,6 +3059,23 @@ class SyncTaskRunner:
         ):
             return True
         return False
+
+    @staticmethod
+    def _matches_download_selection(
+        candidate: DownloadCandidate,
+        *,
+        selected_paths: set[str] | None,
+        selected_cloud_tokens: set[str] | None,
+    ) -> bool:
+        path_selected = (
+            True if not selected_paths else str(candidate.target_path) in selected_paths
+        )
+        token_selected = (
+            True
+            if not selected_cloud_tokens
+            else candidate.effective_token in selected_cloud_tokens
+        )
+        return path_selected and token_selected
 
     async def _resolve_cloud_parent(
         self,

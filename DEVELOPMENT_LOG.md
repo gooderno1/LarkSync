@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.6.2-dev.5 (2026-04-29)
+
+- 目标：
+  - 修复冲突管理里“使用本地 / 使用云端”只改冲突状态、不执行实际同步的问题。
+- 结果：
+  - 新增 `ConflictResolutionService`，冲突解决从“仅写 resolved 标记”升级为“先定位关联任务，再调用同步执行器执行定向上传/下载，成功后才标记冲突已解决”。
+  - `SyncTaskRunner` 新增冲突定向处理入口：`run_conflict_upload()` 会按本地优先强制绕过云端修改时间阻断，直接上传当前本地版本；`run_conflict_download()` 会按云端优先强制绕过“本地较新”跳过逻辑，下载指定云端文件覆盖本地。
+  - 解决失败时冲突保持未解决状态，不再出现“页面显示已处理，但文件其实没变化”的假成功。
+- 测试：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_conflict_service.py apps/backend/tests/test_conflict_resolution_service.py apps/backend/tests/test_conflict_resolution_runner.py apps/backend/tests/test_tray_status.py -p pytest_asyncio.plugin -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.2-dev.4 (2026-04-29)
 
 - 目标：

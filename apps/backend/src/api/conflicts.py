@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from src.services.conflict_resolution_service import (
+    ConflictResolutionError,
+    ConflictResolutionService,
+)
 from src.services.conflict_service import ConflictItem, ConflictService
 
 
@@ -49,6 +53,7 @@ class ConflictResponse(BaseModel):
 
 router = APIRouter(prefix="/conflicts", tags=["conflicts"])
 service = ConflictService()
+resolution_service = ConflictResolutionService(conflict_service=service)
 
 
 @router.get("")
@@ -73,9 +78,16 @@ async def check_conflict(payload: ConflictCreateRequest) -> ConflictCheckRespons
 
 @router.post("/{conflict_id}/resolve", response_model=ConflictResponse)
 async def resolve_conflict(
-    conflict_id: str, payload: ConflictResolveRequest
+    request: Request, conflict_id: str, payload: ConflictResolveRequest
 ) -> ConflictResponse:
-    item = await service.resolve(conflict_id, payload.action)
+    try:
+        item = await resolution_service.resolve_conflict(
+            conflict_id,
+            payload.action,
+            runner=getattr(request.app.state, "sync_runner", None),
+        )
+    except ConflictResolutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not item:
         raise HTTPException(status_code=404, detail="Conflict not found")
     return ConflictResponse.from_item(item)
