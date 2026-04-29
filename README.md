@@ -76,6 +76,7 @@ npm run dev
 - 使用文档：[`docs/USAGE.md`](docs/USAGE.md)
 - OAuth 配置：[`docs/OAUTH_GUIDE.md`](docs/OAUTH_GUIDE.md)
 - 同步逻辑：[`docs/SYNC_LOGIC.md`](docs/SYNC_LOGIC.md)
+- 发布标准：[`docs/RELEASE_STANDARD.md`](docs/RELEASE_STANDARD.md)
 - CLI 契约：[`docs/CLI_AGENT_CONTRACT.md`](docs/CLI_AGENT_CONTRACT.md)
 - OpenClaw Skill：[`docs/OPENCLAW_SKILL.md`](docs/OPENCLAW_SKILL.md)
 

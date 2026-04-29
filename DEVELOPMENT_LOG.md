@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.2 release (2026-04-29)
+
+- 目标：
+  - 发布 `v0.6.2` 稳定版，收口删除安全、冲突中心、冲突执行和自动更新链路的连续修复。
+  - 将 GitHub Release 说明升级为“升级重点 + 逐个 dev 版本详细变更”的明确结构，作为后续发布标准。
+- 结果：
+  - 稳定版基于 `v0.6.2-dev.1` 至 `v0.6.2-dev.5`：删除墓碑执行前会校验同 token 的有效本地链接，冲突列表去重，冲突管理的“使用本地 / 使用云端”会真正执行一次定向同步，不再只改状态。
+  - Windows 自动更新链路补齐用户数据目录落盘、静默安装、安装器退出码记录和自动重启，降低正式版更新失败与状态误判风险。
+  - 新增 [`docs/RELEASE_STANDARD.md`](docs/RELEASE_STANDARD.md)，`scripts/release_notes.py` 改为优先读取 `DEVELOPMENT_LOG.md` 生成 GitHub Release 说明；后续正式版发布页必须先给升级重点，再给逐个 `dev` 版本的详细结果，避免模糊摘要。
+- 测试：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_release_notes.py apps/backend/tests/test_conflict_service.py apps/backend/tests/test_conflict_resolution_service.py apps/backend/tests/test_conflict_resolution_runner.py apps/backend/tests/test_tray_status.py -p pytest_asyncio.plugin -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.2-dev.5 (2026-04-29)
 
 - 目标：

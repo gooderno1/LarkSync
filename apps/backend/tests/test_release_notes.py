@@ -79,6 +79,55 @@ def test_render_release_notes_groups_multiple_versions() -> None:
     assert "- [2026-02-17] fix(ui): b2" in markdown
 
 
+def test_parse_development_log_and_render_detailed_sections() -> None:
+    development_log = """
+# DEVELOPMENT LOG
+
+## v0.5.50-dev.2 (2026-02-18)
+
+- 目标：
+  - 修复 B
+- 结果：
+  - 调整同步器 B1
+  - 修复同步器 B2
+- 测试：
+  - pytest b
+
+## v0.5.50-dev.1 (2026-02-17)
+
+- 目标：
+  - 修复 A
+- 结果：
+  - 调整界面 A1
+""".strip()
+    sections = release_notes.parse_development_log(development_log)
+    selected = release_notes.collect_devlog_sections_for_release(sections, "v0.5.50")
+    markdown = release_notes.render_release_notes(
+        target_version="v0.5.50",
+        release_entry=release_notes.ChangelogEntry(
+            date="2026-02-20",
+            version="v0.5.50",
+            message="release: v0.5.50",
+        ),
+        previous_release=release_notes.ChangelogEntry(
+            date="2026-02-10",
+            version="v0.5.49",
+            message="release: v0.5.49",
+        ),
+        items=[],
+        dev_sections=selected,
+    )
+
+    assert [section.version for section in selected] == [
+        "v0.5.50-dev.2",
+        "v0.5.50-dev.1",
+    ]
+    assert "### 升级重点" in markdown
+    assert "- `v0.5.50-dev.2`：调整同步器 B1" in markdown
+    assert "#### v0.5.50-dev.1" in markdown
+    assert "- 调整界面 A1" in markdown
+
+
 def test_render_release_notes_appends_asset_checksums() -> None:
     markdown = release_notes.render_release_notes(
         target_version="v0.5.51",
@@ -161,3 +210,44 @@ def test_build_notes_collects_asset_checksums(tmp_path: Path) -> None:
     assert "## 安装包校验" in markdown
     assert "LarkSync-Setup-v0.5.51.exe" in markdown
     assert release_notes.compute_sha256(asset_path) in markdown
+
+
+def test_build_notes_prefers_development_log_for_stable_release(tmp_path: Path) -> None:
+    changelog_path = tmp_path / "CHANGELOG.md"
+    changelog_path.write_text(
+        (
+            "# CHANGELOG\n\n"
+            "[2026-04-29] v0.6.2 release: v0.6.2\n"
+            "[2026-04-29] v0.6.2-dev.2 fix(b): desc\n"
+            "[2026-04-29] v0.6.2-dev.1 fix(a): desc\n"
+            "[2026-04-28] v0.6.1 release: v0.6.1\n"
+        ),
+        encoding="utf-8",
+    )
+    development_log_path = tmp_path / "DEVELOPMENT_LOG.md"
+    development_log_path.write_text(
+        (
+            "# DEVELOPMENT LOG\n\n"
+            "## v0.6.2-dev.2 (2026-04-29)\n\n"
+            "- 目标：\n"
+            "  - 修复 B\n"
+            "- 结果：\n"
+            "  - 自动更新改走用户目录\n\n"
+            "## v0.6.2-dev.1 (2026-04-29)\n\n"
+            "- 目标：\n"
+            "  - 修复 A\n"
+            "- 结果：\n"
+            "  - 删除墓碑执行前增加有效链接检查\n"
+        ),
+        encoding="utf-8",
+    )
+
+    markdown = release_notes.build_notes(
+        changelog_path,
+        "v0.6.2",
+        development_log_path=development_log_path,
+    )
+
+    assert "### 升级重点" in markdown
+    assert "#### v0.6.2-dev.2" in markdown
+    assert "- 自动更新改走用户目录" in markdown
