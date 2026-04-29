@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.6.2-dev.2 (2026-04-29)
+
+- 目标：
+  - 修复“冲突管理”页面会展示两条相同未解决冲突的问题。
+- 结果：
+  - `ConflictService.add_conflict()` 新增未解决冲突查重；同一路径、同一 cloud token、同一版本差异重复检测时复用原记录，不再重复写库。
+  - `ConflictService.list_conflicts()` 会折叠历史残留的重复未解决记录；即使旧库里已存在重复数据，冲突管理页面也只展示一条当前冲突。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_conflict_service.py -q`
+
 ## v0.6.2-dev.1 (2026-04-29)
 
 - 目标：

@@ -70,22 +70,41 @@ class ConflictService:
         local_preview: str | None = None,
         cloud_preview: str | None = None,
     ) -> ConflictItem:
-        record = ConflictRecord(
-            id=str(uuid.uuid4()),
-            local_path=local_path,
-            cloud_token=cloud_token,
-            local_hash=local_hash,
-            db_hash=db_hash,
-            cloud_version=cloud_version,
-            db_version=db_version,
-            local_preview=local_preview,
-            cloud_preview=cloud_preview,
-            created_at=time.time(),
-            resolved=False,
-        )
         async with self._session_maker() as session:
+            record = await self._find_matching_unresolved_conflict(
+                session,
+                local_path=local_path,
+                cloud_token=cloud_token,
+                local_hash=local_hash,
+                db_hash=db_hash,
+                cloud_version=cloud_version,
+                db_version=db_version,
+            )
+            if record:
+                if local_preview is not None:
+                    record.local_preview = local_preview
+                if cloud_preview is not None:
+                    record.cloud_preview = cloud_preview
+                await session.commit()
+                await session.refresh(record)
+                return self._to_item(record)
+
+            record = ConflictRecord(
+                id=str(uuid.uuid4()),
+                local_path=local_path,
+                cloud_token=cloud_token,
+                local_hash=local_hash,
+                db_hash=db_hash,
+                cloud_version=cloud_version,
+                db_version=db_version,
+                local_preview=local_preview,
+                cloud_preview=cloud_preview,
+                created_at=time.time(),
+                resolved=False,
+            )
             session.add(record)
             await session.commit()
+            await session.refresh(record)
         return self._to_item(record)
 
     async def list_conflicts(self, include_resolved: bool = False) -> list[ConflictItem]:
@@ -96,7 +115,18 @@ class ConflictService:
         async with self._session_maker() as session:
             result = await session.execute(stmt)
             records = result.scalars().all()
-        return [self._to_item(record) for record in records]
+        visible_records: list[ConflictRecord] = []
+        seen_unresolved_keys: set[tuple[str, str, str, str, int, int]] = set()
+        for record in records:
+            if record.resolved:
+                visible_records.append(record)
+                continue
+            key = self._conflict_signature(record)
+            if key in seen_unresolved_keys:
+                continue
+            seen_unresolved_keys.add(key)
+            visible_records.append(record)
+        return [self._to_item(record) for record in visible_records]
 
     async def resolve(self, conflict_id: str, action: str) -> ConflictItem | None:
         async with self._session_maker() as session:
@@ -124,4 +154,43 @@ class ConflictService:
             created_at=record.created_at,
             resolved=record.resolved,
             resolved_action=record.resolved_action,
+        )
+
+    async def _find_matching_unresolved_conflict(
+        self,
+        session: AsyncSession,
+        *,
+        local_path: str,
+        cloud_token: str,
+        local_hash: str,
+        db_hash: str,
+        cloud_version: int,
+        db_version: int,
+    ) -> ConflictRecord | None:
+        stmt = (
+            select(ConflictRecord)
+            .where(ConflictRecord.resolved.is_(False))
+            .where(ConflictRecord.local_path == local_path)
+            .where(ConflictRecord.cloud_token == cloud_token)
+            .where(ConflictRecord.local_hash == local_hash)
+            .where(ConflictRecord.db_hash == db_hash)
+            .where(ConflictRecord.cloud_version == cloud_version)
+            .where(ConflictRecord.db_version == db_version)
+            .order_by(ConflictRecord.created_at.desc())
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    def _conflict_signature(
+        record: ConflictRecord,
+    ) -> tuple[str, str, str, str, int, int]:
+        return (
+            record.local_path,
+            record.cloud_token,
+            record.local_hash,
+            record.db_hash,
+            record.cloud_version,
+            record.db_version,
         )
