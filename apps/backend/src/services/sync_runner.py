@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import os
 import re
 import shutil
 import time
@@ -2024,6 +2025,27 @@ class SyncTaskRunner:
                         )
                         continue
                     if tombstone.cloud_token:
+                        active_link = await self._find_active_link_for_cloud_token(
+                            task=task,
+                            cloud_token=tombstone.cloud_token,
+                            excluding_local_path=tombstone.local_path,
+                        )
+                        if active_link:
+                            await self._tombstone_service.mark_status(
+                                tombstone.id,
+                                status="cancelled",
+                                reason="云端文件仍绑定到其他本地路径",
+                            )
+                            self._record_event(
+                                status,
+                                SyncFileEvent(
+                                    path=tombstone.local_path,
+                                    status="skipped",
+                                    message=f"云端文件仍绑定到其他本地路径，取消删除: {active_link.local_path}",
+                                ),
+                                task,
+                            )
+                            continue
                         if not callable(delete_file):
                             await self._tombstone_service.mark_status(
                                 tombstone.id,
@@ -2164,8 +2186,37 @@ class SyncTaskRunner:
             except Exception:
                 logger.exception("清理块级映射失败: path={} token={}", local_path, token)
 
+    async def _find_active_link_for_cloud_token(
+        self,
+        *,
+        task: SyncTaskItem,
+        cloud_token: str,
+        excluding_local_path: str,
+    ) -> SyncLinkItem | None:
+        excluded = self._normalize_local_path_key(excluding_local_path)
+        try:
+            links = await self._link_service.list_by_task(task.id)
+        except Exception:
+            logger.exception("查询同步映射失败: task_id={} token={}", task.id, cloud_token)
+            return None
+        for link in links:
+            if link.cloud_token != cloud_token:
+                continue
+            if self._normalize_local_path_key(link.local_path) == excluded:
+                continue
+            candidate = Path(link.local_path)
+            if not candidate.exists():
+                continue
+            if self._should_ignore_path(task, candidate):
+                continue
+            return link
+        return None
+
     @staticmethod
-    def _move_to_local_trash(task: SyncTaskItem, local_path: Path) -> Path:
+    def _normalize_local_path_key(path: str | Path) -> str:
+        return os.path.normcase(os.path.normpath(str(path)))
+
+    def _move_to_local_trash(self, task: SyncTaskItem, local_path: Path) -> Path:
         root = Path(task.local_path)
         trash_root = root / _LOCAL_TRASH_DIR_NAME
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -2188,6 +2239,8 @@ class SyncTaskRunner:
                     target = alt
                     break
                 index += 1
+        self._silence_path(task.id, local_path, ttl_seconds=60.0)
+        self._silence_path(task.id, target, ttl_seconds=60.0)
         shutil.move(str(local_path), str(target))
         return target
 
@@ -2967,10 +3020,16 @@ class SyncTaskRunner:
             watcher.stop()
         self._initial_upload_scanned.discard(task_id)
 
-    def _silence_path(self, task_id: str, path: Path) -> None:
+    def _silence_path(
+        self,
+        task_id: str,
+        path: Path,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
         watcher = self._watchers.get(task_id)
         if watcher:
-            watcher.silence(path)
+            watcher.silence(path, ttl_seconds=ttl_seconds)
 
     async def _list_folder_tokens(
         self, drive_service: DriveService, folder_token: str

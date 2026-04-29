@@ -242,6 +242,14 @@ class FakeLinkService:
         return before != len(self._persisted)
 
 
+class FakeWatcher:
+    def __init__(self) -> None:
+        self.silenced: list[tuple[str, float | None]] = []
+
+    def silence(self, path: Path, ttl_seconds: float | None = None) -> None:
+        self.silenced.append((str(path), ttl_seconds))
+
+
 class FakeRunStampService:
     def __init__(self) -> None:
         self.marked: list[tuple[str, float | None]] = []
@@ -1590,6 +1598,121 @@ async def test_process_pending_deletes_passes_cloud_type_to_drive_delete(
     assert drive.deleted == [("doc-to-delete", "docx")]
     assert any(item.status == "deleted" for item in status.last_files)
     assert not any(item.status == "delete_failed" for item in status.last_files)
+
+
+@pytest.mark.asyncio
+async def test_process_pending_deletes_cancels_cloud_delete_when_token_has_active_link(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    old_path = tmp_path / "old.md"
+    new_path = tmp_path / "folder" / "old.md"
+    new_path.parent.mkdir()
+    new_path.write_text("# moved", encoding="utf-8")
+
+    tombstone_service = FakeTombstoneService()
+    await tombstone_service.create_or_refresh(
+        task_id="task-del-guard",
+        local_path=str(old_path),
+        cloud_token="doc-shared",
+        cloud_type="docx",
+        source="local",
+        reason="监听到本地删除事件",
+        expire_at=0.0,
+    )
+
+    class DriveWithDelete(FakeDriveService):
+        def __init__(self) -> None:
+            super().__init__(DriveNode(token="root", name="root", type="folder"))
+            self.deleted: list[tuple[str, str | None]] = []
+
+        async def delete_file(self, file_token: str, file_type: str | None = None) -> None:
+            self.deleted.append((file_token, file_type))
+
+    drive = DriveWithDelete()
+    runner = SyncTaskRunner(
+        tombstone_service=tombstone_service,
+        link_service=FakeLinkService(
+            [
+                SyncLinkItem(
+                    local_path=str(old_path),
+                    cloud_token="doc-shared",
+                    cloud_type="docx",
+                    task_id="task-del-guard",
+                    updated_at=10.0,
+                ),
+                SyncLinkItem(
+                    local_path=str(new_path),
+                    cloud_token="doc-shared",
+                    cloud_type="docx",
+                    task_id="task-del-guard",
+                    updated_at=20.0,
+                ),
+            ]
+        ),
+    )
+    task = SyncTaskItem(
+        id="task-del-guard",
+        name="删除保护测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._process_pending_deletes(
+        task=task,
+        status=status,
+        drive_service=drive,
+    )
+
+    assert drive.deleted == []
+    assert tombstone_service.pending == []
+    assert tombstone_service.marked[-1][1] == "cancelled"
+    assert tombstone_service.marked[-1][2] == "云端文件仍绑定到其他本地路径"
+    assert any(item.status == "skipped" for item in status.last_files)
+    assert not any(item.status == "deleted" for item in status.last_files)
+
+
+def test_move_to_local_trash_silences_source_and_trash_target(tmp_path: Path) -> None:
+    root = tmp_path / "sync-root"
+    local_path = root / "old.md"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text("# old", encoding="utf-8")
+    watcher = FakeWatcher()
+    runner = SyncTaskRunner()
+    task = SyncTaskItem(
+        id="task-trash",
+        name="回收目录测试",
+        local_path=root.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    runner._watchers[task.id] = watcher  # type: ignore[assignment]
+
+    moved_to = runner._move_to_local_trash(task, local_path)
+
+    assert not local_path.exists()
+    assert moved_to.exists()
+    assert str(local_path) in {path for path, _ in watcher.silenced}
+    assert str(moved_to) in {path for path, _ in watcher.silenced}
 
 
 @pytest.mark.asyncio

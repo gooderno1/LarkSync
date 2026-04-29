@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.6.2-dev.1 (2026-04-29)
+
+- 目标：
+  - 修复云端删除旧路径后，本地安全回收动作被 watcher 当成用户删除，进而反向删除仍被新路径使用的云端文档的问题。
+- 结果：
+  - `source=local` 删除墓碑执行云端删除前，会检查同一任务内是否仍有其他存在且未被忽略的本地路径绑定同一个 cloud token。
+  - 若同一 cloud token 仍有有效本地路径，删除墓碑会取消执行并记录跳过事件，不再调用飞书删除接口。
+  - 本地安全删除移入 `.larksync_trash` 前，会静默源路径和回收目标路径的 watcher 事件，避免程序自身移动文件再次触发本地删除墓碑。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_runner.py::test_process_pending_deletes_cancels_cloud_delete_when_token_has_active_link apps/backend/tests/test_sync_runner.py::test_move_to_local_trash_silences_source_and_trash_target apps/backend/tests/test_sync_runner.py::test_process_pending_deletes_passes_cloud_type_to_drive_delete apps/backend/tests/test_sync_runner.py::test_handle_local_deleted_event_creates_tombstone -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.6.1 release (2026-04-28)
 
 - 目标：
