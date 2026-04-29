@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from src.core.config import ConfigManager
+from src.core.paths import update_data_dir
 from src.services.update_service import (
     UpdateService,
     compute_file_sha256,
@@ -178,3 +179,51 @@ async def test_check_for_updates_uses_release_notes_sha256_when_no_checksum_asse
     assert status.asset is not None
     assert status.asset.checksum_url is None
     assert status.asset.sha256 == digest
+
+
+def test_load_cached_status_overrides_stale_current_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    service = UpdateService(config_manager=ConfigManager.get())
+    service._status_path = tmp_path / "status.json"  # type: ignore[attr-defined]
+    service._status_path.write_text(  # type: ignore[attr-defined]
+        (
+            '{'
+            '"current_version":"v0.6.0",'
+            '"latest_version":"v0.6.1",'
+            '"update_available":true'
+            '}'
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("src.services.update_service.get_version", lambda: "v0.6.1")
+
+    status = service.load_cached_status()
+
+    assert status.current_version == "v0.6.1"
+    assert status.update_available is False
+
+
+def test_update_service_uses_external_update_dir_when_frozen(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    monkeypatch.delenv("LARKSYNC_UPDATE_ROOT", raising=False)
+    monkeypatch.delenv("LARKSYNC_DATA_DIR", raising=False)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.setattr("src.core.paths.sys.frozen", True, raising=False)
+    ConfigManager.reset()
+
+    service = UpdateService(config_manager=ConfigManager.get())
+
+    assert service._status_path == update_data_dir() / "status.json"  # type: ignore[attr-defined]
+    assert str(service._status_path).startswith(str(tmp_path / "appdata"))  # type: ignore[attr-defined]

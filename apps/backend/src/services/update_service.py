@@ -14,7 +14,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from src.core.config import ConfigManager
-from src.core.paths import data_dir, logs_dir
+from src.core.paths import update_data_dir, update_logs_dir
 from src.core.version import get_version
 
 _VERSION_RE = re.compile("^v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-dev\\.(\\d+))?$")
@@ -207,7 +207,7 @@ def compute_file_sha256(path: Path) -> str:
 
 
 def _update_log_path() -> Path:
-    return logs_dir() / "update.log"
+    return update_logs_dir() / "update.log"
 
 
 def _append_update_log(message: str) -> None:
@@ -246,7 +246,7 @@ class UpdateService:
         self._repo = repo
         self._config_manager = config_manager or ConfigManager.get()
         self._lock = asyncio.Lock()
-        self._status_path = data_dir() / "updates" / "status.json"
+        self._status_path = update_data_dir() / "status.json"
 
     def auto_update_enabled(self) -> bool:
         return bool(self._config_manager.config.auto_update_enabled)
@@ -255,7 +255,10 @@ class UpdateService:
         data = _read_json(self._status_path)
         current_version = get_version()
         if data:
-            data.setdefault("current_version", current_version)
+            data["current_version"] = current_version
+            latest_version = str(data.get("latest_version") or "").strip()
+            if latest_version and not is_newer_version(latest_version, current_version):
+                data["update_available"] = False
             if not data.get("last_check"):
                 data["last_check"] = self._config_manager.config.last_update_check or None
             return UpdateStatus.model_validate(data)
@@ -365,7 +368,7 @@ class UpdateService:
             raise RuntimeError("没有可下载的更新包")
         expected_sha256 = await self._resolve_expected_sha256(status.asset)
 
-        updates_dir = data_dir() / "updates"
+        updates_dir = update_data_dir()
         updates_dir.mkdir(parents=True, exist_ok=True)
         target_path = updates_dir / status.asset.name
 

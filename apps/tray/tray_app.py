@@ -34,6 +34,9 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
+_BACKEND_ROOT = os.path.join(_PROJECT_ROOT, "apps", "backend")
+if _BACKEND_ROOT not in sys.path:
+    sys.path.insert(0, _BACKEND_ROOT)
 
 from apps.tray.config import (
     BACKEND_HOST,
@@ -52,6 +55,7 @@ from apps.tray.backend_manager import BackendManager
 from apps.tray.icon_generator import generate_icons, get_icon_path
 from apps.tray.autostart import is_autostart_enabled, toggle_autostart
 from apps.tray import notifier
+from src.core.paths import update_data_dir, update_logs_dir
 
 
 def _sanitize_runtime_pythonpath() -> None:
@@ -126,7 +130,7 @@ def _data_dir() -> Path:
 
 
 def _install_request_path() -> Path:
-    return _data_dir() / "updates" / "install-request.json"
+    return update_data_dir() / "install-request.json"
 
 
 def _load_install_request() -> dict[str, str | float] | None:
@@ -154,7 +158,7 @@ def _clear_install_request() -> None:
 
 def _append_install_launch_log(message: str) -> None:
     try:
-        log_path = _data_dir() / "logs" / "update-install.log"
+        log_path = update_logs_dir() / "update-install.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         with log_path.open("a", encoding="utf-8", errors="ignore") as file:
@@ -547,7 +551,7 @@ class LarkSyncTray:
         if sys.platform == "win32":
             try:
                 if _startfile_windows_installer(path):
-                    _append_install_launch_log(f"使用 ShellExecute 启动安装包: {path}")
+                    _append_install_launch_log(f"已请求 ShellExecute 启动安装包: {path}")
                     return
             except OSError as exc:
                 _append_install_launch_log(

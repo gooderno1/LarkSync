@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.2-dev.3 (2026-04-29)
+
+- 目标：
+  - 修复正式版自动更新“拉起安装程序不稳定”和更新完成后仍误报有新版本的问题。
+- 结果：
+  - 自动更新的安装包、`status.json`、`install-request.json`、`update.log` / `update-install.log` 在冻结打包环境下改为写入用户数据目录，不再落在安装目录 `_internal\\data` 下，降低自更新时与安装目录互相影响的风险。
+  - 更新状态读取会始终以当前运行版本覆盖缓存中的 `current_version`，并在最新版本不高于当前版本时自动清掉 `update_available`，避免安装完成后继续提示同一版本更新。
+  - 托盘日志文案从“使用 ShellExecute 启动安装包”改为“已请求 ShellExecute 启动安装包”，避免把系统已接收启动请求误记成安装器已经实际启动成功。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_update_service.py -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_system_update_api.py -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_tray_update_install.py -q`
+
 ## v0.6.2-dev.2 (2026-04-29)
 
 - 目标：

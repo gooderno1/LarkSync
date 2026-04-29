@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from src.core.paths import data_dir
+from src.core.paths import update_data_dir
 
 
 class UpdateInstallRequest(BaseModel):
@@ -15,7 +15,7 @@ class UpdateInstallRequest(BaseModel):
 
 
 def install_request_path() -> Path:
-    return data_dir() / "updates" / "install-request.json"
+    return update_data_dir() / "install-request.json"
 
 
 def queue_install_request(

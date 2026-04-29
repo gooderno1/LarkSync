@@ -58,10 +58,30 @@ def logs_dir() -> Path:
     return data_dir() / "logs"
 
 
+def update_runtime_root() -> Path:
+    env_root = os.getenv("LARKSYNC_UPDATE_ROOT")
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    if getattr(sys, "frozen", False):
+        return _default_app_data_dir()
+    return data_dir()
+
+
+def update_data_dir() -> Path:
+    return update_runtime_root() / "updates"
+
+
+def update_logs_dir() -> Path:
+    return update_runtime_root() / "logs"
+
+
 __all__ = [
     "repo_root",
     "data_dir",
     "logs_dir",
+    "update_runtime_root",
+    "update_data_dir",
+    "update_logs_dir",
     "bundle_root",
     "_default_app_data_dir",
     "_is_dev_repo",
