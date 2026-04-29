@@ -12,6 +12,8 @@ from src.core.paths import update_data_dir
 class UpdateInstallRequest(BaseModel):
     installer_path: str
     created_at: float
+    silent: bool = True
+    restart_path: str | None = None
 
 
 def install_request_path() -> Path:
@@ -22,14 +24,24 @@ def queue_install_request(
     installer_path: str | Path,
     *,
     created_at: float | None = None,
+    silent: bool = True,
+    restart_path: str | Path | None = None,
 ) -> UpdateInstallRequest:
     path = Path(installer_path).expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(f"安装包不存在: {path}")
+    resolved_restart_path: str | None = None
+    if restart_path is not None:
+        restart_target = Path(restart_path).expanduser().resolve()
+        if not restart_target.is_file():
+            raise FileNotFoundError(f"重启程序不存在: {restart_target}")
+        resolved_restart_path = str(restart_target)
 
     request = UpdateInstallRequest(
         installer_path=str(path),
         created_at=float(created_at if created_at is not None else time.time()),
+        silent=bool(silent),
+        restart_path=resolved_restart_path,
     )
     request_path = install_request_path()
     request_path.parent.mkdir(parents=True, exist_ok=True)

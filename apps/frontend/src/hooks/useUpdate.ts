@@ -21,6 +21,8 @@ export type UpdateStatus = {
 export type UpdateInstallResponse = {
   queued: boolean;
   installer_path: string;
+  silent: boolean;
+  restart_path?: string | null;
 };
 
 export function useUpdate() {
@@ -48,7 +50,7 @@ export function useUpdate() {
       apiFetch<UpdateInstallResponse>("/system/update/install", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ download_path: downloadPath || null }),
+        body: JSON.stringify({ download_path: downloadPath || null, silent: true }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["update-status"] }),
   });

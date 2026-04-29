@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.6.2-dev.4 (2026-04-29)
+
+- 目标：
+  - 为 Windows 自动更新补齐静默安装能力，并在安装完成后自动重启新版本。
+- 结果：
+  - `/system/update/install` 默认会把 `silent=true`、`restart_path=<当前 LarkSync.exe>` 写入安装请求；前端安装入口改为“静默安装已下载更新”。
+  - 托盘在 Windows 上检测到静默安装请求后，不再直接 ShellExecute 安装包，而是启动 detached PowerShell helper，以 NSIS `/S` 静默参数运行安装器、等待安装器退出，并在退出码为 0 时自动重启新版本。
+  - `update-install.log` 新增静默安装阶段日志：安装器启动请求、PID、退出码、自动重启请求，便于定位“托盘已发起”和“安装器实际执行结果”之间的问题。
+  - 仍保留 UAC 风险提示：如果安装目录位于 `Program Files`，Windows 可能继续弹出系统权限确认，这不属于安装向导界面。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_system_update_api.py -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_tray_update_install.py -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.2-dev.3 (2026-04-29)
 
 - 目标：

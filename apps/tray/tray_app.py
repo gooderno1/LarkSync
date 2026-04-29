@@ -133,7 +133,7 @@ def _install_request_path() -> Path:
     return update_data_dir() / "install-request.json"
 
 
-def _load_install_request() -> dict[str, str | float] | None:
+def _load_install_request() -> dict[str, str | float | bool] | None:
     path = _install_request_path()
     if not path.exists():
         return None
@@ -149,7 +149,14 @@ def _load_install_request() -> dict[str, str | float] | None:
         created_at = float(created_at_raw) if created_at_raw is not None else 0.0
     except (TypeError, ValueError):
         created_at = 0.0
-    return {"installer_path": installer_path, "created_at": created_at}
+    silent = bool(payload.get("silent", False))
+    restart_path = str(payload.get("restart_path", "")).strip()
+    return {
+        "installer_path": installer_path,
+        "created_at": created_at,
+        "silent": silent,
+        "restart_path": restart_path,
+    }
 
 
 def _clear_install_request() -> None:
@@ -181,12 +188,46 @@ def _resolve_powershell_executable() -> str:
     return "powershell"
 
 
-def _build_windows_installer_launch_command(path: Path) -> list[str]:
-    escaped = str(path).replace("'", "''")
+def _build_windows_installer_launch_command(
+    path: Path,
+    *,
+    silent: bool = False,
+    restart_path: Path | None = None,
+    log_path: Path | None = None,
+) -> list[str]:
+    installer_escaped = str(path).replace("'", "''")
+    restart_escaped = str(restart_path).replace("'", "''") if restart_path else ""
+    log_escaped = str(log_path).replace("'", "''") if log_path else ""
+    silent_literal = "$true" if silent else "$false"
     script = (
-        f"$installerPath = '{escaped}'; "
-        "Start-Sleep -Milliseconds 800; "
-        "Start-Process -LiteralPath $installerPath"
+        f"$installerPath = '{installer_escaped}'; "
+        f"$restartPath = '{restart_escaped}'; "
+        f"$logPath = '{log_escaped}'; "
+        f"$silentInstall = {silent_literal}; "
+        "function Write-InstallLog([string]$message) { "
+        "if ([string]::IsNullOrWhiteSpace($logPath)) { return }; "
+        "try { "
+        "$parent = Split-Path -Parent $logPath; "
+        "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
+        "$timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'; "
+        "Add-Content -LiteralPath $logPath -Value \"[$timestamp] $message\" -Encoding UTF8 "
+        "} catch {} "
+        "}; "
+        "$argumentList = @(); "
+        "if ($silentInstall) { $argumentList += '/S' }; "
+        "Write-InstallLog (\"启动安装器请求: installer=\" + $installerPath + \" silent=\" + $silentInstall); "
+        "$process = Start-Process -LiteralPath $installerPath -ArgumentList $argumentList -PassThru; "
+        "Write-InstallLog (\"安装器进程已启动 pid=\" + $process.Id); "
+        "Wait-Process -Id $process.Id; "
+        "$process.Refresh(); "
+        "$exitCode = $process.ExitCode; "
+        "Write-InstallLog (\"安装器进程已退出 exit_code=\" + $exitCode); "
+        "if ($exitCode -ne 0) { exit $exitCode }; "
+        "if (-not [string]::IsNullOrWhiteSpace($restartPath)) { "
+        "Start-Sleep -Milliseconds 1200; "
+        "Start-Process -LiteralPath $restartPath; "
+        "Write-InstallLog (\"已请求重启新版本: \" + $restartPath) "
+        "}"
     )
     encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
     return [
@@ -523,12 +564,20 @@ class LarkSyncTray:
         if not request:
             return False
         installer_path = request["installer_path"]
+        silent = bool(request.get("silent", False))
+        restart_path = str(request.get("restart_path") or "").strip() or None
         created_at = float(request.get("created_at") or 0.0)
         if created_at > 0 and (time.time() - created_at) < _INSTALL_REQUEST_MIN_AGE_SECONDS:
             return False
         try:
-            _append_install_launch_log(f"准备启动安装包: {installer_path}")
-            self._schedule_installer_launch(installer_path)
+            _append_install_launch_log(
+                f"准备启动安装包: {installer_path} (silent={silent} restart={restart_path or '-'})"
+            )
+            self._schedule_installer_launch(
+                installer_path,
+                silent=silent,
+                restart_path=restart_path,
+            )
         except Exception as exc:
             _append_install_launch_log(f"启动安装包失败: {installer_path} ({type(exc).__name__}: {exc})")
             print(f"警告：启动安装程序失败: {exc}")
@@ -537,18 +586,46 @@ class LarkSyncTray:
         _append_install_launch_log(f"已调度安装包启动: {installer_path}")
         self._notify(
             "正在启动更新安装",
-            "LarkSync 将退出并打开安装包，请按安装向导完成更新。",
+            "LarkSync 将退出并执行更新安装，完成后会自动重新启动。",
             category="update",
         )
         self.stop()
         return True
 
-    def _schedule_installer_launch(self, installer_path: str) -> None:
+    def _schedule_installer_launch(
+        self,
+        installer_path: str,
+        *,
+        silent: bool = False,
+        restart_path: str | None = None,
+    ) -> None:
         path = Path(installer_path).expanduser().resolve()
         if not path.is_file():
             raise FileNotFoundError(f"安装包不存在: {path}")
+        restart_target: Path | None = None
+        if restart_path:
+            restart_target = Path(restart_path).expanduser().resolve()
+            if not restart_target.is_file():
+                raise FileNotFoundError(f"重启程序不存在: {restart_target}")
 
         if sys.platform == "win32":
+            if silent:
+                creationflags = (
+                    getattr(subprocess, "DETACHED_PROCESS", 0)
+                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                    | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                )
+                subprocess.Popen(
+                    _build_windows_installer_launch_command(
+                        path,
+                        silent=True,
+                        restart_path=restart_target,
+                        log_path=update_logs_dir() / "update-install.log",
+                    ),
+                    creationflags=creationflags,
+                    close_fds=True,
+                )
+                return
             try:
                 if _startfile_windows_installer(path):
                     _append_install_launch_log(f"已请求 ShellExecute 启动安装包: {path}")
@@ -563,7 +640,11 @@ class LarkSyncTray:
                 | getattr(subprocess, "CREATE_NO_WINDOW", 0)
             )
             subprocess.Popen(
-                _build_windows_installer_launch_command(path),
+                _build_windows_installer_launch_command(
+                    path,
+                    restart_path=restart_target,
+                    log_path=update_logs_dir() / "update-install.log",
+                ),
                 creationflags=creationflags,
                 close_fds=True,
             )

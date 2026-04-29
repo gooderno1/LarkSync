@@ -160,11 +160,11 @@ export function SettingsPage() {
       const result = await downloadUpdate();
       if (result.download_path) {
         const confirmed = window.confirm(
-          `更新包已下载：\n${result.download_path}\n\n是否现在退出 LarkSync 并启动安装程序？`
+          `更新包已下载：\n${result.download_path}\n\n是否现在退出 LarkSync 并开始静默安装？\n\n说明：安装向导界面不会出现，但 Windows 仍可能弹出系统权限确认。`
         );
         if (confirmed) {
           await installUpdate(result.download_path);
-          toast("正在启动安装程序，LarkSync 即将退出", "success");
+          toast("正在开始静默安装，LarkSync 即将退出并在完成后自动重启", "success");
           return;
         }
         toast(`更新包已下载：${result.download_path}`, "success");
@@ -183,12 +183,12 @@ export function SettingsPage() {
       return;
     }
     const confirmed = window.confirm(
-      `即将退出 LarkSync 并启动安装程序：\n${downloadPath}\n\n是否继续？`
+      `即将退出 LarkSync 并开始静默安装：\n${downloadPath}\n\n安装向导界面不会出现，但 Windows 仍可能弹出系统权限确认。\n\n是否继续？`
     );
     if (!confirmed) return;
     try {
       await installUpdate(downloadPath);
-      toast("正在启动安装程序，LarkSync 即将退出", "success");
+      toast("正在开始静默安装，LarkSync 即将退出并在完成后自动重启", "success");
     } catch (err) {
       toast(err instanceof Error ? err.message : "启动安装失败", "danger");
     }
@@ -649,7 +649,7 @@ export function SettingsPage() {
                           disabled={installing || downloading}
                           type="button"
                         >
-                          {installing ? "启动中..." : "安装已下载更新"}
+                          {installing ? "启动中..." : "静默安装已下载更新"}
                         </button>
                       ) : null}
                     </div>

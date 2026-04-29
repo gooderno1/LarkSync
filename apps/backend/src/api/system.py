@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -26,11 +27,14 @@ class UpdateStatusResponse(UpdateStatus):
 
 class UpdateInstallPayload(BaseModel):
     download_path: str | None = None
+    silent: bool = True
 
 
 class UpdateInstallResponse(BaseModel):
     queued: bool
     installer_path: str
+    silent: bool
+    restart_path: str | None = None
 
 
 def _select_folder() -> str | None:
@@ -79,6 +83,13 @@ def _get_update_service(request: Request) -> UpdateService:
     return service
 
 
+def _current_restart_path() -> str | None:
+    if not getattr(sys, "frozen", False):
+        return None
+    path = (sys.executable or "").strip()
+    return path or None
+
+
 @router.get("/update/status", response_model=UpdateStatusResponse)
 async def update_status(request: Request) -> UpdateStatusResponse:
     service = _get_update_service(request)
@@ -116,10 +127,19 @@ async def update_install(
     if not installer_path:
         raise HTTPException(status_code=400, detail="尚未下载更新包")
     try:
-        queued = queue_install_request(installer_path)
+        queued = queue_install_request(
+            installer_path,
+            silent=payload.silent,
+            restart_path=_current_restart_path(),
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return UpdateInstallResponse(queued=True, installer_path=queued.installer_path)
+    return UpdateInstallResponse(
+        queued=True,
+        installer_path=queued.installer_path,
+        silent=queued.silent,
+        restart_path=queued.restart_path,
+    )
 
 
 async def _shutdown_after_response(app) -> None:

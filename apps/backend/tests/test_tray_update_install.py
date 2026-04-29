@@ -62,6 +62,8 @@ def test_tray_skips_fresh_install_request(monkeypatch, tmp_path: Path) -> None:
 def test_tray_processes_mature_install_request_and_stops(monkeypatch, tmp_path: Path) -> None:
     requested_path = tmp_path / "LarkSync-Setup-v0.5.51.exe"
     requested_path.write_bytes(b"exe")
+    restart_path = tmp_path / "LarkSync.exe"
+    restart_path.write_bytes(b"exe")
     consumed: list[str] = []
     stopped: list[bool] = []
 
@@ -73,13 +75,17 @@ def test_tray_processes_mature_install_request_and_stops(monkeypatch, tmp_path: 
         lambda: {
             "installer_path": str(requested_path),
             "created_at": 100.0,
+            "silent": True,
+            "restart_path": str(restart_path),
         },
     )
     monkeypatch.setattr(tray_app, "_clear_install_request", lambda: consumed.append("cleared"))
     monkeypatch.setattr(
         tray,
         "_schedule_installer_launch",
-        lambda path: consumed.append(str(path)),
+        lambda path, *, silent=False, restart_path=None: consumed.append(
+            f"{path}|silent={silent}|restart={restart_path}"
+        ),
     )
     monkeypatch.setattr(tray, "_notify", lambda *args, **kwargs: None)
     monkeypatch.setattr(tray, "stop", lambda: stopped.append(True))
@@ -88,22 +94,35 @@ def test_tray_processes_mature_install_request_and_stops(monkeypatch, tmp_path: 
     handled = tray._handle_pending_install_request()
 
     assert handled is True
-    assert consumed == [str(requested_path), "cleared"]
+    assert consumed == [
+        f"{requested_path}|silent=True|restart={restart_path}",
+        "cleared",
+    ]
     assert stopped == [True]
 
 
 def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: Path) -> None:
     installer_path = tmp_path / "中文 路径" / "LarkSync's Setup.exe"
-    command = tray_app._build_windows_installer_launch_command(installer_path)
+    restart_path = tmp_path / "LarkSync.exe"
+    log_path = tmp_path / "update-install.log"
+    command = tray_app._build_windows_installer_launch_command(
+        installer_path,
+        silent=True,
+        restart_path=restart_path,
+        log_path=log_path,
+    )
 
     assert command[0].lower().endswith("powershell.exe") or command[0].lower() == "powershell"
     assert "-EncodedCommand" in command
     encoded = command[command.index("-EncodedCommand") + 1]
     script = base64.b64decode(encoded).decode("utf-16le")
 
-    assert "Start-Process -LiteralPath" in script
-    assert "Start-Sleep -Milliseconds 800" in script
+    assert "Start-Process -LiteralPath $installerPath -ArgumentList $argumentList -PassThru" in script
+    assert "$argumentList += '/S'" in script
+    assert "Wait-Process -Id $process.Id" in script
     assert "LarkSync''s Setup.exe" in script
+    assert str(restart_path).replace("'", "''") in script
+    assert str(log_path).replace("'", "''") in script
 
 
 def test_schedule_installer_launch_on_windows_uses_detached_powershell(
@@ -123,7 +142,7 @@ def test_schedule_installer_launch_on_windows_uses_detached_powershell(
     monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
 
     tray = _build_tray()
-    tray._schedule_installer_launch(str(installer_path))
+    tray._schedule_installer_launch(str(installer_path), silent=True)
 
     assert len(calls) == 1
     assert "-EncodedCommand" in calls[0]["args"]

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from src.api import system as system_api
 from src.main import app
 from src.services.update_install_service import load_install_request
 from src.services.update_service import UpdateAsset, UpdateStatus
@@ -60,6 +61,10 @@ def test_system_update_install_endpoint_writes_install_request(
     monkeypatch.setenv("LARKSYNC_DATA_DIR", str(tmp_path / "data"))
     installer_path = tmp_path / "LarkSync-Setup-v0.5.51.exe"
     installer_path.write_bytes(b"exe")
+    restart_path = tmp_path / "LarkSync.exe"
+    restart_path.write_bytes(b"exe")
+    monkeypatch.setattr(system_api.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(system_api.sys, "executable", str(restart_path))
 
     client = TestClient(app)
     app.state.update_scheduler = _StubScheduler()
@@ -73,7 +78,11 @@ def test_system_update_install_endpoint_writes_install_request(
     payload = response.json()
     assert payload["queued"] is True
     assert Path(payload["installer_path"]) == installer_path.resolve()
+    assert payload["silent"] is True
+    assert Path(payload["restart_path"]) == restart_path.resolve()
 
     request = load_install_request()
     assert request is not None
     assert Path(request.installer_path) == installer_path.resolve()
+    assert request.silent is True
+    assert Path(request.restart_path) == restart_path.resolve()

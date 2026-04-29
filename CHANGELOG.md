@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-29] v0.6.2-dev.4 feat(auto-update): Windows 自动更新默认改走 NSIS 静默安装，托盘用 detached PowerShell helper 等待安装器退出后自动重启新版本，并记录静默安装 PID、退出码与重启动作
 [2026-04-29] v0.6.2-dev.3 fix(auto-update): 正式版自动更新改用用户数据目录保存安装包/状态/安装请求，避免从安装目录自更新；更新状态读取会覆盖陈旧 current_version，修复安装成功后仍提示可更新的问题
 [2026-04-29] v0.6.2-dev.2 fix(conflict-center): 冲突记录写入改为对同一路径、同一 token、同一版本差异幂等；冲突列表折叠历史残留的重复未解决记录，避免冲突管理显示两条相同冲突
 [2026-04-29] v0.6.2-dev.1 fix(sync-delete): 删除墓碑执行云端删除前检查同一 cloud token 是否仍有其他有效本地路径；本地回收目录移动会静默 watcher 事件，避免云端删除引发本地回收后又反向误删云端
