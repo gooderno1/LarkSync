@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-01] v0.6.7 release: v0.6.7
 [2026-05-01] v0.6.7-dev.1 fix(auto-update): Windows 静默更新 helper 将 PowerShell `Start-Process` 从错误的 `-LiteralPath` 改为 `-FilePath`，修复从 `v0.6.5` 静默升级到 `v0.6.6` 时 helper 已接管但安装器根本未启动、随后回退当前版本并最终报超时失败的问题
 [2026-05-01] v0.6.6 release: v0.6.6
 [2026-05-01] v0.6.6-dev.8 fix(log-center): 任务诊断页改为按侧边栏高度拉满，左下运行记录和右下运行详情底边与侧边栏对齐；`概览` 移除重复的“当前处理文件”卡片，改为展示同步目标（本地目录 / 云端目录），避免同一文件信息重复出现

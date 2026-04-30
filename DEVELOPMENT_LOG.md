@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.6.7 release (2026-05-01)
+
+- 目标：
+  - 发布 `v0.6.7` 稳定版，收口 Windows 静默更新 helper 启动安装器参数错误的问题。
+- 结果：
+  - 稳定版纳入 `v0.6.7-dev.1`：根据现场日志定位并修复 `v0.6.5 -> v0.6.6` 静默更新失败点，helper 已接管但 `Start-Process -LiteralPath` 参数无效，导致安装器根本未启动。
+  - PowerShell helper 已统一改为 `Start-Process -FilePath`，覆盖安装器启动、安装失败回退和安装成功后重启三处调用，避免再次出现“接管成功但安装器没起”的假成功链路。
+  - 配套单测已锁定 helper 生成脚本必须使用 `-FilePath`，防止回归。
+- 测试：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .\\.venv\\Scripts\\python.exe -m pytest apps/backend/tests/test_tray_update_install.py -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.7-dev.1 (2026-05-01)
 
 - 目标：
