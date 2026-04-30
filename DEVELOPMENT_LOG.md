@@ -1,5 +1,16 @@
 # DEVELOPMENT LOG
 
+## v0.6.7-dev.2 (2026-05-01)
+
+- 目标：
+  - 修复新版本安装完成后，旧静默安装请求仍残留在 `AppData\\Roaming\\LarkSync\\updates\\install-request.json`，导致新版本一启动又继续安装自己、表现成打不开或反复重启的问题。
+- 结果：
+  - 托盘新增安装请求版本兜底：解析安装包文件名中的版本号，并与当前运行版本比较；若安装包版本小于等于当前版本，则直接视为过期请求，清理 `install-request.json` 和 `install-handoff.json`，不再继续调度安装。
+  - 配套补了单测，覆盖“同版本安装请求必须被清理、且不能再触发调度”。
+  - 这层兜底和 `Start-Process -FilePath` 修复叠加后，既能避免 helper 参数错误，也能避免旧请求在安装成功后反复拉起更新流程。
+- 测试：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .\\.venv\\Scripts\\python.exe -m pytest apps/backend/tests/test_tray_update_install.py -q`
+
 ## v0.6.7 release (2026-05-01)
 
 - 目标：

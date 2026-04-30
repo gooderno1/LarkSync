@@ -42,6 +42,7 @@ def test_tray_skips_fresh_install_request(monkeypatch, tmp_path: Path) -> None:
             "created_at": 100.0,
         },
     )
+    monkeypatch.setattr(tray_app, "_read_current_app_version", lambda: "v0.5.52")
     monkeypatch.setattr(tray_app, "_clear_install_request", lambda: consumed.append("cleared"))
     monkeypatch.setattr(
         tray,
@@ -80,6 +81,7 @@ def test_tray_processes_mature_install_request_and_stops(monkeypatch, tmp_path: 
             "restart_path": str(restart_path),
         },
     )
+    monkeypatch.setattr(tray_app, "_read_current_app_version", lambda: "v0.5.50")
     monkeypatch.setattr(tray_app, "_clear_install_request", lambda: consumed.append("cleared"))
     monkeypatch.setattr(
         tray,
@@ -120,6 +122,7 @@ def test_tray_clears_invalid_install_request_without_stopping(monkeypatch, tmp_p
             "silent": True,
         },
     )
+    monkeypatch.setattr(tray_app, "_read_current_app_version", lambda: "v0.5.50")
     monkeypatch.setattr(tray_app, "_clear_install_request", lambda: consumed.append("cleared"))
     monkeypatch.setattr(tray_app, "_append_install_launch_log", lambda message: consumed.append(message))
     monkeypatch.setattr(
@@ -145,6 +148,41 @@ def test_tray_clears_invalid_install_request_without_stopping(monkeypatch, tmp_p
     assert consumed[1].startswith("启动安装包失败:")
     assert consumed[2:] == ["cleared"]
     assert notifications
+
+
+def test_tray_clears_stale_install_request_for_same_version(monkeypatch, tmp_path: Path) -> None:
+    requested_path = tmp_path / "LarkSync-Setup-v0.6.7.exe"
+    requested_path.write_bytes(b"exe")
+    consumed: list[str] = []
+    stopped: list[bool] = []
+
+    tray = _build_tray()
+
+    monkeypatch.setattr(
+        tray_app,
+        "_load_install_request",
+        lambda: {
+            "request_id": "req-stale",
+            "installer_path": str(requested_path),
+            "created_at": 100.0,
+            "silent": True,
+        },
+    )
+    monkeypatch.setattr(tray_app, "_read_current_app_version", lambda: "v0.6.7")
+    monkeypatch.setattr(tray_app, "_clear_install_request", lambda: consumed.append("request-cleared"))
+    monkeypatch.setattr(tray_app, "_clear_install_handoff", lambda: consumed.append("handoff-cleared"))
+    monkeypatch.setattr(tray_app, "_append_install_launch_log", lambda message: consumed.append(message))
+    monkeypatch.setattr(tray, "_schedule_installer_launch", lambda *args, **kwargs: consumed.append("scheduled"))
+    monkeypatch.setattr(tray, "_notify", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tray, "stop", lambda: stopped.append(True))
+
+    handled = tray._handle_pending_install_request()
+
+    assert handled is False
+    assert "scheduled" not in consumed
+    assert consumed[0].startswith("忽略过期安装请求:")
+    assert consumed[1:] == ["request-cleared", "handoff-cleared"]
+    assert stopped == []
 
 
 def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: Path) -> None:

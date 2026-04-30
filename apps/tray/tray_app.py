@@ -109,6 +109,7 @@ except Exception as exc:
 _LOCK_SOCKET: socket.socket | None = None
 _INSTALL_REQUEST_MIN_AGE_SECONDS = 2.0
 _INSTALL_HANDOFF_TIMEOUT_SECONDS = 15.0
+_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$")
 
 
 def _data_dir() -> Path:
@@ -183,6 +184,47 @@ def _append_install_launch_log(message: str) -> None:
             file.write(f"[{timestamp}] {message}\n")
     except Exception:
         pass
+
+
+def _parse_version_key(value: str | None) -> tuple[int, int, int, int] | None:
+    if not value:
+        return None
+    match = _VERSION_RE.match(str(value).strip())
+    if not match:
+        return None
+    major, minor, patch, dev = match.groups()
+    dev_value = int(dev) if dev is not None else 10_000_000
+    return int(major), int(minor), int(patch), dev_value
+
+
+def _read_current_app_version() -> str | None:
+    pyproject_path = Path(_BACKEND_ROOT) / "pyproject.toml"
+    if not pyproject_path.is_file():
+        return None
+    try:
+        content = pyproject_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', content)
+    if not match:
+        return None
+    return match.group(1).strip()
+
+
+def _extract_installer_version(installer_path: str) -> str | None:
+    name = Path(installer_path).name
+    match = re.search(r"LarkSync-Setup-(v?\d+\.\d+\.\d+(?:-dev\.\d+)?)", name, re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _install_request_is_stale(installer_path: str) -> bool:
+    current_version = _parse_version_key(_read_current_app_version())
+    installer_version = _parse_version_key(_extract_installer_version(installer_path))
+    if current_version is None or installer_version is None:
+        return False
+    return installer_version <= current_version
 
 
 def _read_install_handoff() -> dict[str, Any] | None:
@@ -635,6 +677,13 @@ class LarkSyncTray:
             return False
         request_id = str(request.get("request_id") or "").strip()
         installer_path = request["installer_path"]
+        if _install_request_is_stale(installer_path):
+            _append_install_launch_log(
+                f"忽略过期安装请求: {installer_path} (current={_read_current_app_version() or '-'} request={_extract_installer_version(installer_path) or '-'})"
+            )
+            _clear_install_request()
+            _clear_install_handoff()
+            return False
         silent = bool(request.get("silent", False))
         restart_path = str(request.get("restart_path") or "").strip() or None
         created_at = float(request.get("created_at") or 0.0)
