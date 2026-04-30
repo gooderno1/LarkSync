@@ -2894,3 +2894,13 @@
 - 验证：
   - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_tray_status.py apps/backend/tests/test_sync_event_store.py -p pytest_asyncio.plugin -q`
   - `npm run build --prefix apps/frontend`
+## v0.6.5-dev.3 (2026-04-30)
+
+- 目标：为运行级诊断增加稳定持久化层，不再完全依赖事件流临时反推运行摘要。
+- 结果：
+  - 新增 `sync_runs` 表和 `SyncRunService`，持久化每次同步运行的开始/结束时间、触发来源、结果和核心计数。
+  - `SyncTaskRunner` 在运行开始与结束时写入 `sync_runs`，日志中心接口优先读取该表生成运行列表和任务概览。
+  - 历史版本没有 `sync_runs` 数据时，后端仍会回退到 `sync-events.jsonl` 分组，兼容旧数据。
+- 验证：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_run_service.py apps/backend/tests/test_tray_status.py apps/backend/tests/test_sync_event_store.py -p pytest_asyncio.plugin -q`
+  - `python -m compileall apps/backend/src`

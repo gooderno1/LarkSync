@@ -35,6 +35,7 @@ from src.services.conflict_service import ConflictService
 from src.services.sync_block_service import BlockStateItem, SyncBlockService
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
+from src.services.sync_run_service import SyncRunService
 from src.services.sync_task_service import SyncTaskItem
 from src.services.sync_tombstone_service import SyncTombstoneService
 from src.services.transcoder import DocxTranscoder
@@ -94,12 +95,19 @@ class SyncFileEvent:
 class SyncTaskStatus:
     task_id: str
     state: SyncState = "idle"
+    trigger_source: str | None = None
     started_at: float | None = None
     finished_at: float | None = None
     total_files: int = 0
     completed_files: int = 0
     failed_files: int = 0
     skipped_files: int = 0
+    uploaded_files: int = 0
+    downloaded_files: int = 0
+    deleted_files: int = 0
+    conflict_files: int = 0
+    delete_pending_files: int = 0
+    delete_failed_files: int = 0
     last_error: str | None = None
     current_run_id: str | None = None
     last_files: list[SyncFileEvent] = field(default_factory=list)
@@ -153,6 +161,7 @@ class SyncTaskRunner:
         import_task_service: ImportTaskService | None = None,
         export_task_service: ExportTaskService | None = None,
         event_store: SyncEventStore | None = None,
+        run_service: SyncRunService | None = None,
         task_service: object | None = None,
         conflict_service: ConflictService | None = None,
         import_poll_attempts: int = 60,
@@ -174,6 +183,7 @@ class SyncTaskRunner:
         self._import_task_service = import_task_service
         self._export_task_service = export_task_service
         self._event_store = event_store or SyncEventStore()
+        self._run_service = run_service or SyncRunService()
         self._task_service = task_service
         self._conflict_service = conflict_service or ConflictService()
         self._import_poll_attempts = max(1, import_poll_attempts)
@@ -207,6 +217,18 @@ class SyncTaskRunner:
         task: SyncTaskItem | None = None,
     ) -> None:
         status.record_event(event)
+        if event.status == "uploaded":
+            status.uploaded_files += 1
+        elif event.status == "downloaded":
+            status.downloaded_files += 1
+        elif event.status == "deleted":
+            status.deleted_files += 1
+        elif event.status == "conflict":
+            status.conflict_files += 1
+        elif event.status == "delete_pending":
+            status.delete_pending_files += 1
+        elif event.status == "delete_failed":
+            status.delete_failed_files += 1
         task_info = task or self._task_meta.get(status.task_id)
         task_name = (
             task_info.name
@@ -262,7 +284,9 @@ class SyncTaskRunner:
             task,
             status,
             message=f"任务启动: mode={task.sync_mode} update={task.update_mode or 'auto'}",
+            trigger_source="manual",
         )
+        self._schedule_run_started(task, status)
         self._running_tasks.add(task.id)
         if task.sync_mode in {"bidirectional", "upload_only"}:
             self._ensure_watcher(task)
@@ -337,7 +361,13 @@ class SyncTaskRunner:
         self._running_tasks.add(task.id)
         self._task_meta[task.id] = task
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
-        self._reset_status(task, status, message=message)
+        self._reset_status(
+            task,
+            status,
+            message=message,
+            trigger_source="conflict_resolution",
+        )
+        await self._persist_run_started(task, status)
         try:
             await executor(status)
             status.state = "failed" if status.failed_files > 0 else "success"
@@ -352,8 +382,6 @@ class SyncTaskRunner:
             if status.state == "running":
                 status.state = "failed" if status.failed_files > 0 else "success"
                 status.finished_at = time.time()
-            if status.state != "cancelled":
-                await self._mark_task_run(task)
             self._record_event(
                 status,
                 SyncFileEvent(
@@ -368,6 +396,9 @@ class SyncTaskRunner:
                 ),
                 task,
             )
+            await self._persist_run_finished(task, status)
+            if status.state != "cancelled":
+                await self._mark_task_run(task)
             self._running_tasks.discard(task.id)
 
     async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
@@ -396,7 +427,13 @@ class SyncTaskRunner:
         self._running_tasks.add(task.id)
         self._task_meta[task.id] = task
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
-        self._reset_status(task, status, message="周期上传触发")
+        self._reset_status(
+            task,
+            status,
+            message="周期上传触发",
+            trigger_source="scheduled_upload",
+        )
+        await self._persist_run_started(task, status)
         try:
             await self._run_additive_reconciliation_if_needed(task, status)
             await self._run_upload_paths(task, status, ready_paths)
@@ -407,8 +444,6 @@ class SyncTaskRunner:
             status.last_error = str(exc)
             status.finished_at = time.time()
         finally:
-            if status.state != "cancelled":
-                await self._mark_task_run(task)
             self._record_event(
                 status,
                 SyncFileEvent(
@@ -423,6 +458,9 @@ class SyncTaskRunner:
                 ),
                 task,
             )
+            await self._persist_run_finished(task, status)
+            if status.state != "cancelled":
+                await self._mark_task_run(task)
             self._running_tasks.discard(task.id)
 
     async def run_scheduled_download(self, task: SyncTaskItem) -> None:
@@ -431,7 +469,13 @@ class SyncTaskRunner:
         self._running_tasks.add(task.id)
         self._task_meta[task.id] = task
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
-        self._reset_status(task, status, message="定时下载触发")
+        self._reset_status(
+            task,
+            status,
+            message="定时下载触发",
+            trigger_source="scheduled_download",
+        )
+        await self._persist_run_started(task, status)
         try:
             await self._run_additive_reconciliation_if_needed(task, status)
             await self._run_download(task, status)
@@ -442,8 +486,6 @@ class SyncTaskRunner:
             status.last_error = str(exc)
             status.finished_at = time.time()
         finally:
-            if status.state != "cancelled":
-                await self._mark_task_run(task)
             self._record_event(
                 status,
                 SyncFileEvent(
@@ -458,10 +500,21 @@ class SyncTaskRunner:
                 ),
                 task,
             )
+            await self._persist_run_finished(task, status)
+            if status.state != "cancelled":
+                await self._mark_task_run(task)
             self._running_tasks.discard(task.id)
 
-    def _reset_status(self, task: SyncTaskItem, status: SyncTaskStatus, message: str) -> None:
+    def _reset_status(
+        self,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        message: str,
+        *,
+        trigger_source: str,
+    ) -> None:
         status.state = "running"
+        status.trigger_source = trigger_source
         status.started_at = time.time()
         status.finished_at = None
         status.current_run_id = str(uuid.uuid4())
@@ -469,6 +522,12 @@ class SyncTaskRunner:
         status.completed_files = 0
         status.failed_files = 0
         status.skipped_files = 0
+        status.uploaded_files = 0
+        status.downloaded_files = 0
+        status.deleted_files = 0
+        status.conflict_files = 0
+        status.delete_pending_files = 0
+        status.delete_failed_files = 0
         status.last_error = None
         status.last_files = []
         self._record_event(
@@ -509,8 +568,6 @@ class SyncTaskRunner:
             status.last_error = str(exc)
             status.finished_at = time.time()
         finally:
-            if status.state != "cancelled":
-                await self._mark_task_run(task)
             if status.state == "cancelled":
                 message = "任务已取消"
             else:
@@ -529,6 +586,9 @@ class SyncTaskRunner:
                 ),
                 task,
             )
+            await self._persist_run_finished(task, status)
+            if status.state != "cancelled":
+                await self._mark_task_run(task)
             self._tasks.pop(task.id, None)
             self._running_tasks.discard(task.id)
 
@@ -579,6 +639,68 @@ class SyncTaskRunner:
             return (time.time() - float(last_run)) > _STARTUP_ADD_ONLY_THRESHOLD_SECONDS
         except (TypeError, ValueError):
             return True
+
+    def _schedule_run_started(self, task: SyncTaskItem, status: SyncTaskStatus) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.create_task(self._persist_run_started(task, status))
+
+    async def _persist_run_started(
+        self, task: SyncTaskItem, status: SyncTaskStatus
+    ) -> None:
+        if not status.current_run_id or status.started_at is None:
+            return
+        try:
+            await self._run_service.start_run(
+                run_id=status.current_run_id,
+                task_id=task.id,
+                trigger_source=status.trigger_source or "manual",
+                started_at=status.started_at,
+            )
+        except Exception:
+            logger.exception(
+                "创建运行摘要失败: task_id={} run_id={}",
+                task.id,
+                status.current_run_id,
+            )
+
+    async def _persist_run_finished(
+        self, task: SyncTaskItem, status: SyncTaskStatus
+    ) -> None:
+        if not status.current_run_id:
+            return
+        last_event_at = status.finished_at
+        if status.last_files:
+            last_event_at = status.last_files[-1].timestamp
+        try:
+            await self._run_service.finish_run(
+                run_id=status.current_run_id,
+                task_id=task.id,
+                trigger_source=status.trigger_source or "manual",
+                state=status.state,
+                started_at=status.started_at,
+                finished_at=status.finished_at,
+                last_event_at=last_event_at,
+                total_files=status.total_files,
+                completed_files=status.completed_files,
+                failed_files=status.failed_files,
+                skipped_files=status.skipped_files,
+                uploaded_files=status.uploaded_files,
+                downloaded_files=status.downloaded_files,
+                deleted_files=status.deleted_files,
+                conflict_files=status.conflict_files,
+                delete_pending_files=status.delete_pending_files,
+                delete_failed_files=status.delete_failed_files,
+                last_error=status.last_error,
+            )
+        except Exception:
+            logger.exception(
+                "更新运行摘要失败: task_id={} run_id={}",
+                task.id,
+                status.current_run_id,
+            )
 
     async def _mark_task_run(self, task: SyncTaskItem) -> None:
         service = self._task_service

@@ -12,6 +12,7 @@ from src.services.docx_service import DocxService, DocxServiceError
 from src.services.log_reader import prune_log_file, read_log_entries
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_link_service import SyncLinkService
+from src.services.sync_run_service import SyncRunItem, SyncRunService
 from src.services.sync_runner import SyncFileEvent, SyncTaskRunner, SyncTaskStatus
 from src.services.sync_task_service import (
     SyncTaskItem,
@@ -95,6 +96,7 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 service = SyncTaskService()
 runner = SyncTaskRunner(task_service=service)
 event_store = SyncEventStore()
+run_service = SyncRunService()
 _PROBLEM_STATUSES = {"failed", "delete_failed", "conflict", "cancelled"}
 _TERMINAL_STATUSES = {"success", "failed", "cancelled"}
 _CURRENT_FILE_EXCLUDED_STATUSES = {"started", "success", "failed", "cancelled"}
@@ -264,6 +266,12 @@ def _build_run_counts(
         skipped_value = skipped
         processed = derived_processed
     else:
+        uploaded = max(uploaded, status.uploaded_files)
+        downloaded = max(downloaded, status.downloaded_files)
+        deleted = max(deleted, status.deleted_files)
+        conflicts = max(conflicts, status.conflict_files)
+        delete_pending = max(delete_pending, status.delete_pending_files)
+        delete_failed = max(delete_failed, status.delete_failed_files)
         total = max(status.total_files, derived_processed)
         completed = max(status.completed_files, derived_completed)
         failed_value = max(status.failed_files, derived_failed)
@@ -391,13 +399,130 @@ def _build_run_summaries(
     return summaries
 
 
+def _run_summary_from_item(
+    item: SyncRunItem,
+    *,
+    live_status: SyncTaskStatus | None = None,
+    records: list[SyncEventRecord] | None = None,
+) -> SyncTaskRunSummaryResponse:
+    current_file = (
+        _current_file_from_status(live_status)
+        if live_status is not None
+        else _current_file_from_records(records or [])
+    )
+    counts = SyncTaskDiagnosticCounts(
+        total=max(item.total_files, live_status.total_files if live_status else 0),
+        processed=max(
+            item.completed_files + item.failed_files + item.skipped_files,
+            live_status.completed_files + live_status.failed_files + live_status.skipped_files
+            if live_status
+            else 0,
+        ),
+        completed=max(item.completed_files, live_status.completed_files if live_status else 0),
+        failed=max(item.failed_files, live_status.failed_files if live_status else 0),
+        skipped=max(item.skipped_files, live_status.skipped_files if live_status else 0),
+        uploaded=max(item.uploaded_files, live_status.uploaded_files if live_status else 0),
+        downloaded=max(item.downloaded_files, live_status.downloaded_files if live_status else 0),
+        deleted=max(item.deleted_files, live_status.deleted_files if live_status else 0),
+        conflicts=max(item.conflict_files, live_status.conflict_files if live_status else 0),
+        delete_pending=max(
+            item.delete_pending_files,
+            live_status.delete_pending_files if live_status else 0,
+        ),
+        delete_failed=max(
+            item.delete_failed_files,
+            live_status.delete_failed_files if live_status else 0,
+        ),
+    )
+    problem_count = counts.failed + counts.conflicts + counts.delete_failed
+    if item.state == "cancelled":
+        problem_count += 1
+    last_error = live_status.last_error if live_status and live_status.last_error else item.last_error
+    return SyncTaskRunSummaryResponse(
+        run_id=item.run_id,
+        state=live_status.state if live_status is not None else item.state,
+        started_at=live_status.started_at if live_status and live_status.started_at is not None else item.started_at,
+        finished_at=live_status.finished_at if live_status and live_status.finished_at is not None else item.finished_at,
+        last_event_at=(
+            records[0].timestamp
+            if records
+            else (
+                live_status.finished_at
+                if live_status and live_status.finished_at is not None
+                else (
+                    live_status.started_at
+                    if live_status and live_status.started_at is not None
+                    else item.last_event_at
+                )
+            )
+        ),
+        last_error=last_error,
+        problem_count=problem_count if last_error is None else max(problem_count, 1),
+        counts=counts,
+        current_file=current_file,
+    )
+
+
+async def _load_run_summaries(
+    *,
+    task_id: str,
+    status: SyncTaskStatus,
+    records: list[SyncEventRecord],
+) -> list[SyncTaskRunSummaryResponse]:
+    records_by_run: dict[str, list[SyncEventRecord]] = {}
+    for record in records:
+        if record.run_id:
+            records_by_run.setdefault(record.run_id, []).append(record)
+    db_runs = await run_service.list_by_task(task_id, limit=50)
+    if not db_runs:
+        return _build_run_summaries(status=status, records=records)
+    summaries: list[SyncTaskRunSummaryResponse] = []
+    seen: set[str] = set()
+    for item in db_runs:
+        live_status = status if status.current_run_id == item.run_id else None
+        summaries.append(
+            _run_summary_from_item(
+                item,
+                live_status=live_status,
+                records=records_by_run.get(item.run_id, []),
+            )
+        )
+        seen.add(item.run_id)
+    for run_id, run_records in records_by_run.items():
+        if run_id in seen:
+            continue
+        live_status = status if status.current_run_id == run_id else None
+        summaries.append(
+            _build_run_summary(
+                run_id=run_id,
+                records=run_records,
+                live_status=live_status,
+            )
+        )
+        seen.add(run_id)
+    if status.current_run_id and status.current_run_id not in seen:
+        summaries.append(
+            _build_run_summary(
+                run_id=status.current_run_id,
+                records=[],
+                live_status=status,
+            )
+        )
+    summaries.sort(
+        key=lambda entry: entry.last_event_at or entry.started_at or entry.finished_at or 0.0,
+        reverse=True,
+    )
+    return summaries
+
+
 def _build_task_overview(
     *,
     task: SyncTaskItem,
     status: SyncTaskStatus,
     records: list[SyncEventRecord],
+    run_summaries: list[SyncTaskRunSummaryResponse] | None = None,
 ) -> SyncTaskOverviewResponse:
-    run_summaries = _build_run_summaries(status=status, records=records)
+    run_summaries = run_summaries or _build_run_summaries(status=status, records=records)
     latest_run = run_summaries[0] if run_summaries else None
     processed = max(0, status.completed_files + status.failed_files + status.skipped_files)
     last_result = latest_run.state if latest_run else (
@@ -454,14 +579,32 @@ async def list_task_overview() -> list[SyncTaskOverviewResponse]:
     records_by_task: dict[str, list[SyncEventRecord]] = {}
     for record in recent_records:
         records_by_task.setdefault(record.task_id, []).append(record)
-    return [
-        _build_task_overview(
-            task=item,
-            status=statuses.get(item.id) or SyncTaskStatus(task_id=item.id),
-            records=records_by_task.get(item.id, []),
+    latest_runs = await run_service.list_latest_by_tasks([item.id for item in items])
+    results: list[SyncTaskOverviewResponse] = []
+    for item in items:
+        task_status = statuses.get(item.id) or SyncTaskStatus(task_id=item.id)
+        task_records = records_by_task.get(item.id, [])
+        latest_item = latest_runs.get(item.id)
+        run_summaries = None
+        if latest_item is not None:
+            live_status = task_status if task_status.current_run_id == latest_item.run_id else None
+            run_records = [record for record in task_records if record.run_id == latest_item.run_id]
+            run_summaries = [
+                _run_summary_from_item(
+                    latest_item,
+                    live_status=live_status,
+                    records=run_records,
+                )
+            ]
+        results.append(
+            _build_task_overview(
+                task=item,
+                status=task_status,
+                records=task_records,
+                run_summaries=run_summaries,
+            )
         )
-        for item in items
-    ]
+    return results
 
 
 @router.get("/tasks/{task_id}/diagnostics", response_model=SyncTaskDiagnosticsResponse)
@@ -482,7 +625,11 @@ async def get_task_diagnostics(
         task_id=task_id,
         order="desc",
     )
-    run_summaries = _build_run_summaries(status=status, records=task_records)
+    run_summaries = await _load_run_summaries(
+        task_id=task_id,
+        status=status,
+        records=task_records,
+    )
     selected_run = None
     if run_id.strip():
         selected_run = next((item for item in run_summaries if item.run_id == run_id.strip()), None)
@@ -512,6 +659,7 @@ async def get_task_diagnostics(
         task=item,
         status=status,
         records=task_records,
+        run_summaries=run_summaries,
     )
     return SyncTaskDiagnosticsResponse(
         overview=overview,

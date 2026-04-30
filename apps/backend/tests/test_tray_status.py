@@ -12,7 +12,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.core.config import ConfigManager
+from src.db.session import get_session_maker
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
+from src.services.sync_run_service import SyncRunService
 from src.services.sync_runner import SyncFileEvent, SyncTaskStatus
 
 
@@ -377,3 +379,71 @@ def test_sync_task_diagnostics_isolated_by_run(
     assert historical_body["selected_run"]["state"] == "failed"
     assert historical_body["problems"][0]["run_id"] == "run-1"
     assert any(item["message"] == "历史错误" for item in historical_body["problems"])
+
+
+@pytest.mark.asyncio
+async def test_sync_task_overview_uses_persisted_sync_runs(
+    tray_client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    import src.api.sync_tasks as sync_tasks
+
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'test.db').as_posix()}"
+    persisted_runs = SyncRunService(session_maker=get_session_maker(db_url))
+    monkeypatch.setattr(sync_tasks, "run_service", persisted_runs)
+    monkeypatch.setattr(sync_tasks, "event_store", SyncEventStore(tmp_path / "empty-sync-events.jsonl"))
+
+    local_dir = tmp_path / "persisted-run-local"
+    local_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "name": "持久化运行任务",
+        "local_path": str(local_dir),
+        "cloud_folder_token": "token-persisted",
+        "cloud_folder_name": "云端持久化",
+        "base_path": None,
+        "sync_mode": "bidirectional",
+        "update_mode": "auto",
+        "enabled": False,
+    }
+    created = tray_client.post("/sync/tasks", json=payload)
+    assert created.status_code == 200
+    task_id = created.json()["id"]
+
+    await persisted_runs.finish_run(
+        run_id="run-db-1",
+        task_id=task_id,
+        trigger_source="scheduled_upload",
+        state="failed",
+        started_at=100.0,
+        finished_at=120.0,
+        last_event_at=121.0,
+        total_files=5,
+        completed_files=3,
+        failed_files=2,
+        skipped_files=0,
+        uploaded_files=2,
+        downloaded_files=1,
+        deleted_files=0,
+        conflict_files=1,
+        delete_pending_files=0,
+        delete_failed_files=1,
+        last_error="db-error",
+    )
+
+    idle_status = SyncTaskStatus(task_id=task_id, state="idle")
+    monkeypatch.setattr(sync_tasks.runner, "list_statuses", lambda: {task_id: idle_status})
+    monkeypatch.setattr(sync_tasks.runner, "get_status", lambda _task_id: idle_status)
+
+    overview = tray_client.get("/sync/tasks/overview")
+    assert overview.status_code == 200
+    item = overview.json()[0]
+    assert item["last_result"] == "failed"
+    assert item["problem_count"] >= 1
+    assert item["counts"]["uploaded"] == 2
+    assert item["counts"]["delete_failed"] == 1
+
+    diagnostics = tray_client.get(f"/sync/tasks/{task_id}/diagnostics?limit=10")
+    assert diagnostics.status_code == 200
+    body = diagnostics.json()
+    assert body["recent_runs"][0]["run_id"] == "run-db-1"
+    assert body["selected_run"]["last_error"] == "db-error"
+    assert body["selected_run"]["counts"]["conflicts"] == 1

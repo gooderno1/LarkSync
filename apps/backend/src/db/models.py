@@ -91,6 +91,31 @@ class SyncTask(Base):
     last_run_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
 
 
+class SyncRun(Base):
+    __tablename__ = "sync_runs"
+
+    run_id: Mapped[str] = mapped_column(String, primary_key=True)
+    task_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    state: Mapped[str] = mapped_column(String, nullable=False, default="running")
+    trigger_source: Mapped[str] = mapped_column(String, nullable=False, default="manual")
+    started_at: Mapped[float] = mapped_column(Float, nullable=False)
+    finished_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    last_event_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    total_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    uploaded_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    downloaded_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    deleted_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    conflict_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    delete_pending_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    delete_failed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
 class SyncBlockState(Base):
     __tablename__ = "sync_block_states"
 
