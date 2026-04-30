@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import hashlib
 import os
 import re
 import shutil
@@ -45,6 +46,7 @@ SyncState = Literal["idle", "running", "success", "failed", "cancelled"]
 SYNC_LOG_LIMIT = 200
 _LOCAL_IMAGE_UPLOAD_REVISION_MARKER = "#local-images-v2"
 _MARKDOWN_IMAGE_REF_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
+_MARKDOWN_LINK_REF_PATTERN = re.compile(r"(?<!!)\[[^\]]*]\(([^)]+)\)")
 _HTML_IMAGE_REF_PATTERN = re.compile(
     r"""<img\b[^>]*\bsrc\s*=\s*(?P<quote>["'])(?P<src>.*?)(?P=quote)[^>]*>""",
     re.IGNORECASE | re.DOTALL,
@@ -894,6 +896,11 @@ class SyncTaskRunner:
                         self._silence_path(task.id, target_path)
                         self._file_writer.write_markdown(target_path, markdown, mtime)
                         signature = self._get_local_signature(target_path)
+                        cloud_revision = self._build_cloud_revision(effective_token, mtime)
+                        resource_signature = self._calculate_local_resource_signature(
+                            markdown,
+                            target_dir,
+                        )
                         await link_service.upsert_link(
                             local_path=str(target_path),
                             cloud_token=effective_token,
@@ -904,8 +911,10 @@ class SyncTaskRunner:
                             local_hash=signature[0] if signature else None,
                             local_size=signature[1] if signature else None,
                             local_mtime=signature[2] if signature else None,
-                            cloud_revision=self._build_cloud_revision(effective_token, mtime),
+                            cloud_revision=cloud_revision,
                             cloud_mtime=mtime,
+                            local_resource_signature=resource_signature,
+                            resource_sync_revision=cloud_revision,
                         )
                         if task.sync_mode in {"bidirectional", "upload_only"} and (
                             (task.update_mode or "auto") != "full"
@@ -1623,6 +1632,10 @@ class SyncTaskRunner:
         has_uploadable_images = self._has_uploadable_markdown_images(
             markdown, base_path
         )
+        resource_signature = self._calculate_local_resource_signature(
+            markdown,
+            base_path,
+        )
         if await self._block_markdown_upload_when_cloud_changed(
             task=task,
             status=status,
@@ -1638,7 +1651,12 @@ class SyncTaskRunner:
         block_states = await self._block_service.list_blocks(str(path), link.cloud_token)
         if block_states:
             if all(item.file_hash == file_hash for item in block_states) and (
-                not has_uploadable_images or local_images_repaired
+                self._is_local_resource_state_synced(
+                    link=link,
+                    resource_signature=resource_signature,
+                    has_uploadable_images=has_uploadable_images,
+                    local_images_repaired=local_images_repaired,
+                )
             ):
                 status.skipped_files += 1
                 self._record_event(status, 
@@ -1651,7 +1669,12 @@ class SyncTaskRunner:
                 and
                 link.local_hash
                 and link.local_hash == file_hash
-                and (not has_uploadable_images or local_images_repaired)
+                and self._is_local_resource_state_synced(
+                    link=link,
+                    resource_signature=resource_signature,
+                    has_uploadable_images=has_uploadable_images,
+                    local_images_repaired=local_images_repaired,
+                )
             ):
                 status.skipped_files += 1
                 self._record_event(
@@ -1780,6 +1803,11 @@ class SyncTaskRunner:
                         user_id_type="open_id",
                     )
         synced_at = time.time()
+        cloud_revision = self._build_cloud_revision(
+            link.cloud_token,
+            synced_at,
+            local_images_uploaded=has_uploadable_images,
+        )
         # 使用缓存获取 parent_token（已在 _create_cloud_doc_for_markdown 或更早处解析）
         upload_parent = await self._resolve_cloud_parent(task, path, drive_service)
         await self._link_service.upsert_link(
@@ -1792,12 +1820,10 @@ class SyncTaskRunner:
             local_hash=file_hash,
             local_size=path.stat().st_size,
             local_mtime=path.stat().st_mtime,
-            cloud_revision=self._build_cloud_revision(
-                link.cloud_token,
-                synced_at,
-                local_images_uploaded=has_uploadable_images,
-            ),
+            cloud_revision=cloud_revision,
             cloud_mtime=synced_at,
+            local_resource_signature=resource_signature,
+            resource_sync_revision=cloud_revision,
         )
         if self._should_sync_md_cloud_mirror(task):
             await self._sync_markdown_mirror_copy(
@@ -1976,6 +2002,51 @@ class SyncTaskRunner:
             if _is_uploadable_markdown_image_ref(ref, base_path):
                 return True
         return False
+
+    @staticmethod
+    def _calculate_local_resource_signature(
+        markdown: str,
+        base_path: str | Path | None,
+    ) -> str | None:
+        entries: list[str] = []
+        for match in _MARKDOWN_IMAGE_REF_PATTERN.finditer(markdown):
+            ref = _normalize_markdown_resource_ref(match.group(1))
+            entry = _build_local_resource_signature_entry(ref, base_path, image_only=True)
+            if entry:
+                entries.append(entry)
+        for match in _HTML_IMAGE_REF_PATTERN.finditer(markdown):
+            ref = (match.group("src") or "").strip()
+            entry = _build_local_resource_signature_entry(ref, base_path, image_only=True)
+            if entry:
+                entries.append(entry)
+        for match in _MARKDOWN_LINK_REF_PATTERN.finditer(markdown):
+            ref = _normalize_markdown_resource_ref(match.group(1))
+            entry = _build_local_resource_signature_entry(ref, base_path, image_only=False)
+            if entry:
+                entries.append(entry)
+        if not entries:
+            return None
+        payload = "\n".join(sorted(set(entries)))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _is_local_resource_state_synced(
+        *,
+        link: SyncLinkItem,
+        resource_signature: str | None,
+        has_uploadable_images: bool,
+        local_images_repaired: bool,
+    ) -> bool:
+        if resource_signature is None:
+            return True
+        if (
+            link.local_resource_signature == resource_signature
+            and link.resource_sync_revision
+            and link.cloud_revision
+            and link.resource_sync_revision == link.cloud_revision
+        ):
+            return True
+        return (not has_uploadable_images) and local_images_repaired
 
     @staticmethod
     def _supports_md_cloud_mirror(drive_service: DriveService) -> bool:
@@ -2921,6 +2992,11 @@ class SyncTaskRunner:
         cloud_mtime = self._resolve_created_doc_mtime(
             created_doc, local_signature[2] if local_signature else None
         )
+        resource_signature = self._calculate_local_resource_signature(
+            path.read_text(encoding="utf-8"),
+            path.parent,
+        )
+        cloud_revision = self._build_cloud_revision(created_doc.token, cloud_mtime)
 
         link = await self._link_service.upsert_link(
             local_path=str(path),
@@ -2932,8 +3008,10 @@ class SyncTaskRunner:
             local_hash=local_signature[0] if local_signature else None,
             local_size=local_signature[1] if local_signature else None,
             local_mtime=local_signature[2] if local_signature else None,
-            cloud_revision=self._build_cloud_revision(created_doc.token, cloud_mtime),
+            cloud_revision=cloud_revision,
             cloud_mtime=cloud_mtime,
+            local_resource_signature=resource_signature,
+            resource_sync_revision=cloud_revision,
         )
         self._record_event(status, 
             SyncFileEvent(path=str(path), status="created", message="云端文档已创建")
@@ -2980,6 +3058,11 @@ class SyncTaskRunner:
             created_doc,
             local_signature[2] if local_signature else old_link.local_mtime,
         )
+        resource_signature = self._calculate_local_resource_signature(
+            path.read_text(encoding="utf-8"),
+            path.parent,
+        )
+        cloud_revision = self._build_cloud_revision(created_doc.token, cloud_mtime)
         return await self._link_service.upsert_link(
             local_path=str(path),
             cloud_token=created_doc.token,
@@ -2990,8 +3073,10 @@ class SyncTaskRunner:
             local_hash=local_signature[0] if local_signature else old_link.local_hash,
             local_size=local_signature[1] if local_signature else old_link.local_size,
             local_mtime=local_signature[2] if local_signature else old_link.local_mtime,
-            cloud_revision=self._build_cloud_revision(created_doc.token, cloud_mtime),
+            cloud_revision=cloud_revision,
             cloud_mtime=cloud_mtime,
+            local_resource_signature=resource_signature,
+            resource_sync_revision=cloud_revision,
         )
 
     async def _import_markdown_doc(
@@ -3815,6 +3900,31 @@ def _resolve_markdown_resource_path(ref: str, base_path: str | Path | None) -> P
             base = base.parent
         path = base / path
     return path.expanduser()
+
+
+def _build_local_resource_signature_entry(
+    ref: str,
+    base_path: str | Path | None,
+    *,
+    image_only: bool,
+) -> str | None:
+    normalized = ref.strip()
+    if not normalized:
+        return None
+    lowered = normalized.lower()
+    if image_only and lowered.startswith("data:image/"):
+        digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        return f"data-image:{digest}"
+    if _is_remote_or_anchor_resource(lowered):
+        return None
+    path = _resolve_markdown_resource_path(normalized, base_path)
+    if not path.exists() or not path.is_file():
+        return f"missing:{normalized}"
+    try:
+        stat = path.stat()
+    except OSError:
+        return f"stat-error:{normalized}"
+    return f"{path.as_posix()}|{int(stat.st_size)}|{int(stat.st_mtime_ns)}"
 
 
 def _resolve_target(node: DriveNode) -> tuple[str, str]:

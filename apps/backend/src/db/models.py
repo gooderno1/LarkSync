@@ -28,6 +28,12 @@ class SyncLink(Base):
     local_mtime: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     cloud_revision: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
     cloud_mtime: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    local_resource_signature: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None
+    )
+    resource_sync_revision: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None
+    )
 
 
 class SyncTombstone(Base):

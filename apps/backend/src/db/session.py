@@ -144,6 +144,20 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
                 column_type="REAL",
                 default_value=None,
             )
+            await _ensure_column(
+                conn,
+                table="sync_links",
+                column="local_resource_signature",
+                column_type="TEXT",
+                default_value=None,
+            )
+            await _ensure_column(
+                conn,
+                table="sync_links",
+                column="resource_sync_revision",
+                column_type="TEXT",
+                default_value=None,
+            )
         return engine
     except DatabaseError as exc:
         if not _is_sqlite_corrupt_error(exc):
@@ -259,6 +273,20 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
                 table="sync_links",
                 column="cloud_mtime",
                 column_type="REAL",
+                default_value=None,
+            )
+            await _ensure_column(
+                conn,
+                table="sync_links",
+                column="local_resource_signature",
+                column_type="TEXT",
+                default_value=None,
+            )
+            await _ensure_column(
+                conn,
+                table="sync_links",
+                column="resource_sync_revision",
+                column_type="TEXT",
                 default_value=None,
             )
         return engine

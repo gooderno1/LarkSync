@@ -209,6 +209,7 @@ class FakeSheetService:
 class FakeLinkService:
     def __init__(self, persisted: list[SyncLinkItem] | None = None) -> None:
         self.calls: list[tuple[str, str, str, str, str | None]] = []
+        self.items: list[SyncLinkItem] = []
         self._persisted = persisted or []
 
     async def upsert_link(
@@ -222,7 +223,25 @@ class FakeLinkService:
         **kwargs,
     ):
         self.calls.append((local_path, cloud_token, cloud_type, task_id, cloud_parent_token))
-        return None
+        item = SyncLinkItem(
+            local_path=local_path,
+            cloud_token=cloud_token,
+            cloud_type=cloud_type,
+            task_id=task_id,
+            updated_at=0.0 if updated_at is None else float(updated_at),
+            cloud_parent_token=cloud_parent_token,
+            local_hash=kwargs.get("local_hash"),
+            local_size=kwargs.get("local_size"),
+            local_mtime=kwargs.get("local_mtime"),
+            cloud_revision=kwargs.get("cloud_revision"),
+            cloud_mtime=kwargs.get("cloud_mtime"),
+            local_resource_signature=kwargs.get("local_resource_signature"),
+            resource_sync_revision=kwargs.get("resource_sync_revision"),
+        )
+        self.items.append(item)
+        self._persisted = [link for link in self._persisted if link.local_path != local_path]
+        self._persisted.append(item)
+        return item
 
     async def get_by_local_path(self, local_path: str):
         for item in self._persisted:
@@ -248,6 +267,25 @@ class FakeWatcher:
 
     def silence(self, path: Path, ttl_seconds: float | None = None) -> None:
         self.silenced.append((str(path), ttl_seconds))
+
+
+class ResourceTranscoder(FakeTranscoder):
+    async def to_markdown(
+        self,
+        document_id: str,
+        blocks: list[dict],
+        *,
+        base_dir=None,
+        link_map=None,
+    ) -> str:
+        base = Path(base_dir)
+        assets_dir = base / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        (assets_dir / "logo.png").write_bytes(b"image")
+        attachments_dir = base / "attachments"
+        attachments_dir.mkdir(parents=True, exist_ok=True)
+        (attachments_dir / "brief.pdf").write_bytes(b"pdf")
+        return "# doc\n\n![](assets/logo.png)\n\n[brief](attachments/brief.pdf)\n"
 
 
 class GuardedFileWriter:
@@ -537,6 +575,55 @@ async def test_run_download_silences_docx_before_local_write(tmp_path: Path) -> 
 
     assert (tmp_path / "设计文档.md").exists()
     assert str(tmp_path / "设计文档.md") in {item[0] for item in watcher.silenced}
+
+
+@pytest.mark.asyncio
+async def test_run_download_persists_resource_sync_baseline_for_markdown_assets(
+    tmp_path: Path,
+) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="doc-1",
+                name="设计文档",
+                type="docx",
+                modified_time="1700000000000",
+            )
+        ],
+    )
+    link_service = FakeLinkService()
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=ResourceTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=link_service,
+    )
+    task = SyncTaskItem(
+        id="task-docx-resource",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._run_download(task, status, allow_deletes=False)
+
+    assert link_service.items
+    persisted = link_service.items[-1]
+    assert persisted.local_resource_signature is not None
+    assert persisted.resource_sync_revision == persisted.cloud_revision
 
 
 @pytest.mark.asyncio

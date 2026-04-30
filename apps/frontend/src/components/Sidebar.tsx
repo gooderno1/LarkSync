@@ -50,13 +50,13 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
   const syncMode = config.sync_mode || "bidirectional";
 
   return (
-    <aside className="flex w-full flex-col gap-5 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 lg:sticky lg:top-6 lg:h-[calc(100vh-3rem)] lg:w-72 lg:flex-none lg:shrink-0">
+    <aside className="flex w-full flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 lg:sticky lg:top-5 lg:h-[calc(100vh-2.5rem)] lg:w-64 lg:flex-none lg:shrink-0">
       {/* Logo */}
       <div className="flex items-center justify-center px-2 py-1">
         <img
           src="/logo-horizontal.png"
           alt="LarkSync"
-          className="h-9 w-auto object-contain drop-shadow-[0_1px_6px_rgba(51,112,255,0.3)]"
+          className="h-8 w-auto object-contain drop-shadow-[0_1px_6px_rgba(51,112,255,0.24)]"
           draggable={false}
         />
       </div>
@@ -94,7 +94,7 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
       </nav>
 
       {/* Connection status */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3.5">
         <p className="text-xs uppercase tracking-widest text-zinc-500">连接状态</p>
         <div className="mt-3 flex items-center justify-between">
           <StatusPill
@@ -110,24 +110,24 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
           <p>设备：{deviceLabel}</p>
           <p>账号：{accountLabel}</p>
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           {!connected ? (
             <a
-              className="inline-flex items-center justify-center rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80"
+              className="inline-flex items-center justify-center rounded-lg bg-[#3370FF] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80"
               href={loginUrl}
             >
               连接飞书
             </a>
           ) : (
             <a
-              className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+              className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
               href={loginUrl}
             >
               手动重新授权
             </a>
           )}
           <button
-            className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-4 py-2 text-xs font-semibold text-zinc-300 transition hover:bg-zinc-800"
+            className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:bg-zinc-800"
             onClick={() => logout()}
             type="button"
           >
@@ -137,9 +137,9 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
       </div>
 
       {/* Strategy summary */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 text-xs text-zinc-500">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3.5 text-xs text-zinc-500">
         <p className="font-semibold text-zinc-300">当前策略</p>
-        <ul className="mt-3 space-y-1.5">
+        <ul className="mt-2.5 space-y-1.5">
           <li>本地 → 云端：每 {formatIntervalLabel(uploadVal, uploadUnit, uploadTime)}</li>
           <li>云端 → 本地：每 {formatIntervalLabel(downloadVal, downloadUnit, downloadTime)}</li>
           <li>默认同步：{modeLabels[syncMode] || syncMode}</li>

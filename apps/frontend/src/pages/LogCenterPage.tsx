@@ -2,7 +2,7 @@
 /*  日志中心页面：任务诊断 + 系统日志 + 冲突管理                         */
 /* ------------------------------------------------------------------ */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useConflicts } from "../hooks/useConflicts";
 import { formatTimestamp, formatShortTime } from "../lib/formatters";
@@ -65,8 +65,8 @@ type SyncTaskDiagnosticsRaw = Omit<SyncTaskDiagnostics, "recent_events" | "probl
   problems: SyncLogEntryRaw[];
 };
 
-type TaskViewFilter = "all" | "running" | "problem" | "disabled" | "recent";
 type EventFilter = "all" | "problems" | "changes" | "skipped";
+type DetailTab = "overview" | "problems" | "events";
 
 const PROBLEM_STATUSES = new Set(["failed", "delete_failed", "conflict", "cancelled"]);
 const WARNING_STATUSES = new Set(["skipped", "delete_pending", "cancelled", "queued"]);
@@ -158,15 +158,39 @@ function buildStatusParams(filter: EventFilter): string[] {
   return [];
 }
 
+function formatDuration(startedAt?: number | null, finishedAt?: number | null, fallbackAt?: number | null): string {
+  if (!startedAt) return "暂无";
+  const end = finishedAt ?? fallbackAt;
+  if (!end || end <= startedAt) return "进行中";
+  const totalSeconds = Math.max(1, Math.round((end - startedAt) / 1000));
+  if (totalSeconds < 60) return `${totalSeconds} 秒`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return seconds ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分`;
+  const hours = Math.floor(minutes / 60);
+  const remainMinutes = minutes % 60;
+  return remainMinutes ? `${hours} 小时 ${remainMinutes} 分` : `${hours} 小时`;
+}
+
+function compactRunId(runId?: string | null): string {
+  if (!runId) return "暂无";
+  if (runId.length <= 18) return runId;
+  return `${runId.slice(0, 8)}...${runId.slice(-6)}`;
+}
+
 export function LogCenterPage() {
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflict } = useConflicts();
   const { toast } = useToast();
+  const taskPickerRef = useRef<HTMLDivElement | null>(null);
 
   const [logTab, setLogTab] = useState<"tasks" | "file-logs" | "conflicts">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [taskSearch, setTaskSearch] = useState("");
-  const [taskViewFilter, setTaskViewFilter] = useState<TaskViewFilter>("all");
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [resolvedDiagnostics, setResolvedDiagnostics] = useState<SyncTaskDiagnostics | null>(null);
+  const [taskPickerQuery, setTaskPickerQuery] = useState("");
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState<DetailTab>("events");
   const [eventFilter, setEventFilter] = useState<EventFilter>("all");
   const [eventSearch, setEventSearch] = useState("");
   const [eventPage, setEventPage] = useState(1);
@@ -183,7 +207,7 @@ export function LogCenterPage() {
     queryFn: () => apiFetch<SyncTaskOverview[]>("/sync/tasks/overview"),
     enabled: logTab === "tasks",
     staleTime: 5_000,
-    refetchInterval: logTab === "tasks" ? 5_000 : false,
+    refetchInterval: logTab === "tasks" ? 10_000 : false,
     placeholderData: [],
   });
 
@@ -198,70 +222,97 @@ export function LogCenterPage() {
     if (sortedOverviews.length === 0) {
       setSelectedTaskId(null);
       setSelectedRunId(null);
+      setActiveTaskId(null);
+      setResolvedDiagnostics(null);
       return;
     }
     if (!selectedTaskId || !sortedOverviews.some((overview) => overview.task.id === selectedTaskId)) {
       setSelectedTaskId(sortedOverviews[0].task.id);
-      setSelectedRunId(null);
     }
   }, [selectedTaskId, sortedOverviews]);
 
   const filteredOverviews = useMemo(() => {
-    const search = taskSearch.trim().toLowerCase();
-    return sortedOverviews.filter((overview) => {
-      const { task, status } = overview;
-      const hasProblem = Boolean(status.last_error) || overview.problem_count > 0;
-      if (taskViewFilter === "running" && status?.state !== "running") return false;
-      if (taskViewFilter === "problem" && !hasProblem) return false;
-      if (taskViewFilter === "disabled" && task.enabled) return false;
-      if (taskViewFilter === "recent" && !overview.last_event_at && !task.last_run_at && !status.started_at) return false;
-      if (!search) return true;
-      return [task.name, task.local_path, task.cloud_folder_name, task.cloud_folder_token]
+    const search = taskPickerQuery.trim().toLowerCase();
+    if (!search) return sortedOverviews;
+    return sortedOverviews.filter((overview) =>
+      [overview.task.name, overview.task.local_path, overview.task.cloud_folder_name, overview.task.cloud_folder_token]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(search));
-    });
-  }, [sortedOverviews, taskSearch, taskViewFilter]);
+        .some((value) => String(value).toLowerCase().includes(search))
+    );
+  }, [sortedOverviews, taskPickerQuery]);
 
   const selectedOverview = sortedOverviews.find((overview) => overview.task.id === selectedTaskId) || null;
+  const activeOverviewFallback = sortedOverviews.find((overview) => overview.task.id === activeTaskId) || null;
+  const taskPickerOptions = filteredOverviews;
 
-  const selectedDiagnosticsQuery = useQuery<SyncTaskDiagnostics>({
-    queryKey: ["sync-task-diagnostics", selectedTaskId, selectedRunId],
+  const taskDiagnosticsQuery = useQuery<SyncTaskDiagnostics>({
+    queryKey: ["sync-task-diagnostics-base", selectedTaskId],
     queryFn: async () => {
       const params = new URLSearchParams();
-      params.set("limit", "800");
-      if (selectedRunId) params.set("run_id", selectedRunId);
+      params.set("limit", "200");
       const raw = await apiFetch<SyncTaskDiagnosticsRaw>(`/sync/tasks/${selectedTaskId}/diagnostics?${params.toString()}`);
       return mapSyncTaskDiagnostics(raw);
     },
     enabled: logTab === "tasks" && Boolean(selectedTaskId),
     staleTime: 5_000,
-    refetchInterval: logTab === "tasks" ? 5_000 : false,
+    refetchInterval:
+      logTab === "tasks" && selectedOverview?.status.state === "running"
+        ? 5_000
+        : logTab === "tasks" && Boolean(selectedTaskId)
+          ? 10_000
+          : false,
   });
 
   useEffect(() => {
-    if (!selectedTaskId) {
-      setSelectedRunId(null);
+    if (!selectedTaskId || !taskDiagnosticsQuery.data) {
       return;
     }
-    const runs = selectedDiagnosticsQuery.data?.recent_runs || [];
-    if (runs.length === 0) {
-      setSelectedRunId(null);
-      return;
-    }
-    if (!selectedRunId || !runs.some((run) => run.run_id === selectedRunId)) {
-      setSelectedRunId(runs[0].run_id);
-    }
-  }, [selectedTaskId, selectedRunId, selectedDiagnosticsQuery.data?.recent_runs]);
+    const runs = taskDiagnosticsQuery.data.recent_runs || [];
+    setResolvedDiagnostics(taskDiagnosticsQuery.data);
+    setActiveTaskId(selectedTaskId);
+    setSelectedRunId((current) => {
+      if (current && runs.some((run) => run.run_id === current)) return current;
+      return runs[0]?.run_id ?? null;
+    });
+  }, [selectedTaskId, taskDiagnosticsQuery.data]);
+
+  const activeOverview = resolvedDiagnostics?.overview ?? activeOverviewFallback ?? selectedOverview;
+  const selectedTask = activeOverview?.task ?? null;
+  const selectedStatus = activeOverview?.status ?? null;
+  const recentRuns = resolvedDiagnostics?.recent_runs || [];
+  const activeRunId = selectedRunId && recentRuns.some((run) => run.run_id === selectedRunId)
+    ? selectedRunId
+    : recentRuns[0]?.run_id ?? null;
+  const activeRunSummary = recentRuns.find((run) => run.run_id === activeRunId) || null;
+  const taskSwitching = Boolean(selectedTaskId && activeTaskId && selectedTaskId !== activeTaskId);
+
+  const selectedRunQuery = useQuery<SyncTaskDiagnostics>({
+    queryKey: ["sync-task-diagnostics-run", activeTaskId, activeRunId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", "800");
+      if (activeRunId) params.set("run_id", activeRunId);
+      const raw = await apiFetch<SyncTaskDiagnosticsRaw>(`/sync/tasks/${activeTaskId}/diagnostics?${params.toString()}`);
+      return mapSyncTaskDiagnostics(raw);
+    },
+    enabled: logTab === "tasks" && Boolean(activeTaskId) && Boolean(activeRunId),
+    staleTime: 5_000,
+    refetchInterval:
+      logTab === "tasks" && !taskSwitching && activeRunSummary?.state === "running"
+        ? 5_000
+        : false,
+    placeholderData: (previousData) => previousData,
+  });
 
   const selectedEventsQuery = useQuery<SyncLogResponse>({
-    queryKey: ["sync-log-task-events", selectedTaskId, selectedRunId, eventFilter, eventSearch, eventPage, eventPageSize],
+    queryKey: ["sync-log-task-events", activeTaskId, activeRunId, eventFilter, eventSearch, eventPage, eventPageSize],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(eventPageSize));
       params.set("offset", String((eventPage - 1) * eventPageSize));
       params.set("order", "desc");
-      if (selectedTaskId) params.append("task_ids", selectedTaskId);
-      if (selectedRunId) params.append("run_ids", selectedRunId);
+      if (activeTaskId) params.append("task_ids", activeTaskId);
+      if (activeRunId) params.append("run_ids", activeRunId);
       for (const status of buildStatusParams(eventFilter)) {
         params.append("statuses", status);
       }
@@ -269,28 +320,40 @@ export function LogCenterPage() {
       const raw = await apiFetch<SyncLogResponseRaw>(`/sync/logs/sync?${params.toString()}`);
       return mapSyncLogResponse(raw);
     },
-    enabled: logTab === "tasks" && Boolean(selectedTaskId),
+    enabled: logTab === "tasks" && Boolean(activeTaskId) && Boolean(activeRunId),
     staleTime: 5_000,
-    refetchInterval: logTab === "tasks" ? 5_000 : false,
+    refetchInterval:
+      logTab === "tasks" && !taskSwitching && activeRunSummary?.state === "running"
+        ? 5_000
+        : false,
     placeholderData: { total: 0, items: [] },
   });
 
-  const activeOverview = selectedDiagnosticsQuery.data?.overview ?? selectedOverview;
-  const selectedTask = activeOverview?.task ?? null;
-  const selectedStatus = activeOverview?.status;
-  const recentRuns = selectedDiagnosticsQuery.data?.recent_runs || [];
-  const selectedRun = selectedDiagnosticsQuery.data?.selected_run ?? null;
-  const selectedSummaryEntries = selectedDiagnosticsQuery.data?.recent_events || [];
+  const selectedRun = selectedRunQuery.data?.selected_run ?? activeRunSummary;
   const selectedTimelineEntries = selectedEventsQuery.data?.items || [];
   const selectedTimelineTotal = selectedEventsQuery.data?.total || 0;
-  const selectedProblems = selectedDiagnosticsQuery.data?.problems || [];
-  const actionCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const entry of selectedSummaryEntries) {
-      counts[entry.status] = (counts[entry.status] ?? 0) + 1;
+  const selectedProblems = selectedRunQuery.data?.problems || [];
+
+  useEffect(() => {
+    setEventPage(1);
+  }, [activeRunId]);
+
+  useEffect(() => {
+    if (!taskPickerOpen) {
+      setTaskPickerQuery("");
     }
-    return counts;
-  }, [selectedSummaryEntries]);
+  }, [taskPickerOpen]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!taskPickerRef.current) return;
+      if (!taskPickerRef.current.contains(event.target as Node)) {
+        setTaskPickerOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, []);
 
   const progress = computeTaskProgress(selectedStatus);
   const currentFile = selectedRun?.current_file ?? activeOverview?.current_file ?? null;
@@ -332,13 +395,14 @@ export function LogCenterPage() {
 
   const refreshDiagnostics = () => {
     overviewQuery.refetch();
-    selectedDiagnosticsQuery.refetch();
+    taskDiagnosticsQuery.refetch();
+    selectedRunQuery.refetch();
     selectedEventsQuery.refetch();
   };
 
   return (
     <section className="space-y-6 animate-fade-up">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
         <div>
           <h2 className="text-lg font-semibold text-zinc-50">日志中心</h2>
           <p className="mt-1 text-xs text-zinc-400">按任务查看当前同步情况、问题事件与系统日志。</p>
@@ -370,187 +434,151 @@ export function LogCenterPage() {
       </div>
 
       {logTab === "tasks" ? (
-        <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-          <aside className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
-            <div className="flex items-center justify-between gap-3">
+        <div className="grid gap-5 xl:h-[calc(100vh-11.5rem)] xl:min-h-[720px] xl:grid-rows-[auto_minmax(0,1fr)]">
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3.5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold text-zinc-50">任务</h3>
-                <p className="mt-1 text-xs text-zinc-500">按最近活动排序。</p>
+                <h3 className="text-base font-semibold text-zinc-50">任务选择</h3>
               </div>
-              <button
-                className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                onClick={refreshDiagnostics}
-                type="button"
-              >
-                <IconRefresh className="h-3.5 w-3.5" /> 刷新
-              </button>
-            </div>
-            <input
-              className="mt-4 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-              placeholder="搜索任务名或路径"
-              value={taskSearch}
-              onChange={(event) => setTaskSearch(event.target.value)}
-            />
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              {[
-                ["all", "全部"],
-                ["running", "运行中"],
-                ["problem", "有问题"],
-                ["disabled", "已停用"],
-                ["recent", "有活动"],
-              ].map(([value, label]) => (
+              <div className="flex items-center gap-2">
+                {selectedTask ? (
+                  <StatusPill
+                    label={stateLabels[selectedStateKey] || selectedStateKey}
+                    tone={stateTones[selectedStateKey] || "neutral"}
+                    dot={selectedStatus?.state === "running"}
+                  />
+                ) : null}
                 <button
-                  key={value}
-                  className={cn(
-                    "rounded-lg border px-2.5 py-1.5 transition",
-                    taskViewFilter === value
-                      ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                      : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
-                  )}
-                  onClick={() => setTaskViewFilter(value as TaskViewFilter)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                  onClick={refreshDiagnostics}
                   type="button"
                 >
-                  {label}
+                  <IconRefresh className="h-3.5 w-3.5" /> 刷新
                 </button>
-              ))}
-            </div>
-            <div className="mt-4 max-h-[660px] space-y-2 overflow-auto pr-1 log-scroll-area">
-              {overviewQuery.isLoading ? (
-                [1, 2, 3, 4].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-zinc-800/50" />)
-              ) : filteredOverviews.length === 0 ? (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 py-8 text-center">
-                  <IconTasks className="mx-auto h-10 w-10 text-zinc-700" />
-                  <p className="mt-3 text-sm text-zinc-500">暂无匹配任务。</p>
-                </div>
-              ) : (
-                filteredOverviews.map((overview) => {
-                  const { task, status } = overview;
-                  const stateKey = !task.enabled ? "paused" : status?.state || "idle";
-                  const hasProblem = Boolean(status?.last_error) || overview.problem_count > 0;
-                  const activityTime = diagnosticActivityTime(overview);
-                  return (
-                    <button
-                      key={task.id}
-                      className={cn(
-                        "w-full rounded-xl border p-3 text-left transition",
-                        selectedTaskId === task.id
-                          ? "border-[#3370FF]/50 bg-[#3370FF]/10"
-                          : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700 hover:bg-zinc-900"
-                      )}
-                      onClick={() => {
-                        setSelectedTaskId(task.id);
-                        setSelectedRunId(null);
-                        resetEventPage();
-                      }}
-                      type="button"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-zinc-100">{task.name || task.local_path}</p>
-                          <p className="mt-1 truncate text-xs text-zinc-500">{shortPath(task.local_path, 44)}</p>
-                        </div>
-                        <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                        <span>{formatShortTime(activityTime)}</span>
-                        <span className="text-zinc-700">|</span>
-                        <span>{modeLabels[task.sync_mode] || task.sync_mode}</span>
-                        {hasProblem ? (
-                          <>
-                            <span className="text-zinc-700">|</span>
-                            <span className="text-rose-400">问题 {Math.max(overview.problem_count, 1)}</span>
-                          </>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </aside>
-
-          <div className="space-y-5">
-            {!selectedTask ? (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 py-16 text-center">
-                <IconTasks className="mx-auto h-12 w-12 text-zinc-700" />
-                <p className="mt-4 text-sm text-zinc-500">请选择一个任务查看诊断详情。</p>
               </div>
-            ) : (
-              <>
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <StatusPill label={stateLabels[selectedStateKey] || selectedStateKey} tone={stateTones[selectedStateKey] || "neutral"} dot={selectedStatus?.state === "running"} />
-                        <h3 className="text-lg font-semibold text-zinc-50">{selectedTask.name || "未命名任务"}</h3>
+            </div>
+
+            <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(420px,1fr)_minmax(0,1fr)_auto]">
+              <div className="space-y-1.5" ref={taskPickerRef}>
+                <label className="text-[11px] text-zinc-500">当前任务</label>
+                <div className="relative">
+                  <button
+                    className="flex w-full items-center justify-between rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-left text-sm text-zinc-200 outline-none transition hover:border-zinc-600"
+                    onClick={() => setTaskPickerOpen((value) => !value)}
+                    type="button"
+                  >
+                    <span className="truncate">{selectedTask?.name || "请选择任务"}</span>
+                    <span className="text-xs text-zinc-500">{taskPickerOpen ? "收起" : "选择"}</span>
+                  </button>
+                  {taskPickerOpen ? (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 rounded-xl border border-zinc-800 bg-zinc-950 p-2 shadow-xl">
+                      <input
+                        autoFocus
+                        className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
+                        placeholder="搜索任务名"
+                        value={taskPickerQuery}
+                        onChange={(event) => setTaskPickerQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") setTaskPickerOpen(false);
+                        }}
+                      />
+                      <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1 log-scroll-area">
+                        {taskPickerOptions.length === 0 ? (
+                          <div className="rounded-lg px-3 py-5 text-center text-xs text-zinc-500">没有匹配的任务</div>
+                        ) : (
+                          taskPickerOptions.map((overview) => {
+                            const task = overview.task;
+                            const stateKey = !task.enabled ? "paused" : overview.status?.state || "idle";
+                            return (
+                              <button
+                                key={task.id}
+                                className={cn(
+                                  "w-full rounded-lg border px-3 py-2 text-left transition",
+                                  selectedTaskId === task.id
+                                    ? "border-[#3370FF]/50 bg-[#3370FF]/10"
+                                    : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-900"
+                                )}
+                                onClick={() => {
+                                  setSelectedTaskId(task.id);
+                                  setTaskPickerOpen(false);
+                                  resetEventPage();
+                                }}
+                                type="button"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="truncate text-sm font-medium text-zinc-100">{task.name || "未命名任务"}</span>
+                                  <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
+                                </div>
+                                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+                                  <span>{modeLabels[task.sync_mode] || task.sync_mode}</span>
+                                  <span>{formatShortTime(diagnosticActivityTime(overview))}</span>
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
                       </div>
-                      <p className="mt-2 break-all text-xs text-zinc-500">{selectedTask.local_path}</p>
-                      <p className="mt-1 break-all text-xs text-zinc-600">云端：{selectedTask.cloud_folder_name || selectedTask.cloud_folder_token}</p>
-                      {selectedRun?.run_id ? (
-                        <p className="mt-1 break-all text-xs text-zinc-600">查看运行：{selectedRun.run_id}</p>
-                      ) : selectedStatus?.current_run_id ? (
-                        <p className="mt-1 break-all text-xs text-zinc-600">当前运行：{selectedStatus.current_run_id}</p>
-                      ) : null}
-                    </div>
-                    <button
-                      className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                      onClick={refreshDiagnostics}
-                      type="button"
-                    >
-                      <IconRefresh className="h-3.5 w-3.5" /> 刷新诊断
-                    </button>
-                  </div>
-
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                      <p className="text-xs text-zinc-500">查看运行</p>
-                      <p className="mt-2 text-sm font-semibold text-zinc-100">
-                        {lastActivityAt ? formatTimestamp(lastActivityAt) : "暂无"}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                      <p className="text-xs text-zinc-500">任务当前状态</p>
-                      <p className="mt-2 text-sm font-semibold text-zinc-100">
-                        {progress.progress === null ? "暂无运行数据" : `${progress.progress}%`}
-                      </p>
-                      {progress.progress !== null ? (
-                        <p className="mt-1 text-xs text-zinc-500">已处理 {progress.processed}/{progress.effectiveTotal}</p>
-                      ) : null}
-                    </div>
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                      <p className="text-xs text-zinc-500">本次运行动作</p>
-                      <p className="mt-2 text-sm font-semibold text-zinc-100">
-                        上传 {diagnosticCounts?.uploaded ?? actionCounts.uploaded ?? 0} / 下载 {diagnosticCounts?.downloaded ?? actionCounts.downloaded ?? 0}
-                      </p>
-                      <p className="mt-1 text-xs text-zinc-500">
-                        跳过 {diagnosticCounts?.skipped ?? actionCounts.skipped ?? 0}，失败 {diagnosticCounts?.failed ?? selectedProblems.length}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                      <p className="text-xs text-zinc-500">当前处理</p>
-                      <p className="mt-2 break-all text-xs font-medium text-zinc-200">
-                        {currentFile ? shortPath(currentFile.path, 80) : selectedStatus?.state === "running" ? "等待下一条事件" : "当前未运行"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {selectedRun?.last_error || selectedStatus?.last_error ? (
-                    <div className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-200">
-                      最近错误：{selectedRun?.last_error || selectedStatus?.last_error}
                     </div>
                   ) : null}
                 </div>
+              </div>
 
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-base font-semibold text-zinc-50">运行记录</h3>
-                      <p className="mt-1 text-xs text-zinc-500">每次同步单独成条，历史问题不再混入当前运行。</p>
-                    </div>
-                    <StatusPill label={`${recentRuns.length} 次`} tone="info" />
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-zinc-500">当前任务信息</label>
+                <div className="flex min-h-[40px] flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-500">
+                  {selectedTask ? (
+                    <>
+                      <span>{modeLabels[selectedTask.sync_mode] || selectedTask.sync_mode}</span>
+                      {lastActivityAt ? (
+                        <>
+                          <span className="text-zinc-700">|</span>
+                          <span>最近活动 {formatShortTime(lastActivityAt)}</span>
+                        </>
+                      ) : null}
+                      <span className="text-zinc-700">|</span>
+                      <span className="truncate">{shortPath(selectedTask.local_path, 84)}</span>
+                    </>
+                  ) : (
+                    <span>暂无任务</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-end justify-end text-[11px] text-zinc-500">
+                {overviewQuery.isFetching || taskDiagnosticsQuery.isFetching ? (
+                  <span className="shrink-0">正在刷新…</span>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <div className="grid min-h-[560px] gap-4 xl:min-h-0 xl:grid-cols-[minmax(340px,0.82fr)_minmax(0,1.18fr)]">
+            <section className="flex min-h-0 flex-col rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-zinc-50">运行记录</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  {taskSwitching ? (
+                    <span className="text-xs text-zinc-500">正在切换到新任务…</span>
+                  ) : null}
+                  <StatusPill label="最近 20 次" tone="info" />
+                </div>
+              </div>
+
+              {!selectedTask ? (
+                <div className="flex flex-1 items-center justify-center text-center">
+                  <div>
+                    <IconTasks className="mx-auto h-10 w-10 text-zinc-700" />
+                    <p className="mt-3 text-sm text-zinc-500">请选择一个任务查看运行记录。</p>
                   </div>
-                  <div className="mt-4 max-h-[320px] space-y-2 overflow-auto pr-1 log-scroll-area">
-                    {recentRuns.length === 0 ? (
+                </div>
+              ) : (
+                <>
+                  <div className="mt-4 flex-1 min-h-0 space-y-2 overflow-y-auto pr-1 log-scroll-area">
+                    {taskDiagnosticsQuery.isLoading && recentRuns.length === 0 ? (
+                      [1, 2, 3].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-zinc-800/50" />)
+                    ) : recentRuns.length === 0 ? (
                       <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-5 text-center text-sm text-zinc-500">
                         暂无运行记录。
                       </div>
@@ -559,8 +587,8 @@ export function LogCenterPage() {
                         <button
                           key={run.run_id}
                           className={cn(
-                            "w-full rounded-xl border p-3 text-left transition",
-                            selectedRunId === run.run_id
+                            "w-full rounded-xl border px-3 py-2 text-left transition",
+                            activeRunId === run.run_id
                               ? "border-[#3370FF]/50 bg-[#3370FF]/10"
                               : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700 hover:bg-zinc-900"
                           )}
@@ -572,8 +600,8 @@ export function LogCenterPage() {
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="break-all text-sm font-semibold text-zinc-100">{run.run_id}</p>
-                              <p className="mt-1 text-xs text-zinc-500">
+                              <p className="truncate text-sm font-semibold text-zinc-100">{compactRunId(run.run_id)}</p>
+                              <p className="mt-1 text-[11px] text-zinc-500">
                                 {run.started_at ? formatTimestamp(run.started_at) : "开始时间未知"}
                               </p>
                             </div>
@@ -583,130 +611,247 @@ export function LogCenterPage() {
                               dot={run.state === "running"}
                             />
                           </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                            <span>上传 {run.counts.uploaded}</span>
-                            <span className="text-zinc-700">|</span>
-                            <span>下载 {run.counts.downloaded}</span>
-                            <span className="text-zinc-700">|</span>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+                            <span>上 {run.counts.uploaded}</span>
+                            <span>下 {run.counts.downloaded}</span>
                             <span>失败 {run.counts.failed}</span>
-                            <span className="text-zinc-700">|</span>
                             <span>冲突 {run.counts.conflicts}</span>
+                            <span>耗时 {formatDuration(run.started_at, run.finished_at, run.last_event_at)}</span>
                           </div>
+                          {run.last_error ? (
+                            <p className="mt-1.5 truncate text-[11px] text-rose-300">{run.last_error}</p>
+                          ) : null}
                         </button>
                       ))
                     )}
                   </div>
-                </div>
+                </>
+              )}
+            </section>
 
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-base font-semibold text-zinc-50">问题摘要</h3>
-                      <p className="mt-1 text-xs text-zinc-500">只显示当前查看运行里的失败、冲突、删除失败和取消事件。</p>
-                    </div>
-                    <StatusPill label={`${selectedProblems.length} 条`} tone={selectedProblems.length ? "danger" : "success"} />
+            <section className="flex min-h-0 flex-col rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+              {!selectedTask ? (
+                <div className="flex flex-1 items-center justify-center text-center">
+                  <div>
+                    <IconActivity className="mx-auto h-10 w-10 text-zinc-700" />
+                    <p className="mt-3 text-sm text-zinc-500">请选择一个任务查看运行详情。</p>
                   </div>
-                  <div className="mt-4 space-y-2">
-                    {selectedProblems.length === 0 ? (
-                      <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-5 text-center text-sm text-zinc-500">
-                        最近未发现问题事件。
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <StatusPill
+                          label={stateLabels[selectedRun?.state || selectedStateKey] || selectedRun?.state || selectedStateKey}
+                          tone={stateTones[selectedRun?.state || selectedStateKey] || "neutral"}
+                          dot={selectedRun?.state === "running"}
+                        />
+                        <h3 className="truncate text-base font-semibold text-zinc-50">
+                          {selectedTask.name || "未命名任务"}
+                        </h3>
+                        {lastActivityAt ? <span className="text-[11px] text-zinc-500">最近活动 {formatTimestamp(lastActivityAt)}</span> : null}
                       </div>
-                    ) : (
-                      selectedProblems.slice(0, 6).map((entry, index) => (
-                        <div key={`${entry.timestamp}-${index}`} className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <p className="text-xs text-zinc-500">
-                              {formatTimestamp(entry.timestamp)}
-                              {entry.runId ? <span className="ml-2 text-zinc-700">运行 {entry.runId}</span> : null}
-                            </p>
-                            <StatusPill label={statusLabelMap[entry.status] || entry.status} tone="danger" />
-                          </div>
-                          <p className="mt-2 break-all text-xs text-zinc-300">{entry.path}</p>
-                          {entry.message ? <p className="mt-1 text-xs text-rose-300">{entry.message}</p> : null}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-base font-semibold text-zinc-50">运行事件时间线</h3>
-                      <p className="mt-1 text-xs text-zinc-500">只显示当前查看运行的同步事件。</p>
+                      <p className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+                        <span>运行 {compactRunId(selectedRun?.run_id || activeRunId || selectedStatus?.current_run_id || null)}</span>
+                        <span>{shortPath(selectedTask.local_path, 92)}</span>
+                      </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {EVENT_FILTERS.map((filter) => (
-                        <button
-                          key={filter.value}
-                          className={cn(
-                            "rounded-lg border px-3 py-1.5 text-xs transition",
-                            eventFilter === filter.value
-                              ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                              : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
-                          )}
-                          onClick={() => {
-                            setEventFilter(filter.value);
+                    <button
+                      className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                      onClick={refreshDiagnostics}
+                      type="button"
+                    >
+                      <IconRefresh className="h-3.5 w-3.5" /> 刷新诊断
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {[
+                      ["overview", "概览"],
+                      ["problems", "问题"],
+                      ["events", "事件"],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        className={cn(
+                          "rounded-lg border px-3 py-1.5 text-xs transition",
+                          detailTab === value
+                            ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
+                            : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                        )}
+                        onClick={() => setDetailTab(value as DetailTab)}
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    {taskSwitching ? <span className="ml-auto text-xs text-zinc-500">正在更新当前详情…</span> : null}
+                  </div>
+
+                  <div className="mt-4 flex-1 min-h-0 overflow-y-auto pr-1 log-scroll-area">
+                    {detailTab === "overview" ? (
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 px-4 py-3">
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-zinc-400">
+                            <span>开始 {selectedRun?.started_at ? formatTimestamp(selectedRun.started_at) : "暂无"}</span>
+                            <span>耗时 {formatDuration(selectedRun?.started_at, selectedRun?.finished_at, selectedRun?.last_event_at)}</span>
+                            <span>进度 {progress.progress === null ? "暂无" : `${progress.progress}%`}</span>
+                            <span>阶段 {selectedRun?.state === "running" ? "同步进行中" : "本轮已结束"}</span>
+                          </div>
+                          <div className="mt-2.5 flex flex-wrap gap-2">
+                            <StatusPill label={`上传 ${diagnosticCounts?.uploaded ?? 0}`} tone="info" />
+                            <StatusPill label={`下载 ${diagnosticCounts?.downloaded ?? 0}`} tone="info" />
+                            <StatusPill label={`跳过 ${diagnosticCounts?.skipped ?? 0}`} tone="warning" />
+                            <StatusPill label={`失败 ${diagnosticCounts?.failed ?? 0}`} tone={(diagnosticCounts?.failed ?? 0) > 0 ? "danger" : "success"} />
+                            <StatusPill label={`冲突 ${diagnosticCounts?.conflicts ?? 0}`} tone={(diagnosticCounts?.conflicts ?? 0) > 0 ? "warning" : "success"} />
+                            <StatusPill label={`总数 ${diagnosticCounts?.total ?? 0}`} tone="neutral" />
+                          </div>
+                          {currentFile ? (
+                            <p className="mt-2 truncate text-[11px] text-zinc-500">当前处理：{shortPath(currentFile.path, 110)}</p>
+                          ) : null}
+                        </div>
+
+                        {(selectedRun?.last_error || selectedStatus?.last_error) ? (
+                          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-200">
+                            最近错误：{selectedRun?.last_error || selectedStatus?.last_error}
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                            <p className="text-xs text-zinc-500">当前处理文件</p>
+                            <p className="mt-2 break-all text-sm text-zinc-200">
+                              {currentFile ? shortPath(currentFile.path, 120) : selectedStatus?.state === "running" ? "等待下一条事件" : "当前未运行"}
+                            </p>
+                            {currentFile?.message ? <p className="mt-2 text-xs text-zinc-500">{currentFile.message}</p> : null}
+                          </div>
+                          <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                            <p className="text-xs text-zinc-500">最近活动</p>
+                            <p className="mt-2 text-sm font-semibold text-zinc-100">
+                              {lastActivityAt ? formatTimestamp(lastActivityAt) : "暂无"}
+                            </p>
+                            <p className="mt-2 text-xs text-zinc-500">
+                              云端：{selectedTask.cloud_folder_name || selectedTask.cloud_folder_token}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+                          <p className="text-xs text-zinc-500">运行判断</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <StatusPill label={diagnosticCounts?.failed ? `失败 ${diagnosticCounts.failed}` : "无失败"} tone={diagnosticCounts?.failed ? "danger" : "success"} />
+                            <StatusPill label={diagnosticCounts?.conflicts ? `冲突 ${diagnosticCounts.conflicts}` : "无冲突"} tone={diagnosticCounts?.conflicts ? "warning" : "success"} />
+                            <StatusPill label={diagnosticCounts?.skipped ? `跳过 ${diagnosticCounts.skipped}` : "无跳过"} tone={diagnosticCounts?.skipped ? "warning" : "success"} />
+                            <StatusPill label={selectedStatus?.state === "running" ? "同步进行中" : "本轮已结束"} tone={selectedStatus?.state === "running" ? "info" : "neutral"} />
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {detailTab === "problems" ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs text-zinc-500">只显示当前运行的失败、冲突、删除失败和取消事件。</p>
+                          <StatusPill label={`${selectedProblems.length} 条`} tone={selectedProblems.length ? "danger" : "success"} />
+                        </div>
+                        {selectedProblems.length === 0 ? (
+                          <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-6 text-center text-sm text-zinc-500">
+                            最近未发现问题事件。
+                          </div>
+                        ) : (
+                          selectedProblems.map((entry, index) => (
+                            <div key={`${entry.timestamp}-${index}`} className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <p className="text-xs text-zinc-500">
+                                  {formatTimestamp(entry.timestamp)}
+                                  {entry.runId ? <span className="ml-2 text-zinc-700">运行 {entry.runId}</span> : null}
+                                </p>
+                                <StatusPill label={statusLabelMap[entry.status] || entry.status} tone="danger" />
+                              </div>
+                              <p className="mt-2 break-all text-xs text-zinc-300">{entry.path}</p>
+                              {entry.message ? <p className="mt-1 text-xs text-rose-300">{entry.message}</p> : null}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ) : null}
+
+                    {detailTab === "events" ? (
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {EVENT_FILTERS.map((filter) => (
+                            <button
+                              key={filter.value}
+                              className={cn(
+                                "rounded-lg border px-3 py-1.5 text-xs transition",
+                                eventFilter === filter.value
+                                  ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
+                                  : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                              )}
+                              onClick={() => {
+                                setEventFilter(filter.value);
+                                resetEventPage();
+                              }}
+                              type="button"
+                            >
+                              {filter.label}
+                            </button>
+                          ))}
+                        </div>
+                        <input
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
+                          placeholder="搜索当前运行的文件路径或错误信息"
+                          value={eventSearch}
+                          onChange={(event) => {
+                            setEventSearch(event.target.value);
                             resetEventPage();
                           }}
-                          type="button"
-                        >
-                          {filter.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <input
-                    className="mt-4 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                    placeholder="搜索当前任务的文件路径或错误信息"
-                    value={eventSearch}
-                    onChange={(event) => {
-                      setEventSearch(event.target.value);
-                      resetEventPage();
-                    }}
-                  />
-                  <div className="mt-4 max-h-[520px] space-y-3 overflow-auto pr-1 log-scroll-area">
-                    {selectedEventsQuery.isLoading ? (
-                      [1, 2, 3, 4].map((item) => <div key={item} className="h-16 animate-pulse rounded-xl bg-zinc-800/50" />)
-                    ) : selectedTimelineEntries.length === 0 ? (
-                      <div className="py-8 text-center">
-                        <IconActivity className="mx-auto h-10 w-10 text-zinc-700" />
-                        <p className="mt-3 text-sm text-zinc-500">暂无匹配事件。</p>
-                      </div>
-                    ) : (
-                      selectedTimelineEntries.map((entry, index) => (
-                        <div key={`${entry.timestamp}-${index}`} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0 space-y-1">
-                              <p className="text-xs text-zinc-500">{formatTimestamp(entry.timestamp)}</p>
-                              {entry.runId ? <p className="text-[11px] text-zinc-700">运行 {entry.runId}</p> : null}
-                              <p className="break-all text-xs text-zinc-400">{entry.path}</p>
+                        />
+                        <div className="space-y-3">
+                          {selectedEventsQuery.isLoading && selectedTimelineEntries.length === 0 ? (
+                            [1, 2, 3, 4].map((item) => <div key={item} className="h-16 animate-pulse rounded-xl bg-zinc-800/50" />)
+                          ) : selectedTimelineEntries.length === 0 ? (
+                            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 py-8 text-center">
+                              <IconActivity className="mx-auto h-10 w-10 text-zinc-700" />
+                              <p className="mt-3 text-sm text-zinc-500">暂无匹配事件。</p>
                             </div>
-                            <StatusPill label={statusLabelMap[entry.status] || entry.status} tone={statusTone(entry.status)} />
-                          </div>
-                          {entry.message ? <p className="mt-2 text-xs text-zinc-600">{entry.message}</p> : null}
+                          ) : (
+                            selectedTimelineEntries.map((entry, index) => (
+                              <div key={`${entry.timestamp}-${index}`} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="min-w-0 space-y-1">
+                                    <p className="text-xs text-zinc-500">{formatTimestamp(entry.timestamp)}</p>
+                                    {entry.runId ? <p className="text-[11px] text-zinc-700">运行 {entry.runId}</p> : null}
+                                    <p className="break-all text-xs text-zinc-400">{entry.path}</p>
+                                  </div>
+                                  <StatusPill label={statusLabelMap[entry.status] || entry.status} tone={statusTone(entry.status)} />
+                                </div>
+                                {entry.message ? <p className="mt-2 text-xs text-zinc-600">{entry.message}</p> : null}
+                              </div>
+                            ))
+                          )}
                         </div>
-                      ))
-                    )}
+                        {(selectedTimelineTotal > 0 || selectedTimelineEntries.length > 0) ? (
+                          <div className="border-t border-zinc-800 pt-4">
+                            <Pagination
+                              page={eventPage}
+                              pageSize={eventPageSize}
+                              total={selectedTimelineTotal}
+                              onPageChange={setEventPage}
+                              onPageSizeChange={(size) => {
+                                setEventPageSize(size);
+                                resetEventPage();
+                              }}
+                              pageSizeOptions={[20, 30, 50, 100]}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
-                  {(selectedTimelineTotal > 0 || selectedTimelineEntries.length > 0) ? (
-                    <div className="mt-4 border-t border-zinc-800 pt-4">
-                      <Pagination
-                        page={eventPage}
-                        pageSize={eventPageSize}
-                        total={selectedTimelineTotal}
-                        onPageChange={setEventPage}
-                        onPageSizeChange={(size) => {
-                          setEventPageSize(size);
-                          resetEventPage();
-                        }}
-                        pageSizeOptions={[20, 30, 50, 100]}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </section>
           </div>
         </div>
       ) : null}

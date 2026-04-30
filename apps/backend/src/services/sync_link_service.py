@@ -25,6 +25,8 @@ class SyncLinkItem:
     local_mtime: float | None = None
     cloud_revision: str | None = None
     cloud_mtime: float | None = None
+    local_resource_signature: str | None = None
+    resource_sync_revision: str | None = None
 
 
 class SyncLinkService:
@@ -46,6 +48,8 @@ class SyncLinkService:
         local_mtime: float | None = None,
         cloud_revision: str | None = None,
         cloud_mtime: float | None = None,
+        local_resource_signature: str | None = None,
+        resource_sync_revision: str | None = None,
     ) -> SyncLinkItem:
         session_maker = self._session_maker or get_session_maker()
         updated_at = updated_at if updated_at is not None else time.time()
@@ -69,6 +73,10 @@ class SyncLinkService:
                         record.cloud_revision = cloud_revision
                     if cloud_mtime is not None:
                         record.cloud_mtime = cloud_mtime
+                    if local_resource_signature is not None:
+                        record.local_resource_signature = local_resource_signature
+                    if resource_sync_revision is not None:
+                        record.resource_sync_revision = resource_sync_revision
                 else:
                     session.add(
                         SyncLink(
@@ -83,6 +91,8 @@ class SyncLinkService:
                             local_mtime=local_mtime,
                             cloud_revision=cloud_revision,
                             cloud_mtime=cloud_mtime,
+                            local_resource_signature=local_resource_signature,
+                            resource_sync_revision=resource_sync_revision,
                         )
                     )
                 await session.commit()
@@ -100,6 +110,8 @@ class SyncLinkService:
             local_mtime=local_mtime,
             cloud_revision=cloud_revision,
             cloud_mtime=cloud_mtime,
+            local_resource_signature=local_resource_signature,
+            resource_sync_revision=resource_sync_revision,
         )
 
     async def get_by_local_path(self, local_path: str) -> SyncLinkItem | None:
@@ -179,6 +191,8 @@ class SyncLinkService:
             local_mtime=record.local_mtime,
             cloud_revision=record.cloud_revision,
             cloud_mtime=record.cloud_mtime,
+            local_resource_signature=record.local_resource_signature,
+            resource_sync_revision=record.resource_sync_revision,
         )
 
 

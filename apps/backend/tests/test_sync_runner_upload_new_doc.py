@@ -106,6 +106,8 @@ class FakeLinkService:
         local_mtime: float | None = None,
         cloud_revision: str | None = None,
         cloud_mtime: float | None = None,
+        local_resource_signature: str | None = None,
+        resource_sync_revision: str | None = None,
     ):
         item = SyncLinkItem(
             local_path=local_path,
@@ -119,6 +121,8 @@ class FakeLinkService:
             local_mtime=local_mtime,
             cloud_revision=cloud_revision,
             cloud_mtime=cloud_mtime,
+            local_resource_signature=local_resource_signature,
+            resource_sync_revision=resource_sync_revision,
         )
         self.links[local_path] = item
         self.calls.append(item)
@@ -352,6 +356,82 @@ async def test_upload_markdown_with_local_image_repairs_same_hash_link_once(
     assert "#local-images-v2" in (
         link_service.links[str(markdown_path)].cloud_revision or ""
     )
+
+
+@pytest.mark.asyncio
+async def test_upload_markdown_skips_when_resource_baseline_matches_current_cloud_revision(
+    tmp_path: Path,
+) -> None:
+    assets_dir = tmp_path / "assets"
+    assets_dir.mkdir()
+    (assets_dir / "logo.png").write_bytes(b"img")
+    attachment_dir = tmp_path / "attachments"
+    attachment_dir.mkdir()
+    (attachment_dir / "brief.pdf").write_bytes(b"pdf")
+    markdown_path = tmp_path / "资源基线.md"
+    markdown_path.write_text(
+        "# Title\n\n![](assets/logo.png)\n\n[brief](attachments/brief.pdf)\n",
+        encoding="utf-8",
+    )
+    file_hash = calculate_file_hash(markdown_path)
+
+    link_service = FakeLinkService()
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService([]),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+    )
+    resource_signature = runner._calculate_local_resource_signature(
+        markdown_path.read_text(encoding="utf-8"),
+        markdown_path.parent,
+    )
+    assert resource_signature is not None
+
+    link_service.links[str(markdown_path)] = SyncLinkItem(
+        local_path=str(markdown_path),
+        cloud_token="doc-existing",
+        cloud_type="docx",
+        task_id="task-1",
+        updated_at=1000.0,
+        local_hash=file_hash,
+        local_size=markdown_path.stat().st_size,
+        local_mtime=markdown_path.stat().st_mtime,
+        cloud_revision="doc-existing@1000000",
+        cloud_mtime=1000.0,
+        local_resource_signature=resource_signature,
+        resource_sync_revision="doc-existing@1000000",
+    )
+    runner._block_service = FakeBlockService()
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.skipped_files == 1
+    assert status.completed_files == 0
+    assert runner._docx_service.replace_calls == []
 
 
 @pytest.mark.asyncio
