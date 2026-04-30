@@ -2872,3 +2872,15 @@
   - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_runner_upload_new_doc.py apps/backend/tests/test_sync_runner.py -p pytest_asyncio.plugin -q`
 - 问题：
   - 当前安装目录里的正式版仍是 `v0.6.2`，要实际带上这次修复还需要后续重新安装或发布新版本。
+
+## v0.6.5-dev.1 (2026-04-30)
+
+- 目标：
+  - 修复 Windows 静默更新在已下载完成后卡在“安装程序未返回接管确认”的问题。
+- 结果：
+  - `LarkSyncTray._schedule_installer_launch()` 启动静默安装 helper 时去掉了 `DETACHED_PROCESS`，保留 `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`。
+  - 回归测试明确约束静默 helper 不能再带 `DETACHED_PROCESS`，避免 PowerShell helper 无法写出 `install-handoff.json` 导致 15 秒接管超时。
+- 测试：
+  - `$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; $env:PYTHONPATH='apps/backend'; python -m pytest apps/backend/tests/test_tray_update_install.py -p pytest_asyncio.plugin -q`
+- 问题：
+  - 当前安装目录里的正式版仍是 `v0.6.3`，要实际带上这次修复仍需重新安装或发布新版本。

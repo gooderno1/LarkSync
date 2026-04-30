@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-04-30] v0.6.5-dev.1 fix(auto-update): Windows 静默更新 helper 去掉 DETACHED_PROCESS，改用隐藏窗口进程组启动，修复安装接管回执超时导致的静默更新失败
 [2026-04-29] v0.6.4 release: v0.6.4
 [2026-04-29] v0.6.3 release: v0.6.3
 [2026-04-29] v0.6.3-dev.2 fix(sync-download): 云端下载写本地文件前预先静默 watcher，覆盖 docx/导出文件/普通文件三条下载分支，避免“云端下载 -> watcher 误判本地修改 -> 周期上传反向覆盖云端”的回流问题

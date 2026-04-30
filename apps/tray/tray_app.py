@@ -691,8 +691,7 @@ class LarkSyncTray:
         if sys.platform == "win32":
             if silent:
                 creationflags = (
-                    getattr(subprocess, "DETACHED_PROCESS", 0)
-                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                    getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
                     | getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 )
                 subprocess.Popen(
@@ -725,8 +724,7 @@ class LarkSyncTray:
                     f"ShellExecute 启动失败，回退 PowerShell: {path} ({type(exc).__name__}: {exc})"
                 )
             creationflags = (
-                getattr(subprocess, "DETACHED_PROCESS", 0)
-                | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
                 | getattr(subprocess, "CREATE_NO_WINDOW", 0)
             )
             subprocess.Popen(

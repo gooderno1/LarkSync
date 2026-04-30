@@ -179,7 +179,7 @@ def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: P
     assert str(log_path).replace("'", "''") in script
 
 
-def test_schedule_installer_launch_on_windows_uses_detached_powershell(
+def test_schedule_installer_launch_on_windows_uses_hidden_helper_process(
     monkeypatch, tmp_path: Path
 ) -> None:
     installer_path = tmp_path / "LarkSync-Setup-v0.5.55.exe"
@@ -202,6 +202,10 @@ def test_schedule_installer_launch_on_windows_uses_detached_powershell(
     assert len(calls) == 1
     assert "-EncodedCommand" in calls[0]["args"]
     assert calls[0]["close_fds"] is True
+    creationflags = int(calls[0]["creationflags"])
+    assert creationflags & getattr(tray_app.subprocess, "DETACHED_PROCESS", 0) == 0
+    assert creationflags & getattr(tray_app.subprocess, "CREATE_NEW_PROCESS_GROUP", 0) != 0
+    assert creationflags & getattr(tray_app.subprocess, "CREATE_NO_WINDOW", 0) != 0
 
 
 def test_schedule_installer_launch_on_windows_silent_requires_helper_handoff(
