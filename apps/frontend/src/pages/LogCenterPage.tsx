@@ -401,7 +401,14 @@ export function LogCenterPage() {
   };
 
   return (
-    <section className="space-y-6 animate-fade-up">
+    <section
+      className={cn(
+        "animate-fade-up",
+        logTab === "tasks"
+          ? "flex min-h-0 flex-col gap-6 lg:h-[calc(100vh-2.5rem)]"
+          : "space-y-6"
+      )}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
         <div>
           <h2 className="text-lg font-semibold text-zinc-50">日志中心</h2>
@@ -434,7 +441,7 @@ export function LogCenterPage() {
       </div>
 
       {logTab === "tasks" ? (
-        <div className="grid gap-5 xl:h-[calc(100vh-11.5rem)] xl:min-h-[720px] xl:grid-rows-[auto_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 gap-5 xl:grid-rows-[auto_minmax(0,1fr)]">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3.5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -708,7 +715,12 @@ export function LogCenterPage() {
                             <StatusPill label={`总数 ${diagnosticCounts?.total ?? 0}`} tone="neutral" />
                           </div>
                           {currentFile ? (
-                            <p className="mt-2 truncate text-[11px] text-zinc-500">当前处理：{shortPath(currentFile.path, 110)}</p>
+                            <div className="mt-2 space-y-1">
+                              <p className="truncate text-[11px] text-zinc-500">当前处理：{shortPath(currentFile.path, 110)}</p>
+                              {currentFile.message ? (
+                                <p className="truncate text-[11px] text-zinc-600">{currentFile.message}</p>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
 
@@ -720,11 +732,13 @@ export function LogCenterPage() {
 
                         <div className="grid gap-3 lg:grid-cols-2">
                           <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-                            <p className="text-xs text-zinc-500">当前处理文件</p>
-                            <p className="mt-2 break-all text-sm text-zinc-200">
-                              {currentFile ? shortPath(currentFile.path, 120) : selectedStatus?.state === "running" ? "等待下一条事件" : "当前未运行"}
+                            <p className="text-xs text-zinc-500">同步目标</p>
+                            <p className="mt-2 text-[11px] text-zinc-500">本地目录</p>
+                            <p className="mt-1 break-all text-sm text-zinc-200">{shortPath(selectedTask.local_path, 120)}</p>
+                            <p className="mt-3 text-[11px] text-zinc-500">云端目录</p>
+                            <p className="mt-1 break-all text-sm text-zinc-200">
+                              {selectedTask.cloud_folder_name || selectedTask.cloud_folder_token || "未配置"}
                             </p>
-                            {currentFile?.message ? <p className="mt-2 text-xs text-zinc-500">{currentFile.message}</p> : null}
                           </div>
                           <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
                             <p className="text-xs text-zinc-500">最近活动</p>
