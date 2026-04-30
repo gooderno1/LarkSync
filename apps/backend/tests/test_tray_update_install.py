@@ -166,7 +166,8 @@ def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: P
     encoded = command[command.index("-EncodedCommand") + 1]
     script = base64.b64decode(encoded).decode("utf-16le")
 
-    assert "Start-Process -LiteralPath $installerPath -ArgumentList $argumentList -PassThru" in script
+    assert "Start-Process -FilePath $installerPath -ArgumentList $argumentList -PassThru" in script
+    assert "Start-Process -LiteralPath $installerPath" not in script
     assert "$argumentList += '/S'" in script
     assert "Wait-Process -Id $process.Id" in script
     assert str(handoff_path).replace("'", "''") in script

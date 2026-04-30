@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.6.7-dev.1 (2026-05-01)
+
+- 目标：
+  - 修复 Windows 静默更新在 helper 已经接管后，PowerShell 启动安装器阶段直接失败的问题。
+  - 锁定 helper 脚本中安装器启动命令，避免后续再回归到无效参数。
+- 结果：
+  - 根据现场日志定位到 `v0.6.5 -> v0.6.6` 失败点：helper 已写入 handoff，但 PowerShell 执行 `Start-Process -LiteralPath` 报“找不到与参数名称 LiteralPath 匹配的参数”，导致安装器根本未启动。
+  - `apps/tray/tray_app.py` 中 helper 脚本已统一改为 `Start-Process -FilePath`，覆盖安装器启动、安装失败回退和安装成功后重启当前版本三处调用。
+  - 补充单测锁定生成脚本必须使用 `-FilePath`，避免这类参数错误再次进入正式版。
+- 测试：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .\\.venv\\Scripts\\python.exe -m pytest apps/backend/tests/test_tray_update_install.py -q`
+
 ## v0.6.6 release (2026-05-01)
 
 - 目标：
