@@ -180,8 +180,22 @@ class SyncLogEntry(BaseModel):
     run_id: str | None = None
 
 
+class SyncTaskRunSummaryResponse(BaseModel):
+    run_id: str
+    state: str
+    started_at: float | None = None
+    finished_at: float | None = None
+    last_event_at: float | None = None
+    last_error: str | None = None
+    problem_count: int = 0
+    counts: SyncTaskDiagnosticCounts
+    current_file: SyncFileEventResponse | None = None
+
+
 class SyncTaskDiagnosticsResponse(BaseModel):
     overview: SyncTaskOverviewResponse
+    selected_run: SyncTaskRunSummaryResponse | None = None
+    recent_runs: list[SyncTaskRunSummaryResponse] = Field(default_factory=list)
     recent_events: list[SyncLogEntry] = Field(default_factory=list)
     problems: list[SyncLogEntry] = Field(default_factory=list)
 
@@ -205,42 +219,203 @@ def _current_file_from_status(status: SyncTaskStatus) -> SyncFileEventResponse |
     return None
 
 
+def _file_event_from_record(record: SyncEventRecord) -> SyncFileEventResponse:
+    return SyncFileEventResponse(
+        path=record.path,
+        status=record.status,
+        message=record.message,
+        timestamp=record.timestamp,
+    )
+
+
+def _current_file_from_records(records: list[SyncEventRecord]) -> SyncFileEventResponse | None:
+    for record in records:
+        if record.status not in _CURRENT_FILE_EXCLUDED_STATUSES:
+            return _file_event_from_record(record)
+    return None
+
+
+def _build_run_counts(
+    *,
+    event_counts: dict[str, int],
+    status: SyncTaskStatus | None,
+) -> SyncTaskDiagnosticCounts:
+    uploaded = event_counts.get("uploaded", 0)
+    downloaded = event_counts.get("downloaded", 0)
+    deleted = event_counts.get("deleted", 0)
+    failed = event_counts.get("failed", 0)
+    delete_failed = event_counts.get("delete_failed", 0)
+    skipped = event_counts.get("skipped", 0)
+    conflicts = event_counts.get("conflict", 0)
+    delete_pending = event_counts.get("delete_pending", 0)
+    derived_completed = uploaded + downloaded + deleted
+    derived_failed = failed + delete_failed
+    derived_processed = (
+        derived_completed
+        + derived_failed
+        + skipped
+        + conflicts
+        + delete_pending
+    )
+    if status is None:
+        total = derived_processed
+        completed = derived_completed
+        failed_value = derived_failed
+        skipped_value = skipped
+        processed = derived_processed
+    else:
+        total = max(status.total_files, derived_processed)
+        completed = max(status.completed_files, derived_completed)
+        failed_value = max(status.failed_files, derived_failed)
+        skipped_value = max(status.skipped_files, skipped)
+        processed = max(
+            status.completed_files + status.failed_files + status.skipped_files,
+            derived_processed,
+        )
+    return SyncTaskDiagnosticCounts(
+        total=total,
+        processed=processed,
+        completed=completed,
+        failed=failed_value,
+        skipped=skipped_value,
+        uploaded=uploaded,
+        downloaded=downloaded,
+        deleted=deleted,
+        conflicts=conflicts,
+        delete_pending=delete_pending,
+        delete_failed=delete_failed,
+    )
+
+
+def _derive_run_state(records: list[SyncEventRecord], live_status: SyncTaskStatus | None) -> str:
+    if live_status is not None:
+        return live_status.state
+    for record in records:
+        if record.status in _TERMINAL_STATUSES:
+            return record.status
+    if any(record.status in _PROBLEM_STATUSES for record in records):
+        return "failed"
+    if records:
+        return "success"
+    return "idle"
+
+
+def _build_run_summary(
+    *,
+    run_id: str,
+    records: list[SyncEventRecord],
+    live_status: SyncTaskStatus | None = None,
+) -> SyncTaskRunSummaryResponse:
+    ordered_records = sorted(records, key=lambda item: item.timestamp, reverse=True)
+    event_counts: dict[str, int] = {}
+    for record in ordered_records:
+        event_counts[record.status] = event_counts.get(record.status, 0) + 1
+    started_record = next((record for record in reversed(ordered_records) if record.status == "started"), None)
+    finished_record = next((record for record in ordered_records if record.status in _TERMINAL_STATUSES), None)
+    last_problem = next((record for record in ordered_records if record.status in _PROBLEM_STATUSES), None)
+    counts = _build_run_counts(event_counts=event_counts, status=live_status)
+    state = _derive_run_state(ordered_records, live_status)
+    started_at = (
+        live_status.started_at
+        if live_status and live_status.started_at is not None
+        else (started_record.timestamp if started_record else (ordered_records[-1].timestamp if ordered_records else None))
+    )
+    finished_at = (
+        live_status.finished_at
+        if live_status and live_status.finished_at is not None
+        else (finished_record.timestamp if finished_record else (None if state == "running" else (ordered_records[0].timestamp if ordered_records else None)))
+    )
+    current_file = (
+        _current_file_from_status(live_status)
+        if live_status is not None
+        else _current_file_from_records(ordered_records)
+    )
+    problem_count = sum(
+        count for event_status, count in event_counts.items()
+        if event_status in _PROBLEM_STATUSES
+    )
+    last_error = (
+        live_status.last_error
+        if live_status and live_status.last_error
+        else (last_problem.message if last_problem else None)
+    )
+    return SyncTaskRunSummaryResponse(
+        run_id=run_id,
+        state=state,
+        started_at=started_at,
+        finished_at=finished_at,
+        last_event_at=ordered_records[0].timestamp if ordered_records else (
+            live_status.finished_at or live_status.started_at if live_status else None
+        ),
+        last_error=last_error,
+        problem_count=problem_count if last_error is None else max(problem_count, 1),
+        counts=counts,
+        current_file=current_file,
+    )
+
+
+def _build_run_summaries(
+    *,
+    status: SyncTaskStatus,
+    records: list[SyncEventRecord],
+) -> list[SyncTaskRunSummaryResponse]:
+    records_by_run: dict[str, list[SyncEventRecord]] = {}
+    for record in records:
+        if not record.run_id:
+            continue
+        records_by_run.setdefault(record.run_id, []).append(record)
+    summaries: list[SyncTaskRunSummaryResponse] = []
+    handled_runs: set[str] = set()
+    for run_id, run_records in records_by_run.items():
+        live_status = status if status.current_run_id == run_id else None
+        summaries.append(
+            _build_run_summary(
+                run_id=run_id,
+                records=run_records,
+                live_status=live_status,
+            )
+        )
+        handled_runs.add(run_id)
+    if status.current_run_id and status.current_run_id not in handled_runs:
+        summaries.append(
+            _build_run_summary(
+                run_id=status.current_run_id,
+                records=[],
+                live_status=status,
+            )
+        )
+    summaries.sort(
+        key=lambda item: item.last_event_at or item.started_at or item.finished_at or 0.0,
+        reverse=True,
+    )
+    return summaries
+
+
 def _build_task_overview(
     *,
     task: SyncTaskItem,
     status: SyncTaskStatus,
     records: list[SyncEventRecord],
 ) -> SyncTaskOverviewResponse:
-    event_counts: dict[str, int] = {}
-    for record in records:
-        event_counts[record.status] = event_counts.get(record.status, 0) + 1
-    problem_count = sum(
-        count for event_status, count in event_counts.items()
-        if event_status in _PROBLEM_STATUSES
-    )
-    if status.last_error and problem_count == 0:
-        problem_count = 1
+    run_summaries = _build_run_summaries(status=status, records=records)
+    latest_run = run_summaries[0] if run_summaries else None
     processed = max(0, status.completed_files + status.failed_files + status.skipped_files)
-    last_result = next(
-        (record.status for record in records if record.status in _TERMINAL_STATUSES),
-        status.state if status.state in _TERMINAL_STATUSES else None,
+    last_result = latest_run.state if latest_run else (
+        status.state if status.state in _TERMINAL_STATUSES else None
     )
-    last_event_at = records[0].timestamp if records else (
-        status.finished_at or status.started_at or task.last_run_at
+    last_event_at = (
+        latest_run.last_event_at
+        if latest_run
+        else (status.finished_at or status.started_at or task.last_run_at)
     )
-    counts = SyncTaskDiagnosticCounts(
+    counts = latest_run.counts if latest_run else SyncTaskDiagnosticCounts(
         total=status.total_files,
         processed=processed,
         completed=status.completed_files,
-        failed=max(status.failed_files, event_counts.get("failed", 0)),
+        failed=status.failed_files,
         skipped=status.skipped_files,
-        uploaded=event_counts.get("uploaded", 0),
-        downloaded=event_counts.get("downloaded", 0),
-        deleted=event_counts.get("deleted", 0),
-        conflicts=event_counts.get("conflict", 0),
-        delete_pending=event_counts.get("delete_pending", 0),
-        delete_failed=event_counts.get("delete_failed", 0),
     )
+    problem_count = latest_run.problem_count if latest_run else (1 if status.last_error else 0)
     return SyncTaskOverviewResponse(
         task=SyncTaskResponse.from_item(task),
         status=SyncTaskStatusResponse.from_status(status),
@@ -248,7 +423,7 @@ def _build_task_overview(
         last_result=last_result,
         problem_count=problem_count,
         counts=counts,
-        current_file=_current_file_from_status(status),
+        current_file=latest_run.current_file if latest_run else _current_file_from_status(status),
     )
 
 
@@ -293,17 +468,34 @@ async def list_task_overview() -> list[SyncTaskOverviewResponse]:
 async def get_task_diagnostics(
     task_id: str,
     limit: int = Query(default=200, ge=1, le=1000, description="返回事件条数"),
+    run_id: str = Query(default="", description="指定运行 ID，仅返回该次运行数据"),
 ) -> SyncTaskDiagnosticsResponse:
     item = await service.get_task(task_id)
     if not item:
         raise HTTPException(status_code=404, detail="Task not found")
     status = runner.get_status(task_id)
+    _, task_records = event_store.read_events(
+        limit=5000,
+        offset=0,
+        status="",
+        search="",
+        task_id=task_id,
+        order="desc",
+    )
+    run_summaries = _build_run_summaries(status=status, records=task_records)
+    selected_run = None
+    if run_id.strip():
+        selected_run = next((item for item in run_summaries if item.run_id == run_id.strip()), None)
+    elif run_summaries:
+        selected_run = run_summaries[0]
+    selected_run_id = selected_run.run_id if selected_run else ""
     _, recent_records = event_store.read_events(
         limit=limit,
         offset=0,
         status="",
         search="",
         task_id=task_id,
+        run_id=selected_run_id,
         order="desc",
     )
     _, problem_records = event_store.read_events(
@@ -313,15 +505,18 @@ async def get_task_diagnostics(
         statuses=sorted(_PROBLEM_STATUSES),
         search="",
         task_id=task_id,
+        run_id=selected_run_id,
         order="desc",
     )
     overview = _build_task_overview(
         task=item,
         status=status,
-        records=recent_records,
+        records=task_records,
     )
     return SyncTaskDiagnosticsResponse(
         overview=overview,
+        selected_run=selected_run,
+        recent_runs=run_summaries,
         recent_events=[_sync_log_entry_from_record(record) for record in recent_records],
         problems=[_sync_log_entry_from_record(record) for record in problem_records],
     )

@@ -99,8 +99,22 @@ export type SyncTaskOverview = {
   current_file?: SyncFileEvent | null;
 };
 
+export type SyncTaskRunSummary = {
+  run_id: string;
+  state: "idle" | "running" | "success" | "failed" | "cancelled";
+  started_at?: number | null;
+  finished_at?: number | null;
+  last_event_at?: number | null;
+  last_error?: string | null;
+  problem_count: number;
+  counts: SyncTaskDiagnosticCounts;
+  current_file?: SyncFileEvent | null;
+};
+
 export type SyncTaskDiagnostics = {
   overview: SyncTaskOverview;
+  selected_run?: SyncTaskRunSummary | null;
+  recent_runs: SyncTaskRunSummary[];
   recent_events: SyncLogEntry[];
   problems: SyncLogEntry[];
 };

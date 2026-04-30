@@ -2884,3 +2884,13 @@
   - `$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; $env:PYTHONPATH='apps/backend'; python -m pytest apps/backend/tests/test_tray_update_install.py -p pytest_asyncio.plugin -q`
 - 问题：
   - 当前安装目录里的正式版仍是 `v0.6.3`，要实际带上这次修复仍需重新安装或发布新版本。
+## v0.6.5-dev.2 (2026-04-30)
+
+- 目标：把日志中心从任务级聚合改为运行级查看，解决历史错误长期挂在同一任务下、无法区分每次执行的问题。
+- 结果：
+  - 后端诊断接口新增运行摘要聚合，按 `run_id` 返回最近运行列表和指定运行诊断。
+  - 任务概览改为默认只反映最近一次运行，不再把历史失败累计成当前任务问题。
+  - 前端日志中心新增“运行记录”列表，支持按运行切换问题摘要和事件时间线。
+- 验证：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_tray_status.py apps/backend/tests/test_sync_event_store.py -p pytest_asyncio.plugin -q`
+  - `npm run build --prefix apps/frontend`

@@ -241,3 +241,139 @@ def test_sync_task_overview_and_diagnostics(
     by_run = tray_client.get("/sync/logs/sync?run_id=run-1")
     assert by_run.status_code == 200
     assert by_run.json()["total"] == 2
+
+
+def test_sync_task_diagnostics_isolated_by_run(
+    tray_client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    import src.api.sync_tasks as sync_tasks
+
+    local_dir = tmp_path / "run-local"
+    local_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "name": "运行隔离任务",
+        "local_path": str(local_dir),
+        "cloud_folder_token": "token-run",
+        "cloud_folder_name": "云端运行",
+        "base_path": None,
+        "sync_mode": "bidirectional",
+        "update_mode": "auto",
+        "enabled": False,
+    }
+    created = tray_client.post("/sync/tasks", json=payload)
+    assert created.status_code == 200
+    task_id = created.json()["id"]
+
+    store = SyncEventStore(tmp_path / "sync-events-runs.jsonl")
+    monkeypatch.setattr(sync_tasks, "event_store", store)
+    status = SyncTaskStatus(
+        task_id=task_id,
+        state="success",
+        started_at=20.0,
+        finished_at=25.0,
+        total_files=1,
+        completed_files=1,
+        failed_files=0,
+        skipped_files=0,
+        current_run_id="run-2",
+        last_files=[
+            SyncFileEvent(path=str(local_dir), status="started", timestamp=20.0),
+            SyncFileEvent(path=str(local_dir / "new.md"), status="uploaded", timestamp=21.0),
+            SyncFileEvent(path=str(local_dir), status="success", timestamp=25.0),
+        ],
+    )
+    monkeypatch.setattr(sync_tasks.runner, "list_statuses", lambda: {task_id: status})
+    monkeypatch.setattr(sync_tasks.runner, "get_status", lambda _task_id: status)
+
+    store.append(
+        SyncEventRecord(
+            timestamp=10.0,
+            task_id=task_id,
+            task_name="运行隔离任务",
+            status="started",
+            path=str(local_dir),
+            message="第一次运行开始",
+            run_id="run-1",
+        )
+    )
+    store.append(
+        SyncEventRecord(
+            timestamp=12.0,
+            task_id=task_id,
+            task_name="运行隔离任务",
+            status="failed",
+            path=str(local_dir / "old.md"),
+            message="历史错误",
+            run_id="run-1",
+        )
+    )
+    store.append(
+        SyncEventRecord(
+            timestamp=13.0,
+            task_id=task_id,
+            task_name="运行隔离任务",
+            status="failed",
+            path=str(local_dir),
+            message="完成: total=1 ok=0 failed=1 skipped=0",
+            run_id="run-1",
+        )
+    )
+    store.append(
+        SyncEventRecord(
+            timestamp=20.0,
+            task_id=task_id,
+            task_name="运行隔离任务",
+            status="started",
+            path=str(local_dir),
+            message="第二次运行开始",
+            run_id="run-2",
+        )
+    )
+    store.append(
+        SyncEventRecord(
+            timestamp=21.0,
+            task_id=task_id,
+            task_name="运行隔离任务",
+            status="uploaded",
+            path=str(local_dir / "new.md"),
+            message="上传成功",
+            run_id="run-2",
+        )
+    )
+    store.append(
+        SyncEventRecord(
+            timestamp=25.0,
+            task_id=task_id,
+            task_name="运行隔离任务",
+            status="success",
+            path=str(local_dir),
+            message="完成: total=1 ok=1 failed=0 skipped=0",
+            run_id="run-2",
+        )
+    )
+
+    overview = tray_client.get("/sync/tasks/overview")
+    assert overview.status_code == 200
+    overview_item = overview.json()[0]
+    assert overview_item["task"]["id"] == task_id
+    assert overview_item["last_result"] == "success"
+    assert overview_item["problem_count"] == 0
+    assert overview_item["counts"]["uploaded"] == 1
+    assert overview_item["counts"]["failed"] == 0
+
+    diagnostics = tray_client.get(f"/sync/tasks/{task_id}/diagnostics?limit=10")
+    assert diagnostics.status_code == 200
+    body = diagnostics.json()
+    assert [item["run_id"] for item in body["recent_runs"]] == ["run-2", "run-1"]
+    assert body["selected_run"]["run_id"] == "run-2"
+    assert body["selected_run"]["state"] == "success"
+    assert body["recent_events"][0]["run_id"] == "run-2"
+    assert body["problems"] == []
+
+    historical = tray_client.get(f"/sync/tasks/{task_id}/diagnostics?limit=10&run_id=run-1")
+    assert historical.status_code == 200
+    historical_body = historical.json()
+    assert historical_body["selected_run"]["run_id"] == "run-1"
+    assert historical_body["selected_run"]["state"] == "failed"
+    assert historical_body["problems"][0]["run_id"] == "run-1"
+    assert any(item["message"] == "历史错误" for item in historical_body["problems"])
