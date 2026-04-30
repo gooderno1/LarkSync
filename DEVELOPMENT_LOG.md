@@ -2904,3 +2904,13 @@
 - 验证：
   - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_sync_run_service.py apps/backend/tests/test_tray_status.py apps/backend/tests/test_sync_event_store.py -p pytest_asyncio.plugin -q`
   - `python -m compileall apps/backend/src`
+## v0.6.5 release (2026-04-30)
+
+- 目标：
+  - 发布 `v0.6.5` 稳定版，收口 Windows 静默更新修复、运行级日志中心改造，以及 `sync_runs` 运行摘要持久化。
+- 结果：
+  - 稳定版基于 `v0.6.5-dev.1` 至 `v0.6.5-dev.3`：Windows 静默更新去掉 `DETACHED_PROCESS`，修复 helper 无法接管导致的静默安装超时退出问题。
+  - 日志中心升级为真正的“任务 -> 运行 -> 事件”模型，每次同步独立成条，任务概览默认只反映最近一次运行，历史失败不再持续污染后续成功执行。
+  - 后端新增 `sync_runs` 表持久化每次运行的开始/结束时间、触发来源、上传/下载/失败/冲突计数与最近错误；日志中心优先读取该表，`sync-events.jsonl` 继续保留为细粒度事件时间线。
+- 测试：
+  - 沿用 `v0.6.5-dev.1` 至 `v0.6.5-dev.3` 的自动更新、日志中心、运行摘要持久化相关后端测试与前端构建验证。
