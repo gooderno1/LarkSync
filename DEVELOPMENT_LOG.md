@@ -14,11 +14,12 @@
 ## v0.6.7 release (2026-05-01)
 
 - 目标：
-  - 发布 `v0.6.7` 稳定版，收口 Windows 静默更新 helper 启动安装器参数错误的问题。
+  - 发布 `v0.6.7` 稳定版，完整收口 Windows 静默更新链路里“helper 参数错误”和“安装成功后旧请求残留循环”的两个问题。
 - 结果：
-  - 稳定版纳入 `v0.6.7-dev.1`：根据现场日志定位并修复 `v0.6.5 -> v0.6.6` 静默更新失败点，helper 已接管但 `Start-Process -LiteralPath` 参数无效，导致安装器根本未启动。
+  - 稳定版纳入 `v0.6.7-dev.1` 和 `v0.6.7-dev.2`：先修复 `v0.6.5 -> v0.6.6` 静默更新时 helper 使用 `Start-Process -LiteralPath` 导致安装器根本未启动的问题，再补上安装成功后对过期 `install-request.json` 的版本兜底清理。
   - PowerShell helper 已统一改为 `Start-Process -FilePath`，覆盖安装器启动、安装失败回退和安装成功后重启三处调用，避免再次出现“接管成功但安装器没起”的假成功链路。
-  - 配套单测已锁定 helper 生成脚本必须使用 `-FilePath`，防止回归。
+  - 托盘现在会忽略安装包版本小于等于当前运行版本的静默安装请求，防止新版本一启动又被旧请求拉进自更新循环，表现成打不开或反复重启。
+  - 配套单测已锁定 helper 生成脚本必须使用 `-FilePath`，并覆盖“同版本安装请求必须被清理”的场景，防止回归。
 - 测试：
   - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .\\.venv\\Scripts\\python.exe -m pytest apps/backend/tests/test_tray_update_install.py -q`
   - `npm run build --prefix apps/frontend`
