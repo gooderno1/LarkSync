@@ -9,6 +9,7 @@ import { useTasks } from "../hooks/useTasks";
 import { formatIntervalLabel } from "../lib/formatters";
 import { modeLabels, syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
 import { useToast } from "../components/ui/toast";
+import { confirm } from "../components/ui/confirm-dialog";
 import { IconCopy, IconArrowUp, IconArrowDown, IconArrowRightLeft } from "../components/Icons";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -159,9 +160,12 @@ export function SettingsPage() {
     try {
       const result = await downloadUpdate();
       if (result.download_path) {
-        const confirmed = window.confirm(
-          `更新包已下载：\n${result.download_path}\n\n是否现在退出 LarkSync 并开始静默安装？\n\n说明：安装向导界面不会出现，但 Windows 仍可能弹出系统权限确认。`
-        );
+        const confirmed = await confirm({
+          title: "安装已下载更新",
+          description: `更新包已下载：\n${result.download_path}\n\n继续后 LarkSync 会退出并开始静默安装；安装向导界面不会出现，但 Windows 仍可能弹出系统权限确认。`,
+          confirmLabel: "开始安装",
+          tone: "warning",
+        });
         if (confirmed) {
           await installUpdate(result.download_path);
           toast("正在开始静默安装，LarkSync 即将退出并在完成后自动重启", "success");
@@ -182,9 +186,12 @@ export function SettingsPage() {
       toast("尚未下载更新包", "danger");
       return;
     }
-    const confirmed = window.confirm(
-      `即将退出 LarkSync 并开始静默安装：\n${downloadPath}\n\n安装向导界面不会出现，但 Windows 仍可能弹出系统权限确认。\n\n是否继续？`
-    );
+    const confirmed = await confirm({
+      title: "静默安装已下载更新",
+      description: `即将安装：\n${downloadPath}\n\n继续后 LarkSync 会退出并在完成后自动重启；安装向导界面不会出现，但 Windows 仍可能弹出系统权限确认。`,
+      confirmLabel: "开始安装",
+      tone: "warning",
+    });
     if (!confirmed) return;
     try {
       await installUpdate(downloadPath);
@@ -684,9 +691,12 @@ export function SettingsPage() {
                         className="ml-3 shrink-0 rounded-lg border border-amber-700/50 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
                         disabled={resettingLinks}
                         onClick={async () => {
-                          const confirmed = window.confirm(
-                            `确定要重置任务「${t.name || t.id}」的同步映射吗？\n\n重置后需要重新同步以建立新的映射关系。`
-                          );
+                          const confirmed = await confirm({
+                            title: "重置同步映射",
+                            description: `任务：${t.name || t.id}\n\n此操作会清除该任务的 SyncLink 映射，下次同步将重新建立本地文件与飞书文件的对应关系。\n\n不会删除本地文件，也不会删除飞书文件。`,
+                            confirmLabel: "重置映射",
+                            tone: "warning",
+                          });
                           if (!confirmed) return;
                           try {
                             const result = await resetLinks(t.id);

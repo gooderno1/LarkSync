@@ -49,7 +49,7 @@ export function ConfirmDialogProvider() {
       <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
         <h3 className="text-lg font-semibold text-zinc-100">{dialog.title}</h3>
         {dialog.description ? (
-          <p className="mt-2 text-sm text-zinc-400">{dialog.description}</p>
+          <p className="mt-2 whitespace-pre-line text-sm leading-6 text-zinc-400">{dialog.description}</p>
         ) : null}
         <div className="mt-6 flex justify-end gap-3">
           <button

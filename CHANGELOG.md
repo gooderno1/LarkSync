@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-01] v0.6.9-dev.1 feat(frontend): 仪表盘改为同步健康总览与需要关注摘要，任务卡片默认突出本地/飞书同步关系和健康状态；冲突解决改为等待后端确认后反馈，维护类动作统一使用应用内确认框
 [2026-05-01] v0.6.8-dev.1 fix(ci): 修复冲突解决上传测试替身缺少 Markdown 资源基线参数导致的后端测试红灯；后端 pyproject 改用包内可解析 readme 元数据，恢复 editable 安装校验；发布工作流新增 quality job，在正式安装包构建前执行后端 pytest、editable 安装 dry-run 和前端构建
 [2026-05-01] v0.6.7 release: v0.6.7
 [2026-05-01] v0.6.7-dev.2 fix(auto-update): Windows 托盘处理静默安装请求前新增版本兜底；若安装包版本小于等于当前已运行版本，则直接清理 `install-request.json` / `install-handoff.json` 并忽略请求，修复安装成功后旧请求残留导致的新版本打不开或反复重启

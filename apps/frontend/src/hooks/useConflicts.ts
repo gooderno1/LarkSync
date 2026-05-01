@@ -40,6 +40,7 @@ export function useConflicts() {
     conflictError: conflictsQuery.error?.message ?? null,
     refreshConflicts: () => qc.invalidateQueries({ queryKey: ["conflicts"] }),
     resolveConflict: resolveMutation.mutate,
+    resolveConflictAsync: resolveMutation.mutateAsync,
     resolving: resolveMutation.isPending,
   };
 }

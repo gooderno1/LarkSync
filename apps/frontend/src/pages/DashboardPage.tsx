@@ -14,10 +14,8 @@ import { modeLabels, updateModeLabels, stateLabels, stateTones, statusLabelMap }
 import { computeTaskProgress } from "../lib/progress";
 import { StatCard } from "../components/StatCard";
 import { StatusPill } from "../components/StatusPill";
-import { StatCardSkeleton } from "../components/Skeleton";
-import { EmptyState } from "../components/EmptyState";
 import { ModeIcon, IconRefresh, IconTasks, IconArrowRightLeft, IconConflicts, IconActivity } from "../components/Icons";
-import type { SyncLogEntry, NavKey, SyncTask, SyncTaskStatus } from "../types";
+import type { SyncLogEntry, NavKey, SyncTask, SyncTaskStatus, Tone } from "../types";
 
 type SyncLogResponse = {
   total: number;
@@ -39,6 +37,10 @@ type SyncLogResponseRaw = {
 };
 
 type Props = { onNavigate: (tab: NavKey) => void };
+
+const ATTENTION_STATUSES = new Set(["failed", "delete_failed", "conflict", "cancelled"]);
+const PENDING_UPLOAD_STATUSES = new Set(["queued", "creating", "created", "reimporting"]);
+const SUCCESS_STATUSES = new Set(["success", "uploaded", "downloaded", "mirrored", "deleted", "linked", "bootstrapped"]);
 
 function getStatusActivityTime(status?: SyncTaskStatus | null): number | null {
   return status?.finished_at ?? status?.started_at ?? null;
@@ -114,11 +116,36 @@ export function DashboardPage({ onNavigate }: Props) {
   }, [syncLogEntries]);
 
   const today = new Date();
-  const todayCount = syncLogEntries.filter((e) => isSameDay(e.timestamp, today)).length;
-  const lastSync = syncLogEntries[0];
   const enabledTasks = tasks.filter((t) => t.enabled).length;
   const runningTasks = tasks.filter((t) => statusMap[t.id]?.state === "running").length;
   const unresolvedConflicts = conflicts.filter((c) => !c.resolved).length;
+  const todayEventCount = syncLogEntries.filter((e) => isSameDay(e.timestamp, today)).length;
+  const failedEventCount = syncLogEntries.filter((e) => ATTENTION_STATUSES.has(e.status) && e.status !== "conflict").length;
+  const conflictEventCount = syncLogEntries.filter((e) => e.status === "conflict").length;
+  const pendingUploadCount = syncLogEntries.filter((e) => PENDING_UPLOAD_STATUSES.has(e.status)).length;
+  const pendingDownloadCount = 0;
+  const attentionCount = failedEventCount + conflictEventCount + unresolvedConflicts;
+  const lastSuccess = syncLogEntries.find((e) => SUCCESS_STATUSES.has(e.status));
+  const healthTone: Tone =
+    failedEventCount > 0 ? "danger" :
+      unresolvedConflicts > 0 || conflictEventCount > 0 || pendingUploadCount > 0 ? "warning" :
+        runningTasks > 0 ? "info" :
+          enabledTasks > 0 ? "success" : "neutral";
+  const healthLabel =
+    failedEventCount > 0 ? "有失败" :
+      unresolvedConflicts > 0 || conflictEventCount > 0 ? "有冲突" :
+        pendingUploadCount > 0 ? "待同步" :
+          runningTasks > 0 ? "同步中" :
+            enabledTasks > 0 ? "已一致" : "未启用";
+  const healthHint =
+    failedEventCount > 0 ? `${failedEventCount} 条失败事件需要排查` :
+      unresolvedConflicts > 0 || conflictEventCount > 0 ? `${unresolvedConflicts + conflictEventCount} 个冲突需要处理` :
+        pendingUploadCount > 0 ? `待上传 ${pendingUploadCount} 项` :
+          runningTasks > 0 ? `正在同步 ${runningTasks} 个任务` :
+            enabledTasks > 0 ? "暂无待处理问题" : "请先启用同步任务";
+  const attentionEntries = syncLogEntries.filter((entry) => ATTENTION_STATUSES.has(entry.status));
+  const queuedEntries = syncLogEntries.filter((entry) => PENDING_UPLOAD_STATUSES.has(entry.status));
+  const focusEntries = attentionEntries.length > 0 ? attentionEntries : queuedEntries;
   const runningTaskList = useMemo(
     () => tasks.filter((task) => statusMap[task.id]?.state === "running"),
     [tasks, statusMap]
@@ -194,10 +221,10 @@ export function DashboardPage({ onNavigate }: Props) {
 
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="今日同步" value={`${todayCount}`} hint="按日志统计" tone="success" icon={<IconRefresh className="h-4 w-4" />} />
-        <StatCard label="启用任务" value={`${enabledTasks}`} hint={runningTasks ? `正在同步 ${runningTasks} 个` : enabledTasks ? `已启用 ${enabledTasks} 个，当前空闲` : "暂无启用任务"} tone="info" icon={<IconTasks className="h-4 w-4" />} />
-        <StatCard label="最近同步" value={lastSync ? formatShortTime(lastSync.timestamp) : "暂无"} hint={lastSync ? lastSync.taskName : "等待任务触发"} tone="neutral" icon={<IconArrowRightLeft className="h-4 w-4" />} />
-        <StatCard label="待处理冲突" value={`${unresolvedConflicts}`} hint={unresolvedConflicts ? "请尽快处理" : "暂无冲突"} tone={unresolvedConflicts ? "warning" : "neutral"} icon={<IconConflicts className="h-4 w-4" />} />
+        <StatCard label="同步健康" value={healthLabel} hint={healthHint} tone={healthTone} icon={<IconActivity className="h-4 w-4" />} />
+        <StatCard label="待同步" value={`${pendingUploadCount + pendingDownloadCount}`} hint={`待上传 ${pendingUploadCount}，待下载 ${pendingDownloadCount}`} tone={pendingUploadCount + pendingDownloadCount > 0 ? "warning" : "success"} icon={<IconArrowRightLeft className="h-4 w-4" />} />
+        <StatCard label="问题处理" value={`${attentionCount}`} hint={`失败 ${failedEventCount}，冲突 ${unresolvedConflicts + conflictEventCount}`} tone={attentionCount > 0 ? "danger" : "success"} icon={<IconConflicts className="h-4 w-4" />} />
+        <StatCard label="最近成功" value={lastSuccess ? formatShortTime(lastSuccess.timestamp) : "暂无"} hint={lastSuccess ? lastSuccess.taskName : `今日日志事件 ${todayEventCount} 条`} tone="neutral" icon={<IconRefresh className="h-4 w-4" />} />
       </div>
 
       {/* Two-column: tasks + logs */}
@@ -253,16 +280,13 @@ export function DashboardPage({ onNavigate }: Props) {
           </div>
         </div>
 
-        {/* Sync logs */}
+        {/* Attention summary */}
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-50">同步日志</h2>
+              <h2 className="text-lg font-semibold text-zinc-50">需要关注</h2>
               <p className="mt-1 text-xs text-zinc-400">
-                实时记录任务与文件动作。
-                {syncLogEntries.length > 0 ? (
-                  <span className="ml-1 text-zinc-600">共 {syncLogEntries.length} 条</span>
-                ) : null}
+                优先展示失败、冲突和待同步队列摘要。
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -278,13 +302,16 @@ export function DashboardPage({ onNavigate }: Props) {
             </div>
           </div>
           <div className="mt-5 max-h-[480px] space-y-3 overflow-auto pr-2 log-scroll-area">
-            {syncLogEntries.length === 0 ? (
+            {focusEntries.length === 0 ? (
               <div className="py-8 text-center">
-                <IconConflicts className="mx-auto h-10 w-10 text-zinc-700" />
-                <p className="mt-3 text-sm text-zinc-500">暂无同步日志。</p>
+                <IconActivity className="mx-auto h-10 w-10 text-emerald-500/70" />
+                <p className="mt-3 text-sm font-medium text-zinc-300">当前没有需要处理的问题。</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {lastSuccess ? `最近成功：${lastSuccess.taskName}，${formatShortTime(lastSuccess.timestamp)}` : "等待下一次同步完成。"}
+                </p>
               </div>
             ) : (
-              syncLogEntries.slice(0, 20).map((entry, i) => (
+              focusEntries.slice(0, 8).map((entry, i) => (
                 <div key={`${entry.taskId}-${entry.timestamp}-${i}`} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-1">
@@ -300,24 +327,14 @@ export function DashboardPage({ onNavigate }: Props) {
             )}
           </div>
           {/* 查看全部链接 */}
-          {syncLogEntries.length > 20 ? (
+          {syncLogEntries.length > 0 ? (
             <div className="mt-3 flex justify-center">
               <button
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-[#3370FF] transition hover:text-[#3370FF]/80"
                 onClick={() => onNavigate("logcenter")}
                 type="button"
               >
-                查看全部 {syncLogEntries.length} 条日志 →
-              </button>
-            </div>
-          ) : syncLogEntries.length > 0 ? (
-            <div className="mt-3 flex justify-center">
-              <button
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 transition hover:text-zinc-300"
-                onClick={() => onNavigate("logcenter")}
-                type="button"
-              >
-                前往日志中心 →
+                前往日志中心查看全部 {syncLogEntries.length} 条事件 →
               </button>
             </div>
           ) : null}

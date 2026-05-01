@@ -2,8 +2,9 @@
 /*  同步任务管理页面                                                     */
 /* ------------------------------------------------------------------ */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTasks } from "../hooks/useTasks";
+import { useConflicts } from "../hooks/useConflicts";
 import { formatTimestamp } from "../lib/formatters";
 import {
   mdSyncModeLabels,
@@ -11,7 +12,6 @@ import {
   syncModeSupportsUpload,
   updateModeLabels,
   stateLabels,
-  stateTones,
 } from "../lib/constants";
 import { computeTaskProgress } from "../lib/progress";
 import { StatusPill } from "../components/StatusPill";
@@ -20,6 +20,7 @@ import { NewTaskModal } from "../components/NewTaskModal";
 import { confirm } from "../components/ui/confirm-dialog";
 import { useToast } from "../components/ui/toast";
 import { ThemeToggle } from "../components/ThemeToggle";
+import type { Tone } from "../types";
 
 function summarizePath(value: string, keepSegments = 3, maxTailChars = 48): string {
   const text = value.trim();
@@ -30,6 +31,14 @@ function summarizePath(value: string, keepSegments = 3, maxTailChars = 48): stri
     return `.../${segments.slice(-keepSegments).join("/")}`;
   }
   return `...${text.slice(-maxTailChars)}`;
+}
+
+const pendingUploadStatuses = new Set(["queued", "creating", "created", "reimporting"]);
+
+function deletePolicyLabel(value?: string | null): string {
+  if (value === "off") return "关闭删除联动";
+  if (value === "strict") return "严格删除";
+  return "安全删除";
 }
 
 export function TasksPage() {
@@ -47,6 +56,7 @@ export function TasksPage() {
     runTask,
     deleteTask,
   } = useTasks();
+  const { conflicts } = useConflicts();
   const { toast } = useToast();
   const [showModal, setShowModal] = useState(false);
   const [hideTestTasks, setHideTestTasks] = useState(true);
@@ -62,6 +72,15 @@ export function TasksPage() {
   const showTestToggle = isDevMode && testTaskCount > 0;
   const displayTasks = hideTestTasks ? tasks.filter((task) => !task.is_test) : tasks;
   const pathKey = (taskId: string, side: "local" | "cloud") => `${taskId}:${side}`;
+  const unresolvedConflictCountByTask = useMemo(() => {
+    const mapped: Record<string, number> = {};
+    for (const task of tasks) {
+      mapped[task.id] = conflicts.filter(
+        (conflict) => !conflict.resolved && conflict.local_path.startsWith(task.local_path)
+      ).length;
+    }
+    return mapped;
+  }, [conflicts, tasks]);
 
   const handleDelete = async (task: typeof tasks[0]) => {
     const ok = await confirm({
@@ -128,6 +147,11 @@ export function TasksPage() {
             const progressState = computeTaskProgress(st);
             const progress = progressState.progress;
             const isRunning = st?.state === "running";
+            const pendingUploads = (st?.last_files || []).filter((item) => pendingUploadStatuses.has(item.status)).length;
+            const conflictCount = unresolvedConflictCountByTask[task.id] || 0;
+            const hasFailure = Boolean(st?.last_error || (st?.failed_files ?? 0) > 0 || st?.state === "failed");
+            const healthTone: Tone = hasFailure ? "danger" : conflictCount > 0 || pendingUploads > 0 ? "warning" : isRunning ? "info" : task.enabled ? "success" : "neutral";
+            const healthLabel = hasFailure ? "需要排查" : conflictCount > 0 ? "有冲突" : pendingUploads > 0 ? "待上传" : isRunning ? "同步中" : task.enabled ? "已同步" : "已停用";
             const isExpanded = Boolean(expanded[task.id]);
             const lastSyncTime = st?.finished_at ?? st?.started_at ?? task.last_run_at ?? null;
             const localPathExpanded = Boolean(expandedPaths[pathKey(task.id, "local")]);
@@ -163,10 +187,12 @@ export function TasksPage() {
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-3">
-                      <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} dot />
+                      <StatusPill label={healthLabel} tone={healthTone} dot={isRunning} />
                       <p className="text-lg font-semibold text-zinc-50">{task.name || "未命名任务"}</p>
                     </div>
-                    <p className="text-xs text-zinc-500">任务 ID：{task.id}</p>
+                    <p className="text-xs text-zinc-500">
+                      {summarizePath(task.local_path, 2, 42)} 与 {summarizePath(cloudPath, 2, 42)} 保持同步
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                     <span className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-1">
@@ -180,7 +206,7 @@ export function TasksPage() {
                       MD：{task.sync_mode === "download_only" ? "不适用（仅下载）" : mdSyncModeLabels[task.md_sync_mode || "enhanced"]}
                     </span>
                     <span className="rounded-lg border border-zinc-700 px-3 py-1">
-                      删除：{task.delete_policy || "safe"}
+                      {deletePolicyLabel(task.delete_policy)}
                     </span>
                   </div>
                 </div>
@@ -264,14 +290,23 @@ export function TasksPage() {
                       <div className="rounded-xl bg-[#3370FF]/15 p-2 text-[#3370FF]"><IconCloud className="h-4 w-4" /></div>
                     </div>
                   </div>
-                  {task.base_path ? <p className="mt-3 text-xs text-zinc-500">base_path：{task.base_path}</p> : null}
                 </div>
 
                 {/* Meta */}
-                <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
                   <span>最近同步：{lastSyncTime ? formatTimestamp(lastSyncTime) : "暂无"}</span>
-                  {st ? <span>已处理 {progressState.processed}/{progressState.effectiveTotal}，完成 {st.completed_files}，失败 {st.failed_files}，跳过 {st.skipped_files}</span> : null}
-                  {progress !== null ? <span>完成率：{progress}%</span> : null}
+                  <span className="text-zinc-600">|</span>
+                  <span>待上传 {pendingUploads}</span>
+                  <span className="text-zinc-600">|</span>
+                  <span>失败 {st?.failed_files ?? 0}</span>
+                  <span className="text-zinc-600">|</span>
+                  <span>冲突 {conflictCount}</span>
+                  {progress !== null ? (
+                    <>
+                      <span className="text-zinc-600">|</span>
+                      <span>完成率：{progress}%</span>
+                    </>
+                  ) : null}
                 </div>
                 {st?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{st.last_error}</p> : null}
                 {progress !== null ? (
@@ -304,6 +339,15 @@ export function TasksPage() {
                 {/* Expanded management */}
                 {isExpanded ? (
                   <div className="mt-4 grid gap-4 lg:grid-cols-4">
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 lg:col-span-4">
+                      <p className="text-xs uppercase tracking-widest text-zinc-500">高级信息</p>
+                      <div className="mt-3 grid gap-2 text-xs text-zinc-500 md:grid-cols-2">
+                        <p className="break-all">任务 ID：{task.id}</p>
+                        <p className="break-all">base_path：{task.base_path || "默认同本地目录"}</p>
+                        {st ? <p>已处理 {progressState.processed}/{progressState.effectiveTotal}，完成 {st.completed_files}，跳过 {st.skipped_files}</p> : null}
+                        <p>原始状态：{stateLabels[stateKey] || stateKey}</p>
+                      </div>
+                    </div>
                     <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
                       <p className="text-xs uppercase tracking-widest text-zinc-500">同步模式</p>
                       <div className="mt-3 flex flex-wrap items-center gap-2">

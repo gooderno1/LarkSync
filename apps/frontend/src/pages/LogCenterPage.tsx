@@ -179,7 +179,7 @@ function compactRunId(runId?: string | null): string {
 }
 
 export function LogCenterPage() {
-  const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflict } = useConflicts();
+  const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflictAsync } = useConflicts();
   const { toast } = useToast();
   const taskPickerRef = useRef<HTMLDivElement | null>(null);
 
@@ -201,6 +201,7 @@ export function LogCenterPage() {
   const [fileLogPage, setFileLogPage] = useState(1);
   const [fileLogPageSize, setFileLogPageSize] = useState(50);
   const [fileLogOrder, setFileLogOrder] = useState<"asc" | "desc">("desc");
+  const [resolvingConflictId, setResolvingConflictId] = useState<string | null>(null);
 
   const overviewQuery = useQuery<SyncTaskOverview[]>({
     queryKey: ["sync-task-overview"],
@@ -398,6 +399,22 @@ export function LogCenterPage() {
     taskDiagnosticsQuery.refetch();
     selectedRunQuery.refetch();
     selectedEventsQuery.refetch();
+  };
+
+  const handleResolveConflict = async (
+    id: string,
+    action: "use_local" | "use_cloud" | "keep_both",
+    successMessage: string
+  ) => {
+    setResolvingConflictId(id);
+    try {
+      await resolveConflictAsync({ id, action });
+      toast(successMessage, "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "冲突处理失败", "danger");
+    } finally {
+      setResolvingConflictId(null);
+    }
   };
 
   return (
@@ -977,6 +994,10 @@ export function LogCenterPage() {
           ) : (
             conflicts.map((c) => (
               <div key={c.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+                {(() => {
+                  const isResolving = resolvingConflictId === c.id;
+                  return (
+                    <>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="space-y-1">
                     <p className="text-xs uppercase tracking-widest text-zinc-500">本地路径</p>
@@ -1003,24 +1024,24 @@ export function LogCenterPage() {
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     className="rounded-lg bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50"
-                    disabled={c.resolved}
-                    onClick={() => { resolveConflict({ id: c.id, action: "use_local" }); toast("已采用本地版本", "success"); }}
+                    disabled={c.resolved || isResolving}
+                    onClick={() => handleResolveConflict(c.id, "use_local", "已采用本地版本")}
                     type="button"
                   >
-                    使用本地
+                    {isResolving ? "处理中..." : "使用本地"}
                   </button>
                   <button
                     className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
-                    disabled={c.resolved}
-                    onClick={() => { resolveConflict({ id: c.id, action: "use_cloud" }); toast("已采用云端版本", "success"); }}
+                    disabled={c.resolved || isResolving}
+                    onClick={() => handleResolveConflict(c.id, "use_cloud", "已采用云端版本")}
                     type="button"
                   >
-                    使用云端
+                    {isResolving ? "处理中..." : "使用云端"}
                   </button>
                   <button
                     className="rounded-lg border border-[#3370FF]/40 bg-[#3370FF]/10 px-4 py-2 text-xs font-medium text-[#3370FF] transition hover:bg-[#3370FF]/20 disabled:opacity-50"
-                    disabled={c.resolved}
-                    onClick={() => { resolveConflict({ id: c.id, action: "keep_both" }); toast("已保留双方版本", "info"); }}
+                    disabled={c.resolved || isResolving}
+                    onClick={() => handleResolveConflict(c.id, "keep_both", "已保留双方版本")}
                     type="button"
                   >
                     <span className="inline-flex items-center gap-1.5"><IconCopy className="h-3 w-3" />保留双方</span>
@@ -1029,6 +1050,9 @@ export function LogCenterPage() {
                     <span className="self-center text-xs text-zinc-500">已处理：{c.resolved_action}</span>
                   ) : null}
                 </div>
+                    </>
+                  );
+                })()}
               </div>
             ))
           )}
