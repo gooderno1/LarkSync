@@ -82,6 +82,7 @@ class SyncTask(Base):
     sync_mode: Mapped[str] = mapped_column(String, nullable=False)
     update_mode: Mapped[str] = mapped_column(String, nullable=False, default="auto")
     md_sync_mode: Mapped[str] = mapped_column(String, nullable=False, default="enhanced")
+    ignored_subpaths: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     delete_policy: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
     delete_grace_minutes: Mapped[int | None] = mapped_column(
         Integer,

@@ -1555,6 +1555,37 @@ def test_should_ignore_path_skips_embedded_figure_source_dirs(tmp_path: Path) ->
     assert runner._should_ignore_path(task, embed_path) is True
 
 
+def test_should_ignore_path_skips_task_specific_ignored_subpaths(tmp_path: Path) -> None:
+    runner = SyncTaskRunner(link_service=FakeLinkService())
+    task = SyncTaskItem(
+        id="task-ignore-custom",
+        name="忽略自定义目录测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        ignored_subpaths=["node_modules", ".git"],
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    node_module_file = tmp_path / "node_modules" / "pkg" / "index.d.ts"
+    node_module_file.parent.mkdir(parents=True)
+    node_module_file.write_text("export {};", encoding="utf-8")
+    git_file = tmp_path / ".git" / "objects" / "ab" / "123"
+    git_file.parent.mkdir(parents=True)
+    git_file.write_text("blob", encoding="utf-8")
+    normal_file = tmp_path / "docs" / "note.md"
+    normal_file.parent.mkdir(parents=True)
+    normal_file.write_text("# note", encoding="utf-8")
+
+    assert runner._should_ignore_path(task, node_module_file) is True
+    assert runner._should_ignore_path(task, git_file) is True
+    assert runner._should_ignore_path(task, normal_file) is False
+
+
 @pytest.mark.asyncio
 async def test_run_scheduled_upload_waits_until_file_is_quiet(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

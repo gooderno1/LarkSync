@@ -256,6 +256,59 @@ async def test_update_task_supports_delete_policy_override(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_task_normalizes_ignored_subpaths(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'test.db').as_posix()}"
+    await init_db(db_url)
+    root = tmp_path / "workspace"
+    (root / "node_modules").mkdir(parents=True)
+    (root / ".git" / "objects").mkdir(parents=True)
+    service = SyncTaskService(session_maker=get_session_maker(db_url))
+
+    item = await service.create_task(
+        name="任务A",
+        local_path=root.as_posix(),
+        cloud_folder_token="fld123",
+        base_path=root.as_posix(),
+        sync_mode="bidirectional",
+        ignored_subpaths=[
+            "node_modules",
+            str(root / ".git"),
+            "node_modules/lodash",
+            ".git/objects",
+        ],
+        enabled=True,
+    )
+
+    assert item.ignored_subpaths == ["node_modules", ".git"]
+
+
+@pytest.mark.asyncio
+async def test_update_task_rejects_ignored_subpaths_outside_root(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'test.db').as_posix()}"
+    await init_db(db_url)
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    service = SyncTaskService(session_maker=get_session_maker(db_url))
+
+    item = await service.create_task(
+        name="任务A",
+        local_path=root.as_posix(),
+        cloud_folder_token="fld123",
+        base_path=root.as_posix(),
+        sync_mode="bidirectional",
+        enabled=True,
+    )
+
+    with pytest.raises(SyncTaskValidationError, match="忽略目录必须位于本地同步目录内"):
+        await service.update_task(
+            item.id,
+            ignored_subpaths=[outside.as_posix()],
+        )
+
+
+@pytest.mark.asyncio
 async def test_list_task_resolves_legacy_null_delete_settings_from_config(
     tmp_path,
     monkeypatch,

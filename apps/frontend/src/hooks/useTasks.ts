@@ -115,6 +115,20 @@ export function useTasks() {
     },
   });
 
+  const updateIgnoredSubpathsMutation = useMutation({
+    mutationFn: ({ id, ignored_subpaths }: { id: string; ignored_subpaths: string[] }) =>
+      apiFetch<SyncTask>(`/sync/tasks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ignored_subpaths }),
+      }),
+    onSuccess: (updated: SyncTask) => {
+      qc.setQueryData<SyncTask[]>(["tasks"], (prev) =>
+        (prev || []).map((t) => (t.id === updated.id ? updated : t))
+      );
+    },
+  });
+
   const runMutation = useMutation({
     mutationFn: (task: SyncTask) =>
       apiFetch(`/sync/tasks/${task.id}/run`, { method: "POST" }),
@@ -156,9 +170,11 @@ export function useTasks() {
     updateMode: updateModeMutation.mutate,
     updateMdSyncMode: updateMdSyncModeMutation.mutate,
     updateDeletePolicy: updateDeletePolicyMutation.mutate,
+    updateIgnoredSubpaths: updateIgnoredSubpathsMutation.mutateAsync,
     runTask: runMutation.mutate,
     deleteTask: deleteMutation.mutate,
     resetLinks: resetLinksMutation.mutateAsync,
+    updatingIgnoredSubpaths: updateIgnoredSubpathsMutation.isPending,
     resettingLinks: resetLinksMutation.isPending,
     creating: createMutation.isPending,
   };

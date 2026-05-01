@@ -1,5 +1,33 @@
 # DEVELOPMENT LOG
 
+## v0.6.12 release (2026-05-01)
+
+- 目标：
+  - 发布 `v0.6.12` 稳定版，交付任务级本地忽略目录能力，并收口重复安装同版本时的错误感知。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.6.12`。
+  - 稳定版包含设置页按任务配置本地忽略目录、后端按任务忽略对应子目录的监听与上传扫描，以及静默安装接口对同版本/旧版本重复安装的明确阻断提示。
+  - CHANGELOG 与 README 已更新。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py`
+
+## v0.6.12-dev.1 (2026-05-01)
+
+- 目标：
+  - 为本地上行同步增加任务级忽略子目录能力，避免工程目录和缓存目录进入飞书；同时确认并收口“升级成功后再次触发同版本安装，看起来像失败”的体验问题。
+- 结果：
+  - `sync_tasks` 新增任务级 `ignored_subpaths` 配置，支持在设置页为每个任务维护多条本地忽略目录。
+  - 后端会在本地全量扫描、待上传补扫和 watcher 事件处理阶段统一跳过这些子目录，避免 `node_modules`、`.git` 等工程目录继续进入上行同步链路。
+  - 设置页新增“本地忽略目录”区块，支持手填相对路径或调用系统文件夹选择器挑选当前任务根目录下的子目录，并按任务保存。
+  - `/system/update/install` 现在会在排队前判断安装包版本是否真的比当前版本新；若当前已是该版本或更高版本，会直接返回明确错误，不再让前端误以为“静默安装失败”。
+  - 本机最新一次“升级失败”实查结果为：当前程序已运行 `v0.6.11`，安装目录 `F:\Program Files (x86)\LarkSync\LarkSync.exe` 时间戳已更新到 `2026-05-01 17:24:12`；日志中的 `忽略过期安装请求 (current=v0.6.11 request=v0.6.11)` 表示升级完成后又收到同版本请求并被正常忽略，并非安装器执行失败。
+  - README、CHANGELOG、根包/后端/前端版本已更新到 `v0.6.12-dev.1`。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_sync_task_service.py tests/test_sync_runner.py tests/test_system_update_api.py -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.11 release (2026-05-01)
 
 - 目标：

@@ -8,6 +8,7 @@ import { useUpdate } from "../hooks/useUpdate";
 import { useTasks } from "../hooks/useTasks";
 import { formatIntervalLabel } from "../lib/formatters";
 import { modeLabels, syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
+import { apiFetch } from "../lib/api";
 import { useToast } from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm-dialog";
 import { IconCopy, IconArrowUp, IconArrowDown, IconArrowRightLeft, IconFolder } from "../components/Icons";
@@ -27,7 +28,7 @@ export function SettingsPage() {
     openUpdateFolder,
     openingUpdateFolder,
   } = useUpdate();
-  const { tasks, resetLinks, resettingLinks } = useTasks();
+  const { tasks, resetLinks, resettingLinks, updateIgnoredSubpaths, updatingIgnoredSubpaths } = useTasks();
   const { toast } = useToast();
 
   const [authorizeUrl, setAuthorizeUrl] = useState("");
@@ -51,6 +52,9 @@ export function SettingsPage() {
   const [updateCheckIntervalHours, setUpdateCheckIntervalHours] = useState("24");
   const [allowDevToStable, setAllowDevToStable] = useState(false);
   const [deviceDisplayName, setDeviceDisplayName] = useState("");
+  const [ignoredPathDrafts, setIgnoredPathDrafts] = useState<Record<string, string>>({});
+  const [ignoredSubpathsMap, setIgnoredSubpathsMap] = useState<Record<string, string[]>>({});
+  const [pickingIgnoredTaskId, setPickingIgnoredTaskId] = useState<string | null>(null);
   const uploadEnabled = syncModeSupportsUpload(syncMode);
   const downloadEnabled = syncModeSupportsDownload(syncMode);
 
@@ -107,6 +111,72 @@ export function SettingsPage() {
     if (config.allow_dev_to_stable != null) setAllowDevToStable(Boolean(config.allow_dev_to_stable));
     setDeviceDisplayName(config.device_display_name || "");
   }, [config, configLoading]);
+
+  useEffect(() => {
+    setIgnoredSubpathsMap((prev) => {
+      const next: Record<string, string[]> = {};
+      for (const task of tasks) {
+        next[task.id] = prev[task.id] ?? task.ignored_subpaths ?? [];
+      }
+      return next;
+    });
+  }, [tasks]);
+
+  const normalizeIgnoredSubpath = (value: string): string | null => {
+    const normalized = value
+      .replace(/\\/g, "/")
+      .split("/")
+      .map((segment) => segment.trim())
+      .filter((segment) => segment && segment !== ".");
+    if (!normalized.length) return null;
+    if (normalized.some((segment) => segment === ".." || segment.includes(":"))) {
+      return null;
+    }
+    return normalized.join("/");
+  };
+
+  const resolvePickedSubpath = (rootPath: string, pickedPath: string): string | null => {
+    const normalizeFsPath = (value: string) =>
+      value.replace(/\//g, "\\").replace(/[\\\/]+$/, "");
+    const root = normalizeFsPath(rootPath);
+    const picked = normalizeFsPath(pickedPath);
+    const rootLower = root.toLowerCase();
+    const pickedLower = picked.toLowerCase();
+    if (pickedLower === rootLower) return null;
+    if (!pickedLower.startsWith(`${rootLower}\\`)) return null;
+    const relative = picked.slice(root.length + 1).replace(/\\/g, "/");
+    return normalizeIgnoredSubpath(relative);
+  };
+
+  const addIgnoredSubpath = (taskId: string, rawValue: string) => {
+    const normalized = normalizeIgnoredSubpath(rawValue);
+    if (!normalized) {
+      toast("请输入本地同步目录下的有效子目录", "danger");
+      return;
+    }
+    setIgnoredSubpathsMap((prev) => {
+      const current = prev[taskId] ?? [];
+      const normalizedLower = normalized.toLowerCase();
+      if (
+        current.some((item) => {
+          const lower = item.toLowerCase();
+          return lower === normalizedLower || normalizedLower.startsWith(`${lower}/`);
+        })
+      ) {
+        return prev;
+      }
+      const filtered = current.filter((item) => !item.toLowerCase().startsWith(`${normalizedLower}/`));
+      return { ...prev, [taskId]: [...filtered, normalized] };
+    });
+    setIgnoredPathDrafts((prev) => ({ ...prev, [taskId]: "" }));
+  };
+
+  const removeIgnoredSubpath = (taskId: string, target: string) => {
+    setIgnoredSubpathsMap((prev) => ({
+      ...prev,
+      [taskId]: (prev[taskId] ?? []).filter((item) => item !== target),
+    }));
+  };
 
   const handleSave = async () => {
     const uVal = uploadValue.trim() ? Number.parseFloat(uploadValue) : null;
@@ -222,6 +292,39 @@ export function SettingsPage() {
       toast(`已打开目录：${result.path}`, "success");
     } catch (err) {
       toast(err instanceof Error ? err.message : "打开目录失败", "danger");
+    }
+  };
+
+  const handlePickIgnoredSubpath = async (taskId: string, localPath: string) => {
+    setPickingIgnoredTaskId(taskId);
+    try {
+      const result = await apiFetch<{ path: string }>("/system/select-folder", { method: "POST" });
+      const relative = resolvePickedSubpath(localPath, result.path);
+      if (!relative) {
+        toast("请选择当前任务本地同步目录下的子目录", "danger");
+        return;
+      }
+      addIgnoredSubpath(taskId, relative);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "选择目录失败", "danger");
+    } finally {
+      setPickingIgnoredTaskId(null);
+    }
+  };
+
+  const handleSaveIgnoredSubpaths = async (taskId: string) => {
+    try {
+      const updated = await updateIgnoredSubpaths({
+        id: taskId,
+        ignored_subpaths: ignoredSubpathsMap[taskId] ?? [],
+      });
+      setIgnoredSubpathsMap((prev) => ({
+        ...prev,
+        [taskId]: updated.ignored_subpaths ?? [],
+      }));
+      toast("忽略目录已保存", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "保存忽略目录失败", "danger");
     }
   };
 
@@ -700,6 +803,93 @@ export function SettingsPage() {
                     ) : null}
                   </div>
                 ) : null}
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-zinc-800/80 pt-4">
+              <h3 className="text-sm font-medium text-zinc-200">本地忽略目录</h3>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                为指定任务配置不参与本地上行的子目录。适合 `node_modules`、`.git`、构建产物或缓存目录。
+              </p>
+              <div className="mt-3 space-y-3">
+                {tasks.length === 0 ? (
+                  <p className="text-xs text-zinc-500">暂无同步任务。</p>
+                ) : (
+                  tasks.map((task) => {
+                    const ignoredSubpaths = ignoredSubpathsMap[task.id] ?? task.ignored_subpaths ?? [];
+                    return (
+                      <div
+                        key={`${task.id}-ignored-subpaths`}
+                        className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-zinc-200">{task.name || "未命名任务"}</p>
+                            <p className="truncate text-[11px] text-zinc-500">{task.local_path}</p>
+                          </div>
+                          <button
+                            className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
+                            disabled={updatingIgnoredSubpaths}
+                            onClick={() => void handleSaveIgnoredSubpaths(task.id)}
+                            type="button"
+                          >
+                            {updatingIgnoredSubpaths ? "保存中..." : "应用忽略目录"}
+                          </button>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {ignoredSubpaths.length > 0 ? (
+                            ignoredSubpaths.map((item) => (
+                              <span
+                                key={`${task.id}-${item}`}
+                                className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300"
+                              >
+                                <span>{item}</span>
+                                <button
+                                  className="text-zinc-500 transition hover:text-zinc-200"
+                                  onClick={() => removeIgnoredSubpath(task.id, item)}
+                                  type="button"
+                                >
+                                  移除
+                                </button>
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-zinc-500">暂无忽略目录</span>
+                          )}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <input
+                            className="min-w-[260px] flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 outline-none focus:border-[#3370FF]"
+                            placeholder="输入相对路径，例如：POC/GENESIS/node_modules"
+                            value={ignoredPathDrafts[task.id] ?? ""}
+                            onChange={(e) =>
+                              setIgnoredPathDrafts((prev) => ({
+                                ...prev,
+                                [task.id]: e.target.value,
+                              }))
+                            }
+                          />
+                          <button
+                            className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+                            onClick={() => addIgnoredSubpath(task.id, ignoredPathDrafts[task.id] ?? "")}
+                            type="button"
+                          >
+                            添加路径
+                          </button>
+                          <button
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
+                            disabled={pickingIgnoredTaskId === task.id}
+                            onClick={() => void handlePickIgnoredSubpath(task.id, task.local_path)}
+                            type="button"
+                          >
+                            <IconFolder className="h-3.5 w-3.5" />
+                            {pickingIgnoredTaskId === task.id ? "选择中..." : "选择子目录"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 

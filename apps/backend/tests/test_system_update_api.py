@@ -62,6 +62,7 @@ def test_system_update_install_endpoint_writes_install_request(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("LARKSYNC_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(system_api, "get_version", lambda: "v0.5.43")
     installer_path = tmp_path / "LarkSync-Setup-v0.5.51.exe"
     installer_path.write_bytes(b"exe")
     restart_path = tmp_path / "LarkSync.exe"
@@ -119,3 +120,23 @@ def test_system_update_open_download_folder_opens_parent_directory(
     assert response.status_code == 200
     assert Path(response.json()["path"]) == installer_dir.resolve()
     assert opened == [installer_dir.resolve()]
+
+
+def test_system_update_install_rejects_same_or_older_version(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(system_api, "get_version", lambda: "v0.6.11")
+    installer_path = tmp_path / "LarkSync-Setup-v0.6.11.exe"
+    installer_path.write_bytes(b"exe")
+
+    client = TestClient(app)
+    app.state.update_scheduler = _StubScheduler()
+
+    response = client.post(
+        "/system/update/install",
+        json={"download_path": str(installer_path)},
+    )
+
+    assert response.status_code == 400
+    assert "无需再次安装" in response.json()["detail"]

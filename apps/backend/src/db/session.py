@@ -56,6 +56,13 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
             await _ensure_column(
                 conn,
                 table="sync_tasks",
+                column="ignored_subpaths",
+                column_type="TEXT",
+                default_value=None,
+            )
+            await _ensure_column(
+                conn,
+                table="sync_tasks",
                 column="cloud_folder_name",
                 column_type="TEXT",
                 default_value=None,
@@ -183,6 +190,13 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
                 column="md_sync_mode",
                 column_type="TEXT",
                 default_value="enhanced",
+            )
+            await _ensure_column(
+                conn,
+                table="sync_tasks",
+                column="ignored_subpaths",
+                column_type="TEXT",
+                default_value=None,
             )
             await _ensure_column(
                 conn,

@@ -3236,7 +3236,11 @@ class SyncTaskRunner:
         root = Path(task.local_path)
         if not root.exists():
             return []
-        return [path for path in root.rglob("*") if path.is_file()]
+        return [
+            path
+            for path in root.rglob("*")
+            if path.is_file() and not self._should_ignore_path(task, path)
+        ]
 
     async def _scan_for_unlinked_files(self, task: SyncTaskItem) -> int:
         """全量扫描本地目录，将没有 SyncLink 的文件加入待上传队列。
@@ -3286,6 +3290,15 @@ class SyncTaskRunner:
             or _CLOUD_MD_MIRROR_FOLDER_NAME.lower() in lowered
         ):
             return True
+        relative_parts = tuple(part.lower() for part in relative.parts if part and part != ".")
+        for ignored in task.ignored_subpaths:
+            ignored_parts = tuple(
+                part.lower()
+                for part in Path(ignored.replace("\\", "/")).parts
+                if part and part != "."
+            )
+            if ignored_parts and relative_parts[: len(ignored_parts)] == ignored_parts:
+                return True
         return False
 
     @staticmethod

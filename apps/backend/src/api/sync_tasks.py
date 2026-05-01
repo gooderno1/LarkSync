@@ -35,6 +35,10 @@ class SyncTaskCreateRequest(BaseModel):
     md_sync_mode: Literal["enhanced", "download_only", "doc_only"] = Field(
         default="enhanced", description="Markdown 上传模式"
     )
+    ignored_subpaths: list[str] | None = Field(
+        default=None,
+        description="忽略的本地子目录列表",
+    )
     delete_policy: DeletePolicy | None = Field(default=None, description="删除联动策略")
     delete_grace_minutes: int | None = Field(default=None, ge=0, description="删除宽限分钟")
     is_test: bool = Field(default=False, description="是否测试任务")
@@ -50,6 +54,7 @@ class SyncTaskUpdateRequest(BaseModel):
     sync_mode: SyncMode | None = None
     update_mode: Literal["auto", "partial", "full"] | None = None
     md_sync_mode: Literal["enhanced", "download_only", "doc_only"] | None = None
+    ignored_subpaths: list[str] | None = None
     delete_policy: DeletePolicy | None = None
     delete_grace_minutes: int | None = Field(default=None, ge=0)
     is_test: bool | None = None
@@ -66,6 +71,7 @@ class SyncTaskResponse(BaseModel):
     sync_mode: str
     update_mode: str
     md_sync_mode: str
+    ignored_subpaths: list[str]
     delete_policy: str | None
     delete_grace_minutes: int | None
     is_test: bool
@@ -692,12 +698,13 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
             name=payload.name,
             local_path=payload.local_path,
             cloud_folder_token=payload.cloud_folder_token,
-            cloud_folder_name=payload.cloud_folder_name,
-            base_path=payload.base_path,
-            sync_mode=payload.sync_mode.value,
-            update_mode=payload.update_mode,
-            md_sync_mode=payload.md_sync_mode,
-            delete_policy=payload.delete_policy.value if payload.delete_policy else None,
+        cloud_folder_name=payload.cloud_folder_name,
+        base_path=payload.base_path,
+        sync_mode=payload.sync_mode.value,
+        update_mode=payload.update_mode,
+        md_sync_mode=payload.md_sync_mode,
+        ignored_subpaths=payload.ignored_subpaths,
+        delete_policy=payload.delete_policy.value if payload.delete_policy else None,
             delete_grace_minutes=payload.delete_grace_minutes,
             is_test=payload.is_test,
             enabled=payload.enabled,
@@ -717,12 +724,13 @@ async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskR
             name=payload.name,
             local_path=payload.local_path,
             cloud_folder_token=payload.cloud_folder_token,
-            cloud_folder_name=payload.cloud_folder_name,
-            base_path=payload.base_path,
-            sync_mode=payload.sync_mode.value if payload.sync_mode else None,
-            update_mode=payload.update_mode,
-            md_sync_mode=payload.md_sync_mode,
-            delete_policy=payload.delete_policy.value if payload.delete_policy else None,
+        cloud_folder_name=payload.cloud_folder_name,
+        base_path=payload.base_path,
+        sync_mode=payload.sync_mode.value if payload.sync_mode else None,
+        update_mode=payload.update_mode,
+        md_sync_mode=payload.md_sync_mode,
+        ignored_subpaths=payload.ignored_subpaths,
+        delete_policy=payload.delete_policy.value if payload.delete_policy else None,
             delete_grace_minutes=payload.delete_grace_minutes,
             is_test=payload.is_test,
             enabled=payload.enabled,

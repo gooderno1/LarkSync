@@ -13,8 +13,14 @@ from loguru import logger
 from src.api.watcher import watcher_manager
 from src.db.session import dispose_engines
 from src.services.update_install_service import queue_install_request
-from src.services.update_service import UpdateService, UpdateStatus
+from src.services.update_service import (
+    UpdateService,
+    UpdateStatus,
+    extract_installer_version,
+    is_newer_version,
+)
 from src.services.update_scheduler import UpdateScheduler
+from src.core.version import get_version
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -158,6 +164,13 @@ async def update_install(
         installer_path = (cached.download_path or "").strip()
     if not installer_path:
         raise HTTPException(status_code=400, detail="尚未下载更新包")
+    installer_version = extract_installer_version(installer_path)
+    current_version = get_version()
+    if installer_version and not is_newer_version(installer_version, current_version):
+        raise HTTPException(
+            status_code=400,
+            detail=f"当前已是 {current_version}，无需再次安装 {installer_version}",
+        )
     try:
         queued = queue_install_request(
             installer_path,

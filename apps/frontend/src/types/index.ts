@@ -45,6 +45,7 @@ export type SyncTask = {
   sync_mode: string;
   update_mode?: string | null;
   md_sync_mode?: "enhanced" | "download_only" | "doc_only" | null;
+  ignored_subpaths?: string[] | null;
   delete_policy?: "off" | "safe" | "strict" | null;
   delete_grace_minutes?: number | null;
   is_test?: boolean;

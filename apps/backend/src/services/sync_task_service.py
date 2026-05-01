@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from sqlalchemy import or_, select
@@ -40,6 +41,7 @@ class SyncTaskItem:
     updated_at: float
     last_run_at: float | None = None
     md_sync_mode: str = _MD_SYNC_MODE_ENHANCED
+    ignored_subpaths: list[str] = field(default_factory=list)
     delete_policy: str | None = None
     delete_grace_minutes: int | None = None
     owner_device_id: str | None = None
@@ -73,6 +75,7 @@ class SyncTaskService:
         sync_mode: str,
         update_mode: str = "auto",
         md_sync_mode: str = _MD_SYNC_MODE_ENHANCED,
+        ignored_subpaths: list[str] | None = None,
         delete_policy: str | None = None,
         delete_grace_minutes: int | None = None,
         is_test: bool = False,
@@ -89,6 +92,10 @@ class SyncTaskService:
         )
         clean_cloud_folder_name = self._clean_optional_text(cloud_folder_name)
         clean_base_path = self._clean_optional_text(base_path)
+        resolved_ignored_subpaths = self._normalize_ignored_subpaths(
+            clean_local_path,
+            ignored_subpaths,
+        )
         resolved_open_id = owner_open_id or self._effective_owner_open_id()
         resolved_delete_policy, resolved_delete_grace = self._resolve_task_delete_settings(
             delete_policy=delete_policy,
@@ -104,6 +111,7 @@ class SyncTaskService:
             sync_mode=sync_mode,
             update_mode=update_mode,
             md_sync_mode=self._normalize_md_sync_mode(md_sync_mode),
+            ignored_subpaths=self._serialize_ignored_subpaths(resolved_ignored_subpaths),
             delete_policy=resolved_delete_policy,
             delete_grace_minutes=resolved_delete_grace,
             is_test=bool(is_test),
@@ -178,6 +186,7 @@ class SyncTaskService:
         sync_mode: str | None = None,
         update_mode: str | None = None,
         md_sync_mode: str | None = None,
+        ignored_subpaths: list[str] | None = None,
         delete_policy: str | None = None,
         delete_grace_minutes: int | None = None,
         is_test: bool | None = None,
@@ -210,6 +219,11 @@ class SyncTaskService:
                 if cloud_folder_name is not None
                 else record.cloud_folder_name
             )
+            target_ignored_subpaths = (
+                self._normalize_ignored_subpaths(target_local_path, ignored_subpaths)
+                if ignored_subpaths is not None
+                else self._parse_ignored_subpaths(record.ignored_subpaths)
+            )
             await self._validate_task_mapping(
                 session=session,
                 local_path=target_local_path,
@@ -233,6 +247,10 @@ class SyncTaskService:
                 record.update_mode = update_mode
             if md_sync_mode is not None:
                 record.md_sync_mode = self._normalize_md_sync_mode(md_sync_mode)
+            if ignored_subpaths is not None:
+                record.ignored_subpaths = self._serialize_ignored_subpaths(
+                    target_ignored_subpaths
+                )
             if delete_policy is not None:
                 record.delete_policy = self._normalize_delete_policy(delete_policy)
             if delete_grace_minutes is not None and delete_grace_minutes >= 0:
@@ -365,6 +383,88 @@ class SyncTaskService:
         if policy == DeletePolicy.strict.value:
             grace = 0
         return policy, grace
+
+    @staticmethod
+    def _parse_ignored_subpaths(value: str | None) -> list[str]:
+        if not value:
+            return []
+        try:
+            payload = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(payload, list):
+            return []
+        parsed: list[str] = []
+        for item in payload:
+            if not isinstance(item, str):
+                continue
+            cleaned = item.strip().replace("\\", "/").strip("/")
+            if cleaned:
+                parsed.append(cleaned)
+        return parsed
+
+    @staticmethod
+    def _serialize_ignored_subpaths(value: list[str]) -> str | None:
+        if not value:
+            return None
+        return json.dumps(value, ensure_ascii=False)
+
+    @staticmethod
+    def _normalize_relative_subpath(value: str) -> str:
+        normalized_parts: list[str] = []
+        for part in Path(value).parts:
+            cleaned = str(part).strip().replace("\\", "/")
+            if not cleaned or cleaned == ".":
+                continue
+            if cleaned == "..":
+                raise SyncTaskValidationError("忽略目录不能超出本地同步目录")
+            if ":" in cleaned:
+                raise SyncTaskValidationError("忽略目录必须位于本地同步目录内")
+            normalized_parts.append(cleaned)
+        if not normalized_parts:
+            raise SyncTaskValidationError("忽略目录必须是本地同步目录下的子目录")
+        return "/".join(normalized_parts)
+
+    def _normalize_ignored_subpaths(
+        self,
+        local_path: str,
+        ignored_subpaths: list[str] | None,
+    ) -> list[str]:
+        if not ignored_subpaths:
+            return []
+        root = Path(local_path).expanduser().resolve(strict=False)
+        normalized: list[str] = []
+        normalized_keys: list[str] = []
+        for raw_value in ignored_subpaths:
+            cleaned = (raw_value or "").strip()
+            if not cleaned:
+                continue
+            candidate = Path(cleaned).expanduser()
+            if candidate.is_absolute():
+                candidate = candidate.resolve(strict=False)
+                try:
+                    relative = candidate.relative_to(root)
+                except ValueError as exc:
+                    raise SyncTaskValidationError("忽略目录必须位于本地同步目录内") from exc
+            else:
+                relative = candidate
+            relative_path = self._normalize_relative_subpath(str(relative))
+            relative_key = relative_path.lower()
+            if any(
+                relative_key == existing or relative_key.startswith(f"{existing}/")
+                for existing in normalized_keys
+            ):
+                continue
+            keep_indices = [
+                index
+                for index, existing in enumerate(normalized_keys)
+                if not existing.startswith(f"{relative_key}/")
+            ]
+            normalized = [normalized[index] for index in keep_indices]
+            normalized_keys = [normalized_keys[index] for index in keep_indices]
+            normalized.append(relative_path)
+            normalized_keys.append(relative_key)
+        return normalized
 
     async def _validate_task_mapping(
         self,
@@ -516,6 +616,7 @@ class SyncTaskService:
             resolved_grace = 0
         if resolved_policy == DeletePolicy.strict.value:
             resolved_grace = 0
+        ignored_subpaths = self._parse_ignored_subpaths(record.ignored_subpaths)
         return SyncTaskItem(
             id=record.id,
             name=record.name,
@@ -526,6 +627,7 @@ class SyncTaskService:
             sync_mode=record.sync_mode,
             update_mode=record.update_mode,
             md_sync_mode=resolved_md_sync_mode,
+            ignored_subpaths=ignored_subpaths,
             delete_policy=resolved_policy,
             delete_grace_minutes=resolved_grace,
             is_test=bool(record.is_test),
