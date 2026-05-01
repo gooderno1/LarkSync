@@ -118,6 +118,26 @@ function statusTone(status: string): Tone {
   return "success";
 }
 
+function getRunAlertMeta(message?: string | null): { label: string; className: string; message: string } | null {
+  const trimmed = message?.trim();
+  if (!trimmed) return null;
+  if (
+    trimmed.includes("运行被中断") ||
+    trimmed.includes("partial 模式不支持超限表格文档，请改用 auto/full")
+  ) {
+    return {
+      label: trimmed.includes("运行被中断") ? "最近中断" : "最近提示",
+      className: "border-amber-500/40 bg-amber-500/10 text-amber-300",
+      message: trimmed,
+    };
+  }
+  return {
+    label: "最近错误",
+    className: "border-rose-500/40 bg-rose-500/10 text-rose-300",
+    message: trimmed,
+  };
+}
+
 function levelColor(level: string) {
   switch (level) {
     case "ERROR": return "text-rose-400";
@@ -369,6 +389,7 @@ export function LogCenterPage() {
   const selectedStateKey = selectedTask
     ? (!selectedTask.enabled ? "paused" : selectedStatus?.state || "idle")
     : "idle";
+  const runAlert = getRunAlertMeta(selectedRun?.last_error || selectedStatus?.last_error);
 
   const fileLogsQuery = useQuery<FileLogResponse>({
     queryKey: ["file-logs", fileLogLevel, fileLogSearch, fileLogOrder, fileLogPage, fileLogPageSize],
@@ -741,9 +762,9 @@ export function LogCenterPage() {
                           ) : null}
                         </div>
 
-                        {(selectedRun?.last_error || selectedStatus?.last_error) ? (
-                          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-200">
-                            最近错误：{selectedRun?.last_error || selectedStatus?.last_error}
+                        {runAlert ? (
+                          <div className={cn("rounded-xl border px-4 py-2.5 text-sm", runAlert.className)}>
+                            {runAlert.label}：{runAlert.message}
                           </div>
                         ) : null}
 
