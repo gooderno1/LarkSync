@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-01] v0.6.14 release: v0.6.14
+[2026-05-01] v0.6.14-dev.1 fix(auto-update): Windows 静默安装改为 bootstrap -> worker 双阶段接管；托盘先用隐藏 bootstrap 进程确认接管，再由 bootstrap 拉起独立 PowerShell worker 执行安装与重启，修复主程序侧等待 handoff 超时、安装器实际从未接管的问题
 [2026-05-01] v0.6.13 release: v0.6.13
 [2026-05-01] v0.6.13-dev.1 fix(sync-ignore): 忽略目录扩展为双向隔离；云端下载、云删本地和已排队删除墓碑都会跳过已忽略子目录，避免把已忽略目录重新下载或从本地删掉
 [2026-05-01] v0.6.12 release: v0.6.12

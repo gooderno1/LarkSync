@@ -1,5 +1,32 @@
 # DEVELOPMENT LOG
 
+## v0.6.14 release (2026-05-01)
+
+- 目标：
+  - 发布 `v0.6.14` 稳定版，修复 Windows 静默安装卡在 handoff 超时、安装器未真正接管的问题。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.6.14`。
+  - 静默安装改为两阶段链路：托盘先起隐藏 bootstrap，bootstrap 再起独立 PowerShell worker 执行安装、等待退出并重启新版本。
+  - README、CHANGELOG 已同步更新。
+- 测试：
+  - `python scripts/sync_feishu_docs.py`
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
+## v0.6.14-dev.1 (2026-05-01)
+
+- 目标：
+  - 修复当前 `v0.6.11 -> v0.6.13` 静默升级时卡在“安装程序未返回接管确认”的问题。
+- 结果：
+  - 把原来 Python 直接拉起 detached helper 的做法改成“隐藏 bootstrap -> 独立 worker”两阶段接管，先稳定拿到 handoff，再让 worker 脱离主程序生命周期执行静默安装。
+  - 新增 bootstrap 命令构造测试，并调整 Windows 静默安装测试，确保接管逻辑不再依赖 Python 侧直接起 detached helper。
+  - README、CHANGELOG、根包/后端/前端版本已更新到 `v0.6.14`。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_tray_update_install.py -q`
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.13 release (2026-05-01)
 
 - 目标：

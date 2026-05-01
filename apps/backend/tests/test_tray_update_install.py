@@ -218,7 +218,33 @@ def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: P
     assert str(log_path).replace("'", "''") in script
 
 
-def test_schedule_installer_launch_on_windows_uses_hidden_helper_process(
+def test_build_windows_silent_bootstrap_command_spawns_worker(tmp_path: Path) -> None:
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.56.exe"
+    restart_path = tmp_path / "LarkSync.exe"
+    log_path = tmp_path / "update-install.log"
+    handoff_path = tmp_path / "install-handoff.json"
+    command = tray_app._build_windows_silent_bootstrap_command(
+        installer_path,
+        restart_path=restart_path,
+        log_path=log_path,
+        handoff_path=handoff_path,
+        request_id="req-bootstrap",
+    )
+
+    assert command[0].lower().endswith("powershell.exe") or command[0].lower() == "powershell"
+    assert "-EncodedCommand" in command
+    encoded = command[command.index("-EncodedCommand") + 1]
+    script = base64.b64decode(encoded).decode("utf-16le")
+
+    assert "Start-Process -FilePath $powerShellPath -ArgumentList $workerArgs -WindowStyle Hidden -PassThru" in script
+    assert "helper_started" in script
+    assert "worker_pid=" in script
+    assert "workerEncoded" in script
+    assert str(handoff_path).replace("'", "''") in script
+    assert str(log_path).replace("'", "''") in script
+
+
+def test_schedule_installer_launch_on_windows_silent_uses_hidden_bootstrap_process(
     monkeypatch, tmp_path: Path
 ) -> None:
     installer_path = tmp_path / "LarkSync-Setup-v0.5.55.exe"
@@ -226,8 +252,6 @@ def test_schedule_installer_launch_on_windows_uses_hidden_helper_process(
     calls: list[dict[str, object]] = []
     create_new_process_group = 0x200
     create_no_window = 0x08000000
-    detached_process = 0x8
-    create_breakaway_from_job = 0x01000000
 
     def _fake_popen(args, **kwargs):
         calls.append({"args": list(args), **kwargs})
@@ -240,10 +264,6 @@ def test_schedule_installer_launch_on_windows_uses_hidden_helper_process(
         tray_app.subprocess, "CREATE_NEW_PROCESS_GROUP", create_new_process_group, raising=False
     )
     monkeypatch.setattr(tray_app.subprocess, "CREATE_NO_WINDOW", create_no_window, raising=False)
-    monkeypatch.setattr(tray_app.subprocess, "DETACHED_PROCESS", detached_process, raising=False)
-    monkeypatch.setattr(
-        tray_app.subprocess, "CREATE_BREAKAWAY_FROM_JOB", create_breakaway_from_job, raising=False
-    )
     monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
     monkeypatch.setattr(tray_app, "_wait_for_install_handoff", lambda *args, **kwargs: {"stage": "helper_started"})
 
@@ -256,8 +276,9 @@ def test_schedule_installer_launch_on_windows_uses_hidden_helper_process(
     creationflags = int(calls[0]["creationflags"])
     assert creationflags & create_new_process_group != 0
     assert creationflags & create_no_window != 0
-    assert creationflags & detached_process != 0
-    assert creationflags & create_breakaway_from_job != 0
+    assert "workerEncoded" in base64.b64decode(
+        calls[0]["args"][calls[0]["args"].index("-EncodedCommand") + 1]
+    ).decode("utf-16le")
 
 
 def test_schedule_installer_launch_on_windows_silent_requires_helper_handoff(

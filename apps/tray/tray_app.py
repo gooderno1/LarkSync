@@ -270,18 +270,30 @@ def _resolve_powershell_executable() -> str:
     return "powershell"
 
 
-def _silent_helper_creationflags() -> int:
+def _hidden_helper_creationflags() -> int:
     flags = (
         getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         | getattr(subprocess, "CREATE_NO_WINDOW", 0)
     )
-    # 静默更新 helper 需要在主程序退出后继续等待安装器并负责拉起新版本。
-    flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
-    flags |= getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
     return flags
 
 
-def _build_windows_installer_launch_command(
+def _build_windows_powershell_command(script: str) -> list[str]:
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    return [
+        _resolve_powershell_executable(),
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-EncodedCommand",
+        encoded,
+    ]
+
+
+def _build_windows_installer_worker_script(
     path: Path,
     *,
     silent: bool = False,
@@ -296,7 +308,7 @@ def _build_windows_installer_launch_command(
     handoff_escaped = str(handoff_path).replace("'", "''") if handoff_path else ""
     request_escaped = request_id.replace("'", "''")
     silent_literal = "$true" if silent else "$false"
-    script = (
+    return (
         f"$installerPath = '{installer_escaped}'; "
         f"$restartPath = '{restart_escaped}'; "
         f"$logPath = '{log_escaped}'; "
@@ -352,18 +364,90 @@ def _build_windows_installer_launch_command(
         "Write-InstallLog (\"已请求重启新版本: \" + $restartPath) "
         "}"
     )
-    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
-    return [
-        _resolve_powershell_executable(),
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-WindowStyle",
-        "Hidden",
-        "-EncodedCommand",
-        encoded,
-    ]
+
+
+def _build_windows_installer_launch_command(
+    path: Path,
+    *,
+    silent: bool = False,
+    restart_path: Path | None = None,
+    log_path: Path | None = None,
+    handoff_path: Path | None = None,
+    request_id: str = "",
+) -> list[str]:
+    return _build_windows_powershell_command(
+        _build_windows_installer_worker_script(
+            path,
+            silent=silent,
+            restart_path=restart_path,
+            log_path=log_path,
+            handoff_path=handoff_path,
+            request_id=request_id,
+        )
+    )
+
+
+def _build_windows_silent_bootstrap_command(
+    path: Path,
+    *,
+    restart_path: Path | None = None,
+    log_path: Path | None = None,
+    handoff_path: Path | None = None,
+    request_id: str = "",
+) -> list[str]:
+    installer_escaped = str(path).replace("'", "''")
+    log_escaped = str(log_path).replace("'", "''") if log_path else ""
+    handoff_escaped = str(handoff_path).replace("'", "''") if handoff_path else ""
+    request_escaped = request_id.replace("'", "''")
+    powershell_escaped = _resolve_powershell_executable().replace("'", "''")
+    worker_script = _build_windows_installer_worker_script(
+        path,
+        silent=True,
+        restart_path=restart_path,
+        log_path=log_path,
+        handoff_path=handoff_path,
+        request_id=request_id,
+    )
+    worker_encoded = base64.b64encode(worker_script.encode("utf-16le")).decode("ascii")
+    script = (
+        f"$installerPath = '{installer_escaped}'; "
+        f"$logPath = '{log_escaped}'; "
+        f"$handoffPath = '{handoff_escaped}'; "
+        f"$requestId = '{request_escaped}'; "
+        f"$powerShellPath = '{powershell_escaped}'; "
+        f"$workerEncoded = '{worker_encoded}'; "
+        "function Write-InstallLog([string]$message) { "
+        "if ([string]::IsNullOrWhiteSpace($logPath)) { return }; "
+        "try { "
+        "$parent = Split-Path -Parent $logPath; "
+        "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
+        "$timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'; "
+        "Add-Content -LiteralPath $logPath -Value \"[$timestamp] $message\" -Encoding UTF8 "
+        "} catch {} "
+        "}; "
+        "function Write-Handoff([string]$stage, [string]$message, [int]$exitCode = 0) { "
+        "if ([string]::IsNullOrWhiteSpace($handoffPath)) { return }; "
+        "try { "
+        "$parent = Split-Path -Parent $handoffPath; "
+        "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
+        "$payload = @{ request_id = $requestId; stage = $stage; message = $message; exit_code = $exitCode; timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } | ConvertTo-Json -Compress; "
+        "Set-Content -LiteralPath $handoffPath -Value $payload -Encoding UTF8 "
+        "} catch {} "
+        "}; "
+        "Write-InstallLog (\"启动静默安装 bootstrap: installer=\" + $installerPath); "
+        "try { "
+        "$workerArgs = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-EncodedCommand', $workerEncoded); "
+        "$process = Start-Process -FilePath $powerShellPath -ArgumentList $workerArgs -WindowStyle Hidden -PassThru -ErrorAction Stop; "
+        "} catch { "
+        "$message = $_.Exception.Message; "
+        "Write-Handoff 'launch_failed' $message 0; "
+        "Write-InstallLog (\"启动静默安装 worker 失败: \" + $message); "
+        "exit 1 "
+        "}; "
+        "Write-Handoff 'helper_started' ('worker_pid=' + $process.Id) 0; "
+        "Write-InstallLog (\"静默安装 worker 已启动 pid=\" + $process.Id); "
+    )
+    return _build_windows_powershell_command(script)
 
 
 def _startfile_windows_installer(path: Path) -> bool:
@@ -751,15 +835,14 @@ class LarkSyncTray:
         if sys.platform == "win32":
             if silent:
                 subprocess.Popen(
-                    _build_windows_installer_launch_command(
+                    _build_windows_silent_bootstrap_command(
                         path,
-                        silent=True,
                         restart_path=restart_target,
                         log_path=update_logs_dir() / "update-install.log",
                         handoff_path=_install_handoff_path(),
                         request_id=request_id,
                     ),
-                    creationflags=_silent_helper_creationflags(),
+                    creationflags=_hidden_helper_creationflags(),
                     close_fds=True,
                 )
                 handoff = _wait_for_install_handoff(request_id)
