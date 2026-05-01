@@ -809,7 +809,7 @@ export function SettingsPage() {
             <div className="mt-6 border-t border-zinc-800/80 pt-4">
               <h3 className="text-sm font-medium text-zinc-200">本地忽略目录</h3>
               <p className="mt-1 text-[11px] text-zinc-500">
-                为指定任务配置不参与本地上行的子目录。适合 `node_modules`、`.git`、构建产物或缓存目录。
+                为指定任务配置双向忽略的子目录。加入后，该目录及其内容不会再参与上传、下载和删除联动。适合 `node_modules`、`.git`、构建产物或缓存目录。
               </p>
               <div className="mt-3 space-y-3">
                 {tasks.length === 0 ? (

@@ -772,6 +772,11 @@ class SyncTaskRunner:
                 sheet_service=sheet_service,
                 bitable_service=bitable_service,
             )
+            candidates = [
+                item
+                for item in candidates
+                if not self._should_ignore_path(task, item.target_path)
+            ]
             selected_candidates, duplicated_candidates = self._select_download_candidates(
                 candidates,
                 persisted_by_path,
@@ -2288,6 +2293,8 @@ class SyncTaskRunner:
             return
         expire_at = time.time() + grace_seconds
         for link in persisted_links:
+            if self._should_ignore_path(task, Path(link.local_path)):
+                continue
             if link.local_path in cloud_paths:
                 continue
             try:
@@ -2350,6 +2357,22 @@ class SyncTaskRunner:
         for tombstone in pending:
             local_path = Path(tombstone.local_path)
             try:
+                if self._should_ignore_path(task, local_path):
+                    await self._tombstone_service.mark_status(
+                        tombstone.id,
+                        status="cancelled",
+                        reason="路径已加入忽略目录",
+                    )
+                    self._record_event(
+                        status,
+                        SyncFileEvent(
+                            path=tombstone.local_path,
+                            status="skipped",
+                            message="路径已加入忽略目录，取消删除联动",
+                        ),
+                        task,
+                    )
+                    continue
                 if tombstone.source == "local":
                     if local_path.exists():
                         await self._tombstone_service.mark_status(

@@ -745,6 +745,68 @@ async def test_runner_download_skips_internal_md_mirror_folder(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_runner_download_skips_task_ignored_subpaths(tmp_path: Path) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="folder-genesis",
+                name="GENESIS",
+                type="folder",
+                children=[
+                    DriveNode(
+                        token="doc-ignored",
+                        name="忽略文档",
+                        type="docx",
+                        modified_time="1700000000",
+                    )
+                ],
+            ),
+            DriveNode(
+                token="doc-main",
+                name="主文档",
+                type="docx",
+                modified_time="1700000000",
+            ),
+        ],
+    )
+
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(),
+    )
+
+    task = SyncTaskItem(
+        id="task-ignore-download",
+        name="忽略下载测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        ignored_subpaths=["GENESIS"],
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner.run_task(task)
+
+    status = runner.get_status(task.id)
+    assert status.total_files == 1
+    assert status.completed_files == 1
+    assert (tmp_path / "主文档.md").exists()
+    assert not (tmp_path / "GENESIS").exists()
+
+
+@pytest.mark.asyncio
 async def test_runner_download_only_never_creates_cloud_md_mirror_even_if_md_mode_is_enhanced(
     tmp_path: Path,
 ) -> None:
@@ -1731,6 +1793,111 @@ async def test_run_download_enqueues_cloud_missing_delete(tmp_path: Path, monkey
     assert tombstone_service.created
     assert tombstone_service.created[0]["source"] == "cloud"
     assert tombstone_service.created[0]["local_path"] == str(stale_local)
+
+
+@pytest.mark.asyncio
+async def test_run_download_does_not_enqueue_cloud_missing_delete_for_ignored_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    tree = DriveNode(token="root", name="根目录", type="folder", children=[])
+    ignored_local = tmp_path / "GENESIS" / "stale.md"
+    ignored_local.parent.mkdir(parents=True)
+    ignored_local.write_text("# stale", encoding="utf-8")
+    persisted = [
+        SyncLinkItem(
+            local_path=str(ignored_local),
+            cloud_token="doc-stale",
+            cloud_type="docx",
+            task_id="task-cloud-ignore",
+            updated_at=100.0,
+        )
+    ]
+    tombstone_service = FakeTombstoneService()
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(persisted),
+        tombstone_service=tombstone_service,
+    )
+    task = SyncTaskItem(
+        id="task-cloud-ignore",
+        name="云端删除忽略测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        ignored_subpaths=["GENESIS"],
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._run_download(task, status)
+
+    assert tombstone_service.created == []
+
+
+@pytest.mark.asyncio
+async def test_process_pending_deletes_cancels_ignored_cloud_tombstone(tmp_path: Path) -> None:
+    ignored_local = tmp_path / "GENESIS" / "stale.md"
+    ignored_local.parent.mkdir(parents=True)
+    ignored_local.write_text("# stale", encoding="utf-8")
+    tombstone_service = FakeTombstoneService()
+    await tombstone_service.create_or_refresh(
+        task_id="task-ignore-pending",
+        local_path=str(ignored_local),
+        cloud_token="doc-stale",
+        cloud_type="docx",
+        source="cloud",
+        reason="检测到云端已删除",
+        expire_at=0.0,
+    )
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(
+            DriveNode(token="root", name="根目录", type="folder", children=[])
+        ),
+        tombstone_service=tombstone_service,
+        link_service=FakeLinkService(),
+    )
+    task = SyncTaskItem(
+        id="task-ignore-pending",
+        name="忽略删除兜底测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        ignored_subpaths=["GENESIS"],
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._process_pending_deletes(
+        task=task,
+        status=status,
+        drive_service=runner._drive_service or FakeDriveService(
+            DriveNode(token="root", name="根目录", type="folder", children=[])
+        ),
+    )
+
+    assert tombstone_service.marked
+    assert tombstone_service.marked[0][1] == "cancelled"
+    assert tombstone_service.marked[0][2] == "路径已加入忽略目录"
+    assert ignored_local.exists()
 
 
 @pytest.mark.asyncio
