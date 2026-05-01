@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.6.10 release (2026-05-01)
+
+- 目标：
+  - 发布 `v0.6.10` 补丁版，尽快交付 `v0.6.10-dev.1` 对同步诊断与上传错误可观测性的修复。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.6.10`。
+  - 稳定版包含历史中断运行不再误显示“同步中”、等待上传事件补齐 run_id、上传错误显示飞书 code/http/request_id，以及日志中心运行耗时修复。
+  - CHANGELOG 与 README 已更新。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.10-dev.1 (2026-05-01)
 
 - 目标：

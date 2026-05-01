@@ -1,6 +1,6 @@
 [project]
 name = "larksync-backend"
-version = "v0.6.10-dev.1"
+version = "v0.6.10"
 description = "LarkSync backend service"
 readme = { text = "LarkSync backend service for local Feishu document synchronization.", content-type = "text/markdown" }
 requires-python = ">=3.10"
