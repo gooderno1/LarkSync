@@ -224,6 +224,10 @@ def test_schedule_installer_launch_on_windows_uses_hidden_helper_process(
     installer_path = tmp_path / "LarkSync-Setup-v0.5.55.exe"
     installer_path.write_bytes(b"exe")
     calls: list[dict[str, object]] = []
+    create_new_process_group = 0x200
+    create_no_window = 0x08000000
+    detached_process = 0x8
+    create_breakaway_from_job = 0x01000000
 
     def _fake_popen(args, **kwargs):
         calls.append({"args": list(args), **kwargs})
@@ -232,6 +236,14 @@ def test_schedule_installer_launch_on_windows_uses_hidden_helper_process(
         return _DummyProc()
 
     monkeypatch.setattr(tray_app.sys, "platform", "win32")
+    monkeypatch.setattr(
+        tray_app.subprocess, "CREATE_NEW_PROCESS_GROUP", create_new_process_group, raising=False
+    )
+    monkeypatch.setattr(tray_app.subprocess, "CREATE_NO_WINDOW", create_no_window, raising=False)
+    monkeypatch.setattr(tray_app.subprocess, "DETACHED_PROCESS", detached_process, raising=False)
+    monkeypatch.setattr(
+        tray_app.subprocess, "CREATE_BREAKAWAY_FROM_JOB", create_breakaway_from_job, raising=False
+    )
     monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
     monkeypatch.setattr(tray_app, "_wait_for_install_handoff", lambda *args, **kwargs: {"stage": "helper_started"})
 
@@ -242,9 +254,10 @@ def test_schedule_installer_launch_on_windows_uses_hidden_helper_process(
     assert "-EncodedCommand" in calls[0]["args"]
     assert calls[0]["close_fds"] is True
     creationflags = int(calls[0]["creationflags"])
-    assert creationflags & getattr(tray_app.subprocess, "DETACHED_PROCESS", 0) == 0
-    assert creationflags & getattr(tray_app.subprocess, "CREATE_NEW_PROCESS_GROUP", 0) != 0
-    assert creationflags & getattr(tray_app.subprocess, "CREATE_NO_WINDOW", 0) != 0
+    assert creationflags & create_new_process_group != 0
+    assert creationflags & create_no_window != 0
+    assert creationflags & detached_process != 0
+    assert creationflags & create_breakaway_from_job != 0
 
 
 def test_schedule_installer_launch_on_windows_silent_requires_helper_handoff(

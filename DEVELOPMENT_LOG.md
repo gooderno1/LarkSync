@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.6.11-dev.2 (2026-05-01)
+
+- 目标：
+  - 修复用户刚发起的 `v0.6.10` 静默升级再次停在“installer_started”后没有完成安装/重启的问题。
+- 结果：
+  - 本机 `update-install.log` 显示 16:41:14 已成功写入 `installer_started pid=19088`，但之后没有 `install_succeeded` / `install_failed` / `已请求重启新版本`，同时主程序已退出且 `localhost:8000` 不再可连。
+  - 安装目录 `F:\Program Files (x86)\LarkSync\LarkSync.exe` 时间戳仍停留在 `2026-05-01 15:39:04`，说明本次静默升级没有完成落盘。
+  - 结合链路实现，问题收敛为静默更新 helper 进程虽被拉起，但没有在托盘退出后稳定脱离父进程继续执行安装收尾。
+  - Windows 静默更新 helper 的创建参数改为同时启用 `DETACHED_PROCESS` 与 `CREATE_BREAKAWAY_FROM_JOB`，保留隐藏窗口和新进程组，确保托盘退出后 helper 仍能继续等待安装器结束并负责重启新版本。
+  - README、CHANGELOG、根包/后端/前端版本已更新到 `v0.6.11-dev.2`。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_tray_update_install.py -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.11-dev.1 (2026-05-01)
 
 - 目标：

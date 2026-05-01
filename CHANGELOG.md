@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-01] v0.6.11-dev.2 fix(auto-update): Windows 静默升级 helper 改为 detached + breakaway 启动，确保托盘退出后 helper 继续等待安装器完成并负责重启新版本，修复只记录 installer_started 后链路中断的问题
 [2026-05-01] v0.6.11-dev.1 fix(auto-update): 更新状态缓存读取时清理已过期或版本不匹配的 download_path，避免设置页拿旧安装包再次触发同版本静默安装并被托盘忽略，表现成静默更新失败
 [2026-05-01] v0.6.10 release: v0.6.10
 [2026-05-01] v0.6.10-dev.1 fix(sync-diagnostics): 历史持久化运行若因应用退出、更新或进程终止残留为 running，日志中心改显示为已中断；等待上传事件补齐 run_id，飞书文件上传失败信息补充 code/http/request_id，并修复运行耗时按毫秒误算的问题

@@ -270,6 +270,17 @@ def _resolve_powershell_executable() -> str:
     return "powershell"
 
 
+def _silent_helper_creationflags() -> int:
+    flags = (
+        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    )
+    # 静默更新 helper 需要在主程序退出后继续等待安装器并负责拉起新版本。
+    flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+    flags |= getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
+    return flags
+
+
 def _build_windows_installer_launch_command(
     path: Path,
     *,
@@ -739,10 +750,6 @@ class LarkSyncTray:
 
         if sys.platform == "win32":
             if silent:
-                creationflags = (
-                    getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-                    | getattr(subprocess, "CREATE_NO_WINDOW", 0)
-                )
                 subprocess.Popen(
                     _build_windows_installer_launch_command(
                         path,
@@ -752,7 +759,7 @@ class LarkSyncTray:
                         handoff_path=_install_handoff_path(),
                         request_id=request_id,
                     ),
-                    creationflags=creationflags,
+                    creationflags=_silent_helper_creationflags(),
                     close_fds=True,
                 )
                 handoff = _wait_for_install_handoff(request_id)
