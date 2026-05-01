@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.13 release (2026-05-01)
+
+- 目标：
+  - 发布 `v0.6.13` 稳定版，交付任务级双向忽略目录能力，避免忽略目录继续参与下载或云删本地。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.6.13`。
+  - 稳定版包含双向忽略目录：已忽略子目录不会再参与本地上传、云端下载、云删本地以及已排队删除墓碑执行。
+  - README、CHANGELOG 已同步更新。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.6.13-dev.1 (2026-05-01)
 
 - 目标：
