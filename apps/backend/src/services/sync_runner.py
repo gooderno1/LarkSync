@@ -202,6 +202,7 @@ class SyncTaskRunner:
         self._upload_quiet_window_seconds = 2.0
         self._running_tasks: set[str] = set()
         self._task_meta: dict[str, SyncTaskItem] = {}
+        self._pending_restarts: dict[str, SyncTaskItem] = {}
         self._initial_upload_scanned: set[str] = set()
         # 缓存: (task_id, relative_dir_posix) -> cloud_folder_token
         self._cloud_folder_cache: dict[tuple[str, str], str] = {}
@@ -304,6 +305,23 @@ class SyncTaskRunner:
             task.cancel()
         self._running_tasks.discard(task_id)
         self._stop_watcher(task_id)
+
+    def restart_task(self, task: SyncTaskItem, *, reason: str | None = None) -> SyncTaskStatus:
+        self._task_meta[task.id] = task
+        current = self._statuses.get(task.id)
+        running = task.id in self._running_tasks
+        active = self._tasks.get(task.id)
+        if not running and (active is None or active.done()):
+            return self.start_task(task)
+        status = current or self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
+        self._pending_restarts[task.id] = task
+        logger.info(
+            "任务配置变更，准备重启: id={} reason={}",
+            task.id,
+            reason or "配置已更新",
+        )
+        self.cancel_task(task.id)
+        return status
 
     def queue_local_change(
         self, task_id: str, path: Path, changed_at: float | None = None
@@ -589,6 +607,9 @@ class SyncTaskRunner:
                 await self._mark_task_run(task)
             self._tasks.pop(task.id, None)
             self._running_tasks.discard(task.id)
+            pending_restart = self._pending_restarts.pop(task.id, None)
+            if pending_restart and pending_restart.enabled:
+                self.start_task(pending_restart)
 
     async def _run_additive_reconciliation_if_needed(
         self, task: SyncTaskItem, status: SyncTaskStatus

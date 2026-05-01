@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.6.15-dev.1 (2026-05-01)
+
+- 目标：
+  - 修复“忽略目录已保存，但运行中的任务仍继续扫描和上传旧目录范围”的问题。
+- 结果：
+  - 新增任务更新重启判定：当用户修改 `ignored_subpaths`、同步模式、更新模式、本地路径、云端目录等会影响执行范围的字段时，运行中的任务会先取消，再按最新配置自动重启。
+  - `SyncTaskRunner` 新增配置变更重启能力，支持在当前 run 结束清理后立刻拉起带新配置的下一轮，避免 `start_task()` 在旧 run 尚未退出时直接返回旧状态。
+  - 现场核实当前安装版运行库位于 `F:\\Program Files (x86)\\LarkSync\\_internal\\data\\larksync.db`；`同步-宁怡` 的 `ignored_subpaths` 已正确持久化为 `POC/GENESIS`。本次问题的直接原因不是“没保存”，而是当前 run `93ba280a-7d00-42fc-ab9f-084e3e2c3e5e` 启动于配置更新之前，随后仍按旧配置继续上传。
+  - 已现场将 `同步-宁怡` 停止并重新启动，新 run `76716b42-a127-49a6-bdf9-5e1f6bf842b3` 启动后未再出现 `POC/GENESIS` 相关事件。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_sync_runner.py -k restart_task_restarts_running_task_with_latest_config -q`
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_sync_task_api.py -q`
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_sync_task_service.py -k ignored_subpaths -q`
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_sync_runner.py -k 'ignored_subpaths or cloud_missing_delete_for_ignored_path' -q`
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+
 ## v0.6.14 release (2026-05-01)
 
 - 目标：

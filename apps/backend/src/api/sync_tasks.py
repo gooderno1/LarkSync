@@ -573,6 +573,24 @@ def _build_task_overview(
     )
 
 
+def _task_update_requires_restart(payload: SyncTaskUpdateRequest) -> bool:
+    return any(
+        value is not None
+        for value in (
+            payload.local_path,
+            payload.cloud_folder_token,
+            payload.cloud_folder_name,
+            payload.base_path,
+            payload.sync_mode,
+            payload.update_mode,
+            payload.md_sync_mode,
+            payload.ignored_subpaths,
+            payload.delete_policy,
+            payload.delete_grace_minutes,
+        )
+    )
+
+
 @router.get("/tasks", response_model=list[SyncTaskResponse])
 async def list_tasks() -> list[SyncTaskResponse]:
     items = await service.list_tasks()
@@ -718,6 +736,7 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
 
 @router.patch("/tasks/{task_id}", response_model=SyncTaskResponse)
 async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskResponse:
+    should_restart = _task_update_requires_restart(payload)
     try:
         item = await service.update_task(
             task_id,
@@ -741,9 +760,9 @@ async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskR
         raise HTTPException(status_code=404, detail="Task not found")
     if payload.enabled is False:
         runner.cancel_task(task_id)
-    if payload.sync_mode is not None:
-        runner.cancel_task(task_id)
-    if item.enabled:
+    elif item.enabled and should_restart:
+        runner.restart_task(item, reason="任务配置已更新，正在应用新配置")
+    elif item.enabled:
         runner.start_task(item)
     return SyncTaskResponse.from_item(item)
 

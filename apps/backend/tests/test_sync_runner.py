@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 from pathlib import Path
@@ -804,6 +805,57 @@ async def test_runner_download_skips_task_ignored_subpaths(tmp_path: Path) -> No
     assert status.completed_files == 1
     assert (tmp_path / "主文档.md").exists()
     assert not (tmp_path / "GENESIS").exists()
+
+
+async def _exercise_restart_task_restarts_running_task_with_latest_config(tmp_path: Path) -> None:
+    runner = SyncTaskRunner()
+    releases = [asyncio.Event(), asyncio.Event()]
+    seen_ignored_subpaths: list[list[str]] = []
+    restarted = asyncio.Event()
+
+    async def fake_download(task: SyncTaskItem, status: SyncTaskStatus, allow_deletes: bool = True) -> None:
+        seen_ignored_subpaths.append(list(task.ignored_subpaths))
+        index = len(seen_ignored_subpaths) - 1
+        if index == 1:
+            restarted.set()
+        await releases[index].wait()
+
+    runner._run_download = fake_download  # type: ignore[method-assign]
+    task = SyncTaskItem(
+        id="task-restart-ignore",
+        name="忽略目录重启测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    runner.start_task(task)
+    await asyncio.sleep(0)
+    runner.restart_task(
+        SyncTaskItem(
+            **{
+                **task.__dict__,
+                "ignored_subpaths": ["GENESIS"],
+                "updated_at": 1,
+            }
+        ),
+        reason="忽略目录已更新",
+    )
+    await asyncio.wait_for(restarted.wait(), timeout=1)
+    releases[1].set()
+    await asyncio.sleep(0)
+
+    assert seen_ignored_subpaths == [[], ["GENESIS"]]
+
+
+def test_restart_task_restarts_running_task_with_latest_config(tmp_path: Path) -> None:
+    asyncio.run(_exercise_restart_task_restarts_running_task_with_latest_config(tmp_path))
 
 
 @pytest.mark.asyncio
