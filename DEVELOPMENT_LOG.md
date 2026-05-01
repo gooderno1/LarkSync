@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.11 release (2026-05-01)
+
+- 目标：
+  - 发布 `v0.6.11` 稳定版，包含静默更新 helper 脱离修复与设置页“打开安装包目录”入口。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.6.11`。
+  - 稳定版包含 Windows 静默更新 helper detached + breakaway 启动修复，以及设置页更新区新增“打开安装包目录”按钮。
+  - CHANGELOG 与 README 已更新。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py`
+
 ## v0.6.11-dev.3 (2026-05-01)
 
 - 目标：
