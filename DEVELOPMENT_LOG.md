@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.6.8-dev.1 (2026-05-01)
+
+- 目标：
+  - 收口本轮整体审查发现的三项工程质量问题：后端测试红灯、后端包不可 editable 安装、发布工作流缺少质量门。
+- 结果：
+  - `test_conflict_resolution_runner.py` 的 `UploadLinkService.upsert_link` 测试替身补齐 `local_resource_signature` 与 `resource_sync_revision` 参数，并写入 `SyncLinkItem`，恢复冲突处理“使用本地版本”路径测试。
+  - `apps/backend/pyproject.toml` 改用内联 readme 元数据，避免 setuptools 拒绝读取包根目录外的 `../../README.md`，`pip install --dry-run -e apps/backend` 已可通过。
+  - `.github/workflows/release-build.yml` 新增 `quality` job，在发布安装包前执行后端依赖安装、editable 安装 dry-run、后端 pytest 和前端构建；同时让正式 Windows / macOS 构建依赖该质量门。
+  - README、CHANGELOG、根包/后端/前端版本与 lockfile 版本已同步到 `v0.6.8-dev.1`。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+  - `$env:PYTHONPATH=''; .venv\\Scripts\\python.exe -m pip install --no-user --dry-run -e apps\\backend`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.7-dev.2 (2026-05-01)
 
 - 目标：

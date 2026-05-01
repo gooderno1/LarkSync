@@ -2,8 +2,13 @@ name: Release Build
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       build_macos:
@@ -20,7 +25,50 @@ env:
   NODE_VERSION: "20"
 
 jobs:
+  quality:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r apps/backend/requirements.txt
+          python -m pip install "pytest>=7.4" "pytest-asyncio>=0.23"
+
+      - name: Verify backend package metadata
+        run: python -m pip install --dry-run -e apps/backend
+
+      - name: Run backend tests
+        working-directory: apps/backend
+        run: |
+          $env:PYTHONPATH = ""
+          python -m pytest -q
+
+      - name: Install frontend dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: apps/frontend
+        run: npm run build
+
   build-windows:
+    needs: quality
     if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') }}
     runs-on: windows-latest
     steps:
@@ -112,6 +160,7 @@ jobs:
           fail_on_unmatched_files: true
 
   build-macos:
+    needs: quality
     if: ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') && (inputs.build_macos == true || inputs.build_macos == 'true') }}
     runs-on: macos-latest
     steps:
