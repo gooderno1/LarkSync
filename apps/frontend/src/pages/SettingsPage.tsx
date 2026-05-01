@@ -10,13 +10,23 @@ import { formatIntervalLabel } from "../lib/formatters";
 import { modeLabels, syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
 import { useToast } from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm-dialog";
-import { IconCopy, IconArrowUp, IconArrowDown, IconArrowRightLeft } from "../components/Icons";
+import { IconCopy, IconArrowUp, IconArrowDown, IconArrowRightLeft, IconFolder } from "../components/Icons";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
 
 export function SettingsPage() {
   const { config, configLoading, saveConfig, saving, saveError } = useConfig();
-  const { status, checkUpdate, checking, downloadUpdate, downloading, installUpdate, installing } = useUpdate();
+  const {
+    status,
+    checkUpdate,
+    checking,
+    downloadUpdate,
+    downloading,
+    installUpdate,
+    installing,
+    openUpdateFolder,
+    openingUpdateFolder,
+  } = useUpdate();
   const { tasks, resetLinks, resettingLinks } = useTasks();
   const { toast } = useToast();
 
@@ -198,6 +208,20 @@ export function SettingsPage() {
       toast("正在开始静默安装，LarkSync 即将退出并在完成后自动重启", "success");
     } catch (err) {
       toast(err instanceof Error ? err.message : "启动安装失败", "danger");
+    }
+  };
+
+  const handleOpenDownloadedUpdateFolder = async () => {
+    const downloadPath = status.download_path;
+    if (!downloadPath) {
+      toast("尚未下载更新包", "danger");
+      return;
+    }
+    try {
+      const result = await openUpdateFolder(downloadPath);
+      toast(`已打开目录：${result.path}`, "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "打开目录失败", "danger");
     }
   };
 
@@ -651,6 +675,17 @@ export function SettingsPage() {
                       </button>
                       {status.download_path ? (
                         <button
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 px-4 py-2 text-xs font-medium text-zinc-200 transition hover:bg-zinc-700 disabled:opacity-50"
+                          onClick={handleOpenDownloadedUpdateFolder}
+                          disabled={openingUpdateFolder || installing || downloading}
+                          type="button"
+                        >
+                          <IconFolder className="h-3.5 w-3.5" />
+                          {openingUpdateFolder ? "打开中..." : "打开安装包目录"}
+                        </button>
+                      ) : null}
+                      {status.download_path ? (
+                        <button
                           className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
                           onClick={handleInstallDownloadedUpdate}
                           disabled={installing || downloading}
@@ -661,7 +696,7 @@ export function SettingsPage() {
                       ) : null}
                     </div>
                     {status.download_path ? (
-                      <p className="mt-2 text-[11px] text-zinc-500">已下载：{status.download_path}</p>
+                      <p className="mt-2 break-all text-[11px] text-zinc-500">已下载：{status.download_path}</p>
                     ) : null}
                   </div>
                 ) : null}

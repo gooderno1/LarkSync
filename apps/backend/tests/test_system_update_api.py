@@ -12,7 +12,10 @@ from src.services.update_service import UpdateAsset, UpdateStatus
 
 class _StubUpdateService:
     def load_cached_status(self) -> UpdateStatus:
-        return UpdateStatus(current_version="v0.5.43")
+        return UpdateStatus(
+            current_version="v0.5.43",
+            download_path="data/updates/LarkSync-Setup-v0.5.44.exe",
+        )
 
     async def check_for_updates(self, force: bool = False) -> UpdateStatus:
         return UpdateStatus(
@@ -87,3 +90,32 @@ def test_system_update_install_endpoint_writes_install_request(
     assert Path(request.installer_path) == installer_path.resolve()
     assert request.silent is True
     assert Path(request.restart_path) == restart_path.resolve()
+
+
+def test_system_update_open_download_folder_opens_parent_directory(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    installer_dir = tmp_path / "updates"
+    installer_dir.mkdir()
+    installer_path = installer_dir / "LarkSync-Setup-v0.5.51.exe"
+    installer_path.write_bytes(b"exe")
+    opened: list[Path] = []
+
+    client = TestClient(app)
+    app.state.update_scheduler = _StubScheduler()
+
+    monkeypatch.setattr(
+        system_api,
+        "_open_directory_in_file_manager",
+        lambda path: opened.append(path),
+    )
+
+    response = client.post(
+        "/system/update/open-download-folder",
+        json={"download_path": str(installer_path)},
+    )
+
+    assert response.status_code == 200
+    assert Path(response.json()["path"]) == installer_dir.resolve()
+    assert opened == [installer_dir.resolve()]

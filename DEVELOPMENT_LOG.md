@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.11-dev.3 (2026-05-01)
+
+- 目标：
+  - 给设置页更新区增加“打开安装包目录”入口，方便静默安装失败后快速手动排查或重试。
+- 结果：
+  - 后端新增 `/system/update/open-download-folder` 接口，只允许打开当前已下载更新所在目录；若安装包不存在或尚未下载，会返回明确错误。
+  - 设置页更新区在已下载更新包时新增“打开安装包目录”按钮，位置与“静默安装已下载更新”并列，点击后直接打开下载目录。
+  - 已下载路径展示改为 `break-all`，长路径不会在卡片内溢出。
+  - README、CHANGELOG、根包/后端/前端版本已更新到 `v0.6.11-dev.3`。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_system_update_api.py -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.11-dev.2 (2026-05-01)
 
 - 目标：

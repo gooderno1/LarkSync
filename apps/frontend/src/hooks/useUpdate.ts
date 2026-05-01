@@ -25,6 +25,10 @@ export type UpdateInstallResponse = {
   restart_path?: string | null;
 };
 
+export type UpdateFolderResponse = {
+  path: string;
+};
+
 export function useUpdate() {
   const qc = useQueryClient();
 
@@ -55,6 +59,15 @@ export function useUpdate() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["update-status"] }),
   });
 
+  const openFolderMutation = useMutation({
+    mutationFn: (downloadPath?: string | null) =>
+      apiFetch<UpdateFolderResponse>("/system/update/open-download-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ download_path: downloadPath || null }),
+      }),
+  });
+
   return {
     status: statusQuery.data || {},
     loading: statusQuery.isLoading,
@@ -66,8 +79,11 @@ export function useUpdate() {
     downloading: downloadMutation.isPending,
     installUpdate: installMutation.mutateAsync,
     installing: installMutation.isPending,
+    openUpdateFolder: openFolderMutation.mutateAsync,
+    openingUpdateFolder: openFolderMutation.isPending,
     checkError: checkMutation.error?.message ?? null,
     downloadError: downloadMutation.error?.message ?? null,
     installError: installMutation.error?.message ?? null,
+    openFolderError: openFolderMutation.error?.message ?? null,
   };
 }

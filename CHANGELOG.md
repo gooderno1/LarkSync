@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-01] v0.6.11-dev.3 feat(update-ui): 设置页更新区新增“打开安装包目录”按钮，静默安装失败时可直接打开已下载更新所在目录进行手动排查或重试
 [2026-05-01] v0.6.11-dev.2 fix(auto-update): Windows 静默升级 helper 改为 detached + breakaway 启动，确保托盘退出后 helper 继续等待安装器完成并负责重启新版本，修复只记录 installer_started 后链路中断的问题
 [2026-05-01] v0.6.11-dev.1 fix(auto-update): 更新状态缓存读取时清理已过期或版本不匹配的 download_path，避免设置页拿旧安装包再次触发同版本静默安装并被托盘忽略，表现成静默更新失败
 [2026-05-01] v0.6.10 release: v0.6.10
