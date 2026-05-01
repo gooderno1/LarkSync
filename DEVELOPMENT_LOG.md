@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.10-dev.1 (2026-05-01)
+
+- 目标：
+  - 修复用户升级 `v0.6.9` 后“算云项目更新”同步失败只显示 `unknown error.`、日志中心存在多条历史“同步中”运行，以及运行耗时显示不可信的问题。
+- 结果：
+  - 运行诊断读取持久化 `sync_runs` 时，若历史记录仍为 `running` 且当前内存中没有对应运行，会展示为 `cancelled` 并提示“运行被中断”，避免应用更新/退出遗留记录继续显示同步中。
+  - 同步队列事件在已有 `current_run_id` 时也写入 run_id，后续按单次运行查看事件时不会丢失等待上传记录。
+  - 文件上传 API 错误信息保留飞书 `code`、HTTP 状态与请求 ID（如有），方便定位 `unknown error.` 这类飞书侧错误。
+  - 日志中心运行耗时改为按秒级时间戳计算，修复几分钟运行显示成 1 秒的问题。
+  - README、CHANGELOG、根包/后端/前端版本已更新到 `v0.6.10-dev.1`。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_sync_runner.py::test_handle_local_event_records_run_id_for_active_queued_event tests/test_tray_status.py::test_sync_task_diagnostics_marks_stale_persisted_running_runs_cancelled tests/test_file_uploader.py::test_upload_error_includes_code_and_http_status -q`
+
 ## v0.6.9 release (2026-05-01)
 
 - 目标：

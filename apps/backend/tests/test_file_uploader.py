@@ -3,7 +3,7 @@ import pytest
 
 from src.db.models import SyncMapping
 from src.db.session import get_session_maker, init_db
-from src.services.file_uploader import FileUploader
+from src.services.file_uploader import FileUploadError, FileUploader
 
 
 class FakeClient:
@@ -86,3 +86,21 @@ async def test_upload_records_sync_mapping(tmp_path) -> None:
         assert mapping is not None
         assert mapping.feishu_token == "token-999"
         assert mapping.local_path == str(file_path)
+
+
+@pytest.mark.asyncio
+async def test_upload_error_includes_code_and_http_status(tmp_path) -> None:
+    responses = [{"code": 99991663, "msg": "unknown error."}]
+    client = FakeClient(responses)
+    uploader = FileUploader(client=client, simple_upload_limit=10)
+
+    file_path = tmp_path / "image.png"
+    file_path.write_bytes(b"image-data")
+
+    with pytest.raises(FileUploadError) as exc_info:
+        await uploader.upload_file(file_path, parent_node="fld-error", record_db=False)
+
+    message = str(exc_info.value)
+    assert "unknown error." in message
+    assert "code=99991663" in message
+    assert "http=200" in message

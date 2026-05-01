@@ -405,6 +405,22 @@ def _run_summary_from_item(
     live_status: SyncTaskStatus | None = None,
     records: list[SyncEventRecord] | None = None,
 ) -> SyncTaskRunSummaryResponse:
+    stale_running = item.state == "running" and live_status is None
+    display_state = "cancelled" if stale_running else (
+        live_status.state if live_status is not None else item.state
+    )
+    display_finished_at = (
+        item.finished_at
+        if item.finished_at is not None
+        else ((item.last_event_at or item.started_at) if stale_running else None)
+    )
+    display_last_error = (
+        live_status.last_error
+        if live_status and live_status.last_error
+        else item.last_error
+    )
+    if stale_running and not display_last_error:
+        display_last_error = "运行被中断，可能是应用退出、更新或进程终止导致"
     current_file = (
         _current_file_from_status(live_status)
         if live_status is not None
@@ -435,14 +451,13 @@ def _run_summary_from_item(
         ),
     )
     problem_count = counts.failed + counts.conflicts + counts.delete_failed
-    if item.state == "cancelled":
+    if display_state == "cancelled":
         problem_count += 1
-    last_error = live_status.last_error if live_status and live_status.last_error else item.last_error
     return SyncTaskRunSummaryResponse(
         run_id=item.run_id,
-        state=live_status.state if live_status is not None else item.state,
+        state=display_state,
         started_at=live_status.started_at if live_status and live_status.started_at is not None else item.started_at,
-        finished_at=live_status.finished_at if live_status and live_status.finished_at is not None else item.finished_at,
+        finished_at=live_status.finished_at if live_status and live_status.finished_at is not None else display_finished_at,
         last_event_at=(
             records[0].timestamp
             if records
@@ -456,8 +471,8 @@ def _run_summary_from_item(
                 )
             )
         ),
-        last_error=last_error,
-        problem_count=problem_count if last_error is None else max(problem_count, 1),
+        last_error=display_last_error,
+        problem_count=problem_count if display_last_error is None else max(problem_count, 1),
         counts=counts,
         current_file=current_file,
     )

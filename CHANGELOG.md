@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-01] v0.6.10-dev.1 fix(sync-diagnostics): 历史持久化运行若因应用退出、更新或进程终止残留为 running，日志中心改显示为已中断；等待上传事件补齐 run_id，飞书文件上传失败信息补充 code/http/request_id，并修复运行耗时按毫秒误算的问题
 [2026-05-01] v0.6.9 release: v0.6.9
 [2026-05-01] v0.6.9-dev.1 feat(frontend): 仪表盘改为同步健康总览与需要关注摘要，任务卡片默认突出本地/飞书同步关系和健康状态；冲突解决改为等待后端确认后反馈，维护类动作统一使用应用内确认框
 [2026-05-01] v0.6.8-dev.1 fix(ci): 修复冲突解决上传测试替身缺少 Markdown 资源基线参数导致的后端测试红灯；后端 pyproject 改用包内可解析 readme 元数据，恢复 editable 安装校验；发布工作流新增 quality job，在正式安装包构建前执行后端 pytest、editable 安装 dry-run 和前端构建

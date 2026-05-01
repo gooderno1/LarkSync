@@ -162,7 +162,7 @@ function formatDuration(startedAt?: number | null, finishedAt?: number | null, f
   if (!startedAt) return "暂无";
   const end = finishedAt ?? fallbackAt;
   if (!end || end <= startedAt) return "进行中";
-  const totalSeconds = Math.max(1, Math.round((end - startedAt) / 1000));
+  const totalSeconds = Math.max(1, Math.round(end - startedAt));
   if (totalSeconds < 60) return `${totalSeconds} 秒`;
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;

@@ -447,3 +447,46 @@ async def test_sync_task_overview_uses_persisted_sync_runs(
     assert body["recent_runs"][0]["run_id"] == "run-db-1"
     assert body["selected_run"]["last_error"] == "db-error"
     assert body["selected_run"]["counts"]["conflicts"] == 1
+
+
+@pytest.mark.asyncio
+async def test_sync_task_diagnostics_marks_stale_persisted_running_runs_cancelled(
+    tray_client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    import src.api.sync_tasks as sync_tasks
+
+    local_dir = tmp_path / "stale-run-local"
+    local_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "name": "中断运行任务",
+        "local_path": str(local_dir),
+        "cloud_folder_token": "token-stale",
+        "cloud_folder_name": "云端中断",
+        "base_path": None,
+        "sync_mode": "bidirectional",
+        "update_mode": "auto",
+        "enabled": False,
+    }
+    created = tray_client.post("/sync/tasks", json=payload)
+    assert created.status_code == 200
+    task_id = created.json()["id"]
+
+    persisted_runs = SyncRunService(get_session_maker())
+    await persisted_runs.start_run(
+        run_id="run-stale",
+        task_id=task_id,
+        trigger_source="scheduled_upload",
+        started_at=100.0,
+    )
+
+    idle_status = SyncTaskStatus(task_id=task_id, state="idle")
+    monkeypatch.setattr(sync_tasks.runner, "list_statuses", lambda: {task_id: idle_status})
+    monkeypatch.setattr(sync_tasks.runner, "get_status", lambda _task_id: idle_status)
+
+    diagnostics = tray_client.get(f"/sync/tasks/{task_id}/diagnostics?limit=10")
+    assert diagnostics.status_code == 200
+    body = diagnostics.json()
+    assert body["recent_runs"][0]["run_id"] == "run-stale"
+    assert body["recent_runs"][0]["state"] == "cancelled"
+    assert body["recent_runs"][0]["finished_at"] == 100.0
+    assert "中断" in body["recent_runs"][0]["last_error"]

@@ -168,10 +168,18 @@ class FileUploader:
 
     async def _request_json(self, method: str, url: str, **kwargs) -> dict[str, Any]:
         response = await self._client.request_with_retry(method, url, **kwargs)
-        response.raise_for_status()
-        payload = response.json()
+        try:
+            response.raise_for_status()
+        except Exception as exc:
+            raise FileUploadError(self._format_http_error(response)) from exc
+        try:
+            payload = response.json()
+        except Exception as exc:
+            raise FileUploadError(
+                f"飞书 API 响应不是 JSON (http={response.status_code})"
+            ) from exc
         if isinstance(payload, dict) and payload.get("code", 0) != 0:
-            raise FileUploadError(payload.get("msg", "飞书 API 返回错误"))
+            raise FileUploadError(self._format_api_error(payload, response))
         if not isinstance(payload, dict):
             raise FileUploadError("飞书 API 响应格式错误")
         return payload
@@ -179,3 +187,28 @@ class FileUploader:
     @staticmethod
     def _adler32(content: bytes) -> str:
         return str(zlib.adler32(content) & 0xFFFFFFFF)
+
+    @staticmethod
+    def _format_api_error(payload: dict[str, Any], response) -> str:
+        message = str(payload.get("msg") or payload.get("message") or "飞书 API 返回错误")
+        details: list[str] = []
+        code = payload.get("code")
+        if code is not None:
+            details.append(f"code={code}")
+        details.append(f"http={response.status_code}")
+        request_id = (
+            payload.get("request_id")
+            or payload.get("log_id")
+            or response.headers.get("X-Request-Id")
+            or response.headers.get("X-Tt-Logid")
+        )
+        if request_id:
+            details.append(f"request_id={request_id}")
+        return f"{message} ({', '.join(details)})"
+
+    @staticmethod
+    def _format_http_error(response) -> str:
+        snippet = response.text[:300].strip()
+        if snippet:
+            return f"上传文件请求失败 (http={response.status_code}): {snippet}"
+        return f"上传文件请求失败 (http={response.status_code})"

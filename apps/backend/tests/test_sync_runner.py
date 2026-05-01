@@ -19,6 +19,7 @@ from src.services.sync_runner import (
     _merge_synced_link_map,
     _parse_mtime,
 )
+from src.services.sync_event_store import SyncEventStore
 from src.services.sync_task_service import SyncTaskItem
 from src.services.watcher import FileChangeEvent
 
@@ -1424,6 +1425,47 @@ async def test_handle_local_event_calls_upload_with_all_dependencies(tmp_path: P
     assert pending[str(path)] == 0.0
     status = runner.get_status(task.id)
     assert status.last_files[-1].status == "queued"
+
+
+@pytest.mark.asyncio
+async def test_handle_local_event_records_run_id_for_active_queued_event(tmp_path: Path) -> None:
+    store = SyncEventStore(tmp_path / "sync-events.jsonl")
+    runner = SyncTaskRunner(link_service=FakeLinkService(), event_store=store)
+    task = SyncTaskItem(
+        id="task-queued-run",
+        name="队列运行测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    runner._statuses[task.id] = SyncTaskStatus(
+        task_id=task.id,
+        state="running",
+        current_run_id="run-queued",
+    )
+    path = tmp_path / "queued.md"
+    path.write_text("# queued", encoding="utf-8")
+
+    await runner._handle_local_event(
+        task,
+        FileChangeEvent(
+            event_type="modified",
+            src_path=str(path),
+            dest_path=None,
+            timestamp=123.0,
+        ),
+    )
+
+    records = list(store.iter_records())
+    assert len(records) == 1
+    assert records[0].status == "queued"
+    assert records[0].run_id == "run-queued"
 
 
 @pytest.mark.asyncio

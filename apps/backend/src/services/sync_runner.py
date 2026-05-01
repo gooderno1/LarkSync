@@ -245,11 +245,7 @@ class SyncTaskRunner:
                 status=event.status,
                 path=event.path,
                 message=event.message,
-                run_id=(
-                    status.current_run_id
-                    if status.current_run_id and event.status != "queued"
-                    else None
-                ),
+                run_id=status.current_run_id if status.current_run_id else None,
             )
         )
 
