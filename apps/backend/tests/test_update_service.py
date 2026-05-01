@@ -9,6 +9,7 @@ from src.services.update_service import (
     compute_file_sha256,
     extract_sha256_from_release_notes,
     extract_sha256_from_text,
+    extract_installer_version,
     find_checksum_asset,
     is_dev_version,
     is_newer_version,
@@ -49,6 +50,15 @@ def test_parse_sha256_digest_field() -> None:
     assert parse_sha256_digest_field(digest.upper()) == digest
     assert parse_sha256_digest_field("sha1:123") is None
     assert parse_sha256_digest_field("invalid") is None
+
+
+def test_extract_installer_version_from_download_path() -> None:
+    assert (
+        extract_installer_version(r"C:\Users\me\LarkSync-Setup-v0.6.10.exe")
+        == "v0.6.10"
+    )
+    assert extract_installer_version("LarkSync-Setup-0.6.11-dev.1.exe") == "v0.6.11-dev.1"
+    assert extract_installer_version("not-larksync.exe") is None
 
 
 def test_select_asset_reads_github_digest_field() -> None:
@@ -197,7 +207,8 @@ def test_load_cached_status_overrides_stale_current_version(
             '{'
             '"current_version":"v0.6.0",'
             '"latest_version":"v0.6.1",'
-            '"update_available":true'
+            '"update_available":true,'
+            '"download_path":"data/updates/LarkSync-Setup-v0.6.1.exe"'
             '}'
         ),
         encoding="utf-8",
@@ -208,6 +219,40 @@ def test_load_cached_status_overrides_stale_current_version(
 
     assert status.current_version == "v0.6.1"
     assert status.update_available is False
+    assert status.download_path is None
+
+
+def test_load_cached_status_drops_stale_download_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    old_installer = tmp_path / "LarkSync-Setup-v0.6.9.exe"
+    old_installer.write_bytes(b"old")
+    service = UpdateService(config_manager=ConfigManager.get())
+    service._status_path = tmp_path / "status.json"  # type: ignore[attr-defined]
+    service._status_path.write_text(  # type: ignore[attr-defined]
+        (
+            "{"
+            '"current_version":"v0.6.9",'
+            '"latest_version":"v0.6.10",'
+            '"update_available":true,'
+            f'"download_path":"{old_installer.as_posix()}"'
+            "}"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("src.services.update_service.get_version", lambda: "v0.6.9")
+
+    status = service.load_cached_status()
+
+    assert status.update_available is True
+    assert status.latest_version == "v0.6.10"
+    assert status.download_path is None
 
 
 def test_update_service_uses_external_update_dir_when_frozen(

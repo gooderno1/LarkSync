@@ -72,6 +72,21 @@ def is_newer_version(latest: str, current: str) -> bool:
     return (latest_dev or 0) > (current_dev or 0)
 
 
+def extract_installer_version(path: str | None) -> str | None:
+    if not path:
+        return None
+    name = Path(str(path)).name
+    match = re.search(
+        r"LarkSync-Setup-(v?\d+\.\d+\.\d+(?:-dev\.\d+)?)",
+        name,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    version = match.group(1)
+    return version if version.startswith("v") else f"v{version}"
+
+
 def parse_sha256_digest_field(value: object) -> str | None:
     if value is None:
         return None
@@ -259,6 +274,14 @@ class UpdateService:
             latest_version = str(data.get("latest_version") or "").strip()
             if latest_version and not is_newer_version(latest_version, current_version):
                 data["update_available"] = False
+                data["download_path"] = None
+            elif latest_version:
+                download_path = str(data.get("download_path") or "").strip()
+                downloaded_version = extract_installer_version(download_path)
+                if downloaded_version and downloaded_version != latest_version:
+                    data["download_path"] = None
+                elif download_path and not Path(download_path).is_file():
+                    data["download_path"] = None
             if not data.get("last_check"):
                 data["last_check"] = self._config_manager.config.last_update_check or None
             return UpdateStatus.model_validate(data)

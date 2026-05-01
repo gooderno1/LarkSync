@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.6.11-dev.1 (2026-05-01)
+
+- 目标：
+  - 排查并修复“静默更新已下载但再次安装失败/无反应”的缓存误导问题。
+- 结果：
+  - 本机日志确认 `v0.6.10` Release 与安装包构建成功；失败不在 GitHub 发布链路。
+  - 运行中的 `v0.6.9` 客户端在 15:56 检查过更新，早于 16:20 发布的 `v0.6.10`，因此 `/system/update/status` 只读缓存时仍认为最新是 `v0.6.9`。
+  - 旧缓存还会保留 `download_path`，在某些页面状态下可能把旧安装包当作“已下载更新”再次安装；托盘会按版本兜底忽略同版本安装包，于是表现成静默安装失败或无反应。
+  - `UpdateService.load_cached_status()` 新增缓存净化：当前版本不低于 cached latest 时清空 `download_path`；cached latest 是新版本但本地安装包文件名版本不一致或文件不存在时也清空 `download_path`。
+  - 已手动触发本机 `/system/update/check` 和 `/system/update/download`，确认 `v0.6.10` 可被发现并下载，sha256 与 Release 资产一致。
+  - README、CHANGELOG、根包/后端/前端版本已更新到 `v0.6.11-dev.1`。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_update_service.py -q`
+
 ## v0.6.10 release (2026-05-01)
 
 - 目标：
