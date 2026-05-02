@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.15 release (2026-05-02)
+
+- 目标：
+  - 发布 `v0.6.15` 稳定版，交付“超限表格优先整表块替换”的行为修正，解除 `partial` 模式下大表文档与冲突处理的主要卡点。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.6.15`。
+  - 稳定版包含两项核心修正：一是运行中更新忽略目录等执行范围配置会自动取消并重启任务，确保新配置立刻生效；二是已有云端 Markdown 文档遇到超限表格时，`partial/auto` 会优先按整表块替换并尽量保持原文档 token，只有块替换与同 token 全量覆盖都失败时才回退到导入重建。
+  - README、CHANGELOG 已同步更新。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.6.15-dev.2 (2026-05-02)
 
 - 目标：
