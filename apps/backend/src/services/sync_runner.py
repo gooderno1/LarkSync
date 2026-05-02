@@ -1729,8 +1729,6 @@ class SyncTaskRunner:
                 )
             )
             return
-        if requires_reimport and update_mode == "partial":
-            raise RuntimeError("partial 模式不支持超限表格文档，请改用 auto/full")
         if (not imported_doc) and (not block_states) and update_mode in {"auto", "partial"}:
             await self._bootstrap_block_state(
                 path=path,
@@ -1746,26 +1744,6 @@ class SyncTaskRunner:
                 path,
                 link.cloud_token,
             )
-            if requires_reimport and not imported_doc:
-                logger.info(
-                    "检测到超限表格，改用导入重建: task_id={} path={} token={}",
-                    task.id,
-                    path,
-                    link.cloud_token,
-                )
-                new_link = await self._reimport_cloud_doc_for_markdown(
-                    task=task,
-                    status=status,
-                    path=path,
-                    old_link=link,
-                    file_uploader=file_uploader,
-                    drive_service=drive_service,
-                    import_task_service=import_task_service,
-                )
-                if not new_link:
-                    raise RuntimeError("导入重建云端文档失败")
-                link = new_link
-                imported_doc = True
             if imported_doc:
                 if has_uploadable_images:
                     logger.info(
@@ -1792,6 +1770,14 @@ class SyncTaskRunner:
             else:
                 applied = False
                 if update_mode in {"auto", "partial"}:
+                    if requires_reimport:
+                        logger.info(
+                            "检测到超限表格，优先尝试整块替换: task_id={} path={} token={} update_mode={}",
+                            task.id,
+                            path,
+                            link.cloud_token,
+                            update_mode,
+                        )
                     try:
                         applied = await self._apply_block_update(
                             task=task,
@@ -1803,18 +1789,72 @@ class SyncTaskRunner:
                             status=status,
                             force=update_mode == "partial",
                         )
-                    except RuntimeError:
+                    except RuntimeError as exc:
+                        logger.info(
+                            "块级更新失败，准备回退: task_id={} path={} token={} error={}",
+                            task.id,
+                            path,
+                            link.cloud_token,
+                            exc,
+                        )
                         if update_mode == "partial":
                             raise
                 if not applied:
                     if update_mode == "partial":
                         raise RuntimeError("partial 模式要求块级更新，但未产生可应用差异")
-                    await docx_service.replace_document_content(
-                        link.cloud_token,
-                        markdown,
-                        base_path=base_path,
-                        update_mode="full",
-                    )
+                    try:
+                        await docx_service.replace_document_content(
+                            link.cloud_token,
+                            markdown,
+                            base_path=base_path,
+                            update_mode="full",
+                        )
+                    except Exception:
+                        if not requires_reimport:
+                            raise
+                        logger.warning(
+                            "超限表格同 token 覆盖失败，改用导入重建: task_id={} path={} token={}",
+                            task.id,
+                            path,
+                            link.cloud_token,
+                        )
+                        new_link = await self._reimport_cloud_doc_for_markdown(
+                            task=task,
+                            status=status,
+                            path=path,
+                            old_link=link,
+                            file_uploader=file_uploader,
+                            drive_service=drive_service,
+                            import_task_service=import_task_service,
+                        )
+                        if not new_link:
+                            raise RuntimeError("导入重建云端文档失败")
+                        link = new_link
+                        imported_doc = True
+                    else:
+                        await self._rebuild_block_state(
+                            task=task,
+                            docx_service=docx_service,
+                            document_id=link.cloud_token,
+                            markdown=markdown,
+                            base_path=base_path,
+                            file_path=path,
+                            user_id_type="open_id",
+                        )
+                if imported_doc:
+                    if has_uploadable_images:
+                        logger.info(
+                            "导入创建后检测到本地图片，改用块级覆盖: task_id={} path={} token={}",
+                            task.id,
+                            path,
+                            link.cloud_token,
+                        )
+                        await docx_service.replace_document_content(
+                            link.cloud_token,
+                            markdown,
+                            base_path=base_path,
+                            update_mode="full",
+                        )
                     await self._rebuild_block_state(
                         task=task,
                         docx_service=docx_service,

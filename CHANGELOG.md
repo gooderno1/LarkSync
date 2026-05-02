@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-02] v0.6.15-dev.2 fix(sync-upload): 已有云端文档遇到超限 Markdown 表格时，`partial/auto` 会先尝试按整表块替换保持原文档 token；`partial` 不再直接拒绝，`auto` 仅在块替换与同 token 全量覆盖都失败后才回退到导入重建
 [2026-05-01] v0.6.15-dev.1 fix(sync-ignore): 任务运行中更新忽略目录等同步执行参数时，后端会取消当前 run 并按最新配置自动重启，避免当前运行继续按旧范围扫描和上传；同时补充任务更新重启判定测试与 runner 重启回归测试
 [2026-05-01] v0.6.14 release: v0.6.14
 [2026-05-01] v0.6.14-dev.1 fix(auto-update): Windows 静默安装改为 bootstrap -> worker 双阶段接管；托盘先用隐藏 bootstrap 进程确认接管，再由 bootstrap 拉起独立 PowerShell worker 执行安装与重启，修复主程序侧等待 handoff 超时、安装器实际从未接管的问题

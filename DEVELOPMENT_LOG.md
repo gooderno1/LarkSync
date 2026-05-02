@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.6.15-dev.2 (2026-05-02)
+
+- 目标：
+  - 修复 `partial` 模式遇到超限 Markdown 表格时直接报错、冲突里的“使用本地版本”无法落地的问题，并避免已有云端文档一上来就被导入重建换 token。
+- 结果：
+  - `SyncTaskRunner._upload_markdown()` 调整为“大表优先整块替换”的顺序：已有云端文档在 `auto/partial` 下会先走块级替换；`partial` 不再直接拒绝超限表格。
+  - `auto` 模式下若块替换未命中，会先尝试同 token 全量覆盖；只有同 token 覆盖也失败时，才回退到飞书原生 Markdown 导入重建。
+  - 补充回归测试，覆盖已有云端大表文档在 `auto` 和 `partial` 下都优先保持原 token、不会触发导入重建。
+  - README、CHANGELOG 与后端版本号已同步更新到 `v0.6.15-dev.2`。
+- 测试：
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest tests/test_sync_runner_upload_new_doc.py tests/test_sync_runner_block_update.py -q`
+  - `$env:PYTHONPATH=''; ..\\..\\.venv\\Scripts\\python.exe -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.15-dev.1 (2026-05-01)
 
 - 目标：

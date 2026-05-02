@@ -17,6 +17,8 @@ class FakeDocxService:
     def __init__(self) -> None:
         self.replace_calls: list[tuple[str, str]] = []
         self.root_children = ["c1", "c2"]
+        self.inserted_blocks: list[tuple[str, int]] = []
+        self.deleted_ranges: list[tuple[int, int]] = []
 
     async def replace_document_content(
         self, document_id: str, markdown: str, user_id_type: str = "open_id", base_path=None, update_mode="auto"
@@ -31,6 +33,28 @@ class FakeDocxService:
 
     def _normalize_convert(self, convert: ConvertResult) -> ConvertResult:
         return convert
+
+    async def insert_markdown_block(
+        self,
+        document_id: str,
+        root_block_id: str,
+        markdown: str,
+        *,
+        base_path=None,
+        user_id_type: str = "open_id",
+        insert_index: int = -1,
+    ) -> int:
+        self.inserted_blocks.append((markdown, insert_index))
+        return 1
+
+    async def delete_children(
+        self,
+        document_id: str,
+        block_id: str,
+        start_index: int,
+        end_index: int,
+    ) -> None:
+        self.deleted_ranges.append((start_index, end_index))
 
 
 class FakeFileUploader:
@@ -723,8 +747,10 @@ async def test_upload_markdown_new_doc_initializes_baseline_before_bidirectional
 
 
 @pytest.mark.asyncio
-async def test_upload_markdown_reimports_existing_doc_when_table_exceeds_block_limit(
+@pytest.mark.parametrize("update_mode", ["auto", "partial"])
+async def test_upload_markdown_prefers_block_replace_for_existing_large_table_doc(
     tmp_path: Path,
+    update_mode: str,
 ) -> None:
     markdown_path = tmp_path / "大表格文档.md"
     markdown_path.write_text(
@@ -738,14 +764,6 @@ async def test_upload_markdown_reimports_existing_doc_when_table_exceeds_block_l
         encoding="utf-8",
     )
 
-    old_doc = DriveFile(token="doc-old", name="大表格文档", type="docx")
-    new_doc = DriveFile(token="doc-new", name="大表格文档", type="docx")
-    responses = [
-        DriveFileList(files=[old_doc], has_more=False, next_page_token=None),
-        DriveFileList(files=[old_doc, new_doc], has_more=False, next_page_token=None),
-        DriveFileList(files=[old_doc, new_doc], has_more=False, next_page_token=None),
-    ]
-
     link_service = FakeLinkService()
     await link_service.upsert_link(
         local_path=str(markdown_path),
@@ -756,16 +774,15 @@ async def test_upload_markdown_reimports_existing_doc_when_table_exceeds_block_l
         cloud_parent_token="fld-1",
     )
 
+    docx_service = FakeDocxService()
     runner = SyncTaskRunner(
-        docx_service=FakeDocxService(),
+        docx_service=docx_service,
         file_uploader=FakeFileUploader(),
-        drive_service=FakeDriveService(responses),
+        drive_service=FakeDriveService([]),
         link_service=link_service,
         import_task_service=FakeImportTaskService(),
     )
     runner._block_service = FakeBlockService()
-    runner._import_poll_attempts = 2
-    runner._import_poll_interval = 0.0
 
     task = SyncTaskItem(
         id="task-1",
@@ -775,7 +792,7 @@ async def test_upload_markdown_reimports_existing_doc_when_table_exceeds_block_l
         cloud_folder_name=None,
         base_path=None,
         sync_mode="upload_only",
-        update_mode="auto",
+        update_mode=update_mode,
         enabled=True,
         created_at=0,
         updated_at=0,
@@ -794,12 +811,13 @@ async def test_upload_markdown_reimports_existing_doc_when_table_exceeds_block_l
 
     assert status.failed_files == 0
     assert status.completed_files == 1
-    assert runner._docx_service.replace_calls == []
-    assert runner._import_task_service.calls[0]["file_name"] == "大表格文档"
-    assert runner._drive_service.deleted == [("file-token", "file"), ("doc-old", "docx")]
-    assert link_service.links[str(markdown_path)].cloud_token == "doc-new"
-    assert runner._block_service.storage[(str(markdown_path), "doc-old")] == []
-    assert runner._block_service.storage[(str(markdown_path), "doc-new")]
+    assert docx_service.replace_calls == []
+    assert docx_service.inserted_blocks
+    assert docx_service.deleted_ranges
+    assert runner._import_task_service.calls == []
+    assert runner._drive_service.deleted == []
+    assert link_service.links[str(markdown_path)].cloud_token == "doc-old"
+    assert runner._block_service.storage[(str(markdown_path), "doc-old")]
 
 
 @pytest.mark.asyncio
