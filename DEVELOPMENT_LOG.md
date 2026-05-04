@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.16 release (2026-05-04)
+
+- 目标：
+  - 发布 `v0.6.16` 稳定版，交付“任务级独立调度”和运行结束后 `current_run_id` 收尾修正，解决单个任务阻塞其它任务开启新 run 的问题。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.6.16`。
+  - 稳定版包含两项核心修正：一是上传/下载调度改为任务级独立循环，单个任务长时间运行、失败或卡住时不再阻塞其他任务的新一轮 run；二是同步运行结束后统一清空 `current_run_id`，后续 `queued` 事件不会再错误挂入上一轮已完成 run 的时间线。
+  - README、CHANGELOG 已同步更新。
+- 测试：
+  - `C:\\Python314\\python.exe` + 临时隔离依赖目录执行 `pytest apps/backend/tests -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.6.16-dev.1 (2026-05-04)
 
 - 目标：
