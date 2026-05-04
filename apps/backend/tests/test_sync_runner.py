@@ -1747,6 +1747,70 @@ async def test_run_scheduled_upload_waits_until_file_is_quiet(
 
 
 @pytest.mark.asyncio
+async def test_run_scheduled_upload_clears_current_run_id_after_finish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class _NoopRunService:
+        async def start_run(self, **kwargs) -> None:
+            return None
+
+        async def finish_run(self, **kwargs) -> None:
+            return None
+
+    store = SyncEventStore(tmp_path / "events.jsonl")
+    runner = SyncTaskRunner(event_store=store, run_service=_NoopRunService())
+    task = SyncTaskItem(
+        id="task-run-clear",
+        name="运行收尾测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    path = tmp_path / "note.md"
+    path.write_text("# note", encoding="utf-8")
+    runner.queue_local_change(task.id, path, changed_at=100.0)
+    runner._initial_upload_scanned.add(task.id)
+
+    async def _capture_upload_paths(task_arg, status_arg, paths):
+        return None
+
+    async def _no_pending_tombstones(task_id: str) -> bool:
+        return False
+
+    runner._run_upload_paths = _capture_upload_paths  # type: ignore[method-assign]
+    runner._has_pending_tombstones = _no_pending_tombstones  # type: ignore[method-assign]
+
+    monkeypatch.setattr("src.services.sync_runner.time.time", lambda: 102.1)
+    await runner.run_scheduled_upload(task)
+
+    status = runner._statuses[task.id]
+    assert status.state == "success"
+    assert status.current_run_id is None
+
+    queued_path = tmp_path / "queued.md"
+    queued_path.write_text("# queued", encoding="utf-8")
+    await runner._handle_local_event(
+        task,
+        FileChangeEvent(
+            event_type="modified",
+            src_path=str(queued_path),
+            dest_path=None,
+            timestamp=123.0,
+        ),
+    )
+
+    records = list(store.iter_records())
+    assert records[-1].status == "queued"
+    assert records[-1].run_id is None
+
+
+@pytest.mark.asyncio
 async def test_handle_local_deleted_event_creates_tombstone(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "config.json"
     config_path.write_text("{}", encoding="utf-8")

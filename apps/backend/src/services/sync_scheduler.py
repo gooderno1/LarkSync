@@ -34,10 +34,11 @@ class SyncScheduler:
         self._stop_event = asyncio.Event()
         self._upload_task: asyncio.Task[None] | None = None
         self._download_task: asyncio.Task[None] | None = None
-        self._upload_schedule_key: tuple[object, ...] | None = None
-        self._download_schedule_key: tuple[object, ...] | None = None
-        self._last_upload_daily_run: datetime | None = None
-        self._last_download_daily_run: datetime | None = None
+        self._upload_workers: dict[str, asyncio.Task[None]] = {}
+        self._download_workers: dict[str, asyncio.Task[None]] = {}
+        self._upload_task_meta: dict[str, SyncTaskItem] = {}
+        self._download_task_meta: dict[str, SyncTaskItem] = {}
+        self._task_refresh_interval_seconds = 1.0
 
     async def start(self) -> None:
         if self._upload_task or self._download_task:
@@ -50,10 +51,20 @@ class SyncScheduler:
 
     async def stop(self) -> None:
         self._stop_event.set()
-        for task in (self._upload_task, self._download_task):
+        for task in (
+            self._upload_task,
+            self._download_task,
+            *self._upload_workers.values(),
+            *self._download_workers.values(),
+        ):
             if task:
                 task.cancel()
-        for task in (self._upload_task, self._download_task):
+        for task in (
+            self._upload_task,
+            self._download_task,
+            *self._upload_workers.values(),
+            *self._download_workers.values(),
+        ):
             if task:
                 try:
                     await task
@@ -61,6 +72,10 @@ class SyncScheduler:
                     pass
         self._upload_task = None
         self._download_task = None
+        self._upload_workers.clear()
+        self._download_workers.clear()
+        self._upload_task_meta.clear()
+        self._download_task_meta.clear()
         logger.info("同步调度器已停止")
 
     def _snapshot(self) -> ScheduleSnapshot:
@@ -84,118 +99,168 @@ class SyncScheduler:
 
     async def _upload_loop(self) -> None:
         while not self._stop_event.is_set():
+            try:
+                await self._reconcile_upload_workers()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("刷新上传调度任务失败")
+            if await self._wait_for_stop(self._task_refresh_interval_seconds):
+                break
+
+    async def _download_loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                await self._reconcile_download_workers()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("刷新下载调度任务失败")
+            if await self._wait_for_stop(self._task_refresh_interval_seconds):
+                break
+
+    async def _reconcile_upload_workers(self) -> None:
+        tasks = await self._task_service.list_tasks()
+        eligible = {task.id: task for task in tasks if _should_upload(task)}
+        for task_id, worker in list(self._upload_workers.items()):
+            if task_id in eligible and not worker.done():
+                continue
+            worker.cancel()
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
+            self._upload_workers.pop(task_id, None)
+        self._upload_task_meta = eligible
+        for task in eligible.values():
+            self._runner.ensure_watcher(task)
+            if task.id in self._upload_workers:
+                continue
+            self._upload_workers[task.id] = asyncio.create_task(
+                self._run_upload_worker(task.id)
+            )
+
+    async def _reconcile_download_workers(self) -> None:
+        tasks = await self._task_service.list_tasks()
+        eligible = {task.id: task for task in tasks if _should_download(task)}
+        for task_id, worker in list(self._download_workers.items()):
+            if task_id in eligible and not worker.done():
+                continue
+            worker.cancel()
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
+            self._download_workers.pop(task_id, None)
+        self._download_task_meta = eligible
+        for task in eligible.values():
+            if task.id in self._download_workers:
+                continue
+            self._download_workers[task.id] = asyncio.create_task(
+                self._run_download_worker(task.id)
+            )
+
+    async def _run_upload_worker(self, task_id: str) -> None:
+        schedule_key: tuple[object, ...] | None = None
+        last_daily_run: datetime | None = None
+        while not self._stop_event.is_set():
+            task = self._upload_task_meta.get(task_id)
+            if task is None or not _should_upload(task):
+                return
+            self._runner.ensure_watcher(task)
             snapshot = self._snapshot()
             key = (
                 snapshot.upload_interval_unit,
                 snapshot.upload_interval_value,
-                snapshot.upload_daily_time
+                snapshot.upload_daily_time,
             )
-            if key != self._upload_schedule_key:
-                self._upload_schedule_key = key
-                self._last_upload_daily_run = None
+            if key != schedule_key:
+                schedule_key = key
+                last_daily_run = None
             if snapshot.upload_interval_unit in {
                 SyncIntervalUnit.seconds,
-                SyncIntervalUnit.hours
+                SyncIntervalUnit.hours,
             }:
-                await self._trigger_uploads()
+                await self._runner.run_scheduled_upload(task)
                 interval_seconds = _interval_to_seconds(
                     snapshot.upload_interval_value, snapshot.upload_interval_unit
                 )
-                try:
-                    await asyncio.wait_for(
-                        self._stop_event.wait(), timeout=interval_seconds
-                    )
-                except asyncio.TimeoutError:
-                    continue
-            else:
-                next_run = _next_daily_run(
-                    snapshot.upload_daily_time,
-                    interval_days=_safe_days(snapshot.upload_interval_value),
-                    last_run=self._last_upload_daily_run
-                )
-                wait_seconds = max(
-                    0.0, (next_run - datetime.now()).total_seconds()
-                )
-                logger.info(
-                    "下一次本地上传计划: {} ({}s)",
-                    next_run.strftime("%Y-%m-%d %H:%M:%S"),
-                    int(wait_seconds),
-                )
-                try:
-                    await asyncio.wait_for(
-                        self._stop_event.wait(), timeout=wait_seconds
-                    )
-                    continue
-                except asyncio.TimeoutError:
-                    pass
-                if self._stop_event.is_set():
-                    break
-                await self._trigger_uploads()
-                self._last_upload_daily_run = next_run
-
-    async def _trigger_uploads(self) -> None:
-        tasks = await self._task_service.list_tasks()
-        for task in tasks:
-            if not _should_upload(task):
+                if await self._wait_for_stop(interval_seconds):
+                    return
                 continue
-            self._runner.ensure_watcher(task)
+            next_run = _next_daily_run(
+                snapshot.upload_daily_time,
+                interval_days=_safe_days(snapshot.upload_interval_value),
+                last_run=last_daily_run,
+            )
+            wait_seconds = max(0.0, (next_run - datetime.now()).total_seconds())
+            logger.info(
+                "任务下一次本地上传计划: task_id={} time={} ({}s)",
+                task.id,
+                next_run.strftime("%Y-%m-%d %H:%M:%S"),
+                int(wait_seconds),
+            )
+            if await self._wait_for_stop(wait_seconds):
+                return
+            task = self._upload_task_meta.get(task_id)
+            if task is None or not _should_upload(task):
+                return
             await self._runner.run_scheduled_upload(task)
+            last_daily_run = next_run
 
-    async def _download_loop(self) -> None:
+    async def _run_download_worker(self, task_id: str) -> None:
+        schedule_key: tuple[object, ...] | None = None
+        last_daily_run: datetime | None = None
         while not self._stop_event.is_set():
+            task = self._download_task_meta.get(task_id)
+            if task is None or not _should_download(task):
+                return
             snapshot = self._snapshot()
             key = (
                 snapshot.download_interval_unit,
                 snapshot.download_interval_value,
-                snapshot.download_daily_time
+                snapshot.download_daily_time,
             )
-            if key != self._download_schedule_key:
-                self._download_schedule_key = key
-                self._last_download_daily_run = None
+            if key != schedule_key:
+                schedule_key = key
+                last_daily_run = None
             if snapshot.download_interval_unit in {
                 SyncIntervalUnit.seconds,
-                SyncIntervalUnit.hours
+                SyncIntervalUnit.hours,
             }:
-                await self._trigger_downloads()
+                await self._runner.run_scheduled_download(task)
                 interval_seconds = _interval_to_seconds(
                     snapshot.download_interval_value, snapshot.download_interval_unit
                 )
-                try:
-                    await asyncio.wait_for(
-                        self._stop_event.wait(), timeout=interval_seconds
-                    )
-                except asyncio.TimeoutError:
-                    continue
-            else:
-                next_run = _next_daily_run(
-                    snapshot.download_daily_time,
-                    interval_days=_safe_days(snapshot.download_interval_value),
-                    last_run=self._last_download_daily_run
-                )
-                wait_seconds = max(
-                    0.0, (next_run - datetime.now()).total_seconds()
-                )
-                logger.info(
-                    "下一次云端下载计划: {} ({}s)",
-                    next_run.strftime("%Y-%m-%d %H:%M:%S"),
-                    int(wait_seconds),
-                )
-                try:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=wait_seconds)
-                    continue
-                except asyncio.TimeoutError:
-                    pass
-                if self._stop_event.is_set():
-                    break
-                await self._trigger_downloads()
-                self._last_download_daily_run = next_run
-
-    async def _trigger_downloads(self) -> None:
-        tasks = await self._task_service.list_tasks()
-        for task in tasks:
-            if not _should_download(task):
+                if await self._wait_for_stop(interval_seconds):
+                    return
                 continue
+            next_run = _next_daily_run(
+                snapshot.download_daily_time,
+                interval_days=_safe_days(snapshot.download_interval_value),
+                last_run=last_daily_run,
+            )
+            wait_seconds = max(0.0, (next_run - datetime.now()).total_seconds())
+            logger.info(
+                "任务下一次云端下载计划: task_id={} time={} ({}s)",
+                task.id,
+                next_run.strftime("%Y-%m-%d %H:%M:%S"),
+                int(wait_seconds),
+            )
+            if await self._wait_for_stop(wait_seconds):
+                return
+            task = self._download_task_meta.get(task_id)
+            if task is None or not _should_download(task):
+                return
             await self._runner.run_scheduled_download(task)
+            last_daily_run = next_run
+
+    async def _wait_for_stop(self, timeout: float) -> bool:
+        try:
+            await asyncio.wait_for(self._stop_event.wait(), timeout=max(0.0, timeout))
+            return True
+        except asyncio.TimeoutError:
+            return False
 
 
 def _should_upload(task: SyncTaskItem) -> bool:

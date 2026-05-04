@@ -412,9 +412,7 @@ class SyncTaskRunner:
                 ),
                 task,
             )
-            await self._persist_run_finished(task, status)
-            if status.state != "cancelled":
-                await self._mark_task_run(task)
+            await self._finalize_run_status(task, status)
             self._running_tasks.discard(task.id)
 
     async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
@@ -474,9 +472,7 @@ class SyncTaskRunner:
                 ),
                 task,
             )
-            await self._persist_run_finished(task, status)
-            if status.state != "cancelled":
-                await self._mark_task_run(task)
+            await self._finalize_run_status(task, status)
             self._running_tasks.discard(task.id)
 
     async def run_scheduled_download(self, task: SyncTaskItem) -> None:
@@ -516,9 +512,7 @@ class SyncTaskRunner:
                 ),
                 task,
             )
-            await self._persist_run_finished(task, status)
-            if status.state != "cancelled":
-                await self._mark_task_run(task)
+            await self._finalize_run_status(task, status)
             self._running_tasks.discard(task.id)
 
     def _reset_status(
@@ -602,9 +596,7 @@ class SyncTaskRunner:
                 ),
                 task,
             )
-            await self._persist_run_finished(task, status)
-            if status.state != "cancelled":
-                await self._mark_task_run(task)
+            await self._finalize_run_status(task, status)
             self._tasks.pop(task.id, None)
             self._running_tasks.discard(task.id)
             pending_restart = self._pending_restarts.pop(task.id, None)
@@ -720,6 +712,14 @@ class SyncTaskRunner:
                 task.id,
                 status.current_run_id,
             )
+
+    async def _finalize_run_status(
+        self, task: SyncTaskItem, status: SyncTaskStatus
+    ) -> None:
+        await self._persist_run_finished(task, status)
+        if status.state != "cancelled":
+            await self._mark_task_run(task)
+        status.current_run_id = None
 
     async def _mark_task_run(self, task: SyncTaskItem) -> None:
         service = self._task_service

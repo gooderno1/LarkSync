@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.6.16-dev.1 (2026-05-04)
+
+- 目标：
+  - 修复“某个任务长时间运行时，其它任务的新上传迟迟不开新 run”的串行调度问题，并清理 run 结束后的旧 `current_run_id` 遗留。
+- 结果：
+  - `SyncScheduler` 改为任务级独立上传/下载循环；每个可同步任务都有自己的调度 worker，单个任务长跑、失败或卡在块替换时，不再阻塞其它任务按周期开启新的同步 run。
+  - `SyncTaskRunner` 在运行结束后统一清空 `current_run_id`，新的 `queued` 事件不再错误归到上一轮已完成的 run，任务时间线与运行详情保持一致。
+  - README、CHANGELOG 与后端版本号已同步更新到 `v0.6.16-dev.1`。
+- 测试：
+  - `C:\\Python314\\python.exe` + 临时隔离依赖目录执行 `pytest apps/backend/tests/test_sync_scheduler.py apps/backend/tests/test_sync_runner.py -q`
+  - `C:\\Python314\\python.exe` + 临时隔离依赖目录执行 `pytest apps/backend/tests -q`
+
 ## v0.6.15 release (2026-05-02)
 
 - 目标：
