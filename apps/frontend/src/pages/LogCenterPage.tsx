@@ -73,17 +73,25 @@ type SyncTaskDiagnosticsRaw = Omit<SyncTaskDiagnostics, "recent_events" | "probl
 
 type EventFilter = "all" | "problems" | "changes" | "skipped";
 type DetailTab = "overview" | "problems" | "events";
-type ConflictResolutionState = "queued" | "running";
+type ConflictResolutionState = "queued" | "running" | "waiting" | "success" | "error";
 type ConflictResolutionQueueItem = {
   id: string;
   action: ConflictResolutionAction;
   successMessage: string;
+};
+type ConflictResolutionStatus = {
+  action: ConflictResolutionAction;
+  state: ConflictResolutionState;
+  message?: string | null;
+  attempt?: number;
 };
 
 const PROBLEM_STATUSES = new Set(["failed", "delete_failed", "conflict", "cancelled"]);
 const WARNING_STATUSES = new Set(["skipped", "delete_pending", "cancelled", "queued"]);
 const DANGER_STATUSES = new Set(["failed", "delete_failed", "conflict"]);
 const CHANGE_STATUSES = new Set(["uploaded", "downloaded", "deleted", "mirrored", "delete_pending", "conflict"]);
+const CONFLICT_BUSY_RETRY_DELAY_MS = 5_000;
+const CONFLICT_BUSY_RETRY_LIMIT = 24;
 const CONFLICT_ACTION_LABELS: Record<ConflictResolutionAction, string> = {
   use_local: "使用本地",
   use_cloud: "使用云端",
@@ -214,6 +222,22 @@ function compactRunId(runId?: string | null): string {
   return `${runId.slice(0, 8)}...${runId.slice(-6)}`;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
+
+function isTaskBusyConflictError(message?: string | null): boolean {
+  const text = (message || "").trim();
+  if (!text) return false;
+  return (
+    text.includes("任务运行中") ||
+    text.includes("请稍后再试") ||
+    text.includes("正在同步")
+  );
+}
+
 export function LogCenterPage() {
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflictAsync } = useConflicts();
   const { toast } = useToast();
@@ -224,7 +248,7 @@ export function LogCenterPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [taskPickerQuery, setTaskPickerQuery] = useState("");
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
-  const [detailTab, setDetailTab] = useState<DetailTab>("events");
+  const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [eventFilter, setEventFilter] = useState<EventFilter>("all");
   const [eventSearch, setEventSearch] = useState("");
   const [eventPage, setEventPage] = useState(1);
@@ -238,8 +262,15 @@ export function LogCenterPage() {
   const [queuedConflictResolutions, setQueuedConflictResolutions] = useState<ConflictResolutionQueueItem[]>([]);
   const [activeConflictResolution, setActiveConflictResolution] = useState<ConflictResolutionQueueItem | null>(null);
   const [conflictResolutionStates, setConflictResolutionStates] = useState<
-    Record<string, { action: ConflictResolutionAction; state: ConflictResolutionState }>
+    Record<string, ConflictResolutionStatus>
   >({});
+
+  const selectTask = (taskId: string) => {
+    setSelectedTaskId(taskId);
+    setSelectedRunId(null);
+    setDetailTab("overview");
+    setEventPage(1);
+  };
 
   const overviewQuery = useQuery<SyncTaskOverview[]>({
     queryKey: ["sync-task-overview"],
@@ -261,10 +292,11 @@ export function LogCenterPage() {
     if (sortedOverviews.length === 0) {
       setSelectedTaskId(null);
       setSelectedRunId(null);
+      setDetailTab("overview");
       return;
     }
     if (!selectedTaskId || !sortedOverviews.some((overview) => overview.task.id === selectedTaskId)) {
-      setSelectedTaskId(sortedOverviews[0].task.id);
+      selectTask(sortedOverviews[0].task.id);
     }
   }, [selectedTaskId, sortedOverviews]);
 
@@ -281,12 +313,8 @@ export function LogCenterPage() {
   const selectedOverview = sortedOverviews.find((overview) => overview.task.id === selectedTaskId) || null;
   const taskPickerOptions = filteredOverviews;
 
-  useEffect(() => {
-    setSelectedRunId(null);
-  }, [selectedTaskId]);
-
   const diagnosticsQuery = useQuery<SyncTaskDiagnostics>({
-    queryKey: ["sync-task-diagnostics", selectedTaskId, selectedRunId, detailTab],
+    queryKey: ["sync-task-diagnostics", selectedTaskId, selectedRunId, detailTab === "problems"],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", "200");
@@ -408,7 +436,9 @@ export function LogCenterPage() {
   const refreshDiagnostics = () => {
     overviewQuery.refetch();
     diagnosticsQuery.refetch();
-    selectedEventsQuery.refetch();
+    if (detailTab === "events") {
+      selectedEventsQuery.refetch();
+    }
   };
 
   useEffect(() => {
@@ -418,22 +448,65 @@ export function LogCenterPage() {
     const [next, ...rest] = queuedConflictResolutions;
     setQueuedConflictResolutions(rest);
     setActiveConflictResolution(next);
-    setConflictResolutionStates((current) => ({
-      ...current,
-      [next.id]: { action: next.action, state: "running" },
-    }));
     void (async () => {
+      const resolveWithRetry = async (attempt: number): Promise<void> => {
+        setConflictResolutionStates((current) => ({
+          ...current,
+          [next.id]: {
+            action: next.action,
+            state: attempt === 0 ? "running" : "waiting",
+            message:
+              attempt === 0
+                ? "正在提交处理请求…"
+                : `目标任务仍在同步，${Math.ceil(CONFLICT_BUSY_RETRY_DELAY_MS / 1000)} 秒后自动重试（第 ${attempt + 1} 次）`,
+            attempt,
+          },
+        }));
+        if (attempt > 0) {
+          await sleep(CONFLICT_BUSY_RETRY_DELAY_MS);
+          setConflictResolutionStates((current) => ({
+            ...current,
+            [next.id]: {
+              action: next.action,
+              state: "running",
+              message: `正在重试（第 ${attempt + 1} 次）…`,
+              attempt,
+            },
+          }));
+        }
+        try {
+          await resolveConflictAsync({ id: next.id, action: next.action });
+          setConflictResolutionStates((current) => ({
+            ...current,
+            [next.id]: {
+              action: next.action,
+              state: "success",
+              message: next.successMessage,
+              attempt,
+            },
+          }));
+          toast(next.successMessage, "success");
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "冲突处理失败";
+          if (isTaskBusyConflictError(message) && attempt < CONFLICT_BUSY_RETRY_LIMIT) {
+            await resolveWithRetry(attempt + 1);
+            return;
+          }
+          setConflictResolutionStates((current) => ({
+            ...current,
+            [next.id]: {
+              action: next.action,
+              state: "error",
+              message,
+              attempt,
+            },
+          }));
+          toast(message, "danger");
+        }
+      };
       try {
-        await resolveConflictAsync({ id: next.id, action: next.action });
-        toast(next.successMessage, "success");
-      } catch (err) {
-        toast(err instanceof Error ? err.message : "冲突处理失败", "danger");
+        await resolveWithRetry(0);
       } finally {
-        setConflictResolutionStates((current) => {
-          const nextStates = { ...current };
-          delete nextStates[next.id];
-          return nextStates;
-        });
         setActiveConflictResolution(null);
       }
     })();
@@ -445,10 +518,10 @@ export function LogCenterPage() {
     successMessage: string
   ) => {
     setConflictResolutionStates((current) => {
-      if (current[id]) return current;
+      if (current[id] && current[id].state !== "error") return current;
       return {
         ...current,
-        [id]: { action, state: "queued" },
+        [id]: { action, state: "queued", message: "已加入处理队列" },
       };
     });
     setQueuedConflictResolutions((current) => {
@@ -465,6 +538,18 @@ export function LogCenterPage() {
   );
   const runningConflictCount = useMemo(
     () => Object.values(conflictResolutionStates).filter((item) => item.state === "running").length,
+    [conflictResolutionStates]
+  );
+  const waitingConflictCount = useMemo(
+    () => Object.values(conflictResolutionStates).filter((item) => item.state === "waiting").length,
+    [conflictResolutionStates]
+  );
+  const successConflictCount = useMemo(
+    () => Object.values(conflictResolutionStates).filter((item) => item.state === "success").length,
+    [conflictResolutionStates]
+  );
+  const failedConflictCount = useMemo(
+    () => Object.values(conflictResolutionStates).filter((item) => item.state === "error").length,
     [conflictResolutionStates]
   );
 
@@ -574,9 +659,8 @@ export function LogCenterPage() {
                                     : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-900"
                                 )}
                                 onClick={() => {
-                                  setSelectedTaskId(task.id);
+                                  selectTask(task.id);
                                   setTaskPickerOpen(false);
-                                  resetEventPage();
                                 }}
                                 type="button"
                               >
@@ -1031,9 +1115,9 @@ export function LogCenterPage() {
               <IconRefresh className="h-3.5 w-3.5" /> {conflictLoading ? "加载中..." : "刷新"}
             </button>
           </div>
-          {(queuedConflictCount > 0 || runningConflictCount > 0) ? (
+          {(queuedConflictCount > 0 || runningConflictCount > 0 || waitingConflictCount > 0 || successConflictCount > 0 || failedConflictCount > 0) ? (
             <div className="rounded-2xl border border-[#3370FF]/30 bg-[#3370FF]/10 px-4 py-3 text-sm text-zinc-200">
-              当前冲突处理队列：处理中 {runningConflictCount} 条，排队中 {queuedConflictCount} 条。同一任务的处理会按顺序执行，避免互相覆盖。
+              当前冲突处理队列：处理中 {runningConflictCount} 条，等待任务空闲 {waitingConflictCount} 条，排队中 {queuedConflictCount} 条，最近成功 {successConflictCount} 条，失败 {failedConflictCount} 条。
             </div>
           ) : null}
           {conflictError ? <p className="text-sm text-rose-400">加载失败：{conflictError}</p> : null}
@@ -1049,17 +1133,32 @@ export function LogCenterPage() {
                   const resolutionState = conflictResolutionStates[c.id];
                   const isResolving = resolutionState?.state === "running";
                   const isQueued = resolutionState?.state === "queued";
+                  const isWaiting = resolutionState?.state === "waiting";
+                  const isFailed = resolutionState?.state === "error";
+                  const isSucceeded = resolutionState?.state === "success";
                   const statusLabel = c.resolved
                     ? "已处理"
+                    : isSucceeded
+                      ? "已完成"
                     : isResolving
                       ? "处理中"
+                      : isWaiting
+                        ? "等待重试"
                       : isQueued
                         ? "已排队"
+                        : isFailed
+                          ? "处理失败"
                         : "待处理";
                   const statusTone = c.resolved
                     ? "success"
+                    : isSucceeded
+                      ? "success"
                     : isResolving
                       ? "info"
+                      : isWaiting
+                        ? "warning"
+                        : isFailed
+                          ? "danger"
                       : "warning";
                   return (
                     <>
@@ -1089,26 +1188,44 @@ export function LogCenterPage() {
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button
                     className="rounded-lg bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50"
-                    disabled={c.resolved || Boolean(resolutionState)}
+                    disabled={c.resolved || (resolutionState ? resolutionState.state !== "error" : false)}
                     onClick={() => handleResolveConflict(c.id, "use_local", "已采用本地版本")}
                     type="button"
                   >
-                    {isResolving ? "处理中..." : isQueued ? "已排队" : "使用本地"}
+                    {isResolving ? "处理中..." : isWaiting ? "等待重试..." : isQueued ? "已排队" : "使用本地"}
                   </button>
                   <button
                     className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
-                    disabled={c.resolved || Boolean(resolutionState)}
+                    disabled={c.resolved || (resolutionState ? resolutionState.state !== "error" : false)}
                     onClick={() => handleResolveConflict(c.id, "use_cloud", "已采用云端版本")}
                     type="button"
                   >
-                    {isResolving ? "处理中..." : isQueued ? "已排队" : "使用云端"}
+                    {isResolving ? "处理中..." : isWaiting ? "等待重试..." : isQueued ? "已排队" : "使用云端"}
                   </button>
                   {c.resolved ? (
                     <span className="self-center text-xs text-zinc-500">已处理：{c.resolved_action}</span>
                   ) : resolutionState ? (
-                    <span className="self-center text-xs text-zinc-500">
-                      {resolutionState.state === "running" ? "正在处理" : "已排队"}：
+                    <span className={cn(
+                      "self-center text-xs",
+                      resolutionState.state === "error"
+                        ? "text-rose-400"
+                        : resolutionState.state === "success"
+                          ? "text-emerald-300"
+                          : resolutionState.state === "waiting"
+                            ? "text-amber-300"
+                            : "text-zinc-500"
+                    )}>
+                      {resolutionState.state === "running"
+                        ? "正在处理"
+                        : resolutionState.state === "waiting"
+                          ? "等待重试"
+                          : resolutionState.state === "success"
+                            ? "已完成"
+                            : resolutionState.state === "error"
+                              ? "处理失败"
+                              : "已排队"}：
                       {CONFLICT_ACTION_LABELS[resolutionState.action]}
+                      {resolutionState.message ? `，${resolutionState.message}` : ""}
                     </span>
                   ) : null}
                 </div>
