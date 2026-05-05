@@ -660,7 +660,8 @@ async def get_task_diagnostics(
         status=status,
         records=None,
     )
-    if not run_summaries and item.last_run_at:
+    should_scan_history_fallback = bool(run_id.strip()) or include_events or include_problems
+    if not run_summaries and item.last_run_at and should_scan_history_fallback:
         _, task_records = event_store.read_events(
             limit=5000,
             offset=0,

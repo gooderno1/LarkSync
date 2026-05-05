@@ -242,6 +242,9 @@ export function LogCenterPage() {
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflictAsync } = useConflicts();
   const { toast } = useToast();
   const taskPickerRef = useRef<HTMLDivElement | null>(null);
+  const conflictQueueRef = useRef<ConflictResolutionQueueItem[]>([]);
+  const conflictResolutionProcessingRef = useRef(false);
+  const activeConflictResolutionIdRef = useRef<string | null>(null);
 
   const [logTab, setLogTab] = useState<"tasks" | "file-logs" | "conflicts">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -441,76 +444,84 @@ export function LogCenterPage() {
     }
   };
 
-  useEffect(() => {
-    if (activeConflictResolution || queuedConflictResolutions.length === 0) {
+  const processConflictResolutionQueue = async () => {
+    if (conflictResolutionProcessingRef.current) {
       return;
     }
-    const [next, ...rest] = queuedConflictResolutions;
-    setQueuedConflictResolutions(rest);
-    setActiveConflictResolution(next);
-    void (async () => {
-      const resolveWithRetry = async (attempt: number): Promise<void> => {
-        setConflictResolutionStates((current) => ({
-          ...current,
-          [next.id]: {
-            action: next.action,
-            state: attempt === 0 ? "running" : "waiting",
-            message:
-              attempt === 0
-                ? "正在提交处理请求…"
-                : `目标任务仍在同步，${Math.ceil(CONFLICT_BUSY_RETRY_DELAY_MS / 1000)} 秒后自动重试（第 ${attempt + 1} 次）`,
-            attempt,
-          },
-        }));
-        if (attempt > 0) {
-          await sleep(CONFLICT_BUSY_RETRY_DELAY_MS);
+    conflictResolutionProcessingRef.current = true;
+    try {
+      while (conflictQueueRef.current.length > 0) {
+        const [next, ...rest] = conflictQueueRef.current;
+        conflictQueueRef.current = rest;
+        setQueuedConflictResolutions(rest);
+        activeConflictResolutionIdRef.current = next.id;
+        setActiveConflictResolution(next);
+        const resolveWithRetry = async (attempt: number): Promise<void> => {
           setConflictResolutionStates((current) => ({
             ...current,
             [next.id]: {
               action: next.action,
-              state: "running",
-              message: `正在重试（第 ${attempt + 1} 次）…`,
+              state: attempt === 0 ? "running" : "waiting",
+              message:
+                attempt === 0
+                  ? "正在提交处理请求…"
+                  : `目标任务仍在同步，${Math.ceil(CONFLICT_BUSY_RETRY_DELAY_MS / 1000)} 秒后自动重试（第 ${attempt + 1} 次）`,
               attempt,
             },
           }));
-        }
-        try {
-          await resolveConflictAsync({ id: next.id, action: next.action });
-          setConflictResolutionStates((current) => ({
-            ...current,
-            [next.id]: {
-              action: next.action,
-              state: "success",
-              message: next.successMessage,
-              attempt,
-            },
-          }));
-          toast(next.successMessage, "success");
-        } catch (err) {
-          const message = err instanceof Error ? err.message : "冲突处理失败";
-          if (isTaskBusyConflictError(message) && attempt < CONFLICT_BUSY_RETRY_LIMIT) {
-            await resolveWithRetry(attempt + 1);
-            return;
+          if (attempt > 0) {
+            await sleep(CONFLICT_BUSY_RETRY_DELAY_MS);
+            setConflictResolutionStates((current) => ({
+              ...current,
+              [next.id]: {
+                action: next.action,
+                state: "running",
+                message: `正在重试（第 ${attempt + 1} 次）…`,
+                attempt,
+              },
+            }));
           }
-          setConflictResolutionStates((current) => ({
-            ...current,
-            [next.id]: {
-              action: next.action,
-              state: "error",
-              message,
-              attempt,
-            },
-          }));
-          toast(message, "danger");
-        }
-      };
-      try {
+          try {
+            await resolveConflictAsync({ id: next.id, action: next.action });
+            setConflictResolutionStates((current) => ({
+              ...current,
+              [next.id]: {
+                action: next.action,
+                state: "success",
+                message: next.successMessage,
+                attempt,
+              },
+            }));
+            toast(next.successMessage, "success");
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "冲突处理失败";
+            if (isTaskBusyConflictError(message) && attempt < CONFLICT_BUSY_RETRY_LIMIT) {
+              await resolveWithRetry(attempt + 1);
+              return;
+            }
+            setConflictResolutionStates((current) => ({
+              ...current,
+              [next.id]: {
+                action: next.action,
+                state: "error",
+                message,
+                attempt,
+              },
+            }));
+            toast(message, "danger");
+          }
+        };
         await resolveWithRetry(0);
-      } finally {
-        setActiveConflictResolution(null);
       }
-    })();
-  }, [activeConflictResolution, queuedConflictResolutions, resolveConflictAsync, toast]);
+    } finally {
+      activeConflictResolutionIdRef.current = null;
+      setActiveConflictResolution(null);
+      conflictResolutionProcessingRef.current = false;
+      if (conflictQueueRef.current.length > 0) {
+        void processConflictResolutionQueue();
+      }
+    }
+  };
 
   const handleResolveConflict = (
     id: string,
@@ -524,12 +535,16 @@ export function LogCenterPage() {
         [id]: { action, state: "queued", message: "已加入处理队列" },
       };
     });
-    setQueuedConflictResolutions((current) => {
-      if (current.some((item) => item.id === id) || activeConflictResolution?.id === id) {
-        return current;
-      }
-      return [...current, { id, action, successMessage }];
-    });
+    if (
+      conflictQueueRef.current.some((item) => item.id === id) ||
+      activeConflictResolutionIdRef.current === id
+    ) {
+      return;
+    }
+    const nextQueue = [...conflictQueueRef.current, { id, action, successMessage }];
+    conflictQueueRef.current = nextQueue;
+    setQueuedConflictResolutions(nextQueue);
+    void processConflictResolutionQueue();
   };
 
   const queuedConflictCount = useMemo(

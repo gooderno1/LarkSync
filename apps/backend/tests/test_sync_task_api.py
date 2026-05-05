@@ -106,6 +106,51 @@ async def test_get_task_diagnostics_uses_run_summary_without_scanning_events(
 
 
 @pytest.mark.asyncio
+async def test_get_task_diagnostics_overview_does_not_scan_events_when_run_summary_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = _build_task()
+
+    class FakeService:
+        async def get_task(self, task_id: str):
+            assert task_id == task.id
+            return task
+
+    class FakeRunner:
+        def get_status(self, task_id: str):
+            assert task_id == task.id
+            return SyncTaskStatus(task_id=task.id)
+
+    class FakeRunService:
+        async def list_by_task(self, task_id: str, *, limit: int = 50):
+            assert task_id == task.id
+            return []
+
+    class FailEventStore:
+        def read_events(self, **kwargs):
+            raise AssertionError("概览模式不应读取 sync-events.jsonl")
+
+    monkeypatch.setattr(sync_tasks_api, "service", FakeService())
+    monkeypatch.setattr(sync_tasks_api, "runner", FakeRunner())
+    monkeypatch.setattr(sync_tasks_api, "run_service", FakeRunService())
+    monkeypatch.setattr(sync_tasks_api, "event_store", FailEventStore())
+
+    response = await sync_tasks_api.get_task_diagnostics(
+        task.id,
+        limit=200,
+        run_id="",
+        include_events=False,
+        include_problems=False,
+    )
+
+    assert response.selected_run is None
+    assert response.recent_runs == []
+    assert response.recent_events == []
+    assert response.problems == []
+    assert response.overview.task.id == task.id
+
+
+@pytest.mark.asyncio
 async def test_list_task_overview_uses_latest_run_without_scanning_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

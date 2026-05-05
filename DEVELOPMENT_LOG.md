@@ -1,5 +1,32 @@
 # DEVELOPMENT LOG
 
+## v0.6.19 release (2026-05-06)
+
+- 目标：
+  - 在 `v0.6.18` 的基础上继续收口两个现场残留问题：任务切换仍慢，以及冲突管理连续点击多条时最后只真正处理成功一条。
+- 结果：
+  - 复核现场安装目录日志后确认，任务切换剩余卡顿不在 `sync_runs` 查询，而在 `get_task_diagnostics()` 缺少摘要时仍会回退扫描 `sync-events.jsonl`；现在仅在明确查看事件/问题明细或指定 `run_id` 时才允许回退扫描，概览模式直接返回轻量结果。
+  - 冲突管理前端改为 `ref` 驱动的单 worker 串行泵，移除 `useEffect + state` 启动队列的竞态；连续点击多条冲突时会严格按顺序提交，不再把多个 `resolve` 请求并发打到后端。
+  - 根包、前端和后端版本统一更新为 `v0.6.19`，用于正式发布。
+- 测试：
+  - `python -m pytest tests/test_conflict_resolution_service.py tests/test_conflict_resolution_runner.py tests/test_sync_task_api.py tests/test_sync_event_store.py -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
+## v0.6.19-dev.1 (2026-05-06)
+
+- 目标：
+  - 修复冲突管理“看起来支持多选排队，但连续点击多条时最后只有一条真正处理成功”的现场问题。
+- 结果：
+  - 复核现场 `v0.6.18` 日志后确认根因在前端排队实现：`useEffect + state` 启动队列存在竞态，连续点击时多个 `resolve` 请求会在 `activeConflictResolution` 提交前并发打到后端，同任务的其余请求因此收到 `409 任务运行中`。
+  - 冲突管理改为 `ref` 驱动的单 worker 串行泵，`conflictQueueRef` 作为唯一队列真源，避免 React state 延迟导致同任务请求并发发出。
+  - `useConflicts` 去掉共享 mutation，改为单次 `apiFetch` 成功后再刷新冲突列表，减少并发状态耦合。
+  - 继续复核现场任务切换耗时后确认另一个慢点在 `get_task_diagnostics()`：当任务缺少 `sync_runs` 摘要时，概览模式也会回退扫描整个 `sync-events.jsonl` 来补历史 run，导致切任务仍然卡在 5~15 秒。
+  - 任务诊断改为只在真正查看事件/问题明细或指定 `run_id` 时才允许回退扫描 `sync-events.jsonl`；概览模式下若缺少 `sync_runs` 摘要，直接返回轻量结果，不再为补历史 run 阻塞切换。
+- 测试：
+  - `npm run build --prefix apps/frontend`
+  - `python -m pytest tests/test_sync_task_api.py tests/test_sync_event_store.py -q`
+
 ## v0.6.18 release (2026-05-06)
 
 - 目标：
