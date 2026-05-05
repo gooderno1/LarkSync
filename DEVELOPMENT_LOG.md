@@ -1,5 +1,41 @@
 # DEVELOPMENT LOG
 
+## v0.6.17-dev.3 (2026-05-05)
+
+- 目标：
+  - 修复日志中心任务诊断切换任务时明显卡顿的问题，降低大体积 `sync-events.jsonl` 对 UI 交互的拖累。
+- 结果：
+  - 前端任务切换改为单轮 diagnostics：不再先拉一版基础 diagnostics、再拉一版指定 run 的 diagnostics；当前任务的运行摘要直接由同一条查询返回。
+  - 事件时间线继续走独立 `/sync/logs/sync` 分页接口，但仅在 `事件` 标签页激活时请求；`问题` 标签页才请求 problems，避免切换任务时无条件扫事件日志。
+  - 后端 `/sync/tasks/overview` 与 `/sync/tasks/{id}/diagnostics` 优先使用 `sync_runs` 摘要表；只在真正需要事件/问题明细时才读取 `sync-events.jsonl`，并保留“没有 run 摘要时再回退扫历史日志”的兼容兜底。
+  - README、CHANGELOG 与版本号已同步更新到 `v0.6.17-dev.3`。
+- 测试：
+  - `python -m pytest tests/test_sync_task_api.py tests/test_sync_event_store.py -q`
+  - `npm run build --prefix apps/frontend`
+
+## v0.6.17-dev.2 (2026-05-05)
+
+- 目标：
+  - 修复冲突管理里“前一个没处理完，后一个就不能先选方案”的交互阻塞问题，并清理前端暴露但后端并不支持的冲突动作。
+- 结果：
+  - 日志中心冲突管理新增前端排队器：用户可以连续为多条冲突选择“使用本地 / 使用云端”，页面会即时显示“已排队 / 处理中”，并按顺序提交给后端执行。
+  - 保留后端按任务串行执行的安全边界，不改变现有手动冲突处理的覆盖逻辑，只修正前端交互与状态反馈。
+  - 冲突管理页移除未实现的“保留双方”按钮，避免前端发出后端 `409/422` 必然失败的无效动作。
+  - README、CHANGELOG 与版本号已同步更新到 `v0.6.17-dev.2`。
+- 测试：
+  - `npm run build --prefix apps/frontend`
+
+## v0.6.17-dev.1 (2026-05-05)
+
+- 目标：
+  - 修复云端文件下行写回本地时，目标文件被 WPS/Office 占用只暴露原始 `[Errno 13] Permission denied`、用户无法判断根因的问题。
+- 结果：
+  - `FileWriter` 新增 Windows 文件占用识别：遇到 `winerror=32/33` 的共享冲突时，会做短暂重试，覆盖 WPS/Office 刚释放句柄的瞬时场景。
+  - 若重试后仍失败，会抛出可直接行动的错误文案“目标文件正被其他程序占用，请关闭后重试”，同步日志和运行摘要不再只显示裸 `Permission denied`。
+  - README、CHANGELOG 与版本号已同步更新到 `v0.6.17-dev.1`。
+- 测试：
+  - `python -m pytest tests/test_file_writer.py -q`
+
 ## v0.6.16 release (2026-05-04)
 
 - 目标：

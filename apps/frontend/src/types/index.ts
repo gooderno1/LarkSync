@@ -35,6 +35,8 @@ export type ConflictItem = {
   resolved_action?: string | null;
 };
 
+export type ConflictResolutionAction = "use_local" | "use_cloud";
+
 export type SyncTask = {
   id: string;
   name?: string | null;

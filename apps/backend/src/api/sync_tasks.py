@@ -488,14 +488,24 @@ async def _load_run_summaries(
     *,
     task_id: str,
     status: SyncTaskStatus,
-    records: list[SyncEventRecord],
+    records: list[SyncEventRecord] | None = None,
 ) -> list[SyncTaskRunSummaryResponse]:
+    db_runs = await run_service.list_by_task(task_id, limit=50)
+    if records is None:
+        records = []
     records_by_run: dict[str, list[SyncEventRecord]] = {}
     for record in records:
         if record.run_id:
             records_by_run.setdefault(record.run_id, []).append(record)
-    db_runs = await run_service.list_by_task(task_id, limit=50)
     if not db_runs:
+        if not records and status.current_run_id:
+            return [
+                _build_run_summary(
+                    run_id=status.current_run_id,
+                    records=[],
+                    live_status=status,
+                )
+            ]
         return _build_run_summaries(status=status, records=records)
     summaries: list[SyncTaskRunSummaryResponse] = []
     seen: set[str] = set()
@@ -607,39 +617,26 @@ async def list_task_status() -> list[SyncTaskStatusResponse]:
 async def list_task_overview() -> list[SyncTaskOverviewResponse]:
     items = await service.list_tasks()
     statuses = runner.list_statuses()
-    _, recent_records = event_store.read_events(
-        limit=2000,
-        offset=0,
-        status="",
-        search="",
-        task_id="",
-        order="desc",
-    )
-    records_by_task: dict[str, list[SyncEventRecord]] = {}
-    for record in recent_records:
-        records_by_task.setdefault(record.task_id, []).append(record)
     latest_runs = await run_service.list_latest_by_tasks([item.id for item in items])
     results: list[SyncTaskOverviewResponse] = []
     for item in items:
         task_status = statuses.get(item.id) or SyncTaskStatus(task_id=item.id)
-        task_records = records_by_task.get(item.id, [])
         latest_item = latest_runs.get(item.id)
         run_summaries = None
         if latest_item is not None:
             live_status = task_status if task_status.current_run_id == latest_item.run_id else None
-            run_records = [record for record in task_records if record.run_id == latest_item.run_id]
             run_summaries = [
                 _run_summary_from_item(
                     latest_item,
                     live_status=live_status,
-                    records=run_records,
+                    records=[],
                 )
             ]
         results.append(
             _build_task_overview(
                 task=item,
                 status=task_status,
-                records=task_records,
+                records=[],
                 run_summaries=run_summaries,
             )
         )
@@ -651,61 +648,72 @@ async def get_task_diagnostics(
     task_id: str,
     limit: int = Query(default=200, ge=1, le=1000, description="返回事件条数"),
     run_id: str = Query(default="", description="指定运行 ID，仅返回该次运行数据"),
+    include_events: bool = Query(default=True, description="是否返回 recent_events"),
+    include_problems: bool = Query(default=True, description="是否返回 problems"),
 ) -> SyncTaskDiagnosticsResponse:
     item = await service.get_task(task_id)
     if not item:
         raise HTTPException(status_code=404, detail="Task not found")
     status = runner.get_status(task_id)
-    _, task_records = event_store.read_events(
-        limit=5000,
-        offset=0,
-        status="",
-        search="",
-        task_id=task_id,
-        order="desc",
-    )
     run_summaries = await _load_run_summaries(
         task_id=task_id,
         status=status,
-        records=task_records,
+        records=None,
     )
+    if not run_summaries and item.last_run_at:
+        _, task_records = event_store.read_events(
+            limit=5000,
+            offset=0,
+            status="",
+            search="",
+            task_id=task_id,
+            order="desc",
+        )
+        run_summaries = await _load_run_summaries(
+            task_id=task_id,
+            status=status,
+            records=task_records,
+        )
     selected_run = None
     if run_id.strip():
-        selected_run = next((item for item in run_summaries if item.run_id == run_id.strip()), None)
+        selected_run = next((entry for entry in run_summaries if entry.run_id == run_id.strip()), None)
     elif run_summaries:
         selected_run = run_summaries[0]
     selected_run_id = selected_run.run_id if selected_run else ""
-    _, recent_records = event_store.read_events(
-        limit=limit,
-        offset=0,
-        status="",
-        search="",
-        task_id=task_id,
-        run_id=selected_run_id,
-        order="desc",
-    )
-    _, problem_records = event_store.read_events(
-        limit=100,
-        offset=0,
-        status="",
-        statuses=sorted(_PROBLEM_STATUSES),
-        search="",
-        task_id=task_id,
-        run_id=selected_run_id,
-        order="desc",
-    )
+    selected_run_records: list[SyncEventRecord] = []
+    if selected_run_id and (include_events or include_problems):
+        scan_limit = max(limit if include_events else 0, 1000 if include_problems else 0, 100)
+        _, selected_run_records = event_store.read_events(
+            limit=min(scan_limit, 5000),
+            offset=0,
+            status="",
+            search="",
+            task_id=task_id,
+            run_id=selected_run_id,
+            order="desc",
+        )
+    problem_records = [
+        record for record in selected_run_records
+        if record.status in _PROBLEM_STATUSES
+    ][:100]
     overview = _build_task_overview(
         task=item,
         status=status,
-        records=task_records,
+        records=selected_run_records if status.current_run_id == selected_run_id else [],
         run_summaries=run_summaries,
     )
     return SyncTaskDiagnosticsResponse(
         overview=overview,
         selected_run=selected_run,
         recent_runs=run_summaries,
-        recent_events=[_sync_log_entry_from_record(record) for record in recent_records],
-        problems=[_sync_log_entry_from_record(record) for record in problem_records],
+        recent_events=[
+            _sync_log_entry_from_record(record)
+            for record in (selected_run_records[:limit] if include_events else [])
+        ],
+        problems=[
+            _sync_log_entry_from_record(record)
+            for record in (problem_records if include_problems else [])
+        ],
     )
 
 

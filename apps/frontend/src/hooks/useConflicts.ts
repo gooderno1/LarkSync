@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
-import type { ConflictItem } from "../types";
+import type { ConflictItem, ConflictResolutionAction } from "../types";
 
 export function useConflicts() {
   const qc = useQueryClient();
@@ -22,7 +22,7 @@ export function useConflicts() {
       action,
     }: {
       id: string;
-      action: "use_local" | "use_cloud" | "keep_both";
+      action: ConflictResolutionAction;
     }) =>
       apiFetch(`/conflicts/${id}/resolve`, {
         method: "POST",
@@ -39,7 +39,6 @@ export function useConflicts() {
     conflictLoading: conflictsQuery.isLoading,
     conflictError: conflictsQuery.error?.message ?? null,
     refreshConflicts: () => qc.invalidateQueries({ queryKey: ["conflicts"] }),
-    resolveConflict: resolveMutation.mutate,
     resolveConflictAsync: resolveMutation.mutateAsync,
     resolving: resolveMutation.isPending,
   };
