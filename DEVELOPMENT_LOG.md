@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.17 release (2026-05-05)
+
+- 目标：
+  - 发布 `v0.6.17` 稳定版，收口本轮三项修复：文件占用写盘提示、冲突管理排队处理、日志中心切任务提速。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.6.17`。
+  - 稳定版包含三项核心修复：一是云端文件下载写回本地时，遇到 WPS/Office 占用会短重试，并给出明确“文件被其他程序占用”的错误提示；二是冲突管理允许连续为多条冲突选择“使用本地 / 使用云端”，前端显示“已排队 / 处理中”并按顺序提交；三是日志中心切换任务时优先使用 `sync_runs` 摘要表，只在真正查看事件/问题明细时才读取 `sync-events.jsonl`，显著降低大日志场景的切换卡顿。
+  - README、CHANGELOG、版本号与正式安装包均已同步到 `v0.6.17`。
+- 测试：
+  - `python -m pytest tests/test_file_writer.py tests/test_conflict_resolution_service.py tests/test_conflict_resolution_runner.py tests/test_sync_task_api.py tests/test_sync_event_store.py -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.6.17-dev.3 (2026-05-05)
 
 - 目标：
