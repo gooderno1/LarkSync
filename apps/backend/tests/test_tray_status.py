@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import sys
 from pathlib import Path
@@ -190,6 +191,7 @@ def test_sync_task_overview_and_diagnostics(
         completed_files=1,
         failed_files=1,
         skipped_files=1,
+        uploaded_files=1,
         last_error="boom",
         current_run_id="run-1",
         last_files=[
@@ -266,6 +268,9 @@ def test_sync_task_diagnostics_isolated_by_run(
     assert created.status_code == 200
     task_id = created.json()["id"]
 
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'test.db').as_posix()}"
+    persisted_runs = SyncRunService(session_maker=get_session_maker(db_url))
+    monkeypatch.setattr(sync_tasks, "run_service", persisted_runs)
     store = SyncEventStore(tmp_path / "sync-events-runs.jsonl")
     monkeypatch.setattr(sync_tasks, "event_store", store)
     status = SyncTaskStatus(
@@ -277,6 +282,7 @@ def test_sync_task_diagnostics_isolated_by_run(
         completed_files=1,
         failed_files=0,
         skipped_files=0,
+        uploaded_files=1,
         current_run_id="run-2",
         last_files=[
             SyncFileEvent(path=str(local_dir), status="started", timestamp=20.0),
@@ -286,6 +292,50 @@ def test_sync_task_diagnostics_isolated_by_run(
     )
     monkeypatch.setattr(sync_tasks.runner, "list_statuses", lambda: {task_id: status})
     monkeypatch.setattr(sync_tasks.runner, "get_status", lambda _task_id: status)
+    asyncio.run(
+        persisted_runs.finish_run(
+            run_id="run-1",
+            task_id=task_id,
+            trigger_source="scheduled_upload",
+            state="failed",
+            started_at=10.0,
+            finished_at=13.0,
+            last_event_at=13.0,
+            total_files=1,
+            completed_files=0,
+            failed_files=1,
+            skipped_files=0,
+            uploaded_files=0,
+            downloaded_files=0,
+            deleted_files=0,
+            conflict_files=0,
+            delete_pending_files=0,
+            delete_failed_files=0,
+            last_error="历史错误",
+        )
+    )
+    asyncio.run(
+        persisted_runs.finish_run(
+            run_id="run-2",
+            task_id=task_id,
+            trigger_source="scheduled_upload",
+            state="success",
+            started_at=20.0,
+            finished_at=25.0,
+            last_event_at=25.0,
+            total_files=1,
+            completed_files=1,
+            failed_files=0,
+            skipped_files=0,
+            uploaded_files=1,
+            downloaded_files=0,
+            deleted_files=0,
+            conflict_files=0,
+            delete_pending_files=0,
+            delete_failed_files=0,
+            last_error=None,
+        )
+    )
 
     store.append(
         SyncEventRecord(
