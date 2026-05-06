@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.6.20 release (2026-05-06)
+
+- 目标：
+  - 发布 `v0.6.20` 稳定版，收口删除链路状态在日志中心“实际变更”和多个任务状态摘要里被漏显示的问题。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.6.20`，正式版会随稳定 tag 触发 Release Build 工作流自动生成安装包、校验文件和发布说明。
+  - 后端 `/sync/tasks/status` 响应补齐 `uploaded_files / downloaded_files / deleted_files / conflict_files / delete_pending_files / delete_failed_files`，前端实时状态轮询可以拿到完整删除链路计数。
+  - 日志中心运行记录、概览状态胶囊、运行判断，以及任务页/仪表盘摘要统一展示 `删除 / 待删除 / 删除失败`，不再只露出上传、下载、失败、冲突。
+- 测试：
+  - `python -m pytest apps/backend/tests/test_version.py apps/backend/tests/test_sync_task_api.py apps/backend/tests/test_tray_status.py -p pytest_asyncio.plugin -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.6.20-dev.1 (2026-05-06)
 
 - 目标：
