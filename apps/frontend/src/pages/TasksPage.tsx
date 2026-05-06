@@ -33,7 +33,7 @@ function summarizePath(value: string, keepSegments = 3, maxTailChars = 48): stri
   return `...${text.slice(-maxTailChars)}`;
 }
 
-const pendingUploadStatuses = new Set(["queued", "creating", "created", "reimporting"]);
+const pendingRealtimeStatuses = new Set(["queued", "creating", "created", "reimporting", "delete_pending"]);
 
 function deletePolicyLabel(value?: string | null): string {
   if (value === "off") return "关闭删除联动";
@@ -147,11 +147,16 @@ export function TasksPage() {
             const progressState = computeTaskProgress(st);
             const progress = progressState.progress;
             const isRunning = st?.state === "running";
-            const pendingUploads = (st?.last_files || []).filter((item) => pendingUploadStatuses.has(item.status)).length;
-            const conflictCount = unresolvedConflictCountByTask[task.id] || 0;
-            const hasFailure = Boolean(st?.last_error || (st?.failed_files ?? 0) > 0 || st?.state === "failed");
-            const healthTone: Tone = hasFailure ? "danger" : conflictCount > 0 || pendingUploads > 0 ? "warning" : isRunning ? "info" : task.enabled ? "success" : "neutral";
-            const healthLabel = hasFailure ? "需要排查" : conflictCount > 0 ? "有冲突" : pendingUploads > 0 ? "待上传" : isRunning ? "同步中" : task.enabled ? "已同步" : "已停用";
+            const pendingRealtimeCount = (st?.last_files || []).filter((item) => pendingRealtimeStatuses.has(item.status)).length;
+            const conflictCount = Math.max(unresolvedConflictCountByTask[task.id] || 0, st?.conflict_files ?? 0);
+            const hasFailure = Boolean(
+              st?.last_error ||
+              (st?.failed_files ?? 0) > 0 ||
+              (st?.delete_failed_files ?? 0) > 0 ||
+              st?.state === "failed"
+            );
+            const healthTone: Tone = hasFailure ? "danger" : conflictCount > 0 || pendingRealtimeCount > 0 ? "warning" : isRunning ? "info" : task.enabled ? "success" : "neutral";
+            const healthLabel = hasFailure ? "需要排查" : conflictCount > 0 ? "有冲突" : pendingRealtimeCount > 0 ? "待处理" : isRunning ? "同步中" : task.enabled ? "已同步" : "已停用";
             const isExpanded = Boolean(expanded[task.id]);
             const lastSyncTime = st?.finished_at ?? st?.started_at ?? task.last_run_at ?? null;
             const localPathExpanded = Boolean(expandedPaths[pathKey(task.id, "local")]);
@@ -296,7 +301,13 @@ export function TasksPage() {
                 <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
                   <span>最近同步：{lastSyncTime ? formatTimestamp(lastSyncTime) : "暂无"}</span>
                   <span className="text-zinc-600">|</span>
-                  <span>待上传 {pendingUploads}</span>
+                  <span>待处理 {pendingRealtimeCount}</span>
+                  <span className="text-zinc-600">|</span>
+                  <span>删除 {st?.deleted_files ?? 0}</span>
+                  <span className="text-zinc-600">|</span>
+                  <span>待删 {st?.delete_pending_files ?? 0}</span>
+                  <span className="text-zinc-600">|</span>
+                  <span>删失败 {st?.delete_failed_files ?? 0}</span>
                   <span className="text-zinc-600">|</span>
                   <span>失败 {st?.failed_files ?? 0}</span>
                   <span className="text-zinc-600">|</span>
@@ -344,7 +355,7 @@ export function TasksPage() {
                       <div className="mt-3 grid gap-2 text-xs text-zinc-500 md:grid-cols-2">
                         <p className="break-all">任务 ID：{task.id}</p>
                         <p className="break-all">base_path：{task.base_path || "默认同本地目录"}</p>
-                        {st ? <p>已处理 {progressState.processed}/{progressState.effectiveTotal}，完成 {st.completed_files}，跳过 {st.skipped_files}</p> : null}
+                        {st ? <p>已处理 {progressState.processed}/{progressState.effectiveTotal}，完成 {st.completed_files}，删除 {st.deleted_files}，待删 {st.delete_pending_files}，删失败 {st.delete_failed_files}，跳过 {st.skipped_files}</p> : null}
                         <p>原始状态：{stateLabels[stateKey] || stateKey}</p>
                       </div>
                     </div>

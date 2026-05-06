@@ -39,7 +39,7 @@ type SyncLogResponseRaw = {
 type Props = { onNavigate: (tab: NavKey) => void };
 
 const ATTENTION_STATUSES = new Set(["failed", "delete_failed", "conflict", "cancelled"]);
-const PENDING_UPLOAD_STATUSES = new Set(["queued", "creating", "created", "reimporting"]);
+const PENDING_SYNC_STATUSES = new Set(["queued", "creating", "created", "reimporting", "delete_pending"]);
 const SUCCESS_STATUSES = new Set(["success", "uploaded", "downloaded", "mirrored", "deleted", "linked", "bootstrapped"]);
 
 function getStatusActivityTime(status?: SyncTaskStatus | null): number | null {
@@ -122,7 +122,7 @@ export function DashboardPage({ onNavigate }: Props) {
   const todayEventCount = syncLogEntries.filter((e) => isSameDay(e.timestamp, today)).length;
   const failedEventCount = syncLogEntries.filter((e) => ATTENTION_STATUSES.has(e.status) && e.status !== "conflict").length;
   const conflictEventCount = syncLogEntries.filter((e) => e.status === "conflict").length;
-  const pendingUploadCount = syncLogEntries.filter((e) => PENDING_UPLOAD_STATUSES.has(e.status)).length;
+  const pendingUploadCount = syncLogEntries.filter((e) => PENDING_SYNC_STATUSES.has(e.status)).length;
   const pendingDownloadCount = 0;
   const attentionCount = failedEventCount + conflictEventCount + unresolvedConflicts;
   const lastSuccess = syncLogEntries.find((e) => SUCCESS_STATUSES.has(e.status));
@@ -144,7 +144,7 @@ export function DashboardPage({ onNavigate }: Props) {
           runningTasks > 0 ? `正在同步 ${runningTasks} 个任务` :
             enabledTasks > 0 ? "暂无待处理问题" : "请先启用同步任务";
   const attentionEntries = syncLogEntries.filter((entry) => ATTENTION_STATUSES.has(entry.status));
-  const queuedEntries = syncLogEntries.filter((entry) => PENDING_UPLOAD_STATUSES.has(entry.status));
+  const queuedEntries = syncLogEntries.filter((entry) => PENDING_SYNC_STATUSES.has(entry.status));
   const focusEntries = attentionEntries.length > 0 ? attentionEntries : queuedEntries;
   const runningTaskList = useMemo(
     () => tasks.filter((task) => statusMap[task.id]?.state === "running"),
@@ -202,7 +202,7 @@ export function DashboardPage({ onNavigate }: Props) {
         ) : null}
         {st ? (
           <p className="mt-2 text-xs text-zinc-500">
-            完成 {st.completed_files}，失败 {st.failed_files}，跳过 {st.skipped_files}
+            完成 {st.completed_files}，删除 {st.deleted_files}，待删 {st.delete_pending_files}，删失败 {st.delete_failed_files}，失败 {st.failed_files}，冲突 {st.conflict_files}
           </p>
         ) : null}
         {st?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{st.last_error}</p> : null}
@@ -222,7 +222,7 @@ export function DashboardPage({ onNavigate }: Props) {
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="同步健康" value={healthLabel} hint={healthHint} tone={healthTone} icon={<IconActivity className="h-4 w-4" />} />
-        <StatCard label="待同步" value={`${pendingUploadCount + pendingDownloadCount}`} hint={`待上传 ${pendingUploadCount}，待下载 ${pendingDownloadCount}`} tone={pendingUploadCount + pendingDownloadCount > 0 ? "warning" : "success"} icon={<IconArrowRightLeft className="h-4 w-4" />} />
+        <StatCard label="待同步" value={`${pendingUploadCount + pendingDownloadCount}`} hint={`待处理 ${pendingUploadCount}，待下载 ${pendingDownloadCount}`} tone={pendingUploadCount + pendingDownloadCount > 0 ? "warning" : "success"} icon={<IconArrowRightLeft className="h-4 w-4" />} />
         <StatCard label="问题处理" value={`${attentionCount}`} hint={`失败 ${failedEventCount}，冲突 ${unresolvedConflicts + conflictEventCount}`} tone={attentionCount > 0 ? "danger" : "success"} icon={<IconConflicts className="h-4 w-4" />} />
         <StatCard label="最近成功" value={lastSuccess ? formatShortTime(lastSuccess.timestamp) : "暂无"} hint={lastSuccess ? lastSuccess.taskName : `今日日志事件 ${todayEventCount} 条`} tone="neutral" icon={<IconRefresh className="h-4 w-4" />} />
       </div>

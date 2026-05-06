@@ -133,6 +133,12 @@ class SyncTaskStatusResponse(BaseModel):
     completed_files: int
     failed_files: int
     skipped_files: int
+    uploaded_files: int = 0
+    downloaded_files: int = 0
+    deleted_files: int = 0
+    conflict_files: int = 0
+    delete_pending_files: int = 0
+    delete_failed_files: int = 0
     last_error: str | None = None
     current_run_id: str | None = None
     last_files: list[SyncFileEventResponse] = Field(default_factory=list)
@@ -148,6 +154,12 @@ class SyncTaskStatusResponse(BaseModel):
             completed_files=status.completed_files,
             failed_files=status.failed_files,
             skipped_files=status.skipped_files,
+            uploaded_files=status.uploaded_files,
+            downloaded_files=status.downloaded_files,
+            deleted_files=status.deleted_files,
+            conflict_files=status.conflict_files,
+            delete_pending_files=status.delete_pending_files,
+            delete_failed_files=status.delete_failed_files,
             last_error=status.last_error,
             current_run_id=status.current_run_id,
             last_files=[SyncFileEventResponse.from_event(evt) for evt in status.last_files],

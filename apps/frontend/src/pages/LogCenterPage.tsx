@@ -783,6 +783,9 @@ export function LogCenterPage() {
                           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
                             <span>上 {run.counts.uploaded}</span>
                             <span>下 {run.counts.downloaded}</span>
+                            <span>删 {run.counts.deleted}</span>
+                            <span>待删 {run.counts.delete_pending}</span>
+                            <span>删失败 {run.counts.delete_failed}</span>
                             <span>失败 {run.counts.failed}</span>
                             <span>冲突 {run.counts.conflicts}</span>
                             <span>耗时 {formatDuration(run.started_at, run.finished_at, run.last_event_at)}</span>
@@ -871,6 +874,9 @@ export function LogCenterPage() {
                           <div className="mt-2.5 flex flex-wrap gap-2">
                             <StatusPill label={`上传 ${diagnosticCounts?.uploaded ?? 0}`} tone="info" />
                             <StatusPill label={`下载 ${diagnosticCounts?.downloaded ?? 0}`} tone="info" />
+                            <StatusPill label={`删除 ${diagnosticCounts?.deleted ?? 0}`} tone="info" />
+                            <StatusPill label={`待删除 ${diagnosticCounts?.delete_pending ?? 0}`} tone={(diagnosticCounts?.delete_pending ?? 0) > 0 ? "warning" : "success"} />
+                            <StatusPill label={`删除失败 ${diagnosticCounts?.delete_failed ?? 0}`} tone={(diagnosticCounts?.delete_failed ?? 0) > 0 ? "danger" : "success"} />
                             <StatusPill label={`跳过 ${diagnosticCounts?.skipped ?? 0}`} tone="warning" />
                             <StatusPill label={`失败 ${diagnosticCounts?.failed ?? 0}`} tone={(diagnosticCounts?.failed ?? 0) > 0 ? "danger" : "success"} />
                             <StatusPill label={`冲突 ${diagnosticCounts?.conflicts ?? 0}`} tone={(diagnosticCounts?.conflicts ?? 0) > 0 ? "warning" : "success"} />
@@ -915,6 +921,9 @@ export function LogCenterPage() {
                         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
                           <p className="text-xs text-zinc-500">运行判断</p>
                           <div className="mt-3 flex flex-wrap gap-2">
+                            <StatusPill label={diagnosticCounts?.deleted ? `删除 ${diagnosticCounts.deleted}` : "无删除"} tone={diagnosticCounts?.deleted ? "info" : "neutral"} />
+                            <StatusPill label={diagnosticCounts?.delete_pending ? `待删除 ${diagnosticCounts.delete_pending}` : "无待删除"} tone={diagnosticCounts?.delete_pending ? "warning" : "success"} />
+                            <StatusPill label={diagnosticCounts?.delete_failed ? `删除失败 ${diagnosticCounts.delete_failed}` : "无删除失败"} tone={diagnosticCounts?.delete_failed ? "danger" : "success"} />
                             <StatusPill label={diagnosticCounts?.failed ? `失败 ${diagnosticCounts.failed}` : "无失败"} tone={diagnosticCounts?.failed ? "danger" : "success"} />
                             <StatusPill label={diagnosticCounts?.conflicts ? `冲突 ${diagnosticCounts.conflicts}` : "无冲突"} tone={diagnosticCounts?.conflicts ? "warning" : "success"} />
                             <StatusPill label={diagnosticCounts?.skipped ? `跳过 ${diagnosticCounts.skipped}` : "无跳过"} tone={diagnosticCounts?.skipped ? "warning" : "success"} />

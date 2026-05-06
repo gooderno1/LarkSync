@@ -136,6 +136,46 @@ def test_tray_status_counts_running_and_errors(
     assert status["last_error"] == "boom"
 
 
+def test_sync_task_status_includes_delete_counters(
+    tray_client: TestClient, monkeypatch
+) -> None:
+    import src.api.sync_tasks as sync_tasks
+
+    task_id = "task-delete-status"
+    status = SyncTaskStatus(
+        task_id=task_id,
+        state="running",
+        started_at=10.0,
+        total_files=6,
+        completed_files=2,
+        failed_files=1,
+        skipped_files=0,
+        uploaded_files=1,
+        downloaded_files=1,
+        deleted_files=2,
+        conflict_files=1,
+        delete_pending_files=1,
+        delete_failed_files=1,
+        current_run_id="run-delete",
+        last_files=[
+            SyncFileEvent(path="D:/docs/removed.md", status="deleted", timestamp=11.0),
+        ],
+    )
+    monkeypatch.setattr(sync_tasks.runner, "list_statuses", lambda: {task_id: status})
+
+    response = tray_client.get("/sync/tasks/status")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["task_id"] == task_id
+    assert body[0]["uploaded_files"] == 1
+    assert body[0]["downloaded_files"] == 1
+    assert body[0]["deleted_files"] == 2
+    assert body[0]["conflict_files"] == 1
+    assert body[0]["delete_pending_files"] == 1
+    assert body[0]["delete_failed_files"] == 1
+
+
 def test_create_task_rejects_duplicate_mapping(tray_client: TestClient, tmp_path: Path) -> None:
     local_dir = tmp_path / "duplicate-local"
     local_dir.mkdir(parents=True, exist_ok=True)

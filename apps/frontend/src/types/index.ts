@@ -73,6 +73,12 @@ export type SyncTaskStatus = {
   completed_files: number;
   failed_files: number;
   skipped_files: number;
+  uploaded_files: number;
+  downloaded_files: number;
+  deleted_files: number;
+  conflict_files: number;
+  delete_pending_files: number;
+  delete_failed_files: number;
   last_error?: string | null;
   current_run_id?: string | null;
   last_files: SyncFileEvent[];

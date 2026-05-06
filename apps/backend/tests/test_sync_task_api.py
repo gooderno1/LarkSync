@@ -185,3 +185,62 @@ async def test_list_task_overview_uses_latest_run_without_scanning_events(
     assert response[0].task.id == task.id
     assert response[0].counts.uploaded == run.uploaded_files
     assert response[0].counts.failed == run.failed_files
+
+
+@pytest.mark.asyncio
+async def test_list_task_overview_includes_delete_counts_from_latest_run_without_scanning_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = _build_task()
+    run = SyncRunItem(
+        run_id="run-delete",
+        task_id="task-1",
+        state="success",
+        trigger_source="manual",
+        started_at=10.0,
+        finished_at=20.0,
+        last_event_at=20.0,
+        total_files=6,
+        completed_files=4,
+        failed_files=1,
+        skipped_files=1,
+        uploaded_files=1,
+        downloaded_files=1,
+        deleted_files=2,
+        conflict_files=0,
+        delete_pending_files=1,
+        delete_failed_files=1,
+        last_error="最近删除失败",
+        created_at=10.0,
+        updated_at=20.0,
+    )
+
+    class FakeService:
+        async def list_tasks(self):
+            return [task]
+
+    class FakeRunner:
+        def list_statuses(self):
+            return {}
+
+    class FakeRunService:
+        async def list_latest_by_tasks(self, task_ids: list[str]):
+            assert task_ids == [task.id]
+            return {task.id: run}
+
+    class FailEventStore:
+        def read_events(self, **kwargs):
+            raise AssertionError("overview 不应读取 sync-events.jsonl")
+
+    monkeypatch.setattr(sync_tasks_api, "service", FakeService())
+    monkeypatch.setattr(sync_tasks_api, "runner", FakeRunner())
+    monkeypatch.setattr(sync_tasks_api, "run_service", FakeRunService())
+    monkeypatch.setattr(sync_tasks_api, "event_store", FailEventStore())
+
+    response = await sync_tasks_api.list_task_overview()
+
+    assert len(response) == 1
+    assert response[0].task.id == task.id
+    assert response[0].counts.deleted == 2
+    assert response[0].counts.delete_pending == 1
+    assert response[0].counts.delete_failed == 1
