@@ -251,3 +251,38 @@ def test_build_notes_prefers_development_log_for_stable_release(tmp_path: Path) 
     assert "### 升级重点" in markdown
     assert "#### v0.6.2-dev.2" in markdown
     assert "- 自动更新改走用户目录" in markdown
+
+
+def test_build_notes_collects_devlog_sections_from_release_changelog_range(tmp_path: Path) -> None:
+    changelog_path = tmp_path / "CHANGELOG.md"
+    changelog_path.write_text(
+        (
+            "# CHANGELOG\n\n"
+            "[2026-05-11] v0.7.0 release: v0.7.0\n"
+            "[2026-05-11] v0.6.21-dev.1 feat(log-center): event filters\n"
+            "[2026-05-06] v0.6.20 release: v0.6.20\n"
+        ),
+        encoding="utf-8",
+    )
+    development_log_path = tmp_path / "DEVELOPMENT_LOG.md"
+    development_log_path.write_text(
+        (
+            "# DEVELOPMENT LOG\n\n"
+            "## v0.6.21-dev.1 (2026-05-11)\n\n"
+            "- 目标：\n"
+            "  - 增加事件筛选\n"
+            "- 结果：\n"
+            "  - 日志中心事件时间线可按上传、下载、删除分别查看\n"
+        ),
+        encoding="utf-8",
+    )
+
+    markdown = release_notes.build_notes(
+        changelog_path,
+        "v0.7.0",
+        development_log_path=development_log_path,
+    )
+
+    assert "变更区间：v0.6.20 -> v0.7.0" in markdown
+    assert "#### v0.6.21-dev.1" in markdown
+    assert "- 日志中心事件时间线可按上传、下载、删除分别查看" in markdown

@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.0 release (2026-05-11)
+
+- 目标：
+  - 发布 `v0.7.0` 稳定版，收口日志中心事件时间线按动作类型筛选的用户可见能力。
+- 结果：
+  - 根包、前端和后端版本统一更新为 `v0.7.0`。
+  - 稳定版包含 `v0.6.21-dev.1`：日志中心运行详情的事件时间线可按 `上传 / 下载 / 删除 / 问题 / 跳过 / 实际变更` 分别筛选，删除筛选覆盖删除成功、待删除和删除失败。
+  - Release notes 生成逻辑支持跨 minor/major 稳定版发布时按 changelog 变更区间收集 dev 开发日志，确保 `v0.7.0` 这种目标版本仍能展示本次纳入的实际开发版本详情。
+- 测试：
+  - `$env:PYTHONPATH='apps/backend'; python -m pytest apps/backend/tests/test_release_notes.py -q`
+  - `npm --prefix apps/frontend test`
+  - `npm run build --prefix apps/frontend`
+  - `$env:PYTHONPATH='apps/backend'; python -m pytest apps/backend/tests/test_version.py apps/backend/tests/test_release_notes.py -q`
+  - `$env:PYTHONPATH=''; python -m pytest -q`（在 `apps/backend` 目录执行）
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.6.21-dev.1 (2026-05-11)
 
 - 目标：

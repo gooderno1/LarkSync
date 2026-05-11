@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-11] v0.7.0 release: v0.7.0
 [2026-05-11] v0.6.21-dev.1 feat(log-center): 日志中心运行详情的事件时间线新增上传、下载、删除等动作级筛选，删除筛选覆盖删除成功、待删除和删除失败；前端补充事件筛选规则单元测试并接入 Vitest
 [2026-05-06] v0.6.20 release: 收口删除链路状态在实时状态与运行摘要中的遗漏；后端 `/sync/tasks/status` 补齐 `deleted / conflict / delete_pending / delete_failed` 等实时计数，日志中心“实际变更”、任务页和仪表盘统一展示 `删除 / 待删除 / 删除失败`，避免删除动作在正式版多个视图里继续被隐掉
 [2026-05-06] v0.6.20-dev.1 fix(sync-status): `/sync/tasks/status` 补齐 `deleted / conflict / delete_pending / delete_failed` 等实时计数；日志中心“实际变更”和任务/仪表盘状态摘要同步展示删除链路状态，修复删除动作在多个视图里被漏显示的问题

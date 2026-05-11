@@ -171,6 +171,25 @@ def collect_devlog_sections_for_release(
     return [section for section in sections if section.version.startswith(prefix)]
 
 
+def collect_devlog_sections_for_entries(
+    sections: list[DevelopmentLogSection], entries: list[ChangelogEntry]
+) -> list[DevelopmentLogSection]:
+    section_by_version = {section.version: section for section in sections}
+    selected: list[DevelopmentLogSection] = []
+    seen: set[str] = set()
+    for entry in entries:
+        if "-dev." not in entry.version:
+            continue
+        if entry.version in seen:
+            continue
+        section = section_by_version.get(entry.version)
+        if section is None:
+            continue
+        selected.append(section)
+        seen.add(entry.version)
+    return selected
+
+
 def _iter_grouped(entries: Iterable[ChangelogEntry]) -> list[tuple[str, list[ChangelogEntry]]]:
     groups: list[tuple[str, list[ChangelogEntry]]] = []
     current_version = ""
@@ -289,10 +308,13 @@ def build_notes(
     dev_sections: list[DevelopmentLogSection] | None = None
     if development_log_path and development_log_path.exists():
         dev_text = development_log_path.read_text(encoding="utf-8")
-        dev_sections = collect_devlog_sections_for_release(
-            parse_development_log(dev_text),
-            target_version,
-        )
+        devlog_sections = parse_development_log(dev_text)
+        dev_sections = collect_devlog_sections_for_entries(devlog_sections, items)
+        if not dev_sections:
+            dev_sections = collect_devlog_sections_for_release(
+                devlog_sections,
+                target_version,
+            )
     checksums = collect_asset_checksums(asset_paths or [])
     return render_release_notes(
         target_version,
