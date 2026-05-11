@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.1 release (2026-05-11)
+
+- 目标：
+  - 发布 `v0.7.1` 稳定版，交付“算云项目更新”中软件设计说明书 V1.5 的表格上传修复。
+- 结果：
+  - 版本号从 `v0.7.1-dev.1` 收敛为稳定版 `v0.7.1`。
+  - 稳定版包含 Markdown 表格上传前拆分超限大表、补齐表格列宽、避免表格失败后降级为代码块的修复。
+  - 推送 `v0.7.1` tag 后由 GitHub Actions `Release Build` 自动构建并上传 GitHub Release Windows 安装包与校验文件。
+- 测试：
+  - `python -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+  - `python scripts/release_notes.py --version v0.7.1 --asset "dist/LarkSync-Setup-v0.7.1.exe" --output release-notes-preview.md`
+  - `python -m pytest tests/test_release.py tests/test_release_notes.py tests/test_version.py -q`
+
 ## v0.7.1-dev.1 (2026-05-11)
 
 - 目标：
