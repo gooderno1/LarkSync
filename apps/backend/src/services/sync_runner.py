@@ -45,6 +45,7 @@ from src.services.watcher import FileChangeEvent, WatcherService
 SyncState = Literal["idle", "running", "success", "failed", "cancelled"]
 SYNC_LOG_LIMIT = 200
 _LOCAL_IMAGE_UPLOAD_REVISION_MARKER = "#local-images-v2"
+_MARKDOWN_TABLE_RENDER_REVISION_MARKER = "#md-table-render-v2"
 _MARKDOWN_IMAGE_REF_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
 _MARKDOWN_LINK_REF_PATTERN = re.compile(r"(?<!!)\[[^\]]*]\(([^)]+)\)")
 _HTML_IMAGE_REF_PATTERN = re.compile(
@@ -1658,6 +1659,11 @@ class SyncTaskRunner:
             markdown,
             base_path,
         )
+        update_mode = task.update_mode or "auto"
+        has_large_table_over_limit = has_markdown_table_exceeding_create_limit(markdown)
+        table_render_repair_required = (
+            has_large_table_over_limit and update_mode != "partial"
+        )
         if await self._block_markdown_upload_when_cloud_changed(
             task=task,
             status=status,
@@ -1670,6 +1676,9 @@ class SyncTaskRunner:
         ):
             return
         local_images_repaired = _has_local_image_upload_revision(link.cloud_revision)
+        table_render_repaired = _has_markdown_table_render_revision(
+            link.cloud_revision
+        )
         block_states = await self._block_service.list_blocks(str(path), link.cloud_token)
         if block_states:
             if all(item.file_hash == file_hash for item in block_states) and (
@@ -1678,6 +1687,10 @@ class SyncTaskRunner:
                     resource_signature=resource_signature,
                     has_uploadable_images=has_uploadable_images,
                     local_images_repaired=local_images_repaired,
+                )
+                and self._is_markdown_table_render_state_synced(
+                    repair_required=table_render_repair_required,
+                    repaired=table_render_repaired,
                 )
             ):
                 status.skipped_files += 1
@@ -1697,6 +1710,10 @@ class SyncTaskRunner:
                     has_uploadable_images=has_uploadable_images,
                     local_images_repaired=local_images_repaired,
                 )
+                and self._is_markdown_table_render_state_synced(
+                    repair_required=table_render_repair_required,
+                    repaired=table_render_repaired,
+                )
             ):
                 status.skipped_files += 1
                 self._record_event(
@@ -1708,6 +1725,10 @@ class SyncTaskRunner:
                 (not imported_doc)
                 and (not force)
                 and task.sync_mode != "upload_only"
+                and self._is_markdown_table_render_state_synced(
+                    repair_required=table_render_repair_required,
+                    repaired=table_render_repaired,
+                )
                 and mtime <= (link.updated_at + 1.0)
             ):
                 status.skipped_files += 1
@@ -1715,7 +1736,6 @@ class SyncTaskRunner:
                     SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
                 )
                 return
-        update_mode = task.update_mode or "auto"
         requires_reimport = self._should_reimport_markdown_doc(
             markdown, has_uploadable_images=has_uploadable_images
         )
@@ -1737,6 +1757,7 @@ class SyncTaskRunner:
                 status=status,
             )
         lock = self._doc_locks.setdefault(link.cloud_token, asyncio.Lock())
+        markdown_tables_rendered = False
         async with lock:
             logger.info(
                 "上传文档: task_id={} path={} token={}",
@@ -1745,12 +1766,14 @@ class SyncTaskRunner:
                 link.cloud_token,
             )
             if imported_doc:
-                if has_uploadable_images:
+                if has_uploadable_images or table_render_repair_required:
                     logger.info(
-                        "导入创建后检测到本地图片，改用块级覆盖: task_id={} path={} token={}",
+                        "导入创建后检测到需转换器修复的 Markdown 内容，改用块级覆盖: task_id={} path={} token={} has_images={} large_table={}",
                         task.id,
                         path,
                         link.cloud_token,
+                        has_uploadable_images,
+                        has_large_table_over_limit,
                     )
                     await docx_service.replace_document_content(
                         link.cloud_token,
@@ -1758,6 +1781,7 @@ class SyncTaskRunner:
                         base_path=base_path,
                         update_mode="full",
                     )
+                    markdown_tables_rendered = table_render_repair_required
                 await self._rebuild_block_state(
                     task=task,
                     docx_service=docx_service,
@@ -1769,15 +1793,18 @@ class SyncTaskRunner:
                 )
             else:
                 applied = False
-                if update_mode in {"auto", "partial"}:
-                    if requires_reimport:
-                        logger.info(
-                            "检测到超限表格，优先尝试整块替换: task_id={} path={} token={} update_mode={}",
-                            task.id,
-                            path,
-                            link.cloud_token,
-                            update_mode,
-                        )
+                force_full_replace = (
+                    table_render_repair_required and update_mode == "auto"
+                )
+                if force_full_replace:
+                    logger.info(
+                        "检测到超限表格，跳过局部更新并执行同 token 全量重建: task_id={} path={} token={} update_mode={}",
+                        task.id,
+                        path,
+                        link.cloud_token,
+                        update_mode,
+                    )
+                if update_mode in {"auto", "partial"} and not force_full_replace:
                     try:
                         applied = await self._apply_block_update(
                             task=task,
@@ -1809,6 +1836,7 @@ class SyncTaskRunner:
                             base_path=base_path,
                             update_mode="full",
                         )
+                        markdown_tables_rendered = table_render_repair_required
                     except Exception:
                         if not requires_reimport:
                             raise
@@ -1869,6 +1897,7 @@ class SyncTaskRunner:
             link.cloud_token,
             synced_at,
             local_images_uploaded=has_uploadable_images,
+            markdown_tables_rendered=markdown_tables_rendered,
         )
         # 使用缓存获取 parent_token（已在 _create_cloud_doc_for_markdown 或更早处解析）
         upload_parent = await self._resolve_cloud_parent(task, path, drive_service)
@@ -2111,6 +2140,14 @@ class SyncTaskRunner:
         return (not has_uploadable_images) and local_images_repaired
 
     @staticmethod
+    def _is_markdown_table_render_state_synced(
+        *,
+        repair_required: bool,
+        repaired: bool,
+    ) -> bool:
+        return (not repair_required) or repaired
+
+    @staticmethod
     def _supports_md_cloud_mirror(drive_service: DriveService) -> bool:
         return callable(getattr(drive_service, "list_files", None)) and callable(
             getattr(drive_service, "create_folder", None)
@@ -2231,11 +2268,16 @@ class SyncTaskRunner:
         cloud_mtime: float | None,
         *,
         local_images_uploaded: bool = False,
+        markdown_tables_rendered: bool = False,
     ) -> str | None:
         token = (cloud_token or "").strip()
         if not token:
             return None
-        suffix = _LOCAL_IMAGE_UPLOAD_REVISION_MARKER if local_images_uploaded else ""
+        suffix = ""
+        if local_images_uploaded:
+            suffix += _LOCAL_IMAGE_UPLOAD_REVISION_MARKER
+        if markdown_tables_rendered:
+            suffix += _MARKDOWN_TABLE_RENDER_REVISION_MARKER
         if cloud_mtime is None:
             return f"{token}{suffix}"
         return f"{token}@{int(cloud_mtime * 1000)}{suffix}"
@@ -3938,6 +3980,10 @@ def _contains_legacy_docx_placeholder(local_path: Path) -> bool:
 
 def _has_local_image_upload_revision(revision: str | None) -> bool:
     return bool(revision and _LOCAL_IMAGE_UPLOAD_REVISION_MARKER in revision)
+
+
+def _has_markdown_table_render_revision(revision: str | None) -> bool:
+    return bool(revision and _MARKDOWN_TABLE_RENDER_REVISION_MARKER in revision)
 
 
 def _normalize_markdown_resource_ref(raw: str) -> str:

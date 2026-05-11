@@ -250,6 +250,73 @@ async def test_upload_markdown_creates_cloud_doc(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_upload_new_markdown_with_large_table_runs_block_replace_after_import(
+    tmp_path: Path,
+) -> None:
+    markdown_path = tmp_path / "大表格新文档.md"
+    markdown_path.write_text(
+        "\n".join(
+            [
+                "| H1 | H2 |",
+                "| --- | --- |",
+                *[f"| r{i}c1 | r{i}c2 |" for i in range(1, 10)],
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    new_doc = DriveFile(token="doc-new", name="大表格新文档", type="docx")
+    responses = [
+        DriveFileList(files=[], has_more=False, next_page_token=None),
+        DriveFileList(files=[], has_more=False, next_page_token=None),
+        DriveFileList(files=[new_doc], has_more=False, next_page_token=None),
+    ]
+    link_service = FakeLinkService()
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService(responses),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+    )
+    runner._block_service = FakeBlockService()
+    runner._import_poll_attempts = 3
+    runner._import_poll_interval = 0.0
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.failed_files == 0
+    assert runner._docx_service.replace_calls == [
+        ("doc-new", markdown_path.read_text(encoding="utf-8"))
+    ]
+    assert "#md-table-render-v2" in (
+        link_service.links[str(markdown_path)].cloud_revision or ""
+    )
+
+
+@pytest.mark.asyncio
 async def test_upload_new_markdown_with_local_image_runs_block_replace_after_import(
     tmp_path: Path,
 ) -> None:
@@ -747,10 +814,8 @@ async def test_upload_markdown_new_doc_initializes_baseline_before_bidirectional
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("update_mode", ["auto", "partial"])
-async def test_upload_markdown_prefers_block_replace_for_existing_large_table_doc(
+async def test_upload_markdown_forces_full_replace_for_existing_large_table_doc(
     tmp_path: Path,
-    update_mode: str,
 ) -> None:
     markdown_path = tmp_path / "大表格文档.md"
     markdown_path.write_text(
@@ -792,7 +857,7 @@ async def test_upload_markdown_prefers_block_replace_for_existing_large_table_do
         cloud_folder_name=None,
         base_path=None,
         sync_mode="upload_only",
-        update_mode=update_mode,
+        update_mode="auto",
         enabled=True,
         created_at=0,
         updated_at=0,
@@ -811,13 +876,96 @@ async def test_upload_markdown_prefers_block_replace_for_existing_large_table_do
 
     assert status.failed_files == 0
     assert status.completed_files == 1
-    assert docx_service.replace_calls == []
-    assert docx_service.inserted_blocks
-    assert docx_service.deleted_ranges
+    assert docx_service.replace_calls == [("doc-old", markdown_path.read_text(encoding="utf-8"))]
+    assert docx_service.inserted_blocks == []
+    assert docx_service.deleted_ranges == []
     assert runner._import_task_service.calls == []
     assert runner._drive_service.deleted == []
     assert link_service.links[str(markdown_path)].cloud_token == "doc-old"
     assert runner._block_service.storage[(str(markdown_path), "doc-old")]
+
+
+@pytest.mark.asyncio
+async def test_upload_markdown_repairs_same_hash_large_table_link_once(
+    tmp_path: Path,
+) -> None:
+    markdown_path = tmp_path / "大表格修复.md"
+    markdown_path.write_text(
+        "\n".join(
+            [
+                "| H1 | H2 |",
+                "| --- | --- |",
+                *[f"| r{i}c1 | r{i}c2 |" for i in range(1, 10)],
+            ]
+        ),
+        encoding="utf-8",
+    )
+    file_hash = calculate_file_hash(markdown_path)
+
+    link_service = FakeLinkService()
+    link_service.links[str(markdown_path)] = SyncLinkItem(
+        local_path=str(markdown_path),
+        cloud_token="doc-existing",
+        cloud_type="docx",
+        task_id="task-1",
+        updated_at=0.0,
+        local_hash=file_hash,
+        cloud_revision="doc-existing@1",
+    )
+    docx_service = FakeDocxService()
+    runner = SyncTaskRunner(
+        docx_service=docx_service,
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService([]),
+        link_service=link_service,
+        import_task_service=FakeImportTaskService(),
+    )
+    runner._block_service = FakeBlockService()
+    runner._block_service.storage[(str(markdown_path), "doc-existing")] = [
+        BlockStateItem(
+            file_hash=file_hash,
+            local_path=str(markdown_path),
+            cloud_token="doc-existing",
+            block_index=0,
+            block_hash="old",
+            block_count=1,
+            updated_at=0.0,
+            created_at=0.0,
+        )
+    ]
+    task = SyncTaskItem(
+        id="task-1",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    await runner._upload_markdown(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+    )
+
+    assert status.skipped_files == 0
+    assert status.completed_files == 1
+    assert docx_service.replace_calls == [
+        ("doc-existing", markdown_path.read_text(encoding="utf-8"))
+    ]
+    assert "#md-table-render-v2" in (
+        link_service.links[str(markdown_path)].cloud_revision or ""
+    )
 
 
 @pytest.mark.asyncio

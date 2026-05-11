@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-11] v0.7.2-dev.1 fix(sync-upload): 既有 Markdown 文档检测到超限表格且缺少 `#md-table-render-v2` 修复标记时，即使本地 hash 未变化也跳过局部块 diff，改为在原 doc token 内全量重建，修复 v0.7.1 只能修复新转换块、无法清理云端历史代码块和窄表格的问题
 [2026-05-11] v0.7.1 release: v0.7.1
 [2026-05-11] v0.7.1-dev.1 fix(sync-upload): Markdown 上行表格转换会在发送飞书前拆分超 8 行大表并补齐列宽，表格创建失败时不再降级为 fenced code，修复软件设计说明书 V1.5 上传后表格过窄和大表变代码块的问题
 [2026-05-11] v0.7.0 release: v0.7.0

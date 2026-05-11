@@ -1,5 +1,23 @@
 # DEVELOPMENT LOG
 
+## v0.7.2-dev.1 (2026-05-11)
+
+- 目标：
+  - 修复 `v0.7.1` 只改善新转换块、无法重建历史坏表格块的问题；用户更新后重新同步 V1.5 仍可看到旧代码块和窄表格。
+- 结果：
+  - 定位到 V1.5 在 `v0.7.1` 下已上传，但同步器走局部块 diff，源 Markdown hash 未变化的旧云端表格块不会被重建。
+  - `SyncTaskRunner` 在 `auto` 模式检测到超限 Markdown 表格时，会跳过局部块更新，直接在原 doc token 内执行 full replace，再重建块状态。
+  - 为超限表格修复加入 `#md-table-render-v2` 渲染修复标记；既有云端文档缺少该标记时，即使本地文件 hash 和块状态未变化，也会自动执行一次同 token 全量重建。
+  - 新建 Markdown 文档如果含超限表格，飞书导入创建后会立刻再走一次块级覆盖，避免初始导入产物残留代码块表格。
+  - 用当前 V1.5 做飞书 `blocks/convert` dry-run：转换输出 `159` 个表格块、`0` 个代码块，确认转换本身已正确，问题来自历史云端块未被重建。
+- 测试：
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py::test_upload_markdown_forces_full_replace_for_existing_large_table_doc -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py tests/test_sync_runner_block_update.py tests/test_docx_service.py -q`
+  - `python -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`（生成 `dist/LarkSync-Setup-v0.7.2-dev.1.exe`）
+
 ## v0.7.1 release (2026-05-11)
 
 - 目标：
