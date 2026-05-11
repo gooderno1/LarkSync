@@ -1,5 +1,33 @@
 # DEVELOPMENT LOG
 
+## v0.7.3 release (2026-05-12)
+
+- 目标：
+  - 发布 `v0.7.3` 稳定版，补齐 Markdown 表格上传到飞书后的单元格文本居中，并让已执行过 `v0.7.2` 修复的历史文档再触发一次重建。
+- 结果：
+  - 稳定版包含 `v0.7.3-dev.1`：表格单元格内文本块会写入飞书 `style.align=2` 居中样式。
+  - 超限表格渲染修复标记升级为 `#md-table-render-v3`；已有 `#md-table-render-v2` 的文档会被视为旧修复状态，下一次同步仍会在原 doc token 内全量重建一次。
+  - 修复范围继续覆盖“软件设计说明书 V1.5”这类历史表格坏块场景，不要求用户手动改动 Markdown 文件。
+- 测试：
+  - `python -m pytest -q`（在 `apps/backend` 目录执行）
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+  - `python scripts/release_notes.py --version v0.7.3 --asset "dist/LarkSync-Setup-v0.7.3.exe" --output release-notes-preview.md`
+  - `python -m pytest tests/test_release.py tests/test_release_notes.py tests/test_version.py -q`
+
+## v0.7.3-dev.1 (2026-05-12)
+
+- 目标：
+  - 继续收口用户反馈的飞书表格显示问题：表格已经变成原生表格后，单元格内部文本仍未居中。
+- 结果：
+  - `DocxService` 在补齐表格行列数和列宽后，会递归遍历表格 cell 内的文本类 block，仅对表格内部文本写入 `style.align=2`，不影响表格外正文。
+  - `SyncTaskRunner` 将超限表格渲染修复标记从 `#md-table-render-v2` 升级到 `#md-table-render-v3`，使已安装并运行过 `v0.7.2` 的用户在升级后仍能通过普通同步重新覆盖一次云端文档。
+  - 新增回归测试覆盖表格内部文本居中，以及已有旧 `#md-table-render-v2` 标记但本地 hash 未变化时仍不跳过同步。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py::test_patch_table_properties_centers_table_cell_text_blocks tests/test_sync_runner_upload_new_doc.py::test_upload_markdown_repairs_old_table_marker_large_table_link_once -q`
+  - `python -m pytest tests/test_docx_service.py tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest -q`（在 `apps/backend` 目录执行）
+
 ## v0.7.2 release (2026-05-11)
 
 - 目标：

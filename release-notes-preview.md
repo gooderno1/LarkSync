@@ -1,24 +1,22 @@
-# LarkSync v0.7.2
+# LarkSync v0.7.3
 
-- 发布日期：2026-05-11
-- 变更区间：v0.7.1 -> v0.7.2
+- 发布日期：2026-05-12
+- 变更区间：v0.7.2 -> v0.7.3
 
 ## 本次更新明细
 
 ### 升级重点
-- `v0.7.2-dev.1`：定位到 V1.5 在 `v0.7.1` 下已上传，但同步器走局部块 diff，源 Markdown hash 未变化的旧云端表格块不会被重建。
+- `v0.7.3-dev.1`：`DocxService` 在补齐表格行列数和列宽后，会递归遍历表格 cell 内的文本类 block，仅对表格内部文本写入 `style.align=2`，不影响表格外正文。
 
 ### 详细变更
 
-#### v0.7.2-dev.1
-- 定位到 V1.5 在 `v0.7.1` 下已上传，但同步器走局部块 diff，源 Markdown hash 未变化的旧云端表格块不会被重建。
-- `SyncTaskRunner` 在 `auto` 模式检测到超限 Markdown 表格时，会跳过局部块更新，直接在原 doc token 内执行 full replace，再重建块状态。
-- 为超限表格修复加入 `#md-table-render-v2` 渲染修复标记；既有云端文档缺少该标记时，即使本地文件 hash 和块状态未变化，也会自动执行一次同 token 全量重建。
-- 新建 Markdown 文档如果含超限表格，飞书导入创建后会立刻再走一次块级覆盖，避免初始导入产物残留代码块表格。
-- 用当前 V1.5 做飞书 `blocks/convert` dry-run：转换输出 `159` 个表格块、`0` 个代码块，确认转换本身已正确，问题来自历史云端块未被重建。
+#### v0.7.3-dev.1
+- `DocxService` 在补齐表格行列数和列宽后，会递归遍历表格 cell 内的文本类 block，仅对表格内部文本写入 `style.align=2`，不影响表格外正文。
+- `SyncTaskRunner` 将超限表格渲染修复标记从 `#md-table-render-v2` 升级到 `#md-table-render-v3`，使已安装并运行过 `v0.7.2` 的用户在升级后仍能通过普通同步重新覆盖一次云端文档。
+- 新增回归测试覆盖表格内部文本居中，以及已有旧 `#md-table-render-v2` 标记但本地 hash 未变化时仍不跳过同步。
 
 ## 安装包校验
 
 | asset | sha256 |
 | --- | --- |
-| LarkSync-Setup-v0.7.2.exe | `ee266ef2663514fc0d43dd40b828a5a9a33ac69406aa5de062be460d53002a08` |
+| LarkSync-Setup-v0.7.3.exe | `7d696feb1779b1c25be4606256d5096b03e9716189a3d4251df4ad780e667430` |

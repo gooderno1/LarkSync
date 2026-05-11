@@ -311,7 +311,7 @@ async def test_upload_new_markdown_with_large_table_runs_block_replace_after_imp
     assert runner._docx_service.replace_calls == [
         ("doc-new", markdown_path.read_text(encoding="utf-8"))
     ]
-    assert "#md-table-render-v2" in (
+    assert "#md-table-render-v3" in (
         link_service.links[str(markdown_path)].cloud_revision or ""
     )
 
@@ -886,7 +886,7 @@ async def test_upload_markdown_forces_full_replace_for_existing_large_table_doc(
 
 
 @pytest.mark.asyncio
-async def test_upload_markdown_repairs_same_hash_large_table_link_once(
+async def test_upload_markdown_repairs_old_table_marker_large_table_link_once(
     tmp_path: Path,
 ) -> None:
     markdown_path = tmp_path / "大表格修复.md"
@@ -910,7 +910,7 @@ async def test_upload_markdown_repairs_same_hash_large_table_link_once(
         task_id="task-1",
         updated_at=0.0,
         local_hash=file_hash,
-        cloud_revision="doc-existing@1",
+        cloud_revision="doc-existing@1#md-table-render-v2",
     )
     docx_service = FakeDocxService()
     runner = SyncTaskRunner(
@@ -963,7 +963,7 @@ async def test_upload_markdown_repairs_same_hash_large_table_link_once(
     assert docx_service.replace_calls == [
         ("doc-existing", markdown_path.read_text(encoding="utf-8"))
     ]
-    assert "#md-table-render-v2" in (
+    assert "#md-table-render-v3" in (
         link_service.links[str(markdown_path)].cloud_revision or ""
     )
 

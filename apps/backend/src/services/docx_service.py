@@ -67,6 +67,23 @@ _TABLE_COLUMN_MAX_WIDTH = 600
 _TABLE_COLUMN_DEFAULT_WIDTH = 180
 _TABLE_SINGLE_COLUMN_WIDTH = 600
 _TABLE_MAX_TOTAL_WIDTH = 1080
+_TABLE_CELL_TEXT_ALIGN_CENTER = 2
+_TABLE_CELL_TEXT_ALIGN_FIELDS = (
+    "text",
+    "bullet",
+    "ordered",
+    "quote",
+    "todo",
+    "heading1",
+    "heading2",
+    "heading3",
+    "heading4",
+    "heading5",
+    "heading6",
+    "heading7",
+    "heading8",
+    "heading9",
+)
 _FIGURE_START_PATTERN = re.compile(
     r"<!--\s*FIGURE:(?P<id>[\w.-]+):START\s*-->",
     re.IGNORECASE,
@@ -2028,7 +2045,59 @@ def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertRes
             table = dict(table)
             table["property"] = prop
             block["table"] = table
+    _center_table_cell_text_blocks(convert)
     return convert
+
+
+def _center_table_cell_text_blocks(convert: ConvertResult) -> None:
+    block_map = {
+        block_id: block
+        for block in convert.blocks
+        if isinstance((block_id := block.get("block_id")), str)
+    }
+    if not block_map:
+        return
+    visited: set[str] = set()
+    for block in convert.blocks:
+        if block.get("block_type") != BLOCK_TYPE_TABLE:
+            continue
+        for cell_id in _extract_children_ids(block):
+            _center_table_cell_text_descendants(cell_id, block_map, visited)
+
+
+def _center_table_cell_text_descendants(
+    block_id: str,
+    block_map: dict[str, dict[str, Any]],
+    visited: set[str],
+) -> None:
+    if block_id in visited:
+        return
+    visited.add(block_id)
+    block = block_map.get(block_id)
+    if not block:
+        return
+    _set_table_cell_text_align(block)
+    for child_id in _extract_children_ids(block):
+        _center_table_cell_text_descendants(child_id, block_map, visited)
+
+
+def _set_table_cell_text_align(block: dict[str, Any]) -> bool:
+    updated = False
+    for field in _TABLE_CELL_TEXT_ALIGN_FIELDS:
+        value = block.get(field)
+        if not isinstance(value, dict):
+            continue
+        if not isinstance(value.get("elements"), list):
+            continue
+        style = dict(value.get("style") or {})
+        if style.get("align") == _TABLE_CELL_TEXT_ALIGN_CENTER:
+            continue
+        patched_value = dict(value)
+        style["align"] = _TABLE_CELL_TEXT_ALIGN_CENTER
+        patched_value["style"] = style
+        block[field] = patched_value
+        updated = True
+    return updated
 
 
 def _group_cells_by_row_token(cells: list[str]) -> list[list[str]]:

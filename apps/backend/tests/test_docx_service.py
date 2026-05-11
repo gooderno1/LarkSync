@@ -1033,6 +1033,47 @@ def test_patch_table_properties_reshapes_flat_cells() -> None:
     assert table["property"]["column_size"] == 2
 
 
+def test_patch_table_properties_centers_table_cell_text_blocks() -> None:
+    convert = ConvertResult(
+        first_level_block_ids=["t1", "outside"],
+        blocks=[
+            {
+                "block_id": "t1",
+                "block_type": BLOCK_TYPE_TABLE,
+                "children": ["cell1", "cell2"],
+                "table": {"cells": ["cell1", "cell2"]},
+            },
+            {"block_id": "cell1", "block_type": 32, "children": ["p1"]},
+            {"block_id": "cell2", "block_type": 32, "children": ["p2"]},
+            {
+                "block_id": "p1",
+                "block_type": 2,
+                "text": {"elements": [{"text_run": {"content": "A"}}]},
+            },
+            {
+                "block_id": "p2",
+                "block_type": 2,
+                "text": {
+                    "style": {"align": 1},
+                    "elements": [{"text_run": {"content": "B"}}],
+                },
+            },
+            {
+                "block_id": "outside",
+                "block_type": 2,
+                "text": {"elements": [{"text_run": {"content": "outside"}}]},
+            },
+        ],
+    )
+
+    patched = _patch_table_properties(convert, "| A | B |\n| --- | --- |")
+    block_map = {block["block_id"]: block for block in patched.blocks}
+
+    assert block_map["p1"]["text"]["style"]["align"] == 2
+    assert block_map["p2"]["text"]["style"]["align"] == 2
+    assert "style" not in block_map["outside"]["text"]
+
+
 def test_patch_table_properties_adds_readable_column_width() -> None:
     convert = ConvertResult(
         first_level_block_ids=["t1"],

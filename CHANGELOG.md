@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-12] v0.7.3 release: v0.7.3
+[2026-05-12] v0.7.3-dev.1 fix(sync-upload): Markdown 表格上行会为表格单元格内文本块写入飞书 `style.align=2` 居中样式，并将超限表格渲染修复标记升级为 `#md-table-render-v3`，使已带 v0.7.2 `#md-table-render-v2` 标记的历史文档在下一次同步时仍会同 token 全量重建一次
 [2026-05-11] v0.7.2 release: v0.7.2
 [2026-05-11] v0.7.2-dev.1 fix(sync-upload): 既有 Markdown 文档检测到超限表格且缺少 `#md-table-render-v2` 修复标记时，即使本地 hash 未变化也跳过局部块 diff，改为在原 doc token 内全量重建，修复 v0.7.1 只能修复新转换块、无法清理云端历史代码块和窄表格的问题
 [2026-05-11] v0.7.1 release: v0.7.1
