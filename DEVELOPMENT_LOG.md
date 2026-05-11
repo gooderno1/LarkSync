@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.6.21-dev.1 (2026-05-11)
+
+- 目标：
+  - 在日志中心运行详情的“事件”时间线中，支持按上传、下载、删除等动作类型分别筛选。
+- 结果：
+  - 前端新增 `eventFilters` 纯函数模块，统一维护事件筛选项和后端 `statuses` 查询参数映射。
+  - 日志中心事件 Tab 新增 `上传 / 下载 / 删除` 动作级筛选；删除筛选覆盖 `deleted / delete_pending / delete_failed`，可单独查看删除成功、待删除和删除失败相关事件。
+  - 前端引入 Vitest 并补充事件筛选规则单元测试，锁定上传、下载、删除和既有聚合筛选的状态映射。
+- 测试：
+  - `npm --prefix apps/frontend test`
+  - `npm run build --prefix apps/frontend`
+
 ## v0.6.20 release (2026-05-06)
 
 - 目标：

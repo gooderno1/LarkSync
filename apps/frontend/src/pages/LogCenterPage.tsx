@@ -9,6 +9,14 @@ import { formatTimestamp, formatShortTime } from "../lib/formatters";
 import { modeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
 import { computeTaskProgress } from "../lib/progress";
 import { apiFetch } from "../lib/api";
+import {
+  DANGER_STATUSES,
+  EVENT_FILTERS,
+  PROBLEM_STATUSES,
+  WARNING_STATUSES,
+  buildStatusParams,
+  type EventFilter,
+} from "../lib/eventFilters";
 import { StatusPill } from "../components/StatusPill";
 import { Pagination } from "../components/Pagination";
 import { IconRefresh, IconConflicts, IconTasks, IconActivity } from "../components/Icons";
@@ -71,7 +79,6 @@ type SyncTaskDiagnosticsRaw = Omit<SyncTaskDiagnostics, "recent_events" | "probl
   problems: SyncLogEntryRaw[];
 };
 
-type EventFilter = "all" | "problems" | "changes" | "skipped";
 type DetailTab = "overview" | "problems" | "events";
 type ConflictResolutionState = "queued" | "running" | "waiting" | "success" | "error";
 type ConflictResolutionQueueItem = {
@@ -86,23 +93,12 @@ type ConflictResolutionStatus = {
   attempt?: number;
 };
 
-const PROBLEM_STATUSES = new Set(["failed", "delete_failed", "conflict", "cancelled"]);
-const WARNING_STATUSES = new Set(["skipped", "delete_pending", "cancelled", "queued"]);
-const DANGER_STATUSES = new Set(["failed", "delete_failed", "conflict"]);
-const CHANGE_STATUSES = new Set(["uploaded", "downloaded", "deleted", "mirrored", "delete_pending", "conflict"]);
 const CONFLICT_BUSY_RETRY_DELAY_MS = 5_000;
 const CONFLICT_BUSY_RETRY_LIMIT = 24;
 const CONFLICT_ACTION_LABELS: Record<ConflictResolutionAction, string> = {
   use_local: "使用本地",
   use_cloud: "使用云端",
 };
-
-const EVENT_FILTERS: Array<{ value: EventFilter; label: string }> = [
-  { value: "all", label: "全部事件" },
-  { value: "problems", label: "问题优先" },
-  { value: "changes", label: "实际变更" },
-  { value: "skipped", label: "跳过记录" },
-];
 
 function mapSyncLogEntry(item: SyncLogEntryRaw): SyncLogEntry {
   return {
@@ -193,13 +189,6 @@ function diagnosticActivityTime(overview: SyncTaskOverview): number {
     overview.task.updated_at ??
     overview.task.created_at
   );
-}
-
-function buildStatusParams(filter: EventFilter): string[] {
-  if (filter === "problems") return [...PROBLEM_STATUSES];
-  if (filter === "changes") return [...CHANGE_STATUSES];
-  if (filter === "skipped") return ["skipped"];
-  return [];
 }
 
 function formatDuration(startedAt?: number | null, finishedAt?: number | null, fallbackAt?: number | null): string {
