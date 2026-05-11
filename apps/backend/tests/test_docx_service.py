@@ -12,6 +12,7 @@ from src.services.docx_service import (
     _normalize_markdown_for_convert,
     _patch_table_properties,
     _replace_continuation_placeholders,
+    _split_large_markdown_tables_for_convert,
 )
 from src.services.transcoder import BLOCK_TYPE_IMAGE, BLOCK_TYPE_TABLE, DocxParser
 from src.services.media_uploader import MediaUploadError
@@ -842,6 +843,7 @@ async def test_convert_markdown_patches_table_property() -> None:
     prop = (table_block.get("table") or {}).get("property") or {}
     assert prop.get("row_size") == 2
     assert prop.get("column_size") == 2
+    assert prop.get("column_width") == [180, 180]
 
 
 @pytest.mark.asyncio
@@ -1002,7 +1004,7 @@ def test_sanitize_block_strips_table_cells() -> None:
     assert "children" not in cleaned
     assert "cells" not in cleaned["table"]
     assert "merge_info" not in cleaned["table"]["property"]
-    assert "column_width" not in cleaned["table"]["property"]
+    assert cleaned["table"]["property"]["column_width"] == [365, 365]
 
 
 def test_patch_table_properties_reshapes_flat_cells() -> None:
@@ -1031,7 +1033,7 @@ def test_patch_table_properties_reshapes_flat_cells() -> None:
     assert table["property"]["column_size"] == 2
 
 
-def test_patch_table_properties_does_not_add_column_width() -> None:
+def test_patch_table_properties_adds_readable_column_width() -> None:
     convert = ConvertResult(
         first_level_block_ids=["t1"],
         blocks=[
@@ -1049,7 +1051,29 @@ def test_patch_table_properties_does_not_add_column_width() -> None:
 
     assert prop["row_size"] == 2
     assert prop["column_size"] == 1
-    assert "column_width" not in prop
+    assert prop["column_width"] == [600]
+
+
+def test_split_large_markdown_tables_for_convert_repeats_header() -> None:
+    markdown = "\n".join(
+        [
+            "# 标题",
+            "",
+            "| H1 | H2 |",
+            "| --- | --- |",
+            *[f"| r{i}c1 | r{i}c2 |" for i in range(1, 10)],
+            "",
+            "结尾",
+        ]
+    )
+
+    normalized = _split_large_markdown_tables_for_convert(markdown)
+
+    assert normalized.count("| H1 | H2 |") == 2
+    assert "```" not in normalized
+    chunks = normalized.split("| H1 | H2 |")
+    assert "| r7c1 | r7c2 |" in chunks[1]
+    assert "| r8c1 | r8c2 |" in chunks[2]
 
 
 def test_has_markdown_table_exceeding_create_limit() -> None:
@@ -1143,6 +1167,7 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
     table_payload = create_call[2]["json"]["children"][0]["table"]
     assert table_payload["property"]["row_size"] == 1
     assert table_payload["property"]["column_size"] == 2
+    assert table_payload["property"]["column_width"] == [180, 180]
     assert "cells" not in table_payload
     assert any(url.endswith("/blocks/cellA/children") for url in urls)
     assert any(url.endswith("/blocks/cellB/children") for url in urls)
@@ -1150,12 +1175,12 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
 
 
 @pytest.mark.asyncio
-async def test_replace_document_content_falls_back_to_code_block_when_table_create_invalid() -> None:
+async def test_replace_document_content_falls_back_to_plain_text_when_table_create_invalid() -> None:
     class TableFallbackService(DocxService):
         def __init__(self) -> None:
             super().__init__(client=FakeClient([]))
             self.calls: list[tuple[str, str, dict]] = []
-            self.fallback_markdowns: list[str] = []
+            self.convert_contents: list[str] = []
 
         async def _request_json(self, method: str, url: str, **kwargs):
             self.calls.append((method, url, kwargs))
@@ -1165,19 +1190,10 @@ async def test_replace_document_content_falls_back_to_code_block_when_table_crea
                         "items": [{"block_id": "root", "block_type": 1, "children": []}],
                         "has_more": False,
                     }
-                }
+            }
             if method == "POST" and url.endswith("/open-apis/docx/v1/documents/blocks/convert"):
                 content = kwargs["json"]["content"]
-                if content.startswith("```markdown\n| A | B |"):
-                    self.fallback_markdowns.append(content)
-                    return {
-                        "data": {
-                            "first_level_block_ids": ["fb1"],
-                            "blocks": [
-                                {"block_id": "fb1", "block_type": 14, "code": {"language": "markdown"}}
-                            ],
-                        }
-                    }
+                self.convert_contents.append(content)
                 return {
                     "data": {
                         "first_level_block_ids": ["t1"],
@@ -1219,8 +1235,8 @@ async def test_replace_document_content_falls_back_to_code_block_when_table_crea
     ]
     assert len(root_creates) == 2
     assert root_creates[0][2]["json"]["children"][0]["block_type"] == 31
-    assert root_creates[1][2]["json"]["children"][0]["block_type"] != 31
-    assert service.fallback_markdowns == ["```markdown\n| A | B |\n| --- | --- |\n```"]
+    assert root_creates[1][2]["json"]["children"][0]["block_type"] == 2
+    assert all(not content.startswith("```markdown") for content in service.convert_contents)
 
 
 @pytest.mark.asyncio

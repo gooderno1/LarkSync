@@ -7,6 +7,7 @@ import difflib
 import hashlib
 import re
 import tempfile
+import unicodedata
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
@@ -46,6 +47,13 @@ class MarkdownSegment:
     value: str
 
 
+@dataclass(frozen=True)
+class MarkdownTableSpec:
+    rows: int
+    cols: int
+    column_width: list[int]
+
+
 _IMAGE_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
 _HTML_IMAGE_PATTERN = re.compile(r"<img\b[^>]*>", re.IGNORECASE | re.DOTALL)
 _HTML_IMAGE_SRC_PATTERN = re.compile(
@@ -54,6 +62,11 @@ _HTML_IMAGE_SRC_PATTERN = re.compile(
 )
 _IMAGE_DISPLAY_MAX_WIDTH = 820
 TABLE_BLOCK_CREATE_MAX_ROWS = 8
+_TABLE_COLUMN_MIN_WIDTH = 120
+_TABLE_COLUMN_MAX_WIDTH = 600
+_TABLE_COLUMN_DEFAULT_WIDTH = 180
+_TABLE_SINGLE_COLUMN_WIDTH = 600
+_TABLE_MAX_TOTAL_WIDTH = 1080
 _FIGURE_START_PATTERN = re.compile(
     r"<!--\s*FIGURE:(?P<id>[\w.-]+):START\s*-->",
     re.IGNORECASE,
@@ -213,6 +226,9 @@ class DocxService:
         base_path: str | Path | None = None,
     ) -> ConvertResult:
         normalized_markdown = _normalize_markdown_for_convert(markdown)
+        normalized_markdown = _split_large_markdown_tables_for_convert(
+            normalized_markdown
+        )
         processed_markdown, placeholders, image_paths = self._build_image_placeholders(
             normalized_markdown, base_path
         )
@@ -618,7 +634,7 @@ class DocxService:
             block_id = chunk[0]
             raw_block = block_map[block_id]
             if raw_block.get("block_type") == BLOCK_TYPE_TABLE:
-                fallback_applied = await self._fallback_table_block_as_code(
+                fallback_applied = await self._fallback_table_block_without_code(
                     document_id=document_id,
                     parent_block_id=parent_block_id,
                     table_block_id=block_id,
@@ -668,7 +684,7 @@ class DocxService:
             error_flag=error_flag,
         )
 
-    async def _fallback_table_block_as_code(
+    async def _fallback_table_block_without_code(
         self,
         *,
         document_id: str,
@@ -691,33 +707,65 @@ class DocxService:
                 table_block_id,
             )
             return False
-        fallback_markdown = f"```markdown\n{table_markdown}\n```"
+        split_markdown = _split_large_markdown_tables_for_convert(table_markdown)
+        if split_markdown != table_markdown:
+            logger.warning(
+                "表格块创建失败，拆分大表格重试: document_id={} parent={} block_id={}",
+                document_id,
+                parent_block_id,
+                table_block_id,
+            )
+            try:
+                convert = await self.convert_markdown(
+                    split_markdown, user_id_type=user_id_type
+                )
+                convert = _patch_table_properties(convert, split_markdown)
+                convert = self._normalize_convert(convert)
+                fallback_block_map = {
+                    block_id: block
+                    for block in convert.blocks
+                    if isinstance((block_id := block.get("block_id")), str)
+                }
+                fallback_children_map = {
+                    block_id: _extract_children_ids(block)
+                    for block_id, block in fallback_block_map.items()
+                }
+                await self._create_children_recursive(
+                    document_id=document_id,
+                    parent_block_id=parent_block_id,
+                    child_ids=convert.first_level_block_ids,
+                    block_map=fallback_block_map,
+                    children_map=fallback_children_map,
+                    user_id_type=user_id_type,
+                    insert_index=insert_index,
+                    image_paths=None,
+                    file_paths=None,
+                    error_flag=error_flag,
+                )
+                return True
+            except Exception as exc:
+                logger.warning(
+                    "大表格拆分重试失败: document_id={} block_id={} error={}",
+                    document_id,
+                    table_block_id,
+                    exc,
+                )
+
+        fallback_id = f"larksync_table_text_{uuid.uuid4().hex}"
+        fallback_block = _plain_text_block(fallback_id, table_markdown)
         logger.warning(
-            "表格块创建失败，降级为代码块重试: document_id={} parent={} block_id={}",
+            "表格块创建失败，降级为普通文本重试: document_id={} parent={} block_id={}",
             document_id,
             parent_block_id,
             table_block_id,
         )
         try:
-            convert = await self.convert_markdown(
-                fallback_markdown, user_id_type=user_id_type
-            )
-            convert = self._normalize_convert(convert)
-            fallback_block_map = {
-                block_id: block
-                for block in convert.blocks
-                if isinstance((block_id := block.get("block_id")), str)
-            }
-            fallback_children_map = {
-                block_id: _extract_children_ids(block)
-                for block_id, block in fallback_block_map.items()
-            }
             await self._create_children_recursive(
                 document_id=document_id,
                 parent_block_id=parent_block_id,
-                child_ids=convert.first_level_block_ids,
-                block_map=fallback_block_map,
-                children_map=fallback_children_map,
+                child_ids=[fallback_id],
+                block_map={fallback_id: fallback_block},
+                children_map={fallback_id: []},
                 user_id_type=user_id_type,
                 insert_index=insert_index,
                 image_paths=None,
@@ -727,7 +775,7 @@ class DocxService:
             return True
         except Exception as exc:
             logger.warning(
-                "表格降级重试失败: document_id={} block_id={} error={}",
+                "表格普通文本降级重试失败: document_id={} block_id={} error={}",
                 document_id,
                 table_block_id,
                 exc,
@@ -940,8 +988,15 @@ class DocxService:
                 prop = table.get("property")
                 if isinstance(prop, dict):
                     prop = dict(prop)
-                    prop.pop("column_width", None)
                     prop.pop("merge_info", None)
+                    column_width = _normalize_column_widths(
+                        prop.get("column_width"),
+                        _safe_int(prop.get("column_size")),
+                    )
+                    if column_width:
+                        prop["column_width"] = column_width
+                    else:
+                        prop.pop("column_width", None)
                     table["property"] = prop
                 cleaned["table"] = table
         return cleaned
@@ -1637,6 +1692,12 @@ def _set_block_plain_text(block: dict[str, Any], text: str) -> None:
     block["text"] = {"elements": element}
 
 
+def _plain_text_block(block_id: str, text: str) -> dict[str, Any]:
+    block: dict[str, Any] = {"block_id": block_id, "block_type": BLOCK_TYPE_TEXT}
+    _set_block_plain_text(block, text)
+    return block
+
+
 def _replace_continuation_placeholders(convert: ConvertResult) -> ConvertResult:
     if not convert.blocks:
         return convert
@@ -1903,15 +1964,17 @@ def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertRes
     for block in convert.blocks:
         if block.get("block_type") != BLOCK_TYPE_TABLE:
             continue
+        spec = specs[spec_index] if spec_index < len(specs) else None
+        if spec is not None:
+            spec_index += 1
         table = block.get("table") or {}
         prop = table.get("property") or {}
         row_size = _safe_int(prop.get("row_size"))
         col_size = _safe_int(prop.get("column_size"))
         updated = False
 
-        if (row_size <= 0 or col_size <= 0) and spec_index < len(specs):
-            rows, cols = specs[spec_index]
-            spec_index += 1
+        if (row_size <= 0 or col_size <= 0) and spec is not None:
+            rows, cols = spec.rows, spec.cols
             prop = dict(prop)
             if row_size <= 0:
                 prop["row_size"] = rows
@@ -1922,6 +1985,18 @@ def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertRes
                 col_size = cols
                 updated = True
             logger.info("补齐表格属性: rows={} cols={}", rows, cols)
+
+        existing_width = _normalize_column_widths(prop.get("column_width"), col_size)
+        column_width = existing_width
+        if not column_width and col_size > 0:
+            if spec is not None and spec.cols == col_size:
+                column_width = list(spec.column_width)
+            else:
+                column_width = _default_table_column_widths(col_size)
+        if column_width and existing_width != column_width:
+            prop = dict(prop)
+            prop["column_width"] = column_width
+            updated = True
 
         cells = table.get("cells")
         if isinstance(cells, list) and cells:
@@ -1973,8 +2048,77 @@ def _group_cells_by_row_token(cells: list[str]) -> list[list[str]]:
     return [rows[row] for row in row_order]
 
 
-def _extract_markdown_table_specs(markdown: str) -> list[tuple[int, int]]:
-    tables: list[tuple[int, int]] = []
+def _split_large_markdown_tables_for_convert(
+    markdown: str,
+    *,
+    max_rows: int = TABLE_BLOCK_CREATE_MAX_ROWS,
+) -> str:
+    if max_rows < 2 or "|" not in markdown:
+        return markdown
+    normalized = markdown.replace("\r\n", "\n").replace("\r", "\n")
+    trailing_newline = normalized.endswith("\n")
+    lines = normalized.split("\n")
+    if trailing_newline and lines and lines[-1] == "":
+        lines = lines[:-1]
+
+    output: list[str] = []
+    in_code_block = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+            output.append(line)
+            i += 1
+            continue
+        if in_code_block or i + 1 >= len(lines) or "|" not in line:
+            output.append(line)
+            i += 1
+            continue
+        sep = lines[i + 1].strip()
+        if not _is_table_separator(sep):
+            output.append(line)
+            i += 1
+            continue
+
+        header = line
+        separator = lines[i + 1]
+        body: list[str] = []
+        j = i + 2
+        while j < len(lines):
+            row_line = lines[j]
+            row_stripped = row_line.strip()
+            if row_stripped.startswith("```"):
+                break
+            if "|" not in row_line:
+                break
+            if _is_table_separator(row_stripped):
+                break
+            body.append(row_line)
+            j += 1
+
+        rows = 1 + len(body)
+        if rows <= max_rows:
+            output.extend([header, separator, *body])
+            i = j
+            continue
+
+        body_limit = max_rows - 1
+        for start in range(0, len(body), body_limit):
+            if start > 0:
+                output.append("")
+            output.extend([header, separator, *body[start:start + body_limit]])
+        i = j
+
+    result = "\n".join(output)
+    if trailing_newline:
+        result += "\n"
+    return result
+
+
+def _extract_markdown_table_specs(markdown: str) -> list[MarkdownTableSpec]:
+    tables: list[MarkdownTableSpec] = []
     lines = markdown.splitlines()
     in_code_block = False
     i = 0
@@ -1999,6 +2143,7 @@ def _extract_markdown_table_specs(markdown: str) -> list[tuple[int, int]]:
             i += 1
             continue
         rows = 1
+        table_lines = [lines[i], lines[i + 1]]
         j = i + 2
         while j < len(lines):
             row_line = lines[j].strip()
@@ -2009,8 +2154,15 @@ def _extract_markdown_table_specs(markdown: str) -> list[tuple[int, int]]:
             if _is_table_separator(row_line):
                 break
             rows += 1
+            table_lines.append(lines[j])
             j += 1
-        tables.append((rows, cols))
+        tables.append(
+            MarkdownTableSpec(
+                rows=rows,
+                cols=cols,
+                column_width=_estimate_table_column_widths(table_lines, cols),
+            )
+        )
         i = j
     return tables
 
@@ -2020,7 +2172,7 @@ def has_markdown_table_exceeding_create_limit(
     *,
     max_rows: int = TABLE_BLOCK_CREATE_MAX_ROWS,
 ) -> bool:
-    return any(rows > max_rows for rows, _ in _extract_markdown_table_specs(markdown))
+    return any(spec.rows > max_rows for spec in _extract_markdown_table_specs(markdown))
 
 
 def _is_table_separator(line: str) -> bool:
@@ -2041,8 +2193,82 @@ def _is_table_separator(line: str) -> bool:
 
 
 def _count_table_columns(line: str) -> int:
-    parts = [part.strip() for part in line.strip().strip("|").split("|")]
-    return len(parts)
+    return len(_parse_markdown_table_cells(line))
+
+
+def _parse_markdown_table_cells(line: str) -> list[str]:
+    return [part.strip() for part in line.strip().strip("|").split("|")]
+
+
+def _estimate_table_column_widths(table_lines: list[str], cols: int) -> list[int]:
+    if cols <= 0:
+        return []
+    if cols == 1:
+        return [_TABLE_SINGLE_COLUMN_WIDTH]
+    max_units = [0] * cols
+    for line in table_lines:
+        stripped = line.strip()
+        if _is_table_separator(stripped):
+            continue
+        cells = _parse_markdown_table_cells(line)
+        for idx in range(min(cols, len(cells))):
+            max_units[idx] = max(max_units[idx], _display_units(cells[idx]))
+
+    widths = [
+        max(
+            _TABLE_COLUMN_MIN_WIDTH,
+            min(_TABLE_COLUMN_MAX_WIDTH, int(units * 7 + 48)),
+        )
+        for units in max_units
+    ]
+    target_total = min(_TABLE_MAX_TOTAL_WIDTH, cols * _TABLE_COLUMN_DEFAULT_WIDTH)
+    total = sum(widths)
+    if total < target_total:
+        extra = target_total - total
+        idx = 0
+        while extra > 0 and any(width < _TABLE_COLUMN_MAX_WIDTH for width in widths):
+            if widths[idx] < _TABLE_COLUMN_MAX_WIDTH:
+                widths[idx] += 1
+                extra -= 1
+            idx = (idx + 1) % len(widths)
+    return widths
+
+
+def _default_table_column_widths(cols: int) -> list[int]:
+    if cols <= 0:
+        return []
+    if cols == 1:
+        return [_TABLE_SINGLE_COLUMN_WIDTH]
+    target_total = min(_TABLE_MAX_TOTAL_WIDTH, cols * _TABLE_COLUMN_DEFAULT_WIDTH)
+    base = target_total // cols
+    widths = [base] * cols
+    for idx in range(target_total - base * cols):
+        widths[idx] += 1
+    return widths
+
+
+def _normalize_column_widths(value: object, cols: int) -> list[int]:
+    if not isinstance(value, list) or cols <= 0:
+        return []
+    widths: list[int] = []
+    for item in value:
+        width = _safe_int(item)
+        if width <= 0:
+            return []
+        widths.append(width)
+    if len(widths) != cols:
+        return []
+    return widths
+
+
+def _display_units(text: str) -> int:
+    units = 0
+    for char in text:
+        if unicodedata.east_asian_width(char) in {"F", "W"}:
+            units += 2
+        else:
+            units += 1
+    return units
 
 
 def _safe_int(value: object) -> int:
