@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.7.2 release (2026-05-11)
+
+- 目标：
+  - 发布 `v0.7.2` 稳定版，交付既有云端 Markdown 文档的大表格历史坏块重建修复。
+- 结果：
+  - 稳定版包含 `v0.7.2-dev.1`：缺少 `#md-table-render-v2` 标记的超限表格文档，会在下一次同步时跳过局部 diff，在原 doc token 内全量重建。
+  - 修复范围覆盖用户反馈的“软件设计说明书 V1.5 更新后仍有表格式代码、表格框仍窄”的残留云端块问题。
+- 测试：
+  - `python -m pytest -q`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+  - `python scripts/release_notes.py --version v0.7.2 --asset "dist/LarkSync-Setup-v0.7.2.exe" --output release-notes-preview.md`
+  - `python -m pytest tests/test_release.py tests/test_release_notes.py tests/test_version.py -q`
+
 ## v0.7.2-dev.1 (2026-05-11)
 
 - 目标：

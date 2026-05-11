@@ -1,23 +1,24 @@
-# LarkSync v0.7.1
+# LarkSync v0.7.2
 
 - 发布日期：2026-05-11
-- 变更区间：v0.7.0 -> v0.7.1
+- 变更区间：v0.7.1 -> v0.7.2
 
 ## 本次更新明细
 
 ### 升级重点
-- `v0.7.1-dev.1`：`DocxService` 在调用飞书 `blocks/convert` 前会把超过飞书建表行数限制的 Markdown 表格拆成多个原生表格，保留表头并避免触发表格创建失败。
+- `v0.7.2-dev.1`：定位到 V1.5 在 `v0.7.1` 下已上传，但同步器走局部块 diff，源 Markdown hash 未变化的旧云端表格块不会被重建。
 
 ### 详细变更
 
-#### v0.7.1-dev.1
-- `DocxService` 在调用飞书 `blocks/convert` 前会把超过飞书建表行数限制的 Markdown 表格拆成多个原生表格，保留表头并避免触发表格创建失败。
-- 表格属性会根据 Markdown 单元格内容补齐 `column_width`，创建请求继续剥离 `cells/merge_info`，但保留合法列宽，改善默认窄表格显示。
-- 表格创建失败的兜底逻辑改为“拆表重试 -> 普通文本兜底”，不再把表格包装成 fenced `markdown` 代码块。
-- 用 `软件设计说明书-V1.5.md` 做本地 dry-run：原 118 个表格中 37 个超过 8 行，拆分后为 159 个表格，最大行数为 8。
+#### v0.7.2-dev.1
+- 定位到 V1.5 在 `v0.7.1` 下已上传，但同步器走局部块 diff，源 Markdown hash 未变化的旧云端表格块不会被重建。
+- `SyncTaskRunner` 在 `auto` 模式检测到超限 Markdown 表格时，会跳过局部块更新，直接在原 doc token 内执行 full replace，再重建块状态。
+- 为超限表格修复加入 `#md-table-render-v2` 渲染修复标记；既有云端文档缺少该标记时，即使本地文件 hash 和块状态未变化，也会自动执行一次同 token 全量重建。
+- 新建 Markdown 文档如果含超限表格，飞书导入创建后会立刻再走一次块级覆盖，避免初始导入产物残留代码块表格。
+- 用当前 V1.5 做飞书 `blocks/convert` dry-run：转换输出 `159` 个表格块、`0` 个代码块，确认转换本身已正确，问题来自历史云端块未被重建。
 
 ## 安装包校验
 
 | asset | sha256 |
 | --- | --- |
-| LarkSync-Setup-v0.7.1.exe | `5123bbf0d7527364a913eca4228e18e7e02bc3a5514eea20183680bcc9c5144f` |
+| LarkSync-Setup-v0.7.2.exe | `ee266ef2663514fc0d43dd40b828a5a9a33ac69406aa5de062be460d53002a08` |
