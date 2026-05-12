@@ -1,5 +1,31 @@
 # DEVELOPMENT LOG
 
+## v0.7.4 release (2026-05-12)
+
+- 目标：
+  - 发布 `v0.7.4` 稳定版，纠正 `v0.7.3` 将用户期望的“垂直居中”误实现为文本水平居中的问题。
+- 结果：
+  - 稳定版包含 `v0.7.4-dev.1`：撤销表格单元格文本 `Text.style.align=2` 写入逻辑，保持飞书默认水平左对齐。
+  - 超限表格渲染修复标记升级为 `#md-table-render-v4`；已有 `#md-table-render-v3` 的文档会被视为旧修复状态，下一次同步仍会在原 doc token 内全量重建一次，以清理 v0.7.3 造成的水平居中样式。
+  - 已确认飞书官方 Docx Block 数据结构中 `Text.style.align` 是水平对齐字段，`TableCell` 目前没有公开可写的垂直对齐字段；后续若要实现垂直居中，需要先取得飞书返回的表格单元格样式 JSON 或新的官方字段定义。
+- 测试：
+  - `python -m pytest -q`（在 `apps/backend` 目录执行）
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py --nsis`
+  - `python scripts/release_notes.py --version v0.7.4 --asset "dist/LarkSync-Setup-v0.7.4.exe" --output release-notes-preview.md`
+  - `python -m pytest tests/test_release.py tests/test_release_notes.py tests/test_version.py -q`
+
+## v0.7.4-dev.1 (2026-05-12)
+
+- 目标：
+  - 修正 `v0.7.3` 表格样式方向错误：水平对齐应保持默认左对齐，不能写成水平居中。
+- 结果：
+  - 移除 `DocxService` 中递归给表格 cell 内文本类 block 写入 `style.align=2` 的逻辑。
+  - 更新回归测试，锁定 Markdown 表格上传转换结果不会主动写入水平 `style.align`。
+  - `SyncTaskRunner` 将超限表格渲染修复标记从 `#md-table-render-v3` 升级到 `#md-table-render-v4`，使已安装并运行过 `v0.7.3` 的用户在升级后通过普通同步重新覆盖一次云端文档。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py::test_patch_table_properties_leaves_table_cell_horizontal_alignment_default tests/test_sync_runner_upload_new_doc.py::test_upload_markdown_repairs_previous_table_marker_large_table_link_once -q`
+
 ## v0.7.3 release (2026-05-12)
 
 - 目标：

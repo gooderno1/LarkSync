@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-12] v0.7.4 release: v0.7.4
+[2026-05-12] v0.7.4-dev.1 fix(sync-upload): 撤销 v0.7.3 对表格单元格文本写入 `Text.style.align=2` 的水平居中逻辑，保留飞书默认水平左对齐，并将超限表格渲染修复标记升级为 `#md-table-render-v4`，使已被 v0.7.3 重建过的历史文档下一次同步会再同 token 全量重建一次
 [2026-05-12] v0.7.3 release: v0.7.3
 [2026-05-12] v0.7.3-dev.1 fix(sync-upload): Markdown 表格上行会为表格单元格内文本块写入飞书 `style.align=2` 居中样式，并将超限表格渲染修复标记升级为 `#md-table-render-v3`，使已带 v0.7.2 `#md-table-render-v2` 标记的历史文档在下一次同步时仍会同 token 全量重建一次
 [2026-05-11] v0.7.2 release: v0.7.2
