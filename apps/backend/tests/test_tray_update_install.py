@@ -1,6 +1,7 @@
-from pathlib import Path
-import sys
 import base64
+import json
+import sys
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
@@ -218,6 +219,16 @@ def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: P
     assert str(log_path).replace("'", "''") in script
 
 
+def test_read_install_handoff_accepts_utf8_bom(monkeypatch, tmp_path: Path) -> None:
+    handoff_path = tmp_path / "install-handoff.json"
+    payload = {"request_id": "req-bom", "stage": "helper_started"}
+    handoff_path.write_text(json.dumps(payload), encoding="utf-8-sig")
+
+    monkeypatch.setattr(tray_app, "_install_handoff_path", lambda: handoff_path)
+
+    assert tray_app._read_install_handoff() == payload
+
+
 def test_build_windows_installer_worker_verifies_version_and_retries_restart(tmp_path: Path) -> None:
     installer_path = tmp_path / "LarkSync-Setup-v0.5.58.exe"
     restart_path = tmp_path / "LarkSync.exe"
@@ -243,6 +254,32 @@ def test_build_windows_installer_worker_verifies_version_and_retries_restart(tmp
     assert "restart_succeeded" in script
     assert "restart_failed" in script
     assert "exit_code=<null>" in script
+
+
+def test_windows_handoff_scripts_write_json_without_bom(tmp_path: Path) -> None:
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.58.exe"
+    restart_path = tmp_path / "LarkSync.exe"
+    log_path = tmp_path / "update-install.log"
+    handoff_path = tmp_path / "install-handoff.json"
+    script_dir = tmp_path / "install-scripts"
+
+    command = tray_app._build_windows_silent_bootstrap_command(
+        installer_path,
+        restart_path=restart_path,
+        log_path=log_path,
+        handoff_path=handoff_path,
+        request_id="req-utf8",
+        script_dir=script_dir,
+    )
+    bootstrap_path = Path(command[command.index("-File") + 1])
+    worker_path = next(script_dir.glob("*worker*.ps1"))
+    bootstrap_script = bootstrap_path.read_text(encoding="utf-8")
+    worker_script = worker_path.read_text(encoding="utf-8")
+
+    assert "[System.Text.UTF8Encoding]::new($false)" in bootstrap_script
+    assert "[System.Text.UTF8Encoding]::new($false)" in worker_script
+    assert "Set-Content -LiteralPath $handoffPath -Value $payload -Encoding UTF8" not in bootstrap_script
+    assert "Set-Content -LiteralPath $handoffPath -Value $payload -Encoding UTF8" not in worker_script
 
 
 def test_build_windows_silent_bootstrap_command_uses_script_files(tmp_path: Path) -> None:

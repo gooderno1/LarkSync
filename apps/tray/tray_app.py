@@ -145,8 +145,8 @@ def _load_install_request() -> dict[str, str | float | bool] | None:
     if not path.exists():
         return None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
         return None
     installer_path = str(payload.get("installer_path", "")).strip()
     if not installer_path:
@@ -232,8 +232,8 @@ def _read_install_handoff() -> dict[str, Any] | None:
     if not path.exists():
         return None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
         return None
     if not isinstance(payload, dict):
         return None
@@ -358,7 +358,8 @@ def _build_windows_installer_worker_script(
         "$parent = Split-Path -Parent $handoffPath; "
         "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
         "$payload = @{ request_id = $requestId; stage = $stage; message = $message; exit_code = $exitCode; timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } | ConvertTo-Json -Compress; "
-        "Set-Content -LiteralPath $handoffPath -Value $payload -Encoding UTF8 "
+        "$utf8NoBom = [System.Text.UTF8Encoding]::new($false); "
+        "[System.IO.File]::WriteAllText($handoffPath, $payload, $utf8NoBom) "
         "} catch {} "
         "}; "
         "function Test-PortOpen([int]$port) { "
@@ -539,7 +540,8 @@ def _build_windows_silent_bootstrap_command(
         "$parent = Split-Path -Parent $handoffPath; "
         "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
         "$payload = @{ request_id = $requestId; stage = $stage; message = $message; exit_code = $exitCode; timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } | ConvertTo-Json -Compress; "
-        "Set-Content -LiteralPath $handoffPath -Value $payload -Encoding UTF8 "
+        "$utf8NoBom = [System.Text.UTF8Encoding]::new($false); "
+        "[System.IO.File]::WriteAllText($handoffPath, $payload, $utf8NoBom) "
         "} catch {} "
         "}; "
         "Write-InstallLog (\"启动静默安装 bootstrap: installer=\" + $installerPath); "

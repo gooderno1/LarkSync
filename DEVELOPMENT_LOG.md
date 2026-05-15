@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.7.12-dev.1 (2026-05-16)
+
+- 目标：
+  - 修复 v0.7.11 下载成功后静默安装没有生效的问题，现场表现为 handoff 停在 `helper_started`，托盘随后报“静默安装接管超时”。
+- 结果：
+  - `_read_install_handoff()` 改为 `utf-8-sig` 读取，兼容 PowerShell 5.1 `Set-Content -Encoding UTF8` 写出的 BOM JSON。
+  - `install-request.json` 读取同步兼容 UTF-8 BOM，避免同类编码问题影响安装请求消费。
+  - bootstrap/worker PowerShell 脚本的 `Write-Handoff` 改为 `[System.IO.File]::WriteAllText(..., [System.Text.UTF8Encoding]::new($false))`，后续新版本会写出无 BOM JSON。
+  - 已用现场 `install-handoff.json` 复核：文件头为 `EF BB BF`，Python `utf-8` 读取会触发 `Unexpected UTF-8 BOM`，`utf-8-sig` 可正常解析。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_tray_update_install.py::test_read_install_handoff_accepts_utf8_bom apps/backend/tests/test_tray_update_install.py::test_windows_handoff_scripts_write_json_without_bom -q`
+
 ## v0.7.11 release (2026-05-15)
 
 - 目标：
