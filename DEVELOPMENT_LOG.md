@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.7.12 release (2026-05-16)
+
+- 目标：
+  - 发布 `v0.7.12` 稳定版，收口 v0.7.11 下载成功后静默安装 handoff 因 UTF-8 BOM 读取失败而超时的问题。
+- 结果：
+  - 稳定版包含 `v0.7.12-dev.1`：Python 侧兼容 BOM 读取，PowerShell helper 后续写出无 BOM handoff JSON。
+  - 注意：已安装的旧版本仍使用旧的静默安装代码，升级到本版本需要手动运行一次安装包；安装到 `v0.7.12` 后，后续静默更新才会使用本次修复。
+- 测试：
+  - `python -m pytest`（在 `apps/backend` 目录执行，427 passed）
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python -m pip install --dry-run -e apps/backend`
+  - `python scripts/build_installer.py --nsis`
+  - 本地安装包：`dist/LarkSync-Setup-v0.7.12.exe`，sha256=`DEFA7DBC1BD0F32B16E4A64D09696B552217E11F3A2ACB7DAB49947E1219E2EC`
+
 ## v0.7.12-dev.1 (2026-05-16)
 
 - 目标：

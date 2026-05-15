@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-16] v0.7.12 release: v0.7.12
 [2026-05-16] v0.7.12-dev.1 fix(auto-update): Windows 静默安装 handoff 读取兼容 UTF-8 BOM，并将 PowerShell helper 的 handoff JSON 改为无 BOM UTF-8 写入，修复 helper 已启动但托盘因 BOM 读取失败而报“静默安装接管超时”的问题
 [2026-05-15] v0.7.11 release: v0.7.11
 [2026-05-15] v0.7.11-dev.1 fix(auto-update): GitHub Release API 返回 403/429 限流时，更新检查回退读取公开 `releases/latest` 跳转获取最新 tag，并按平台安装包命名生成下载与 `.sha256` 地址，避免 Release 正常但客户端报“获取 Release 失败: HTTP 403”
