@@ -1,5 +1,15 @@
 # DEVELOPMENT LOG
 
+## v0.7.9 release (2026-05-15)
+
+- 目标：
+  - 发布 `v0.7.9` 稳定版，收口 v0.7.8 已下载安装包无法静默安装的问题。
+- 结果：
+  - 稳定版包含 `v0.7.9-dev.1`：Windows 静默安装 bootstrap/worker 改为落地 `.ps1` 并用 PowerShell `-File` 启动，避免嵌套 `-EncodedCommand` 过长触发 `WinError 206`。
+  - 更新检查会复用已校验且版本、文件名、大小和 sha256 匹配的安装包路径，避免下载完成后 UI/CLI 状态回退为未下载。
+- 测试：
+  - 沿用 `v0.7.9-dev.1` 的自动更新回归测试、后端全量 pytest、editable 安装校验和 NSIS 安装包构建验证。
+
 ## v0.7.9-dev.1 (2026-05-15)
 
 - 目标：
