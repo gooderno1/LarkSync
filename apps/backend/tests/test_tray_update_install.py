@@ -218,6 +218,33 @@ def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: P
     assert str(log_path).replace("'", "''") in script
 
 
+def test_build_windows_installer_worker_verifies_version_and_retries_restart(tmp_path: Path) -> None:
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.58.exe"
+    restart_path = tmp_path / "LarkSync.exe"
+    log_path = tmp_path / "update-install.log"
+    handoff_path = tmp_path / "install-handoff.json"
+
+    script = tray_app._build_windows_installer_worker_script(
+        installer_path,
+        silent=True,
+        restart_path=restart_path,
+        log_path=log_path,
+        handoff_path=handoff_path,
+        request_id="req-restart",
+    )
+
+    assert "Read-InstalledVersion" in script
+    assert "Test-ExpectedVersionInstalled" in script
+    assert "if ($null -eq $exitCode)" in script
+    assert "安装后版本复核" in script
+    assert "Start-RestartTarget" in script
+    assert "attempt=" in script
+    assert "重启进程过早退出" in script
+    assert "restart_succeeded" in script
+    assert "restart_failed" in script
+    assert "exit_code=<null>" in script
+
+
 def test_build_windows_silent_bootstrap_command_spawns_worker(tmp_path: Path) -> None:
     installer_path = tmp_path / "LarkSync-Setup-v0.5.56.exe"
     restart_path = tmp_path / "LarkSync.exe"

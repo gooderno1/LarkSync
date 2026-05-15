@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-15] v0.7.6 release: v0.7.6
+[2026-05-15] v0.7.6-dev.1 fix(auto-update): Windows 静默更新 helper 在安装器退出码为空时会复核安装目录中的目标版本，避免“实际安装成功但被判失败”；安装后重启 LarkSync 改为多轮启动确认与重试，并在日志和 handoff 中记录 expected/installed、重启 attempt、过早退出、`restart_succeeded` / `restart_failed`，便于定位自动升级后未拉起的问题
 [2026-05-15] v0.7.5 release: v0.7.5
 [2026-05-15] v0.7.5-dev.1 fix(sync-upload): Markdown 表格上行在填充飞书新建表格单元格前，会先删除飞书自动生成的默认空段落，再写入真实内容，避免单元格变成“空段落 + 内容”导致视觉上垂直下沉；表格渲染修复标记升级为 `#md-table-render-v5`，使已有 `#md-table-render-v4` 的历史文档下一次同步仍会在原 doc token 内全量重建一次
 [2026-05-12] v0.7.4 release: v0.7.4

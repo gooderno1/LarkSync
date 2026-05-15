@@ -1,5 +1,35 @@
 # DEVELOPMENT LOG
 
+## v0.7.6 release (2026-05-15)
+
+- 目标：
+  - 发布 `v0.7.6` 稳定版，修复 `v0.7.5` 自动更新安装后可能未自动拉起新版本、且日志把空退出码误判为安装失败的问题。
+- 结果：
+  - 稳定版包含 `v0.7.6-dev.1`：Windows 静默更新 helper 会解析安装包目标版本，安装器退出后复核安装目录中的实际版本；当退出码为空但目标版本已安装时按成功处理。
+  - 安装后重启改为最多 3 轮启动确认与重试，连续两轮确认新进程仍在运行或单实例锁端口已恢复后才视为启动成功，并通过 `restart_succeeded` / `restart_failed` handoff 和安装日志暴露结果。
+  - 日志补充 expected/installed、空退出码、非零退出码但版本已安装、重启 attempt、进程过早退出等细节，便于后续判断是安装失败还是启动阶段失败。
+- 测试：
+  - `python -m pytest -q`（在 `apps/backend` 目录执行）
+  - `python -m pytest apps/backend/tests/test_tray_update_install.py -q`
+  - `python -m pip install --dry-run -e apps/backend`
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python scripts/build_installer.py --nsis`
+  - `python scripts/release_notes.py --version v0.7.6 --asset "dist/LarkSync-Setup-v0.7.6.exe" --output "dist/release-notes-v0.7.6.md"`
+  - 生成的 Windows helper PowerShell 脚本通过 `[scriptblock]::Create(...)` 语法解析
+
+## v0.7.6-dev.1 (2026-05-15)
+
+- 目标：
+  - 针对本轮现场日志：安装器退出码为空、应用实际已安装到新版本但没有自动启动，补齐 helper 对安装结果与重启动作的可验证判断。
+- 结果：
+  - `_build_windows_installer_worker_script` 从安装包文件名解析 expected version，并在安装器退出后读取安装目录 `_internal/apps/backend/pyproject.toml` 或开发布局 `apps/backend/pyproject.toml` 复核 installed version。
+  - 安装器退出码为空时不再直接进入失败分支；只有版本复核也失败时才判定安装失败并尝试恢复启动。
+  - 重启 LarkSync 改为 `Start-RestartTarget`，最多 3 次启动，连续探测确认新进程/单实例锁，记录每次 attempt、PID、进程是否过早退出，并在启动确认失败时写出 `restart_failed`。
+  - 新增托盘更新安装测试，锁定版本复核、空退出码处理和重启重试脚本片段。
+- 测试：
+  - `python -m pytest apps/backend/tests/test_tray_update_install.py -q`
+  - 生成的 Windows helper PowerShell 脚本通过 `[scriptblock]::Create(...)` 语法解析
+
 ## v0.7.5 release (2026-05-15)
 
 - 目标：
