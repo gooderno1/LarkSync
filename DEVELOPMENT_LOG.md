@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.7.8 release (2026-05-15)
+
+- 目标：
+  - 发布 `v0.7.8` 稳定版，收口文件夹删除同步和 V1.5 软件设计说明书表格上行列宽过宽导致横向滚动的问题。
+- 结果：
+  - 稳定版包含 `v0.7.8-dev.1`：文件夹作为同步对象持久化映射，本地/云端文件夹删除进入删除联动链路，并递归清理子映射。
+  - 稳定版包含 `v0.7.8-dev.2`：Markdown 表格列宽估算增加整表总宽上限，V1.5 长文本多列表格不再被撑到横向滚动，已有 `#md-table-render-v6` 文档下一次同步会同 token 重建一次。
+- 测试：
+  - `python -m pytest`（在 `apps/backend` 目录执行）
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python -m pip install --dry-run -e apps/backend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.7.8-dev.2 (2026-05-15)
 
 - 目标：
