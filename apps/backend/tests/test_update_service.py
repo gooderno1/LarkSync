@@ -191,6 +191,62 @@ async def test_check_for_updates_uses_release_notes_sha256_when_no_checksum_asse
     assert status.asset.sha256 == digest
 
 
+@pytest.mark.asyncio
+async def test_check_for_updates_preserves_valid_cached_download_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        '{"auto_update_enabled": true, "update_check_interval_hours": 24, "allow_dev_to_stable": true}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    installer = tmp_path / "LarkSync-Setup-v9.9.9.exe"
+    installer.write_bytes(b"verified-installer")
+    digest = compute_file_sha256(installer)
+
+    service = UpdateService(config_manager=ConfigManager.get())
+    service._status_path = tmp_path / "status.json"  # type: ignore[attr-defined]
+    service._status_path.write_text(  # type: ignore[attr-defined]
+        (
+            "{"
+            '"current_version":"v0.7.8",'
+            '"latest_version":"v9.9.9",'
+            '"update_available":true,'
+            f'"download_path":"{installer.as_posix()}"'
+            "}"
+        ),
+        encoding="utf-8",
+    )
+
+    async def fake_fetch_latest_release():
+        return {
+            "tag_name": "v9.9.9",
+            "body": "",
+            "published_at": "2026-05-15T00:00:00Z",
+            "assets": [
+                {
+                    "name": "LarkSync-Setup-v9.9.9.exe",
+                    "browser_download_url": "https://example.com/LarkSync-Setup-v9.9.9.exe",
+                    "size": installer.stat().st_size,
+                    "digest": f"sha256:{digest}",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(service, "_fetch_latest_release", fake_fetch_latest_release)
+    monkeypatch.setattr("src.services.update_service.sys.platform", "win32")
+
+    status = await service.check_for_updates(force=True)
+
+    assert status.update_available is True
+    assert status.download_path == str(installer)
+    assert service.load_cached_status().download_path == str(installer)
+
+
 def test_load_cached_status_overrides_stale_current_version(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-15] v0.7.9-dev.1 fix(auto-update): Windows 静默安装启动改为落地 bootstrap/worker `.ps1` 后通过 PowerShell `-File` 拉起，避免嵌套 `-EncodedCommand` 过长触发 `WinError 206`；更新检查会保留已校验且版本/大小/sha256 匹配的安装包 `download_path`，避免下载完成后状态回退为未下载
 [2026-05-15] v0.7.8 release: v0.7.8
 [2026-05-15] v0.7.8-dev.2 fix(sync-upload): Markdown 表格列宽估算增加整表总宽上限，长文本列按内容权重分配空间但不再把 V1.5 这类多列表格撑到横向滚动；表格渲染修复标记升级为 `#md-table-render-v7`，使已有 v6 表格文档下一次同步会在原 doc token 内重建一次
 [2026-05-15] v0.7.8-dev.1 fix(sync-delete): 文件夹现在会作为同步对象持久化映射；本地删除已同步文件夹会生成 folder 删除墓碑并删除对应飞书文件夹，云端文件夹缺失只生成一条文件夹墓碑并按删除策略处理本地目录，同时递归清理子文件映射，避免文件夹删除被拆成多条文档删除或完全不生效

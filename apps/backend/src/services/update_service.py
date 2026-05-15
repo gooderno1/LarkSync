@@ -221,6 +221,34 @@ def compute_file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def valid_cached_download_path(
+    cached: "UpdateStatus",
+    latest_version: str,
+    asset: "UpdateAsset | None",
+) -> str | None:
+    if not asset:
+        return None
+    download_path = str(cached.download_path or "").strip()
+    if not download_path:
+        return None
+    path = Path(download_path)
+    if not path.is_file():
+        return None
+    if asset.name and path.name != asset.name:
+        return None
+    downloaded_version = extract_installer_version(str(path))
+    if downloaded_version and downloaded_version != latest_version:
+        return None
+    try:
+        if asset.size and path.stat().st_size != asset.size:
+            return None
+        if asset.sha256 and compute_file_sha256(path) != asset.sha256.lower():
+            return None
+    except OSError:
+        return None
+    return str(path)
+
+
 def _update_log_path() -> Path:
     return update_logs_dir() / "update.log"
 
@@ -357,6 +385,11 @@ class UpdateService:
                         if digest_from_notes:
                             asset.sha256 = digest_from_notes
 
+                download_path = (
+                    valid_cached_download_path(cached, latest_version, asset)
+                    if update_available
+                    else None
+                )
                 status = UpdateStatus(
                     current_version=current_version,
                     latest_version=latest_version,
@@ -367,6 +400,7 @@ class UpdateService:
                     asset=asset,
                     last_check=now,
                     last_error=None,
+                    download_path=download_path,
                 )
                 return self._save_status(status, now)
             except Exception as exc:

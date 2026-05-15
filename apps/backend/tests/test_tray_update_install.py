@@ -245,28 +245,39 @@ def test_build_windows_installer_worker_verifies_version_and_retries_restart(tmp
     assert "exit_code=<null>" in script
 
 
-def test_build_windows_silent_bootstrap_command_spawns_worker(tmp_path: Path) -> None:
+def test_build_windows_silent_bootstrap_command_uses_script_files(tmp_path: Path) -> None:
     installer_path = tmp_path / "LarkSync-Setup-v0.5.56.exe"
     restart_path = tmp_path / "LarkSync.exe"
     log_path = tmp_path / "update-install.log"
     handoff_path = tmp_path / "install-handoff.json"
+    script_dir = tmp_path / "install-scripts"
     command = tray_app._build_windows_silent_bootstrap_command(
         installer_path,
         restart_path=restart_path,
         log_path=log_path,
         handoff_path=handoff_path,
         request_id="req-bootstrap",
+        script_dir=script_dir,
     )
 
     assert command[0].lower().endswith("powershell.exe") or command[0].lower() == "powershell"
-    assert "-EncodedCommand" in command
-    encoded = command[command.index("-EncodedCommand") + 1]
-    script = base64.b64decode(encoded).decode("utf-16le")
+    assert "-EncodedCommand" not in command
+    assert "-File" in command
+    bootstrap_path = Path(command[command.index("-File") + 1])
+    assert bootstrap_path.is_file()
+
+    script = bootstrap_path.read_text(encoding="utf-8")
+    worker_files = list(script_dir.glob("*worker*.ps1"))
+    assert len(worker_files) == 1
+    worker_script = worker_files[0].read_text(encoding="utf-8")
 
     assert "Start-Process -FilePath $powerShellPath -ArgumentList $workerArgs -WindowStyle Hidden -PassThru" in script
+    assert "'-File', $workerPath" in script
     assert "helper_started" in script
     assert "worker_pid=" in script
-    assert "workerEncoded" in script
+    assert "workerEncoded" not in script
+    assert "Start-Process -FilePath $installerPath -ArgumentList $argumentList -PassThru" in worker_script
+    assert "installer_started" in worker_script
     assert str(handoff_path).replace("'", "''") in script
     assert str(log_path).replace("'", "''") in script
 
@@ -292,20 +303,23 @@ def test_schedule_installer_launch_on_windows_silent_uses_hidden_bootstrap_proce
     )
     monkeypatch.setattr(tray_app.subprocess, "CREATE_NO_WINDOW", create_no_window, raising=False)
     monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(tray_app, "_install_script_dir", lambda: tmp_path / "install-scripts")
     monkeypatch.setattr(tray_app, "_wait_for_install_handoff", lambda *args, **kwargs: {"stage": "helper_started"})
 
     tray = _build_tray()
     tray._schedule_installer_launch(str(installer_path), silent=True, request_id="req-1")
 
     assert len(calls) == 1
-    assert "-EncodedCommand" in calls[0]["args"]
+    assert "-EncodedCommand" not in calls[0]["args"]
+    assert "-File" in calls[0]["args"]
+    bootstrap_path = Path(calls[0]["args"][calls[0]["args"].index("-File") + 1])
+    assert bootstrap_path.is_file()
     assert calls[0]["close_fds"] is True
     creationflags = int(calls[0]["creationflags"])
     assert creationflags & create_new_process_group != 0
     assert creationflags & create_no_window != 0
-    assert "workerEncoded" in base64.b64decode(
-        calls[0]["args"][calls[0]["args"].index("-EncodedCommand") + 1]
-    ).decode("utf-16le")
+    assert "workerEncoded" not in bootstrap_path.read_text(encoding="utf-8")
+    assert list((tmp_path / "install-scripts").glob("*worker*.ps1"))
 
 
 def test_schedule_installer_launch_on_windows_silent_requires_helper_handoff(
@@ -321,6 +335,7 @@ def test_schedule_installer_launch_on_windows_silent_requires_helper_handoff(
 
     monkeypatch.setattr(tray_app.sys, "platform", "win32")
     monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(tray_app, "_install_script_dir", lambda: tmp_path / "install-scripts")
     monkeypatch.setattr(
         tray_app,
         "_wait_for_install_handoff",

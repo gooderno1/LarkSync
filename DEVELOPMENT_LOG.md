@@ -1,5 +1,17 @@
 # DEVELOPMENT LOG
 
+## v0.7.9-dev.1 (2026-05-15)
+
+- 目标：
+  - 修复 v0.7.8 安装包下载完成后，Windows 静默安装未启动并在日志中报 `WinError 206 文件名或扩展名太长` 的问题。
+  - 修复更新检查覆盖 `download_path`，导致已校验安装包在状态中又显示为未下载的问题。
+- 结果：
+  - Windows 静默安装 bootstrap/worker 改为落地 `.ps1` 脚本，并用 PowerShell `-File` 启动，避免把完整 worker 脚本嵌入嵌套 `-EncodedCommand` 造成命令行过长。
+  - 更新检查会复用已缓存且版本、文件名、大小和 sha256 匹配的安装包路径，保持 UI/CLI 对“已下载可安装”的状态判断稳定。
+  - 补充自动更新回归测试，覆盖短命令启动与已校验下载包路径保留。
+- 测试：
+  - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_tray_update_install.py apps/backend/tests/test_update_service.py -p pytest_asyncio.plugin -q`
+
 ## v0.7.8 release (2026-05-15)
 
 - 目标：

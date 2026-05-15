@@ -293,6 +293,30 @@ def _build_windows_powershell_command(script: str) -> list[str]:
     ]
 
 
+def _build_windows_powershell_file_command(script_path: Path) -> list[str]:
+    return [
+        _resolve_powershell_executable(),
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-WindowStyle",
+        "Hidden",
+        "-File",
+        str(script_path),
+    ]
+
+
+def _install_script_dir() -> Path:
+    return update_data_dir() / "install-scripts"
+
+
+def _install_script_stem(path: Path, request_id: str) -> str:
+    raw = request_id.strip() or path.stem or f"install-{int(time.time() * 1000)}"
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw).strip(".-")
+    return (safe or "install")[:80]
+
+
 def _build_windows_installer_worker_script(
     path: Path,
     *,
@@ -471,12 +495,16 @@ def _build_windows_silent_bootstrap_command(
     log_path: Path | None = None,
     handoff_path: Path | None = None,
     request_id: str = "",
+    script_dir: Path | None = None,
 ) -> list[str]:
     installer_escaped = str(path).replace("'", "''")
     log_escaped = str(log_path).replace("'", "''") if log_path else ""
     handoff_escaped = str(handoff_path).replace("'", "''") if handoff_path else ""
     request_escaped = request_id.replace("'", "''")
     powershell_escaped = _resolve_powershell_executable().replace("'", "''")
+    target_dir = script_dir or _install_script_dir()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    stem = _install_script_stem(path, request_id)
     worker_script = _build_windows_installer_worker_script(
         path,
         silent=True,
@@ -485,14 +513,17 @@ def _build_windows_silent_bootstrap_command(
         handoff_path=handoff_path,
         request_id=request_id,
     )
-    worker_encoded = base64.b64encode(worker_script.encode("utf-16le")).decode("ascii")
+    worker_path = target_dir / f"{stem}-worker.ps1"
+    bootstrap_path = target_dir / f"{stem}-bootstrap.ps1"
+    worker_path.write_text(worker_script, encoding="utf-8")
+    worker_escaped = str(worker_path).replace("'", "''")
     script = (
         f"$installerPath = '{installer_escaped}'; "
         f"$logPath = '{log_escaped}'; "
         f"$handoffPath = '{handoff_escaped}'; "
         f"$requestId = '{request_escaped}'; "
         f"$powerShellPath = '{powershell_escaped}'; "
-        f"$workerEncoded = '{worker_encoded}'; "
+        f"$workerPath = '{worker_escaped}'; "
         "function Write-InstallLog([string]$message) { "
         "if ([string]::IsNullOrWhiteSpace($logPath)) { return }; "
         "try { "
@@ -513,7 +544,7 @@ def _build_windows_silent_bootstrap_command(
         "}; "
         "Write-InstallLog (\"启动静默安装 bootstrap: installer=\" + $installerPath); "
         "try { "
-        "$workerArgs = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-EncodedCommand', $workerEncoded); "
+        "$workerArgs = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', $workerPath); "
         "$process = Start-Process -FilePath $powerShellPath -ArgumentList $workerArgs -WindowStyle Hidden -PassThru -ErrorAction Stop; "
         "} catch { "
         "$message = $_.Exception.Message; "
@@ -524,7 +555,8 @@ def _build_windows_silent_bootstrap_command(
         "Write-Handoff 'helper_started' ('worker_pid=' + $process.Id) 0; "
         "Write-InstallLog (\"静默安装 worker 已启动 pid=\" + $process.Id); "
     )
-    return _build_windows_powershell_command(script)
+    bootstrap_path.write_text(script, encoding="utf-8")
+    return _build_windows_powershell_file_command(bootstrap_path)
 
 
 def _startfile_windows_installer(path: Path) -> bool:
