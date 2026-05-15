@@ -845,6 +845,14 @@ class DocxService:
             content_ids = children_map.get(source_cell_id, [])
             if not content_ids:
                 continue
+            # Feishu creates one empty paragraph in each new table cell. Remove it
+            # before appending converted content, otherwise cell text is pushed down.
+            await self.delete_children(
+                document_id=document_id,
+                block_id=target_cell_id,
+                start_index=0,
+                end_index=1,
+            )
             await self._create_children_recursive(
                 document_id=document_id,
                 parent_block_id=target_cell_id,

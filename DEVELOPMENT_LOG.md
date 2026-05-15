@@ -1,5 +1,31 @@
 # DEVELOPMENT LOG
 
+## v0.7.5 release (2026-05-15)
+
+- 目标：
+  - 发布 `v0.7.5` 稳定版，修复 Markdown 表格上传到飞书后单元格真实内容被默认空段落顶到下方的问题。
+- 结果：
+  - 稳定版包含 `v0.7.5-dev.1`：表格单元格填充前会先删除飞书新建 cell 自动生成的默认空段落，再写入 Markdown 转换后的真实内容。
+  - 表格渲染修复标记升级为 `#md-table-render-v5`；已有 `#md-table-render-v4` 的文档会被视为旧修复状态，下一次同步仍会在原 doc token 内全量重建一次，以清理云端残留的“空段落 + 内容”结构。
+- 测试：
+  - `python -m pytest -q`（在 `apps/backend` 目录执行）
+  - `python -m pip install --dry-run -e apps/backend`
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python scripts/build_installer.py --nsis`
+  - `python scripts/release_notes.py --version v0.7.5 --asset "dist/LarkSync-Setup-v0.7.5.exe" --output "dist/release-notes-v0.7.5.md"`
+
+## v0.7.5-dev.1 (2026-05-15)
+
+- 目标：
+  - 修复 V1.5 文档表格上传后部分单元格视觉上靠下的问题；确认原因是飞书新建表格 cell 自带默认空段落，LarkSync 追加真实内容时没有先清理。
+- 结果：
+  - `DocxService._populate_table_cells` 在向每个目标 cell 写入内容前调用 `batch_delete` 删除第 1 个默认子块，避免单元格最终变成两个文本块。
+  - 更新回归测试，锁定表格 cell 填充必须先清理默认空段落，并且不会继续向 table block 本身创建 cell 子块。
+  - `SyncTaskRunner` 将超限表格渲染修复标记从 `#md-table-render-v4` 升级到 `#md-table-render-v5`，使已经完成过 v0.7.4 修复的历史文档在升级后仍会通过普通同步重新覆盖一次云端文档。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py::test_upload_new_markdown_with_large_table_runs_block_replace_after_import tests/test_sync_runner_upload_new_doc.py::test_upload_markdown_repairs_previous_table_marker_large_table_link_once -q`
+
 ## v0.7.4 release (2026-05-12)
 
 - 目标：

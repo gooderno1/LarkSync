@@ -1192,7 +1192,9 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
                 ]
             },
         },
+        {"code": 0, "data": {}},
         {"code": 0, "data": {"children": [{"block_id": "np1"}]}},
+        {"code": 0, "data": {}},
         {"code": 0, "data": {"children": [{"block_id": "np2"}]}},
     ]
     client = FakeClient(responses)
@@ -1207,6 +1209,8 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
     assert table_payload["property"]["column_size"] == 2
     assert table_payload["property"]["column_width"] == [180, 180]
     assert "cells" not in table_payload
+    assert any(url.endswith("/blocks/cellA/children/batch_delete") for url in urls)
+    assert any(url.endswith("/blocks/cellB/children/batch_delete") for url in urls)
     assert any(url.endswith("/blocks/cellA/children") for url in urls)
     assert any(url.endswith("/blocks/cellB/children") for url in urls)
     assert not any(url.endswith("/blocks/new_table/children") for url in urls)

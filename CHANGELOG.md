@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-15] v0.7.5 release: v0.7.5
+[2026-05-15] v0.7.5-dev.1 fix(sync-upload): Markdown 表格上行在填充飞书新建表格单元格前，会先删除飞书自动生成的默认空段落，再写入真实内容，避免单元格变成“空段落 + 内容”导致视觉上垂直下沉；表格渲染修复标记升级为 `#md-table-render-v5`，使已有 `#md-table-render-v4` 的历史文档下一次同步仍会在原 doc token 内全量重建一次
 [2026-05-12] v0.7.4 release: v0.7.4
 [2026-05-12] v0.7.4-dev.1 fix(sync-upload): 撤销 v0.7.3 对表格单元格文本写入 `Text.style.align=2` 的水平居中逻辑，保留飞书默认水平左对齐，并将超限表格渲染修复标记升级为 `#md-table-render-v4`，使已被 v0.7.3 重建过的历史文档下一次同步会再同 token 全量重建一次
 [2026-05-12] v0.7.3 release: v0.7.3
