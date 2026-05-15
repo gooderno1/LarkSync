@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-15] v0.7.7 release: v0.7.7
+[2026-05-15] v0.7.7-dev.1 fix(sync-upload): Markdown 表格上行不再预先把超限表拆成多张表；创建飞书表格时按 API 上限先建初始行，再用表格行插入补齐剩余行，保持 V1.5 长表为单张原生表格；单元格内容改为插入到默认空段落前并随后清理占位段落，避免空行和视觉下沉；列宽补丁改按文档顺序匹配表格并覆盖飞书转换器窄默认值；表格渲染修复标记升级为 `#md-table-render-v6`
 [2026-05-15] v0.7.6 release: v0.7.6
 [2026-05-15] v0.7.6-dev.1 fix(auto-update): Windows 静默更新 helper 在安装器退出码为空时会复核安装目录中的目标版本，避免“实际安装成功但被判失败”；安装后重启 LarkSync 改为多轮启动确认与重试，并在日志和 handoff 中记录 expected/installed、重启 attempt、过早退出、`restart_succeeded` / `restart_failed`，便于定位自动升级后未拉起的问题
 [2026-05-15] v0.7.5 release: v0.7.5

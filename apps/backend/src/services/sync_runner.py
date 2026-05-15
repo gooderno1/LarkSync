@@ -45,7 +45,7 @@ from src.services.watcher import FileChangeEvent, WatcherService
 SyncState = Literal["idle", "running", "success", "failed", "cancelled"]
 SYNC_LOG_LIMIT = 200
 _LOCAL_IMAGE_UPLOAD_REVISION_MARKER = "#local-images-v2"
-_MARKDOWN_TABLE_RENDER_REVISION_MARKER = "#md-table-render-v5"
+_MARKDOWN_TABLE_RENDER_REVISION_MARKER = "#md-table-render-v6"
 _MARKDOWN_IMAGE_REF_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
 _MARKDOWN_LINK_REF_PATTERN = re.compile(r"(?<!!)\[[^\]]*]\(([^)]+)\)")
 _HTML_IMAGE_REF_PATTERN = re.compile(
@@ -1660,7 +1660,10 @@ class SyncTaskRunner:
             base_path,
         )
         update_mode = task.update_mode or "auto"
-        has_large_table_over_limit = has_markdown_table_exceeding_create_limit(markdown)
+        has_large_table_over_limit = has_markdown_table_exceeding_create_limit(
+            markdown,
+            max_rows=8,
+        )
         table_render_repair_required = (
             has_large_table_over_limit and update_mode != "partial"
         )

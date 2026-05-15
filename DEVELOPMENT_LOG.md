@@ -1,5 +1,39 @@
 # DEVELOPMENT LOG
 
+## v0.7.7 release (2026-05-15)
+
+- 目标：
+  - 发布 `v0.7.7` 稳定版，收口 V1.5 软件设计说明书表格上行仍存在的空行、视觉下沉、列宽过窄和长表被拆分问题。
+- 结果：
+  - 稳定版包含 `v0.7.7-dev.1`：Markdown 表格上行不再在转换前拆分超限表格，而是在创建同一张飞书表格后用表格行插入补齐剩余行。
+  - 表格单元格写入改为先把真实内容插入默认空段落之前，再删除被后移的占位段落，避免文字被空段落顶到下方。
+  - 列宽修复按文档顺序匹配 Markdown 表格规格，覆盖飞书转换器返回的窄默认列宽。
+  - 表格渲染修复标记升级为 `#md-table-render-v6`，已有 `#md-table-render-v5` 的历史文档下一次普通同步会在原 doc token 内全量重建一次。
+- 测试：
+  - `python -m pytest -q`（在 `apps/backend` 目录执行）
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python -m pip install --dry-run -e apps/backend`
+  - `python scripts/build_installer.py --nsis`
+  - 使用当前 V1.5 本地文件调用真实 `blocks/convert` 干跑：Markdown 118 张表，转换后按文档顺序仍为 118 张表，窄宽度表为 0。
+  - 使用 V1.5 中 16 行 2 列真实大表创建飞书临时文档：上传后读取为 1 张原生表格、`row_size=16`、`cells=32`、每个单元格 1 个子块、前置空段落 0，验证后已删除临时文档。
+
+## v0.7.7-dev.1 (2026-05-15)
+
+- 目标：
+  - 修复 V1.5 软件设计说明书上传后仍有表格单元格空行、表格过窄，以及长表被拆成多张飞书表格的问题。
+- 结果：
+  - Markdown 上行不再在 `blocks/convert` 前拆分超限表格，V1.5 干跑转换从 159 张拆分表恢复为 118 张源表。
+  - 创建飞书表格时只把初始 `row_size` 限制在飞书建表上限内，随后通过 `insert_table_row` 在同一张表内补齐剩余行，避免长表被拆成多张表。
+  - 单元格内容改为插入到默认空段落之前，并在写入后删除被后移的默认空段落；真实云端临时文档验证 V1.5 中 16 行表为 1 张表、32 个单元格、每个单元格 1 个子段落、前置空段落 0。
+  - 列宽修复改为按 `first_level_block_ids` 文档顺序匹配 Markdown 表格规格，覆盖飞书转换器返回的等宽窄列；V1.5 第一张表干跑列宽为 `[120, 600, 600, 244, 398]`。
+  - 表格渲染修复标记升级为 `#md-table-render-v6`，使已带 `#md-table-render-v5` 的历史文档下一次同步仍会在原 doc token 内全量重建一次。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py::test_upload_new_markdown_with_large_table_runs_block_replace_after_import tests/test_sync_runner_upload_new_doc.py::test_upload_markdown_forces_full_replace_for_existing_large_table_doc tests/test_sync_runner_upload_new_doc.py::test_upload_markdown_repairs_previous_table_marker_large_table_link_once -q`
+  - `python -m pytest -q`（在 `apps/backend` 目录执行）
+  - 使用当前 V1.5 本地文件调用真实 `blocks/convert` 干跑：Markdown 118 张表，转换后按文档顺序仍为 118 张表，第一张表保持 5 列且补齐可读列宽，窄宽度表为 0。
+  - 真实云端临时文档验证 V1.5 中 16 行 2 列大表：上传后读取为 1 张飞书原生表格、`row_size=16`、`cells=32`、每个单元格 1 个子块、前置空段落 0，验证后已删除临时文档。
+
 ## v0.7.6 release (2026-05-15)
 
 - 目标：

@@ -5,6 +5,7 @@ import pytest
 from src.services.docx_service import (
     ConvertResult,
     DocxService,
+    TABLE_BLOCK_CREATE_MAX_ROWS,
     _build_create_chunks,
     _get_image_display_size,
     has_markdown_table_exceeding_create_limit,
@@ -1071,6 +1072,99 @@ def test_patch_table_properties_leaves_table_cell_horizontal_alignment_default()
     assert "style" not in block_map["outside"]["text"]
 
 
+def test_patch_table_properties_overrides_narrow_convert_width() -> None:
+    markdown = "\n".join(
+        [
+            "| 序号  | 《软件设计说明书 V1.4》存在的问题（评审意见）                                                 | 《软件设计说明书（修订版）》修订情况                                                                                     | 对应的章、节                   | 备注                        |",
+            "| --- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------ | ------------------------- |",
+            "| 一   | **明良才：**                                                                  |                                                                                                        |                          |                           |",
+            "| 1   | 进一步论证项目合同相关要求，对明确提出内容，应用充足支撑材料说明完成情况。                                     | 已完善。修订版补充合同约定内容与系统设计能力、验收支撑材料之间的承接关系，说明合同 5 大类建设内容如何通过 14 个系统模块、运行记录、模型调用记录、调度执行记录、节电报告、证据清单和审计日志进行支撑。 | 见 1.5、12.2               | 补充合同承接关系和证明路径。            |",
+            "| 二   | **刘佳林：**                                                                  |                                                                                                        |                          |                           |",
+            "| 1   | 加速卡之间通信时延问题。                                                              | 已完善。修订版明确加速卡之间通信时延作为训练/推理优化的重要考量因素，用于处理方式选择、运行结果解释和异常分析。                                               | 见 3.6、5.10.6             | 已纳入训练/推理优化说明和运行结果分析。      |",
+            "| 2   | 完成任务编排带来的能耗提升。                                                            | 已在会议现场明确回复。任务编排优化通过基线运行与优化运行对比，体现为降低能耗、提高执行效率和降低电费成本；现有设计已覆盖执行时长、能耗、电费成本、性能指标和节电结果的对比口径。               | 见 5.10.2、5.10.5、8.9、12.5 | 以既有章节作为答复依据。              |",
+            "| 3   | 避免用户确认，提升智能性。                                                             | 已完善。修订版明确单任务在默认规则、权限校验和约束校验通过后，可自动应用处理方式并形成执行安排；批量任务、任务集和算能协同调度方案因影响范围较大，仍需用户确认并保留审计记录。                | 见 5.3、5.12、8.3、8.7、10.1  | 区分单任务和批量任务确认边界，减少单任务重复确认。 |",
+            "| 三   | **李永辉：**                                                                  |                                                                                                        |                          |                           |",
+        ]
+    )
+    convert = ConvertResult(
+        first_level_block_ids=["t1"],
+        blocks=[
+            {
+                "block_id": "t1",
+                "block_type": BLOCK_TYPE_TABLE,
+                "table": {
+                    "property": {
+                        "row_size": 9,
+                        "column_size": 5,
+                        "column_width": [146, 146, 146, 146, 146],
+                    }
+                },
+            }
+        ],
+    )
+
+    patched = _patch_table_properties(convert, markdown)
+    table = next(block for block in patched.blocks if block.get("block_id") == "t1")["table"]
+
+    assert table["property"]["column_width"] != [146, 146, 146, 146, 146]
+    assert max(table["property"]["column_width"]) == 600
+    assert sum(table["property"]["column_width"]) > 180 * 5
+
+
+def test_patch_table_properties_matches_tables_by_document_order() -> None:
+    markdown = "\n\n".join(
+        [
+            "\n".join(
+                [
+                    "| Long column | Tiny |",
+                    "| --- | --- |",
+                    "| 这是一段明显更长的中文内容用于撑开第一列 | x |",
+                ]
+            ),
+            "\n".join(
+                [
+                    "| A | B |",
+                    "| --- | --- |",
+                    "| x | 这是一段明显更长的中文内容用于撑开第二列 |",
+                ]
+            ),
+        ]
+    )
+    convert = ConvertResult(
+        first_level_block_ids=["t1", "t2"],
+        blocks=[
+            {
+                "block_id": "t2",
+                "block_type": BLOCK_TYPE_TABLE,
+                "table": {
+                    "property": {
+                        "row_size": 2,
+                        "column_size": 2,
+                        "column_width": [180, 180],
+                    }
+                },
+            },
+            {
+                "block_id": "t1",
+                "block_type": BLOCK_TYPE_TABLE,
+                "table": {
+                    "property": {
+                        "row_size": 2,
+                        "column_size": 2,
+                        "column_width": [180, 180],
+                    }
+                },
+            },
+        ],
+    )
+
+    patched = _patch_table_properties(convert, markdown)
+    block_map = {block["block_id"]: block for block in patched.blocks}
+
+    assert block_map["t1"]["table"]["property"]["column_width"][0] > block_map["t1"]["table"]["property"]["column_width"][1]
+    assert block_map["t2"]["table"]["property"]["column_width"][1] > block_map["t2"]["table"]["property"]["column_width"][0]
+
+
 def test_patch_table_properties_adds_readable_column_width() -> None:
     convert = ConvertResult(
         first_level_block_ids=["t1"],
@@ -1092,6 +1186,49 @@ def test_patch_table_properties_adds_readable_column_width() -> None:
     assert prop["column_width"] == [600]
 
 
+@pytest.mark.asyncio
+async def test_convert_markdown_with_images_keeps_large_table_intact_for_row_insert_strategy() -> None:
+    markdown = "\n".join(
+        [
+            "| H1 | H2 |",
+            "| --- | --- |",
+            *[f"| r{i}c1 | r{i}c2 |" for i in range(1, 13)],
+        ]
+    )
+    client = FakeClient(
+        [{"code": 0, "data": {"first_level_block_ids": [], "blocks": []}}]
+    )
+    service = DocxService(client=client)
+
+    await service.convert_markdown_with_images(markdown, document_id="doc-table")
+
+    convert_call = client.requests[0]
+    assert convert_call[2]["json"]["content"].count("| H1 | H2 |") == 1
+
+
+def test_sanitize_block_caps_large_table_rows_on_create() -> None:
+    block = {
+        "block_id": "t1",
+        "block_type": BLOCK_TYPE_TABLE,
+        "children": [f"c{i}" for i in range(24)],
+        "table": {
+            "cells": [[f"c{r}_{c}" for c in range(2)] for r in range(12)],
+            "property": {
+                "row_size": 12,
+                "column_size": 2,
+                "column_width": [365, 365],
+            },
+        },
+    }
+
+    cleaned = DocxService._sanitize_block(block)
+
+    assert "children" not in cleaned
+    assert "cells" not in cleaned["table"]
+    assert cleaned["table"]["property"]["row_size"] == TABLE_BLOCK_CREATE_MAX_ROWS
+    assert cleaned["table"]["property"]["column_width"] == [365, 365]
+
+
 def test_split_large_markdown_tables_for_convert_repeats_header() -> None:
     markdown = "\n".join(
         [
@@ -1110,8 +1247,8 @@ def test_split_large_markdown_tables_for_convert_repeats_header() -> None:
     assert normalized.count("| H1 | H2 |") == 2
     assert "```" not in normalized
     chunks = normalized.split("| H1 | H2 |")
-    assert "| r7c1 | r7c2 |" in chunks[1]
-    assert "| r8c1 | r8c2 |" in chunks[2]
+    assert "| r8c1 | r8c2 |" in chunks[1]
+    assert "| r9c1 | r9c2 |" in chunks[2]
 
 
 def test_has_markdown_table_exceeding_create_limit() -> None:
@@ -1132,6 +1269,117 @@ def test_has_markdown_table_exceeding_create_limit() -> None:
 
     assert has_markdown_table_exceeding_create_limit(within_limit) is False
     assert has_markdown_table_exceeding_create_limit(over_limit) is True
+
+
+class LargeTableFillService(DocxService):
+    def __init__(self, refreshed_blocks: list[dict]) -> None:
+        super().__init__(client=FakeClient([]))
+        self.refreshed_blocks = refreshed_blocks
+        self.calls: list[tuple[str, str, dict]] = []
+
+    async def list_blocks(self, document_id: str, user_id_type: str = "open_id"):
+        self.calls.append(("GET_BLOCKS", document_id, {"user_id_type": user_id_type}))
+        return self.refreshed_blocks
+
+    async def _request_json(self, method: str, url: str, **kwargs):
+        self.calls.append((method, url, kwargs))
+        if method == "POST" and url.endswith("/children"):
+            created = [
+                {"block_id": f"created-{len(self.calls)}-{idx}"}
+                for idx, _ in enumerate(kwargs["json"].get("children", []))
+            ]
+            return {"data": {"children": created}}
+        return {"data": {}}
+
+
+@pytest.mark.asyncio
+async def test_populate_large_table_inserts_rows_and_removes_default_cell_paragraph() -> None:
+    rows = 11
+    cols = 2
+    source_cells = [f"s{row}_{col}" for row in range(rows) for col in range(cols)]
+    target_cells = [f"t{row}_{col}" for row in range(rows) for col in range(cols)]
+    source_table = {
+        "block_id": "source_table",
+        "block_type": BLOCK_TYPE_TABLE,
+        "children": source_cells,
+        "table": {"property": {"row_size": rows, "column_size": cols}},
+    }
+    target_table = {
+        "block_id": "new_table",
+        "block_type": BLOCK_TYPE_TABLE,
+        "children": target_cells[: TABLE_BLOCK_CREATE_MAX_ROWS * cols],
+        "table": {
+            "property": {
+                "row_size": TABLE_BLOCK_CREATE_MAX_ROWS,
+                "column_size": cols,
+            }
+        },
+    }
+    refreshed_blocks = [
+        {
+            "block_id": "new_table",
+            "block_type": BLOCK_TYPE_TABLE,
+            "children": target_cells,
+            "table": {"property": {"row_size": rows, "column_size": cols}},
+        },
+        *[
+            {"block_id": cell_id, "block_type": 32, "children": [f"default-{cell_id}"]}
+            for cell_id in target_cells
+        ],
+    ]
+    block_map: dict[str, dict] = {"source_table": source_table}
+    children_map: dict[str, list[str]] = {"source_table": source_cells}
+    for source_cell in source_cells:
+        text_id = f"p-{source_cell}"
+        block_map[source_cell] = {
+            "block_id": source_cell,
+            "block_type": 32,
+            "children": [text_id],
+            "table_cell": {},
+        }
+        block_map[text_id] = {
+            "block_id": text_id,
+            "block_type": 2,
+            "text": {"elements": [{"text_run": {"content": source_cell}}]},
+        }
+        children_map[source_cell] = [text_id]
+        children_map[text_id] = []
+
+    service = LargeTableFillService(refreshed_blocks)
+
+    await service._populate_table_cells(
+        document_id="doc-table",
+        table_block=target_table,
+        source_table_block=source_table,
+        block_map=block_map,
+        children_map=children_map,
+        user_id_type="open_id",
+        image_paths=None,
+        file_paths=None,
+    )
+
+    insert_row_calls = [
+        call
+        for call in service.calls
+        if call[0] == "PATCH" and call[2].get("json", {}).get("insert_table_row")
+    ]
+    create_cell_calls = [
+        call
+        for call in service.calls
+        if call[0] == "POST" and "/blocks/t" in call[1] and call[1].endswith("/children")
+    ]
+    cleanup_calls = [
+        call
+        for call in service.calls
+        if call[0] == "DELETE" and call[1].endswith("/children/batch_delete")
+    ]
+
+    assert len(insert_row_calls) == rows - TABLE_BLOCK_CREATE_MAX_ROWS
+    assert all(call[2]["json"]["insert_table_row"]["row_index"] == -1 for call in insert_row_calls)
+    assert len(create_cell_calls) == rows * cols
+    assert all(call[2]["json"]["index"] == 0 for call in create_cell_calls)
+    assert len(cleanup_calls) == rows * cols
+    assert all(call[2]["json"] == {"start_index": 1, "end_index": 2} for call in cleanup_calls)
 
 
 @pytest.mark.asyncio
@@ -1192,10 +1440,12 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
                 ]
             },
         },
-        {"code": 0, "data": {}},
         {"code": 0, "data": {"children": [{"block_id": "np1"}]}},
         {"code": 0, "data": {}},
+        {"code": 0, "data": {}},
         {"code": 0, "data": {"children": [{"block_id": "np2"}]}},
+        {"code": 0, "data": {}},
+        {"code": 0, "data": {}},
     ]
     client = FakeClient(responses)
     service = DocxService(client=client)

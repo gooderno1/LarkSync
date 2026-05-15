@@ -61,7 +61,7 @@ _HTML_IMAGE_SRC_PATTERN = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _IMAGE_DISPLAY_MAX_WIDTH = 820
-TABLE_BLOCK_CREATE_MAX_ROWS = 8
+TABLE_BLOCK_CREATE_MAX_ROWS = 9
 _TABLE_COLUMN_MIN_WIDTH = 120
 _TABLE_COLUMN_MAX_WIDTH = 600
 _TABLE_COLUMN_DEFAULT_WIDTH = 180
@@ -226,9 +226,6 @@ class DocxService:
         base_path: str | Path | None = None,
     ) -> ConvertResult:
         normalized_markdown = _normalize_markdown_for_convert(markdown)
-        normalized_markdown = _split_large_markdown_tables_for_convert(
-            normalized_markdown
-        )
         processed_markdown, placeholders, image_paths = self._build_image_placeholders(
             normalized_markdown, base_path
         )
@@ -301,6 +298,47 @@ class DocxService:
                 json=payload,
             )
             current_end = current_start
+
+    async def _try_delete_children(
+        self,
+        document_id: str,
+        block_id: str,
+        start_index: int,
+        end_index: int,
+    ) -> bool:
+        try:
+            await self.delete_children(
+                document_id=document_id,
+                block_id=block_id,
+                start_index=start_index,
+                end_index=end_index,
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "清理子块失败，继续保留当前内容: document_id={} block_id={} range={}..{} error={}",
+                document_id,
+                block_id,
+                start_index,
+                end_index,
+                exc,
+            )
+            return False
+
+    async def insert_table_row(
+        self,
+        document_id: str,
+        table_block_id: str,
+        *,
+        row_index: int = -1,
+        user_id_type: str = "open_id",
+    ) -> None:
+        await self._request_json(
+            "PATCH",
+            f"{self._base_url}/open-apis/docx/v1/documents/{document_id}/blocks/{table_block_id}",
+            params={"document_revision_id": -1, "user_id_type": user_id_type},
+            json={"insert_table_row": {"row_index": row_index}},
+        )
 
     async def get_root_block(
         self, document_id: str, user_id_type: str = "open_id"
@@ -802,6 +840,23 @@ class DocxService:
         if not target_cells:
             table = table_block.get("table") or {}
             target_cells = _flatten_table_cells(table.get("cells") or [])
+        source_rows, source_cols = _table_dimensions(
+            source_table_block, len(source_cells)
+        )
+        target_rows, target_cols = _table_dimensions(table_block, len(target_cells))
+        if (
+            source_rows > target_rows
+            and source_cols > 0
+            and (target_cols <= 0 or target_cols == source_cols)
+        ):
+            target_cells = await self._ensure_table_row_capacity(
+                document_id=document_id,
+                table_block=table_block,
+                current_rows=target_rows,
+                desired_rows=source_rows,
+                user_id_type=user_id_type,
+                error_flag=error_flag,
+            )
         if not target_cells:
             try:
                 items = await self.list_blocks(document_id, user_id_type=user_id_type)
@@ -845,14 +900,6 @@ class DocxService:
             content_ids = children_map.get(source_cell_id, [])
             if not content_ids:
                 continue
-            # Feishu creates one empty paragraph in each new table cell. Remove it
-            # before appending converted content, otherwise cell text is pushed down.
-            await self.delete_children(
-                document_id=document_id,
-                block_id=target_cell_id,
-                start_index=0,
-                end_index=1,
-            )
             await self._create_children_recursive(
                 document_id=document_id,
                 parent_block_id=target_cell_id,
@@ -860,11 +907,79 @@ class DocxService:
                 block_map=block_map,
                 children_map=children_map,
                 user_id_type=user_id_type,
-                insert_index=-1,
+                insert_index=0,
                 image_paths=image_paths,
                 file_paths=file_paths,
                 error_flag=error_flag,
             )
+            # New table cells contain a default empty paragraph. Insert real
+            # content at the top, then remove the shifted placeholder.
+            await self._try_delete_children(
+                document_id=document_id,
+                block_id=target_cell_id,
+                start_index=len(content_ids),
+                end_index=len(content_ids) + 1,
+            )
+
+    async def _ensure_table_row_capacity(
+        self,
+        *,
+        document_id: str,
+        table_block: dict[str, Any],
+        current_rows: int,
+        desired_rows: int,
+        user_id_type: str,
+        error_flag: dict[str, bool] | None = None,
+    ) -> list[str]:
+        table_block_id = table_block.get("block_id")
+        if not isinstance(table_block_id, str) or not table_block_id:
+            return _extract_children_ids(table_block)
+        if desired_rows <= current_rows:
+            return _extract_children_ids(table_block)
+
+        missing_rows = desired_rows - current_rows
+        for _ in range(missing_rows):
+            try:
+                await self.insert_table_row(
+                    document_id,
+                    table_block_id,
+                    row_index=-1,
+                    user_id_type=user_id_type,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "插入表格行失败: document_id={} table_id={} current_rows={} desired_rows={} error={}",
+                    document_id,
+                    table_block_id,
+                    current_rows,
+                    desired_rows,
+                    exc,
+                )
+                if error_flag is not None:
+                    error_flag["error"] = True
+                return _extract_children_ids(table_block)
+
+        try:
+            items = await self.list_blocks(document_id, user_id_type=user_id_type)
+        except Exception as exc:
+            logger.warning(
+                "插入表格行后刷新单元格失败: document_id={} table_id={} error={}",
+                document_id,
+                table_block_id,
+                exc,
+            )
+            if error_flag is not None:
+                error_flag["error"] = True
+            return _extract_children_ids(table_block)
+
+        for item in items:
+            if item.get("block_id") == table_block_id:
+                refreshed_cells = _extract_children_ids(item)
+                if refreshed_cells:
+                    return refreshed_cells
+                table = item.get("table") or {}
+                return _flatten_table_cells(table.get("cells") or [])
+        return _extract_children_ids(table_block)
 
     async def _apply_partial_update(
         self,
@@ -997,6 +1112,9 @@ class DocxService:
                 if isinstance(prop, dict):
                     prop = dict(prop)
                     prop.pop("merge_info", None)
+                    row_size = _safe_int(prop.get("row_size"))
+                    if row_size > TABLE_BLOCK_CREATE_MAX_ROWS:
+                        prop["row_size"] = TABLE_BLOCK_CREATE_MAX_ROWS
                     column_width = _normalize_column_widths(
                         prop.get("column_width"),
                         _safe_int(prop.get("column_size")),
@@ -1941,6 +2059,34 @@ def _flatten_table_cells(cells: object) -> list[str]:
     return flattened
 
 
+def _table_dimensions(block: dict[str, Any], cell_count: int = 0) -> tuple[int, int]:
+    table = block.get("table") or {}
+    prop = table.get("property") or {}
+    rows = _safe_int(prop.get("row_size"))
+    cols = _safe_int(prop.get("column_size"))
+    cells = table.get("cells")
+    if (rows <= 0 or cols <= 0) and isinstance(cells, list) and cells:
+        if all(isinstance(row, list) for row in cells):
+            rows = rows if rows > 0 else len(cells)
+            cols = cols if cols > 0 else max(
+                (len(row) for row in cells if isinstance(row, list)),
+                default=0,
+            )
+        elif all(isinstance(cell, str) for cell in cells):
+            grouped = _group_cells_by_row_token(cells)
+            if grouped:
+                rows = rows if rows > 0 else len(grouped)
+                cols = cols if cols > 0 else max(
+                    (len(row) for row in grouped),
+                    default=0,
+                )
+    if rows <= 0 and cols > 0 and cell_count > 0:
+        rows = (cell_count + cols - 1) // cols
+    if cols <= 0 and rows > 0 and cell_count > 0:
+        cols = (cell_count + rows - 1) // rows
+    return rows, cols
+
+
 def _has_duplicate_signatures(signatures: list[str]) -> bool:
     if not signatures:
         return False
@@ -1968,13 +2114,17 @@ def _unique_anchor_pairs(
 
 def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertResult:
     specs = _extract_markdown_table_specs(markdown)
-    spec_index = 0
+    table_ids = _ordered_table_block_ids(convert)
+    specs_by_block_id = {
+        block_id: specs[idx]
+        for idx, block_id in enumerate(table_ids)
+        if idx < len(specs)
+    }
     for block in convert.blocks:
         if block.get("block_type") != BLOCK_TYPE_TABLE:
             continue
-        spec = specs[spec_index] if spec_index < len(specs) else None
-        if spec is not None:
-            spec_index += 1
+        block_id = block.get("block_id")
+        spec = specs_by_block_id.get(block_id) if isinstance(block_id, str) else None
         table = block.get("table") or {}
         prop = table.get("property") or {}
         row_size = _safe_int(prop.get("row_size"))
@@ -1995,12 +2145,11 @@ def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertRes
             logger.info("补齐表格属性: rows={} cols={}", rows, cols)
 
         existing_width = _normalize_column_widths(prop.get("column_width"), col_size)
-        column_width = existing_width
-        if not column_width and col_size > 0:
-            if spec is not None and spec.cols == col_size:
-                column_width = list(spec.column_width)
-            else:
-                column_width = _default_table_column_widths(col_size)
+        column_width: list[int] = []
+        if spec is not None and spec.cols == col_size:
+            column_width = list(spec.column_width)
+        elif not existing_width and col_size > 0:
+            column_width = _default_table_column_widths(col_size)
         if column_width and existing_width != column_width:
             prop = dict(prop)
             prop["column_width"] = column_width
@@ -2037,6 +2186,36 @@ def _patch_table_properties(convert: ConvertResult, markdown: str) -> ConvertRes
             table["property"] = prop
             block["table"] = table
     return convert
+
+
+def _ordered_table_block_ids(convert: ConvertResult) -> list[str]:
+    block_map = {
+        block_id: block
+        for block in convert.blocks
+        if isinstance((block_id := block.get("block_id")), str)
+    }
+    ordered: list[str] = []
+    visited: set[str] = set()
+
+    def visit(block_id: str) -> None:
+        if block_id in visited:
+            return
+        visited.add(block_id)
+        block = block_map.get(block_id)
+        if not block:
+            return
+        if block.get("block_type") == BLOCK_TYPE_TABLE:
+            ordered.append(block_id)
+        for child_id in _extract_children_ids(block):
+            if isinstance(child_id, str):
+                visit(child_id)
+
+    for block_id in convert.first_level_block_ids:
+        if isinstance(block_id, str):
+            visit(block_id)
+    for block_id in block_map:
+        visit(block_id)
+    return ordered
 
 
 def _group_cells_by_row_token(cells: list[str]) -> list[list[str]]:
