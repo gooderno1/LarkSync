@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.7.10-dev.1 (2026-05-15)
+
+- 目标：
+  - 修复 v0.7.9 生成的 V1.5 飞书文档中表格还没占满页面就提前换行的问题。
+- 结果：
+  - Markdown 表格列宽估算不再使用 `列数 * 180` 作为目标总宽，改为多列表格使用页面级总宽目标。
+  - 列宽扩展时按内容估算权重分配剩余空间，短列保留最小宽度，长文本列获得更多宽度；超过页面目标时继续压回受控总宽，避免横向滚动回归。
+  - 表格渲染修复标记升级为 `#md-table-render-v8`，已有 `#md-table-render-v7` 的历史文档下一次普通同步会在原 doc token 内全量重建一次。
+  - 使用 V1.5 本地源文件验证 118 张 Markdown 表格，2/3/4/5/6 列表格均生成 `1080` 总列宽。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py::test_convert_markdown_patches_table_property apps/backend/tests/test_docx_service.py::test_patch_table_properties_overrides_narrow_convert_width apps/backend/tests/test_docx_service.py::test_patch_table_properties_caps_long_table_width_to_enable_wrapping apps/backend/tests/test_docx_service.py::test_patch_table_properties_expands_common_tables_to_page_width apps/backend/tests/test_docx_service.py::test_replace_document_content_populates_table_cells_without_creating_cells apps/backend/tests/test_sync_runner_upload_new_doc.py::test_upload_new_markdown_with_large_table_runs_block_replace_after_import apps/backend/tests/test_sync_runner_upload_new_doc.py::test_upload_markdown_repairs_previous_table_marker_large_table_link_once -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py apps/backend/tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest`（在 `apps/backend` 目录执行，424 passed）
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python -m pip install --dry-run -e apps/backend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.7.9 release (2026-05-15)
 
 - 目标：

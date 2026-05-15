@@ -64,7 +64,6 @@ _IMAGE_DISPLAY_MAX_WIDTH = 820
 TABLE_BLOCK_CREATE_MAX_ROWS = 9
 _TABLE_COLUMN_MIN_WIDTH = 120
 _TABLE_COLUMN_MAX_WIDTH = 600
-_TABLE_COLUMN_DEFAULT_WIDTH = 180
 _TABLE_SINGLE_COLUMN_WIDTH = 600
 _TABLE_MAX_TOTAL_WIDTH = 1080
 _FIGURE_START_PATTERN = re.compile(
@@ -2408,19 +2407,49 @@ def _estimate_table_column_widths(table_lines: list[str], cols: int) -> list[int
         )
         for units in max_units
     ]
-    target_total = min(_TABLE_MAX_TOTAL_WIDTH, cols * _TABLE_COLUMN_DEFAULT_WIDTH)
+    target_total = _table_target_total_width(cols)
     total = sum(widths)
     if total < target_total:
-        extra = target_total - total
-        idx = 0
-        while extra > 0 and any(width < _TABLE_COLUMN_MAX_WIDTH for width in widths):
-            if widths[idx] < _TABLE_COLUMN_MAX_WIDTH:
-                widths[idx] += 1
-                extra -= 1
-            idx = (idx + 1) % len(widths)
+        widths = _expand_table_column_widths(widths, target_total)
     elif total > target_total:
         widths = _fit_table_column_widths(widths, target_total)
     return widths
+
+
+def _table_target_total_width(cols: int) -> int:
+    return max(_TABLE_MAX_TOTAL_WIDTH, _TABLE_COLUMN_MIN_WIDTH * cols)
+
+
+def _expand_table_column_widths(widths: list[int], target_total: int) -> list[int]:
+    if not widths:
+        return []
+    total = sum(widths)
+    if total >= target_total:
+        return list(widths)
+
+    extra = target_total - total
+    flexible = [max(1, width - _TABLE_COLUMN_MIN_WIDTH) for width in widths]
+    flexible_total = sum(flexible)
+    if flexible_total <= 0:
+        return list(widths)
+
+    raw_widths = [
+        width + (extra * flex / flexible_total)
+        for width, flex in zip(widths, flexible)
+    ]
+    expanded = [int(width) for width in raw_widths]
+    remainder = target_total - sum(expanded)
+    if remainder > 0:
+        fractions = sorted(
+            (
+                (raw_widths[idx] - expanded[idx], idx)
+                for idx in range(len(expanded))
+            ),
+            reverse=True,
+        )
+        for _fraction, idx in fractions[:remainder]:
+            expanded[idx] += 1
+    return expanded
 
 
 def _fit_table_column_widths(widths: list[int], target_total: int) -> list[int]:
@@ -2463,7 +2492,7 @@ def _default_table_column_widths(cols: int) -> list[int]:
         return []
     if cols == 1:
         return [_TABLE_SINGLE_COLUMN_WIDTH]
-    target_total = min(_TABLE_MAX_TOTAL_WIDTH, cols * _TABLE_COLUMN_DEFAULT_WIDTH)
+    target_total = _table_target_total_width(cols)
     base = target_total // cols
     widths = [base] * cols
     for idx in range(target_total - base * cols):

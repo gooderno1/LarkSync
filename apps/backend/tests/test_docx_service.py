@@ -845,7 +845,7 @@ async def test_convert_markdown_patches_table_property() -> None:
     prop = (table_block.get("table") or {}).get("property") or {}
     assert prop.get("row_size") == 2
     assert prop.get("column_size") == 2
-    assert prop.get("column_width") == [180, 180]
+    assert prop.get("column_width") == [540, 540]
 
 
 @pytest.mark.asyncio
@@ -1109,7 +1109,7 @@ def test_patch_table_properties_overrides_narrow_convert_width() -> None:
     widths = table["property"]["column_width"]
 
     assert widths != [146, 146, 146, 146, 146]
-    assert sum(widths) <= _TABLE_MAX_TOTAL_WIDTH
+    assert sum(widths) == _TABLE_MAX_TOTAL_WIDTH
     assert widths[1] > widths[0]
     assert widths[2] > widths[0]
 
@@ -1143,10 +1143,68 @@ def test_patch_table_properties_caps_long_table_width_to_enable_wrapping() -> No
     table = next(block for block in patched.blocks if block.get("block_id") == "t1")["table"]
     widths = table["property"]["column_width"]
 
-    assert sum(widths) <= _TABLE_MAX_TOTAL_WIDTH
-    assert max(widths) < 600
+    assert sum(widths) == _TABLE_MAX_TOTAL_WIDTH
+    assert max(widths) < _TABLE_MAX_TOTAL_WIDTH
     assert widths[1] > widths[0]
     assert widths[2] > widths[0]
+
+
+def test_patch_table_properties_expands_common_tables_to_page_width() -> None:
+    markdown = "\n\n".join(
+        [
+            "\n".join(
+                [
+                    "| 字段 | 说明 |",
+                    "| --- | --- |",
+                    "| 节电闭环验证工作台 | 单任务在不同资源、时间窗、运行配置或优化方式下的执行方式 |",
+                ]
+            ),
+            "\n".join(
+                [
+                    "| 角色 | 章节 | 用途 |",
+                    "| --- | --- | --- |",
+                    "| 采集与模型服务集成人员 | 第 6 章、第 7 章、第 8 章、第 11 章、第 12 章 | 理解分层职责、模块边界、数据对象和接口契约 |",
+                ]
+            ),
+        ]
+    )
+    convert = ConvertResult(
+        first_level_block_ids=["t1", "t2"],
+        blocks=[
+            {
+                "block_id": "t1",
+                "block_type": BLOCK_TYPE_TABLE,
+                "table": {
+                    "property": {
+                        "row_size": 2,
+                        "column_size": 2,
+                        "column_width": [365, 365],
+                    }
+                },
+            },
+            {
+                "block_id": "t2",
+                "block_type": BLOCK_TYPE_TABLE,
+                "table": {
+                    "property": {
+                        "row_size": 2,
+                        "column_size": 3,
+                        "column_width": [244, 244, 244],
+                    }
+                },
+            },
+        ],
+    )
+
+    patched = _patch_table_properties(convert, markdown)
+    block_map = {block["block_id"]: block for block in patched.blocks}
+    first_widths = block_map["t1"]["table"]["property"]["column_width"]
+    second_widths = block_map["t2"]["table"]["property"]["column_width"]
+
+    assert sum(first_widths) == _TABLE_MAX_TOTAL_WIDTH
+    assert sum(second_widths) == _TABLE_MAX_TOTAL_WIDTH
+    assert first_widths[1] > first_widths[0]
+    assert second_widths[1] > second_widths[0]
 
 
 def test_patch_table_properties_matches_tables_by_document_order() -> None:
@@ -1495,7 +1553,7 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
     table_payload = create_call[2]["json"]["children"][0]["table"]
     assert table_payload["property"]["row_size"] == 1
     assert table_payload["property"]["column_size"] == 2
-    assert table_payload["property"]["column_width"] == [180, 180]
+    assert table_payload["property"]["column_width"] == [540, 540]
     assert "cells" not in table_payload
     assert any(url.endswith("/blocks/cellA/children/batch_delete") for url in urls)
     assert any(url.endswith("/blocks/cellB/children/batch_delete") for url in urls)
