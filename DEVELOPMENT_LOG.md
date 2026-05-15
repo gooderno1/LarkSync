@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.7.11 release (2026-05-15)
+
+- 目标：
+  - 发布 `v0.7.11` 稳定版，收口 v0.7.10 自动更新检查在 GitHub Release API 匿名限流时失败的问题。
+- 结果：
+  - 稳定版包含 `v0.7.11-dev.1`：GitHub API 返回 403/429 时回退公开 Release 跳转页解析最新 tag，并生成平台安装包与 `.sha256` 下载地址。
+  - 该修复不改变安装包下载与 sha256 校验链路，只修复“获取 Release 元数据”被 API 限流时的入口失败。
+- 测试：
+  - `python -m pytest`（在 `apps/backend` 目录执行，425 passed）
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python -m pip install --dry-run -e apps/backend`
+  - `python scripts/build_installer.py --nsis`
+  - 本地安装包：`dist/LarkSync-Setup-v0.7.11.exe`，sha256=`FE0A3F41DBDBB52098C25C4E2DC5222EBD0CD8DB8F411559AAA0671CC0E0819E`
+
 ## v0.7.11-dev.1 (2026-05-15)
 
 - 目标：
