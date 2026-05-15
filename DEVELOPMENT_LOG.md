@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.7.8-dev.1 (2026-05-15)
+
+- 目标：
+  - 修复删除同步只覆盖文件、不覆盖文件夹的问题，让已同步文件夹的本地删除和云端删除都能进入删除联动链路。
+- 结果：
+  - Watcher 不再丢弃目录事件，并在事件中保留 `is_directory` 标记；非删除的目录事件不会进入文件上传队列。
+  - 云端扫描会为文件夹创建本地目录并持久化 `cloud_type=folder` 的同步映射，上传链路按需创建父文件夹时也会持久化 folder 映射。
+  - 本地删除已同步文件夹会生成 folder 删除墓碑，执行时调用飞书 Drive 删除对应文件夹，并递归清理该文件夹及子文件的同步映射。
+  - 云端文件夹缺失时只生成一条文件夹墓碑，不再把同一目录下的子文档拆成多条删除；本地侧仍按当前删除策略移动到回收目录或直接删除。
+  - 同步根目录不存在时跳过本地缺失删除判定，避免本地根目录异常丢失时误删整棵云端目录。
+- 测试：
+  - `python -m pytest tests/test_watcher.py tests/test_sync_runner.py`（在 `apps/backend` 目录执行）
+  - `python -m pytest`（在 `apps/backend` 目录执行，421 passed）
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python -m pip install --dry-run -e apps/backend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.7.7 release (2026-05-15)
 
 - 目标：

@@ -38,3 +38,19 @@ def test_debounce_uses_dest_path_for_moved_event() -> None:
     handler.on_any_event(DummyEvent("C:\\tmp\\tmp2", dest_path=dest_path))
     assert len(events) == 1
     assert events[0].dest_path == dest_path
+
+
+def test_directory_deleted_event_is_emitted_with_directory_flag() -> None:
+    events = []
+    ignore = IgnoreRegistry(ttl_seconds=10.0)
+    debounce = DebounceFilter(window_seconds=0.0)
+    handler = FileEventHandler(lambda event: events.append(event), debounce, ignore)
+
+    handler.on_any_event(
+        DummyEvent("C:\\tmp\\folder", event_type="deleted", is_directory=True)
+    )
+
+    assert len(events) == 1
+    assert events[0].event_type == "deleted"
+    assert events[0].src_path == "C:\\tmp\\folder"
+    assert events[0].is_directory is True

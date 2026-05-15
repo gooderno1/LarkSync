@@ -15,6 +15,7 @@ class FileChangeEvent:
     src_path: str
     dest_path: str | None
     timestamp: float
+    is_directory: bool = False
 
 
 class DebounceFilter:
@@ -65,8 +66,7 @@ class FileEventHandler(FileSystemEventHandler):
         self._ignore = ignore
 
     def on_any_event(self, event) -> None:
-        if event.is_directory:
-            return
+        is_directory = bool(getattr(event, "is_directory", False))
         src_path = str(getattr(event, "src_path", "")) or ""
         dest_path = getattr(event, "dest_path", None)
         dest_path_str = str(dest_path) if dest_path else ""
@@ -86,6 +86,7 @@ class FileEventHandler(FileSystemEventHandler):
             src_path=src_path,
             dest_path=dest_path_str if dest_path_str else None,
             timestamp=time.time(),
+            is_directory=is_directory,
         )
         self._on_event(payload)
 

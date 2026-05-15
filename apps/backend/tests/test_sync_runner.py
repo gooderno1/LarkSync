@@ -1862,6 +1862,64 @@ async def test_handle_local_deleted_event_creates_tombstone(tmp_path: Path, monk
 
 
 @pytest.mark.asyncio
+async def test_handle_local_deleted_folder_event_creates_folder_tombstone(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    folder_path = tmp_path / "待删除目录"
+    folder_path.mkdir()
+    link = SyncLinkItem(
+        local_path=str(folder_path),
+        cloud_token="fld-delete",
+        cloud_type="folder",
+        task_id="task-folder-del",
+        updated_at=100.0,
+    )
+    link_service = FakeLinkService([link])
+    tombstone_service = FakeTombstoneService()
+    runner = SyncTaskRunner(
+        link_service=link_service,
+        tombstone_service=tombstone_service,
+        drive_service=FakeDriveService(DriveNode(token="root", name="root", type="folder")),
+    )
+    task = SyncTaskItem(
+        id="task-folder-del",
+        name="文件夹删除测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        delete_policy="safe",
+        delete_grace_minutes=0,
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    folder_path.rmdir()
+    event = FileChangeEvent(
+        event_type="deleted",
+        src_path=str(folder_path),
+        dest_path=None,
+        timestamp=0.0,
+        is_directory=True,
+    )
+
+    await runner._handle_local_event(task, event)
+
+    assert tombstone_service.created
+    assert tombstone_service.created[0]["source"] == "local"
+    assert tombstone_service.created[0]["local_path"] == str(folder_path)
+    assert tombstone_service.created[0]["cloud_token"] == "fld-delete"
+    assert tombstone_service.created[0]["cloud_type"] == "folder"
+
+
+@pytest.mark.asyncio
 async def test_run_download_enqueues_cloud_missing_delete(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "config.json"
     config_path.write_text("{}", encoding="utf-8")
@@ -1909,6 +1967,127 @@ async def test_run_download_enqueues_cloud_missing_delete(tmp_path: Path, monkey
     assert tombstone_service.created
     assert tombstone_service.created[0]["source"] == "cloud"
     assert tombstone_service.created[0]["local_path"] == str(stale_local)
+
+
+@pytest.mark.asyncio
+async def test_run_download_persists_cloud_folder_link(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="fld-empty",
+                name="空目录",
+                type="folder",
+                parent_token="root-token",
+                children=[],
+            )
+        ],
+    )
+    link_service = FakeLinkService()
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=link_service,
+        tombstone_service=FakeTombstoneService(),
+    )
+    task = SyncTaskItem(
+        id="task-folder-link",
+        name="云端目录映射测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._run_download(task, status)
+
+    local_folder = tmp_path / "空目录"
+    assert local_folder.is_dir()
+    links = await link_service.list_by_task(task.id)
+    assert len(links) == 1
+    assert links[0].local_path == str(local_folder)
+    assert links[0].cloud_token == "fld-empty"
+    assert links[0].cloud_type == "folder"
+
+
+@pytest.mark.asyncio
+async def test_run_download_enqueues_single_cloud_missing_folder_delete(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    tree = DriveNode(token="root", name="根目录", type="folder", children=[])
+    stale_folder = tmp_path / "stale-folder"
+    stale_child = stale_folder / "doc.md"
+    stale_folder.mkdir()
+    stale_child.write_text("# stale", encoding="utf-8")
+    persisted = [
+        SyncLinkItem(
+            local_path=str(stale_folder),
+            cloud_token="fld-stale",
+            cloud_type="folder",
+            task_id="task-cloud-folder-del",
+            updated_at=100.0,
+        ),
+        SyncLinkItem(
+            local_path=str(stale_child),
+            cloud_token="doc-stale",
+            cloud_type="docx",
+            task_id="task-cloud-folder-del",
+            updated_at=100.0,
+        ),
+    ]
+    tombstone_service = FakeTombstoneService()
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(persisted),
+        tombstone_service=tombstone_service,
+    )
+    task = SyncTaskItem(
+        id="task-cloud-folder-del",
+        name="云端文件夹删除测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._run_download(task, status)
+
+    assert len(tombstone_service.created) == 1
+    assert tombstone_service.created[0]["source"] == "cloud"
+    assert tombstone_service.created[0]["local_path"] == str(stale_folder)
+    assert tombstone_service.created[0]["cloud_token"] == "fld-stale"
+    assert tombstone_service.created[0]["cloud_type"] == "folder"
 
 
 @pytest.mark.asyncio
@@ -2014,6 +2193,137 @@ async def test_process_pending_deletes_cancels_ignored_cloud_tombstone(tmp_path:
     assert tombstone_service.marked[0][1] == "cancelled"
     assert tombstone_service.marked[0][2] == "路径已加入忽略目录"
     assert ignored_local.exists()
+
+
+@pytest.mark.asyncio
+async def test_process_pending_deletes_deletes_cloud_folder_and_cleans_descendant_links(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    folder_path = tmp_path / "gone-folder"
+    child_path = folder_path / "child.md"
+    link_service = FakeLinkService(
+        [
+            SyncLinkItem(
+                local_path=str(folder_path),
+                cloud_token="fld-to-delete",
+                cloud_type="folder",
+                task_id="task-folder-delete",
+                updated_at=10.0,
+            ),
+            SyncLinkItem(
+                local_path=str(child_path),
+                cloud_token="doc-child",
+                cloud_type="docx",
+                task_id="task-folder-delete",
+                updated_at=10.0,
+            ),
+        ]
+    )
+    tombstone_service = FakeTombstoneService()
+    await tombstone_service.create_or_refresh(
+        task_id="task-folder-delete",
+        local_path=str(folder_path),
+        cloud_token="fld-to-delete",
+        cloud_type="folder",
+        source="local",
+        reason="test",
+        expire_at=0.0,
+    )
+
+    class DriveWithDelete(FakeDriveService):
+        def __init__(self) -> None:
+            super().__init__(DriveNode(token="root", name="root", type="folder"))
+            self.deleted: list[tuple[str, str | None]] = []
+
+        async def delete_file(self, file_token: str, file_type: str | None = None) -> None:
+            self.deleted.append((file_token, file_type))
+
+    drive = DriveWithDelete()
+    runner = SyncTaskRunner(
+        tombstone_service=tombstone_service,
+        link_service=link_service,
+    )
+    task = SyncTaskItem(
+        id="task-folder-delete",
+        name="云端文件夹删除执行测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = runner.get_status(task.id)
+
+    await runner._process_pending_deletes(
+        task=task,
+        status=status,
+        drive_service=drive,
+    )
+
+    assert drive.deleted == [("fld-to-delete", "folder")]
+    assert await link_service.list_by_task(task.id) == []
+    assert any(item.status == "deleted" for item in status.last_files)
+
+
+@pytest.mark.asyncio
+async def test_resolve_cloud_parent_persists_created_folder_links(tmp_path: Path) -> None:
+    class DriveWithCreate(FakeDriveService):
+        def __init__(self) -> None:
+            super().__init__(DriveNode(token="root", name="root", type="folder"))
+            self.created: list[tuple[str, str]] = []
+
+        async def list_files(
+            self,
+            folder_token: str,
+            page_token: str | None = None,
+            page_size: int = 200,
+        ) -> DriveFileList:
+            return DriveFileList(files=[], has_more=False, next_page_token=None)
+
+        async def create_folder(self, parent_token: str, name: str) -> str:
+            token = f"{parent_token}-{name}"
+            self.created.append((parent_token, name))
+            return token
+
+    link_service = FakeLinkService()
+    runner = SyncTaskRunner(link_service=link_service)
+    task = SyncTaskItem(
+        id="task-parent-link",
+        name="上传父目录映射测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    local_file = tmp_path / "A" / "B" / "doc.md"
+    local_file.parent.mkdir(parents=True)
+    local_file.write_text("# doc", encoding="utf-8")
+    drive = DriveWithCreate()
+
+    parent_token = await runner._resolve_cloud_parent(task, local_file, drive)
+
+    assert parent_token == "root-token-A-B"
+    assert drive.created == [("root-token", "A"), ("root-token-A", "B")]
+    links = await link_service.list_by_task(task.id)
+    assert [(Path(item.local_path).name, item.cloud_token, item.cloud_type) for item in links] == [
+        ("A", "root-token-A", "folder"),
+        ("B", "root-token-A-B", "folder"),
+    ]
 
 
 @pytest.mark.asyncio

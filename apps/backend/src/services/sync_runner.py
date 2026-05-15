@@ -776,9 +776,14 @@ class SyncTaskRunner:
             tree = await drive_service.scan_folder(
                 task.cloud_folder_token, name=task.name or "同步根目录"
             )
+            folders = list(_flatten_folders(tree))
+            await self._sync_cloud_folder_links(task, folders)
             files = list(_flatten_files(tree))
             logger.info(
-                "下载阶段: task_id={} files={}", task.id, len(files)
+                "下载阶段: task_id={} folders={} files={}",
+                task.id,
+                len(folders),
+                len(files),
             )
             link_map = _build_link_map(files, task.local_path)
             persisted_links = await link_service.list_by_task(task.id)
@@ -822,8 +827,10 @@ class SyncTaskRunner:
                         selected_cloud_tokens=selected_cloud_tokens,
                     )
                 ]
-            known_cloud_tokens = {item.effective_token for item in selected_candidates}
-            selected_cloud_paths = {str(item.target_path) for item in selected_candidates}
+            known_cloud_tokens = _folder_cloud_tokens(folders)
+            known_cloud_tokens.update(item.effective_token for item in selected_candidates)
+            selected_cloud_paths = self._build_cloud_folder_paths(task, folders)
+            selected_cloud_paths.update(str(item.target_path) for item in selected_candidates)
             if allow_deletes:
                 await self._enqueue_cloud_missing_deletes(
                     task=task,
@@ -2307,6 +2314,11 @@ class SyncTaskRunner:
         policy, grace_seconds = self._resolve_delete_policy(task)
         if policy == DeletePolicy.off:
             return False
+        if self._normalize_local_path_key(local_path) == self._normalize_local_path_key(
+            task.local_path
+        ):
+            logger.warning("忽略同步根目录删除事件: task_id={} path={}", task.id, local_path)
+            return False
         link = await self._link_service.get_by_local_path(str(local_path))
         if not link:
             return False
@@ -2348,13 +2360,34 @@ class SyncTaskRunner:
         policy, grace_seconds = self._resolve_delete_policy(task)
         if policy == DeletePolicy.off:
             return
+        root = Path(task.local_path)
+        if not root.exists() or not root.is_dir():
+            logger.warning(
+                "同步根目录不存在，跳过本地缺失删除判定: task_id={} path={}",
+                task.id,
+                root,
+            )
+            return
         links = await self._link_service.list_by_task(task.id)
         if not links:
             return
         expire_at = time.time() + grace_seconds
-        for link in links:
+        missing_folder_roots: list[str] = []
+        sorted_links = sorted(
+            links,
+            key=lambda item: len(Path(item.local_path).parts),
+        )
+        for link in sorted_links:
             local_path = Path(link.local_path)
             if local_path.exists():
+                continue
+            is_descendant_of_missing_folder = any(
+                self._is_same_or_descendant_path(link.local_path, folder_root)
+                and self._normalize_local_path_key(link.local_path)
+                != self._normalize_local_path_key(folder_root)
+                for folder_root in missing_folder_roots
+            )
+            if is_descendant_of_missing_folder:
                 continue
             if link.updated_at <= 0 and not link.local_hash:
                 # 仅云端预填映射、尚未建立本地基线时，不判定为“本地删除”。
@@ -2385,6 +2418,8 @@ class SyncTaskRunner:
                 ),
                 task,
             )
+            if link.cloud_type == "folder":
+                missing_folder_roots.append(link.local_path)
 
     async def _enqueue_cloud_missing_deletes(
         self,
@@ -2398,10 +2433,24 @@ class SyncTaskRunner:
         if policy == DeletePolicy.off:
             return
         expire_at = time.time() + grace_seconds
-        for link in persisted_links:
+        cloud_path_keys = {self._normalize_local_path_key(path) for path in cloud_paths}
+        missing_folder_roots: list[str] = []
+        sorted_links = sorted(
+            persisted_links,
+            key=lambda item: len(Path(item.local_path).parts),
+        )
+        for link in sorted_links:
             if self._should_ignore_path(task, Path(link.local_path)):
                 continue
-            if link.local_path in cloud_paths:
+            if self._normalize_local_path_key(link.local_path) in cloud_path_keys:
+                continue
+            is_descendant_of_missing_folder = any(
+                self._is_same_or_descendant_path(link.local_path, folder_root)
+                and self._normalize_local_path_key(link.local_path)
+                != self._normalize_local_path_key(folder_root)
+                for folder_root in missing_folder_roots
+            )
+            if is_descendant_of_missing_folder:
                 continue
             try:
                 await self._tombstone_service.create_or_refresh(
@@ -2429,6 +2478,8 @@ class SyncTaskRunner:
                 ),
                 task,
             )
+            if link.cloud_type == "folder":
+                missing_folder_roots.append(link.local_path)
 
     async def _process_pending_deletes(
         self,
@@ -2544,8 +2595,10 @@ class SyncTaskRunner:
                         drive_service=drive_service,
                     )
                     await self._cleanup_deleted_state(
+                        task_id=task.id,
                         local_path=tombstone.local_path,
                         cloud_token=tombstone.cloud_token,
+                        recursive=tombstone.cloud_type == "folder",
                     )
                     await self._tombstone_service.mark_status(
                         tombstone.id,
@@ -2591,8 +2644,10 @@ class SyncTaskRunner:
                     local_message = "本地文件已不存在"
 
                 await self._cleanup_deleted_state(
+                    task_id=task.id,
                     local_path=tombstone.local_path,
                     cloud_token=tombstone.cloud_token,
+                    recursive=tombstone.cloud_type == "folder",
                 )
                 await self._tombstone_service.mark_status(
                     tombstone.id,
@@ -2634,20 +2689,46 @@ class SyncTaskRunner:
     async def _cleanup_deleted_state(
         self,
         *,
+        task_id: str,
         local_path: str,
         cloud_token: str | None,
+        recursive: bool = False,
     ) -> None:
-        link = await self._link_service.get_by_local_path(local_path)
-        token = cloud_token or (link.cloud_token if link else None)
-        try:
-            await self._link_service.delete_by_local_path(local_path)
-        except Exception:
-            logger.exception("清理同步映射失败: {}", local_path)
-        if token:
+        cleanup_targets: list[tuple[str, str | None]] = []
+        if recursive:
             try:
-                await self._block_service.replace_blocks(local_path, token, [])
+                links = await self._link_service.list_by_task(task_id)
             except Exception:
-                logger.exception("清理块级映射失败: path={} token={}", local_path, token)
+                logger.exception("查询递归清理同步映射失败: task_id={}", task_id)
+                links = []
+            for link in links:
+                if self._is_same_or_descendant_path(link.local_path, local_path):
+                    cleanup_targets.append((link.local_path, link.cloud_token))
+        if not cleanup_targets:
+            link = await self._link_service.get_by_local_path(local_path)
+            token = cloud_token or (link.cloud_token if link else None)
+            cleanup_targets.append((local_path, token))
+
+        seen_paths: set[str] = set()
+        for target_path, target_token in cleanup_targets:
+            normalized = self._normalize_local_path_key(target_path)
+            if normalized in seen_paths:
+                continue
+            seen_paths.add(normalized)
+            token = target_token or cloud_token
+            try:
+                await self._link_service.delete_by_local_path(target_path)
+            except Exception:
+                logger.exception("清理同步映射失败: {}", target_path)
+            if token:
+                try:
+                    await self._block_service.replace_blocks(target_path, token, [])
+                except Exception:
+                    logger.exception(
+                        "清理块级映射失败: path={} token={}",
+                        target_path,
+                        token,
+                    )
 
     async def _find_active_link_for_cloud_token(
         self,
@@ -2678,6 +2759,24 @@ class SyncTaskRunner:
     @staticmethod
     def _normalize_local_path_key(path: str | Path) -> str:
         return os.path.normcase(os.path.normpath(str(path)))
+
+    @classmethod
+    def _is_same_or_descendant_path(
+        cls,
+        path: str | Path,
+        ancestor: str | Path,
+    ) -> bool:
+        normalized_path = cls._normalize_local_path_key(path)
+        normalized_ancestor = cls._normalize_local_path_key(ancestor)
+        if normalized_path == normalized_ancestor:
+            return True
+        try:
+            return (
+                os.path.commonpath([normalized_path, normalized_ancestor])
+                == normalized_ancestor
+            )
+        except ValueError:
+            return False
 
     def _move_to_local_trash(self, task: SyncTaskItem, local_path: Path) -> Path:
         root = Path(task.local_path)
@@ -3473,9 +3572,16 @@ class SyncTaskRunner:
         for part in parent_parts:
             accumulated = f"{accumulated}/{part}" if accumulated else part
             cache_key = (task.id, accumulated)
+            parent_token = current_token
 
             if cache_key in self._cloud_folder_cache:
                 current_token = self._cloud_folder_cache[cache_key]
+                await self._link_local_folder(
+                    task=task,
+                    relative_folder=Path(accumulated),
+                    cloud_token=current_token,
+                    cloud_parent_token=parent_token,
+                )
                 continue
 
             # 先查找已有的同名子文件夹
@@ -3485,17 +3591,49 @@ class SyncTaskRunner:
             if existing_token:
                 self._cloud_folder_cache[cache_key] = existing_token
                 current_token = existing_token
+                await self._link_local_folder(
+                    task=task,
+                    relative_folder=Path(accumulated),
+                    cloud_token=existing_token,
+                    cloud_parent_token=parent_token,
+                )
             else:
                 # 不存在则创建
                 new_token = await drive_service.create_folder(current_token, part)
                 self._cloud_folder_cache[cache_key] = new_token
                 current_token = new_token
+                await self._link_local_folder(
+                    task=task,
+                    relative_folder=Path(accumulated),
+                    cloud_token=new_token,
+                    cloud_parent_token=parent_token,
+                )
                 logger.info(
                     "创建云端子文件夹: task_id={} path={} token={}",
                     task.id, accumulated, new_token,
                 )
 
         return current_token
+
+    async def _link_local_folder(
+        self,
+        *,
+        task: SyncTaskItem,
+        relative_folder: Path,
+        cloud_token: str,
+        cloud_parent_token: str | None,
+    ) -> None:
+        local_path = Path(task.local_path) / relative_folder
+        if self._should_ignore_path(task, local_path):
+            return
+        await self._link_service.upsert_link(
+            local_path=str(local_path),
+            cloud_token=cloud_token,
+            cloud_type="folder",
+            task_id=task.id,
+            updated_at=time.time(),
+            cloud_parent_token=cloud_parent_token,
+        )
 
     async def _find_subfolder(
         self,
@@ -3658,6 +3796,8 @@ class SyncTaskRunner:
                 finally:
                     if should_close:
                         await drive_service.close()
+            return
+        if event.is_directory:
             return
         self.queue_local_change(task.id, path, changed_at=event.timestamp)
         self._record_event(
@@ -3860,11 +4000,62 @@ class SyncTaskRunner:
             )
         await self._block_service.replace_blocks(str(file_path), document_id, items)
 
+    async def _sync_cloud_folder_links(
+        self,
+        task: SyncTaskItem,
+        folders: Iterable[tuple[DriveNode, Path]],
+        *,
+        updated_at: float | None = None,
+        create_local_dirs: bool = True,
+    ) -> None:
+        for node, relative_dir in folders:
+            local_path = Path(task.local_path) / relative_dir
+            if self._should_ignore_path(task, local_path):
+                continue
+            if create_local_dirs:
+                self._silence_path(task.id, local_path)
+                local_path.mkdir(parents=True, exist_ok=True)
+            token, node_type = _resolve_target(node)
+            if node_type != "folder":
+                continue
+            folder_mtime = (
+                _parse_mtime(node.modified_time)
+                if updated_at is None and node.modified_time is not None
+                else updated_at
+            )
+            await self._link_service.upsert_link(
+                local_path=str(local_path),
+                cloud_token=token,
+                cloud_type="folder",
+                task_id=task.id,
+                updated_at=folder_mtime if folder_mtime is not None else time.time(),
+                cloud_parent_token=node.parent_token,
+            )
+
+    def _build_cloud_folder_paths(
+        self,
+        task: SyncTaskItem,
+        folders: Iterable[tuple[DriveNode, Path]],
+    ) -> set[str]:
+        paths: set[str] = set()
+        for _node, relative_dir in folders:
+            local_path = Path(task.local_path) / relative_dir
+            if not self._should_ignore_path(task, local_path):
+                paths.add(str(local_path))
+        return paths
+
     async def _prefill_links_from_cloud(
         self, task: SyncTaskItem, drive_service: DriveService
     ) -> None:
         tree = await drive_service.scan_folder(
             task.cloud_folder_token, name=task.name or "同步根目录"
+        )
+        folders = list(_flatten_folders(tree))
+        await self._sync_cloud_folder_links(
+            task,
+            folders,
+            updated_at=0.0,
+            create_local_dirs=False,
         )
         files = list(_flatten_files(tree))
         for node, relative_dir in files:
@@ -3899,6 +4090,29 @@ def _flatten_files(node: DriveNode, base: Path | None = None) -> Iterable[tuple[
             yield from _flatten_files(child, base / safe_name)
         else:
             yield child, base
+
+
+def _flatten_folders(
+    node: DriveNode, base: Path | None = None
+) -> Iterable[tuple[DriveNode, Path]]:
+    base = base or Path()
+    for child in node.children:
+        if child.type != "folder":
+            continue
+        if child.name == _CLOUD_MD_MIRROR_FOLDER_NAME:
+            continue
+        relative_dir = base / sanitize_path_segment(child.name)
+        yield child, relative_dir
+        yield from _flatten_folders(child, relative_dir)
+
+
+def _folder_cloud_tokens(folders: Iterable[tuple[DriveNode, Path]]) -> set[str]:
+    tokens: set[str] = set()
+    for node, _relative_dir in folders:
+        token, node_type = _resolve_target(node)
+        if node_type == "folder" and token:
+            tokens.add(token)
+    return tokens
 
 
 def _docx_filename(name: str) -> str:
