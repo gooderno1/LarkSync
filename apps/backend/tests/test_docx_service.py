@@ -6,6 +6,7 @@ from src.services.docx_service import (
     ConvertResult,
     DocxService,
     TABLE_BLOCK_CREATE_MAX_ROWS,
+    _TABLE_MAX_TOTAL_WIDTH,
     _build_create_chunks,
     _get_image_display_size,
     has_markdown_table_exceeding_create_limit,
@@ -1105,10 +1106,47 @@ def test_patch_table_properties_overrides_narrow_convert_width() -> None:
 
     patched = _patch_table_properties(convert, markdown)
     table = next(block for block in patched.blocks if block.get("block_id") == "t1")["table"]
+    widths = table["property"]["column_width"]
 
-    assert table["property"]["column_width"] != [146, 146, 146, 146, 146]
-    assert max(table["property"]["column_width"]) == 600
-    assert sum(table["property"]["column_width"]) > 180 * 5
+    assert widths != [146, 146, 146, 146, 146]
+    assert sum(widths) <= _TABLE_MAX_TOTAL_WIDTH
+    assert widths[1] > widths[0]
+    assert widths[2] > widths[0]
+
+
+def test_patch_table_properties_caps_long_table_width_to_enable_wrapping() -> None:
+    markdown = "\n".join(
+        [
+            "| 序号 | 修订意见 | 修订情况 | 章节 | 备注 |",
+            "| --- | --- | --- | --- | --- |",
+            "| 1 | 进一步论证项目合同相关要求，对明确提出内容，应用充足支撑材料说明完成情况。 | 已完善。修订版补充合同约定内容与系统设计能力、验收支撑材料之间的承接关系，说明合同建设内容如何通过系统模块、运行记录、模型调用记录、调度执行记录、节电报告、证据清单和审计日志进行支撑。 | 见 1.5、12.2 | 补充合同承接关系和证明路径。 |",
+        ]
+    )
+    convert = ConvertResult(
+        first_level_block_ids=["t1"],
+        blocks=[
+            {
+                "block_id": "t1",
+                "block_type": BLOCK_TYPE_TABLE,
+                "table": {
+                    "property": {
+                        "row_size": 2,
+                        "column_size": 5,
+                        "column_width": [146, 146, 146, 146, 146],
+                    }
+                },
+            }
+        ],
+    )
+
+    patched = _patch_table_properties(convert, markdown)
+    table = next(block for block in patched.blocks if block.get("block_id") == "t1")["table"]
+    widths = table["property"]["column_width"]
+
+    assert sum(widths) <= _TABLE_MAX_TOTAL_WIDTH
+    assert max(widths) < 600
+    assert widths[1] > widths[0]
+    assert widths[2] > widths[0]
 
 
 def test_patch_table_properties_matches_tables_by_document_order() -> None:

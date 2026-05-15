@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.8-dev.2 (2026-05-15)
+
+- 目标：
+  - 修复 v0.7.7 表格列宽修复过度放大长文本列，导致飞书表格横向滚动、单元格看起来不自动换行的问题。
+- 结果：
+  - Markdown 表格列宽估算增加整表总宽上限；当长文本把多列撑宽时，会在保留每列最小宽度和内容权重的前提下压缩回页面级宽度。
+  - V1.5 这类 5 列长文本表不再出现 1900+ 的总列宽，长列会在受控宽度内自动换行。
+  - 表格渲染修复标记升级为 `#md-table-render-v7`，已有 `#md-table-render-v6` 的历史文档下一次普通同步会在原 doc token 内全量重建一次。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py::test_patch_table_properties_overrides_narrow_convert_width tests/test_docx_service.py::test_patch_table_properties_caps_long_table_width_to_enable_wrapping tests/test_sync_runner_upload_new_doc.py::test_upload_new_markdown_with_large_table_runs_block_replace_after_import tests/test_sync_runner_upload_new_doc.py::test_upload_markdown_repairs_previous_table_marker_large_table_link_once`
+  - `python -m pytest tests/test_docx_service.py tests/test_sync_runner_upload_new_doc.py`
+  - `python -m pytest`（在 `apps/backend` 目录执行，422 passed）
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python -m pip install --dry-run -e apps/backend`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.7.8-dev.1 (2026-05-15)
 
 - 目标：

@@ -2418,7 +2418,44 @@ def _estimate_table_column_widths(table_lines: list[str], cols: int) -> list[int
                 widths[idx] += 1
                 extra -= 1
             idx = (idx + 1) % len(widths)
+    elif total > target_total:
+        widths = _fit_table_column_widths(widths, target_total)
     return widths
+
+
+def _fit_table_column_widths(widths: list[int], target_total: int) -> list[int]:
+    if not widths:
+        return []
+    min_total = _TABLE_COLUMN_MIN_WIDTH * len(widths)
+    if target_total <= min_total:
+        return [_TABLE_COLUMN_MIN_WIDTH] * len(widths)
+    total = sum(widths)
+    if total <= target_total:
+        return list(widths)
+
+    flexible = [max(0, width - _TABLE_COLUMN_MIN_WIDTH) for width in widths]
+    flexible_total = sum(flexible)
+    if flexible_total <= 0:
+        return list(widths)
+
+    available = target_total - min_total
+    raw_widths = [
+        _TABLE_COLUMN_MIN_WIDTH + (available * flex / flexible_total)
+        for flex in flexible
+    ]
+    fitted = [int(width) for width in raw_widths]
+    remainder = target_total - sum(fitted)
+    if remainder > 0:
+        fractions = sorted(
+            (
+                (raw_widths[idx] - fitted[idx], idx)
+                for idx in range(len(fitted))
+            ),
+            reverse=True,
+        )
+        for _fraction, idx in fractions[:remainder]:
+            fitted[idx] += 1
+    return fitted
 
 
 def _default_table_column_widths(cols: int) -> list[int]:
