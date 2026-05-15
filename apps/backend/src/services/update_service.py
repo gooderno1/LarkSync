@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, unquote, urlparse
 
 import httpx
 from loguru import logger
@@ -120,6 +121,14 @@ def select_asset(assets: list[dict[str, Any]], platform: str) -> UpdateAsset | N
                 size=asset.get("size"),
                 sha256=parse_sha256_digest_field(asset.get("digest")),
             )
+    return None
+
+
+def release_asset_name_for_platform(version: str, platform: str) -> str | None:
+    if platform == "win32":
+        return f"LarkSync-Setup-{version}.exe"
+    if platform == "darwin":
+        return f"LarkSync-{version}.dmg"
     return None
 
 
@@ -467,8 +476,61 @@ class UpdateService:
             if resp.status_code == 404:
                 return None
             if resp.status_code >= 400:
+                if resp.status_code in {403, 429}:
+                    fallback = await self._fetch_latest_release_from_public_redirect()
+                    if fallback is not None:
+                        _append_update_log(
+                            f"GitHub API 获取 Release 返回 HTTP {resp.status_code}，已使用公开 Release 跳转回退"
+                        )
+                        return fallback
                 raise RuntimeError(f"获取 Release 失败: HTTP {resp.status_code}")
             return resp.json()
+
+    async def _fetch_latest_release_from_public_redirect(self) -> dict[str, Any] | None:
+        url = f"https://github.com/{self._owner}/{self._repo}/releases/latest"
+        headers = {"User-Agent": "LarkSync-Updater"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, headers=headers, follow_redirects=False)
+            if resp.status_code == 404:
+                return None
+            if resp.status_code not in {301, 302, 303, 307, 308}:
+                return None
+            location = str(resp.headers.get("location") or "")
+
+        tag = _extract_release_tag_from_location(location)
+        if not tag:
+            return None
+        asset_name = release_asset_name_for_platform(tag, sys.platform)
+        if not asset_name:
+            return {
+                "tag_name": tag,
+                "body": None,
+                "published_at": None,
+                "assets": [],
+            }
+        quoted_asset = quote(asset_name, safe="")
+        asset_url = (
+            f"https://github.com/{self._owner}/{self._repo}/releases/download/"
+            f"{tag}/{quoted_asset}"
+        )
+        checksum_url = f"{asset_url}.sha256"
+        return {
+            "tag_name": tag,
+            "body": None,
+            "published_at": None,
+            "assets": [
+                {
+                    "name": asset_name,
+                    "browser_download_url": asset_url,
+                    "size": None,
+                },
+                {
+                    "name": f"{asset_name}.sha256",
+                    "browser_download_url": checksum_url,
+                    "size": None,
+                },
+            ],
+        }
 
     def _save_status(self, status: UpdateStatus, last_check: float) -> UpdateStatus:
         self._persist_last_check(last_check)
@@ -498,3 +560,17 @@ class UpdateService:
         if not digest:
             raise RuntimeError("无法从校验文件解析目标安装包的 sha256")
         return digest
+
+
+def _extract_release_tag_from_location(location: str) -> str | None:
+    if not location:
+        return None
+    parsed = urlparse(location)
+    marker = "/releases/tag/"
+    path = parsed.path or location
+    if marker not in path:
+        return None
+    tag = unquote(path.split(marker, 1)[1].strip("/"))
+    if not tag:
+        return None
+    return tag if tag.startswith("v") else f"v{tag}"

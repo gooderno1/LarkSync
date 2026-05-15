@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.7.11-dev.1 (2026-05-15)
+
+- 目标：
+  - 修复 v0.7.10 自动更新检查在 GitHub Release API 匿名限流时直接失败的问题，错误表现为“获取 Release 失败: HTTP 403”。
+- 结果：
+  - `_fetch_latest_release()` 在 GitHub API 返回 403/429 时，会回退访问公开 `https://github.com/gooderno1/LarkSync/releases/latest`，通过跳转目标解析最新 tag。
+  - 回退路径会按平台生成 `LarkSync-Setup-vX.Y.Z.exe` 或 `LarkSync-vX.Y.Z.dmg` 下载地址，并附带对应 `.sha256` 地址，后续下载和校验继续走既有链路。
+  - 本地复现确认：当前匿名 GitHub API 已返回 403，但公开 Release 跳转可解析到 `v0.7.10`，安装包与 `.sha256` 资产可访问。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_update_service.py::test_fetch_latest_release_falls_back_to_public_redirect_on_api_403 -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_update_service.py -q`
+  - 手工调用 `UpdateService()._fetch_latest_release()`，确认 403 环境下回退返回 `v0.7.10` 及 Windows 安装包、`.sha256` 下载地址。
+
 ## v0.7.10 release (2026-05-15)
 
 - 目标：

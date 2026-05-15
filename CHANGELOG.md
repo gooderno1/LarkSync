@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-15] v0.7.11-dev.1 fix(auto-update): GitHub Release API 返回 403/429 限流时，更新检查回退读取公开 `releases/latest` 跳转获取最新 tag，并按平台安装包命名生成下载与 `.sha256` 地址，避免 Release 正常但客户端报“获取 Release 失败: HTTP 403”
 [2026-05-15] v0.7.10 release: v0.7.10
 [2026-05-15] v0.7.10-dev.1 fix(sync-upload): Markdown 表格列宽估算改为以页面级总宽为目标，2/3/4/5 列表格不再按 `列数 * 180` 被压窄；短列保留最小宽度、长文本列按内容权重分配剩余空间，V1.5 实测 118 张表均写入 1080 总宽；表格渲染修复标记升级为 `#md-table-render-v8`
 [2026-05-15] v0.7.9 release: v0.7.9

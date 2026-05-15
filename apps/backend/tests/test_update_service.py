@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import httpx
 
 from src.core.config import ConfigManager
 from src.core.paths import update_data_dir
@@ -87,6 +88,58 @@ def test_find_checksum_asset() -> None:
     checksum = find_checksum_asset(assets, "LarkSync-Setup-v0.5.0.exe")
     assert checksum is not None
     assert checksum.url == "https://x.sha256"
+
+
+@pytest.mark.asyncio
+async def test_fetch_latest_release_falls_back_to_public_redirect_on_api_403(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, bool]] = []
+
+    class FakeAsyncClient:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def get(self, url: str, **kwargs):
+            follow_redirects = bool(kwargs.get("follow_redirects"))
+            calls.append((url, follow_redirects))
+            request = httpx.Request("GET", url)
+            if url.startswith("https://api.github.com/"):
+                return httpx.Response(
+                    403,
+                    json={"message": "API rate limit exceeded"},
+                    request=request,
+                )
+            return httpx.Response(
+                302,
+                headers={
+                    "Location": "https://github.com/gooderno1/LarkSync/releases/tag/v9.9.9"
+                },
+                request=request,
+            )
+
+    monkeypatch.setattr("src.services.update_service.httpx.AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr("src.services.update_service.sys.platform", "win32")
+
+    release = await UpdateService()._fetch_latest_release()
+
+    assert release is not None
+    assert release["tag_name"] == "v9.9.9"
+    assert release["assets"][0]["name"] == "LarkSync-Setup-v9.9.9.exe"
+    assert release["assets"][0]["browser_download_url"].endswith(
+        "/releases/download/v9.9.9/LarkSync-Setup-v9.9.9.exe"
+    )
+    assert release["assets"][1]["name"] == "LarkSync-Setup-v9.9.9.exe.sha256"
+    assert calls == [
+        ("https://api.github.com/repos/gooderno1/LarkSync/releases/latest", False),
+        ("https://github.com/gooderno1/LarkSync/releases/latest", False),
+    ]
 
 
 def test_extract_sha256_from_text() -> None:
