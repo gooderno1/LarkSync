@@ -7,6 +7,7 @@ from src.services.docx_service import (
     DocxService,
     TABLE_BLOCK_CREATE_MAX_ROWS,
     _TABLE_MAX_TOTAL_WIDTH,
+    _TABLE_PREFERRED_TOTAL_WIDTH,
     _build_create_chunks,
     _get_image_display_size,
     has_markdown_table_exceeding_create_limit,
@@ -845,7 +846,7 @@ async def test_convert_markdown_patches_table_property() -> None:
     prop = (table_block.get("table") or {}).get("property") or {}
     assert prop.get("row_size") == 2
     assert prop.get("column_size") == 2
-    assert prop.get("column_width") == [540, 540]
+    assert prop.get("column_width") == [480, 480]
 
 
 @pytest.mark.asyncio
@@ -1109,7 +1110,7 @@ def test_patch_table_properties_overrides_narrow_convert_width() -> None:
     widths = table["property"]["column_width"]
 
     assert widths != [146, 146, 146, 146, 146]
-    assert sum(widths) == _TABLE_MAX_TOTAL_WIDTH
+    assert sum(widths) == _TABLE_PREFERRED_TOTAL_WIDTH
     assert widths[1] > widths[0]
     assert widths[2] > widths[0]
 
@@ -1143,13 +1144,13 @@ def test_patch_table_properties_caps_long_table_width_to_enable_wrapping() -> No
     table = next(block for block in patched.blocks if block.get("block_id") == "t1")["table"]
     widths = table["property"]["column_width"]
 
-    assert sum(widths) == _TABLE_MAX_TOTAL_WIDTH
+    assert sum(widths) == _TABLE_PREFERRED_TOTAL_WIDTH
     assert max(widths) < _TABLE_MAX_TOTAL_WIDTH
     assert widths[1] > widths[0]
     assert widths[2] > widths[0]
 
 
-def test_patch_table_properties_expands_common_tables_to_page_width() -> None:
+def test_patch_table_properties_expands_common_tables_to_preferred_width() -> None:
     markdown = "\n\n".join(
         [
             "\n".join(
@@ -1201,10 +1202,45 @@ def test_patch_table_properties_expands_common_tables_to_page_width() -> None:
     first_widths = block_map["t1"]["table"]["property"]["column_width"]
     second_widths = block_map["t2"]["table"]["property"]["column_width"]
 
-    assert sum(first_widths) == _TABLE_MAX_TOTAL_WIDTH
-    assert sum(second_widths) == _TABLE_MAX_TOTAL_WIDTH
+    assert sum(first_widths) == _TABLE_PREFERRED_TOTAL_WIDTH
+    assert sum(second_widths) == _TABLE_PREFERRED_TOTAL_WIDTH
     assert first_widths[1] > first_widths[0]
     assert second_widths[1] > second_widths[0]
+
+
+def test_patch_table_properties_keeps_multicolumn_tables_compact() -> None:
+    markdown = "\n".join(
+        [
+            "| 序号 | 问题 | 修订情况 | 章节 | 备注 |",
+            "| --- | --- | --- | --- | --- |",
+            "| 1 | 进一步论证项目合同相关要求，对明确提出内容，应用充足支撑材料说明完成情况。 | 已完善。补充合同约定内容与系统设计能力、验收支撑材料之间的承接关系。 | 见 1.5、12.2 | 补充合同承接关系和证明路径。 |",
+        ]
+    )
+    convert = ConvertResult(
+        first_level_block_ids=["t1"],
+        blocks=[
+            {
+                "block_id": "t1",
+                "block_type": BLOCK_TYPE_TABLE,
+                "table": {
+                    "property": {
+                        "row_size": 2,
+                        "column_size": 5,
+                        "column_width": [216, 216, 216, 216, 216],
+                    }
+                },
+            }
+        ],
+    )
+
+    patched = _patch_table_properties(convert, markdown)
+    table = next(block for block in patched.blocks if block.get("block_id") == "t1")["table"]
+    widths = table["property"]["column_width"]
+
+    assert sum(widths) == _TABLE_PREFERRED_TOTAL_WIDTH
+    assert sum(widths) < _TABLE_MAX_TOTAL_WIDTH
+    assert widths[1] > widths[0]
+    assert widths[2] > widths[0]
 
 
 def test_patch_table_properties_matches_tables_by_document_order() -> None:
@@ -1553,7 +1589,7 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
     table_payload = create_call[2]["json"]["children"][0]["table"]
     assert table_payload["property"]["row_size"] == 1
     assert table_payload["property"]["column_size"] == 2
-    assert table_payload["property"]["column_width"] == [540, 540]
+    assert table_payload["property"]["column_width"] == [480, 480]
     assert "cells" not in table_payload
     assert any(url.endswith("/blocks/cellA/children/batch_delete") for url in urls)
     assert any(url.endswith("/blocks/cellB/children/batch_delete") for url in urls)

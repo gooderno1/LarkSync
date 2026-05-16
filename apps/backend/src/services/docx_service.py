@@ -66,6 +66,7 @@ _TABLE_COLUMN_MIN_WIDTH = 120
 _TABLE_COLUMN_MAX_WIDTH = 600
 _TABLE_SINGLE_COLUMN_WIDTH = 600
 _TABLE_MAX_TOTAL_WIDTH = 1080
+_TABLE_PREFERRED_TOTAL_WIDTH = 960
 _FIGURE_START_PATTERN = re.compile(
     r"<!--\s*FIGURE:(?P<id>[\w.-]+):START\s*-->",
     re.IGNORECASE,
@@ -2417,7 +2418,8 @@ def _estimate_table_column_widths(table_lines: list[str], cols: int) -> list[int
 
 
 def _table_target_total_width(cols: int) -> int:
-    return max(_TABLE_MAX_TOTAL_WIDTH, _TABLE_COLUMN_MIN_WIDTH * cols)
+    preferred_total = min(_TABLE_PREFERRED_TOTAL_WIDTH, _TABLE_MAX_TOTAL_WIDTH)
+    return max(preferred_total, _TABLE_COLUMN_MIN_WIDTH * cols)
 
 
 def _expand_table_column_widths(widths: list[int], target_total: int) -> list[int]:

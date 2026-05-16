@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.13-dev.1 (2026-05-16)
+
+- 目标：
+  - 收紧 v0.7.12 Markdown 上行生成的飞书表格总宽，解决常见多列表格内容不需要整页宽度但表格仍被撑得过宽的问题。
+- 结果：
+  - 表格列宽目标从固定页面级 `1080` 调整为常见多列表格 `960` 偏好总宽，继续按内容权重分配列宽，并保留每列最小宽度兜底。
+  - V1.5 修订说明示例表格的估算列宽从 `[120, 281, 294, 165, 220]` 收紧到 `[120, 241, 250, 154, 195]`，总宽从 `1080` 降为 `960`。
+  - 表格渲染修复标记升级为 `#md-table-render-v9`，已有 `#md-table-render-v8` 的历史文档下一次普通同步会在原 doc token 内全量重建一次。
+- 测试：
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py::test_patch_table_properties_overrides_narrow_convert_width apps/backend/tests/test_docx_service.py::test_patch_table_properties_caps_long_table_width_to_enable_wrapping apps/backend/tests/test_docx_service.py::test_patch_table_properties_expands_common_tables_to_preferred_width apps/backend/tests/test_docx_service.py::test_patch_table_properties_keeps_multicolumn_tables_compact apps/backend/tests/test_docx_service.py::test_replace_document_content_populates_table_cells_without_creating_cells apps/backend/tests/test_sync_runner_upload_new_doc.py::test_upload_new_markdown_with_large_table_runs_block_replace_after_import apps/backend/tests/test_sync_runner_upload_new_doc.py::test_upload_markdown_repairs_previous_table_marker_large_table_link_once -q`
+  - `PYTHONPATH=apps/backend python -m pytest apps/backend/tests/test_docx_service.py apps/backend/tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest`（在 `apps/backend` 目录执行，428 passed）
+  - `npm run build`（在 `apps/frontend` 目录执行）
+  - `python -m pip install --dry-run -e apps/backend`
+  - `python scripts/build_installer.py --nsis`，生成 `dist/LarkSync-Setup-v0.7.13-dev.1.exe`
+
 ## v0.7.12 release (2026-05-16)
 
 - 目标：
