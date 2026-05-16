@@ -846,7 +846,7 @@ async def test_convert_markdown_patches_table_property() -> None:
     prop = (table_block.get("table") or {}).get("property") or {}
     assert prop.get("row_size") == 2
     assert prop.get("column_size") == 2
-    assert prop.get("column_width") == [480, 480]
+    assert prop.get("column_width") == [366, 366]
 
 
 @pytest.mark.asyncio
@@ -1589,7 +1589,7 @@ async def test_replace_document_content_populates_table_cells_without_creating_c
     table_payload = create_call[2]["json"]["children"][0]["table"]
     assert table_payload["property"]["row_size"] == 1
     assert table_payload["property"]["column_size"] == 2
-    assert table_payload["property"]["column_width"] == [480, 480]
+    assert table_payload["property"]["column_width"] == [366, 366]
     assert "cells" not in table_payload
     assert any(url.endswith("/blocks/cellA/children/batch_delete") for url in urls)
     assert any(url.endswith("/blocks/cellB/children/batch_delete") for url in urls)

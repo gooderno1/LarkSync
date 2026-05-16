@@ -311,7 +311,7 @@ async def test_upload_new_markdown_with_large_table_runs_block_replace_after_imp
     assert runner._docx_service.replace_calls == [
         ("doc-new", markdown_path.read_text(encoding="utf-8"))
     ]
-    assert "#md-table-render-v9" in (
+    assert "#md-table-render-v10" in (
         link_service.links[str(markdown_path)].cloud_revision or ""
     )
 
@@ -910,7 +910,7 @@ async def test_upload_markdown_repairs_previous_table_marker_large_table_link_on
         task_id="task-1",
         updated_at=0.0,
         local_hash=file_hash,
-        cloud_revision="doc-existing@1#md-table-render-v8",
+        cloud_revision="doc-existing@1#md-table-render-v9",
     )
     docx_service = FakeDocxService()
     runner = SyncTaskRunner(
@@ -963,7 +963,7 @@ async def test_upload_markdown_repairs_previous_table_marker_large_table_link_on
     assert docx_service.replace_calls == [
         ("doc-existing", markdown_path.read_text(encoding="utf-8"))
     ]
-    assert "#md-table-render-v9" in (
+    assert "#md-table-render-v10" in (
         link_service.links[str(markdown_path)].cloud_revision or ""
     )
 

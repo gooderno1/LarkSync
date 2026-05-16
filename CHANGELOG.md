@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-16] v0.7.13-dev.2 fix(sync-upload): Markdown 表格列宽偏好总宽从 960 收紧到 732，贴近飞书原生云文档默认表格宽度，同时保留内容权重分配；表格渲染修复标记升级为 `#md-table-render-v10`
+
 [2026-05-16] v0.7.13-dev.1 fix(sync-upload): Markdown 表格列宽估算改为常见多列表格 960 偏好总宽，保留内容权重分配和整表上限，减少 V1.5 修订说明这类表格在飞书端被撑得过宽；表格渲染修复标记升级为 `#md-table-render-v9`
 [2026-05-16] v0.7.12 release: v0.7.12
 [2026-05-16] v0.7.12-dev.1 fix(auto-update): Windows 静默安装 handoff 读取兼容 UTF-8 BOM，并将 PowerShell helper 的 handoff JSON 改为无 BOM UTF-8 写入，修复 helper 已启动但托盘因 BOM 读取失败而报“静默安装接管超时”的问题
