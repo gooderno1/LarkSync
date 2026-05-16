@@ -3864,3 +3864,44 @@
   - 后端新增 `sync_runs` 表持久化每次运行的开始/结束时间、触发来源、上传/下载/失败/冲突计数与最近错误；日志中心优先读取该表，`sync-events.jsonl` 继续保留为细粒度事件时间线。
 - 测试：
   - 沿用 `v0.6.5-dev.1` 至 `v0.6.5-dev.3` 的自动更新、日志中心、运行摘要持久化相关后端测试与前端构建验证。
+
+## v0.7.14-dev.1 (2026-05-16)
+
+- 目标：
+  
+  - 修复 Windows 静默安装只收到 bootstrap 的 `worker_pid` 回执就退出，导致 worker 尚未真正接管时被误判成功的问题。
+
+- 结果：
+  
+  - bootstrap 与 worker 的 handoff 阶段拆分为 `bootstrap_started` 和 `helper_started`，托盘只在收到 worker 真正回执或 `installer_started` 后才退出，不再把 bootstrap 的暂存回执当成“安装已接管”。
+  - `_wait_for_ready_install_handoff()` 会跳过 `bootstrap_started`，超时后若仍停在该阶段会明确报“静默安装 worker 未确认接管”，并带上最后一条 `worker_pid` 细节。
+  - Windows 静默安装 helper 的创建参数补上 `CREATE_BREAKAWAY_FROM_JOB`，降低托盘退出后 helper 被父 job 提前回收的概率。
+
+- 测试：
+  
+  - `$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; $env:PYTHONPATH='apps/backend'; python -m pytest apps/backend/tests/test_tray_update_install.py -p pytest_asyncio.plugin -q`
+  - `$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'; $env:PYTHONPATH='apps/backend'; python -m pytest apps/backend/tests/test_tray_update_install.py apps/backend/tests/test_system_update_api.py apps/backend/tests/test_update_service.py -p pytest_asyncio.plugin -q`
+
+- 问题：
+  
+  - 现有安装目录中的 `v0.7.13` 不会自动获得这次修复，需要重新安装包含 `v0.7.14-dev.1` 的构建后再验证静默更新链路。
+
+## v0.7.14 release (2026-05-16)
+
+- 目标：
+  
+  - 发布 `v0.7.14` 稳定版，收口 Windows 静默安装 handoff 时序修复。
+
+- 结果：
+  
+  - 稳定版纳入 `v0.7.14-dev.1`：Windows 静默安装不再把 bootstrap 的 `worker_pid` 暂存回执误判成“已接管”，托盘只会在 worker 真正开始执行或安装器已启动后退出。
+  - 若 handoff 一直停在 `bootstrap_started`，当前版本会继续保留并明确报“worker 未确认接管”，便于区分“已下载但尚未真正开始安装”和“安装器已接管”的状态。
+  - 静默安装 helper 补上 `CREATE_BREAKAWAY_FROM_JOB`，降低托盘退出后 helper 被父 job 提前回收、导致安装中途失联的概率。
+
+- 测试：
+  
+  - 沿用 `v0.7.14-dev.1` 的静默安装、系统更新 API 与更新状态服务相关回归测试。
+
+- 问题：
+  
+  - 需要在已安装 `v0.7.14` 的环境上，再向后升级一个更高版本，才能完整验证“自动静默升级”端到端链路。

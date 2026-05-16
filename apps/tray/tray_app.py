@@ -256,6 +256,29 @@ def _wait_for_install_handoff(
     return None
 
 
+def _wait_for_ready_install_handoff(
+    request_id: str,
+    *,
+    timeout: float = _INSTALL_HANDOFF_TIMEOUT_SECONDS,
+) -> dict[str, Any] | None:
+    """等待真正可用的静默安装回执，跳过 bootstrap 的暂存阶段。"""
+    if not request_id:
+        return None
+    deadline = time.time() + max(timeout, 0.1)
+    latest: dict[str, Any] | None = None
+    while time.time() < deadline:
+        payload = _read_install_handoff()
+        if payload and str(payload.get("request_id", "")).strip() == request_id:
+            latest = payload
+            stage = str(payload.get("stage") or "").strip()
+            if stage == "bootstrap_started":
+                time.sleep(0.2)
+                continue
+            return payload
+        time.sleep(0.2)
+    return latest
+
+
 def _resolve_powershell_executable() -> str:
     if sys.platform != "win32":
         return "powershell"
@@ -275,6 +298,7 @@ def _hidden_helper_creationflags() -> int:
         getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         | getattr(subprocess, "CREATE_NO_WINDOW", 0)
     )
+    flags |= getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
     return flags
 
 
@@ -554,7 +578,7 @@ def _build_windows_silent_bootstrap_command(
         "Write-InstallLog (\"启动静默安装 worker 失败: \" + $message); "
         "exit 1 "
         "}; "
-        "Write-Handoff 'helper_started' ('worker_pid=' + $process.Id) 0; "
+        "Write-Handoff 'bootstrap_started' ('worker_pid=' + $process.Id) 0; "
         "Write-InstallLog (\"静默安装 worker 已启动 pid=\" + $process.Id); "
     )
     bootstrap_path.write_text(script, encoding="utf-8")
@@ -956,12 +980,16 @@ class LarkSyncTray:
                     creationflags=_hidden_helper_creationflags(),
                     close_fds=True,
                 )
-                handoff = _wait_for_install_handoff(request_id)
+                handoff = _wait_for_ready_install_handoff(request_id)
                 if not handoff:
                     raise RuntimeError("静默安装接管超时，安装程序未返回接管确认")
                 stage = str(handoff.get("stage") or "").strip()
                 if stage == "helper_started" or stage == "installer_started":
                     return
+                if stage == "bootstrap_started":
+                    message = str(handoff.get("message") or "").strip()
+                    detail = f" ({message})" if message else ""
+                    raise RuntimeError(f"静默安装 worker 未确认接管{detail}")
                 message = str(handoff.get("message") or "").strip() or "静默安装接管失败"
                 raise RuntimeError(message)
                 return

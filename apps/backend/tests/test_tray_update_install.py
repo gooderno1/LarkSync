@@ -229,6 +229,28 @@ def test_read_install_handoff_accepts_utf8_bom(monkeypatch, tmp_path: Path) -> N
     assert tray_app._read_install_handoff() == payload
 
 
+def test_wait_for_ready_install_handoff_skips_bootstrap_stage(monkeypatch) -> None:
+    payloads = iter(
+        [
+            {"request_id": "req-ready", "stage": "bootstrap_started", "message": "worker_pid=1234"},
+            {"request_id": "req-ready", "stage": "helper_started", "message": "helper process started"},
+        ]
+    )
+    timestamps = iter([0.0, 0.1, 0.2, 0.3, 0.4])
+
+    monkeypatch.setattr(tray_app, "_read_install_handoff", lambda: next(payloads))
+    monkeypatch.setattr(tray_app.time, "time", lambda: next(timestamps))
+    monkeypatch.setattr(tray_app.time, "sleep", lambda *_args, **_kwargs: None)
+
+    handoff = tray_app._wait_for_ready_install_handoff("req-ready", timeout=1.0)
+
+    assert handoff == {
+        "request_id": "req-ready",
+        "stage": "helper_started",
+        "message": "helper process started",
+    }
+
+
 def test_build_windows_installer_worker_verifies_version_and_retries_restart(tmp_path: Path) -> None:
     installer_path = tmp_path / "LarkSync-Setup-v0.5.58.exe"
     restart_path = tmp_path / "LarkSync.exe"
@@ -310,11 +332,12 @@ def test_build_windows_silent_bootstrap_command_uses_script_files(tmp_path: Path
 
     assert "Start-Process -FilePath $powerShellPath -ArgumentList $workerArgs -WindowStyle Hidden -PassThru" in script
     assert "'-File', $workerPath" in script
-    assert "helper_started" in script
+    assert "bootstrap_started" in script
     assert "worker_pid=" in script
     assert "workerEncoded" not in script
     assert "Start-Process -FilePath $installerPath -ArgumentList $argumentList -PassThru" in worker_script
     assert "installer_started" in worker_script
+    assert "helper_started" in worker_script
     assert str(handoff_path).replace("'", "''") in script
     assert str(log_path).replace("'", "''") in script
 
@@ -327,6 +350,7 @@ def test_schedule_installer_launch_on_windows_silent_uses_hidden_bootstrap_proce
     calls: list[dict[str, object]] = []
     create_new_process_group = 0x200
     create_no_window = 0x08000000
+    create_breakaway = 0x01000000
 
     def _fake_popen(args, **kwargs):
         calls.append({"args": list(args), **kwargs})
@@ -339,9 +363,16 @@ def test_schedule_installer_launch_on_windows_silent_uses_hidden_bootstrap_proce
         tray_app.subprocess, "CREATE_NEW_PROCESS_GROUP", create_new_process_group, raising=False
     )
     monkeypatch.setattr(tray_app.subprocess, "CREATE_NO_WINDOW", create_no_window, raising=False)
+    monkeypatch.setattr(
+        tray_app.subprocess, "CREATE_BREAKAWAY_FROM_JOB", create_breakaway, raising=False
+    )
     monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
     monkeypatch.setattr(tray_app, "_install_script_dir", lambda: tmp_path / "install-scripts")
-    monkeypatch.setattr(tray_app, "_wait_for_install_handoff", lambda *args, **kwargs: {"stage": "helper_started"})
+    monkeypatch.setattr(
+        tray_app,
+        "_wait_for_ready_install_handoff",
+        lambda *args, **kwargs: {"stage": "helper_started"},
+    )
 
     tray = _build_tray()
     tray._schedule_installer_launch(str(installer_path), silent=True, request_id="req-1")
@@ -355,6 +386,7 @@ def test_schedule_installer_launch_on_windows_silent_uses_hidden_bootstrap_proce
     creationflags = int(calls[0]["creationflags"])
     assert creationflags & create_new_process_group != 0
     assert creationflags & create_no_window != 0
+    assert creationflags & create_breakaway != 0
     assert "workerEncoded" not in bootstrap_path.read_text(encoding="utf-8")
     assert list((tmp_path / "install-scripts").glob("*worker*.ps1"))
 
@@ -375,7 +407,7 @@ def test_schedule_installer_launch_on_windows_silent_requires_helper_handoff(
     monkeypatch.setattr(tray_app, "_install_script_dir", lambda: tmp_path / "install-scripts")
     monkeypatch.setattr(
         tray_app,
-        "_wait_for_install_handoff",
+        "_wait_for_ready_install_handoff",
         lambda *args, **kwargs: {"stage": "launch_failed", "message": "UAC canceled"},
     )
 
@@ -385,6 +417,37 @@ def test_schedule_installer_launch_on_windows_silent_requires_helper_handoff(
         tray._schedule_installer_launch(str(installer_path), silent=True, request_id="req-2")
     except RuntimeError as exc:
         assert "UAC canceled" in str(exc)
+    else:
+        raise AssertionError("expected RuntimeError")
+
+
+def test_schedule_installer_launch_on_windows_silent_rejects_bootstrap_only_handoff(
+    monkeypatch, tmp_path: Path
+) -> None:
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.55.exe"
+    installer_path.write_bytes(b"exe")
+
+    def _fake_popen(args, **kwargs):
+        class _DummyProc:
+            pid = 1234
+        return _DummyProc()
+
+    monkeypatch.setattr(tray_app.sys, "platform", "win32")
+    monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(tray_app, "_install_script_dir", lambda: tmp_path / "install-scripts")
+    monkeypatch.setattr(
+        tray_app,
+        "_wait_for_ready_install_handoff",
+        lambda *args, **kwargs: {"stage": "bootstrap_started", "message": "worker_pid=1234"},
+    )
+
+    tray = _build_tray()
+
+    try:
+        tray._schedule_installer_launch(str(installer_path), silent=True, request_id="req-bootstrap")
+    except RuntimeError as exc:
+        assert "worker 未确认接管" in str(exc)
+        assert "worker_pid=1234" in str(exc)
     else:
         raise AssertionError("expected RuntimeError")
 

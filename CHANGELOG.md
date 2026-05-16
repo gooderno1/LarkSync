@@ -1,5 +1,9 @@
 # CHANGELOG
 
+[2026-05-16] v0.7.14 release: v0.7.14
+
+[2026-05-16] v0.7.14-dev.1 fix(auto-update): Windows 静默安装现在区分 bootstrap 与 worker handoff，托盘仅在 worker 真正接管后才退出；若只停在 `bootstrap_started` 会明确报“worker 未确认接管”，并为 helper 增加 `CREATE_BREAKAWAY_FROM_JOB` 降低被父 job 提前回收的风险
+
 [2026-05-16] v0.7.13 release: v0.7.13
 
 [2026-05-16] v0.7.13-dev.2 fix(sync-upload): Markdown 表格列宽偏好总宽从 960 收紧到 732，贴近飞书原生云文档默认表格宽度，同时保留内容权重分配；表格渲染修复标记升级为 `#md-table-render-v10`
