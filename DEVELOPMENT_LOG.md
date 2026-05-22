@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.25 (2026-05-23)
+
+- 目标：
+  - 继续落实工作流 B，拆 `apps/backend/src/services/sync_runner.py` 的下载主编排，把树扫描、候选筛选、写回循环和运行时服务组装从主 runner 中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/sync_download_orchestration_service.py`，承载下载阶段的运行时服务容器、树扫描、候选筛选、重复项跳过、文档/导出文件/普通文件写回，以及资源关闭逻辑。
+  - `SyncTaskRunner` 现通过 `_resolve_download_runtime_services()` 组装下载运行时服务，并通过 `SyncDownloadOrchestrationService` 执行 `_run_download`，保留原方法作为兼容入口。
+  - 新增 `_run_download` 目标回归，验证 runner 创建后再 monkeypatch `_download_docx` 仍然生效，确保下载编排服务按调用时读取 runner 当前回调。
+- 测试：
+  - `python -m pytest tests/test_sync_runner.py -k "run_download_uses_latest_download_docx_callback or download_additive_mode_does_not_enqueue_cloud_missing_delete or runner_downloads_docx_and_files or runner_download_only_never_creates_cloud_md_mirror_even_if_md_mode_is_enhanced or runner_prefers_persisted_link_when_cloud_has_duplicates or runner_skips_unchanged_when_persisted" -q`
+  - `python -m pytest tests/test_sync_runner.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py tests/test_sync_runner.py tests/test_main.py -q`
+- 问题：
+  - `sync_runner.py` 已从上一轮的 3079 行压到 2834 行，但仍保留单文件上传/下载细节、任务编排和部分本地/云端状态判断；下一轮应在 `sync_runner` 与 `transcoder` 之间择一继续拆分，优先看复杂度与回归收益。
+
 ## v0.7.17-dev.24 (2026-05-23)
 
 - 目标：

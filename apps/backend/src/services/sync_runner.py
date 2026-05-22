@@ -38,6 +38,10 @@ from src.services.sync_download_support_service import (
     DownloadCandidate,
     SyncDownloadSupportService,
 )
+from src.services.sync_download_orchestration_service import (
+    DownloadRuntimeServices,
+    SyncDownloadOrchestrationService,
+)
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_cloud_folder_service import SyncCloudFolderService
 from src.services.sync_markdown_cloud_doc_service import SyncMarkdownCloudDocService
@@ -213,6 +217,36 @@ class SyncTaskRunner:
             task_resolver=lambda task_id: self._task_meta.get(task_id),
             flush_delay_seconds=0.25,
             batch_size=100,
+        )
+        self._download_orchestration_service = SyncDownloadOrchestrationService(
+            export_extension_map=_EXPORT_EXTENSION_MAP,
+            flatten_folders=_flatten_folders,
+            flatten_files=_flatten_files,
+            build_link_map=_build_link_map,
+            merge_synced_link_map=_merge_synced_link_map,
+            folder_cloud_tokens=_folder_cloud_tokens,
+            sync_cloud_folder_links=lambda *args, **kwargs: self._sync_cloud_folder_links(*args, **kwargs),
+            build_download_candidate=lambda *args, **kwargs: self._build_download_candidate(*args, **kwargs),
+            hydrate_export_sub_ids=lambda *args, **kwargs: self._hydrate_export_sub_ids(*args, **kwargs),
+            should_ignore_path=lambda *args, **kwargs: self._should_ignore_path(*args, **kwargs),
+            select_download_candidates=lambda *args, **kwargs: self._select_download_candidates(*args, **kwargs),
+            matches_download_selection=lambda *args, **kwargs: self._matches_download_selection(*args, **kwargs),
+            build_cloud_folder_paths=lambda *args, **kwargs: self._build_cloud_folder_paths(*args, **kwargs),
+            enqueue_cloud_missing_deletes=lambda *args, **kwargs: self._enqueue_cloud_missing_deletes(*args, **kwargs),
+            record_event=lambda *args, **kwargs: self._record_event(*args, **kwargs),
+            should_skip_download_for_local_newer=lambda *args, **kwargs: self._should_skip_download_for_local_newer(*args, **kwargs),
+            should_skip_download_for_unchanged=lambda *args, **kwargs: self._should_skip_download_for_unchanged(*args, **kwargs),
+            download_docx=lambda *args, **kwargs: self._download_docx(*args, **kwargs),
+            download_exported_file=lambda *args, **kwargs: self._download_exported_file(*args, **kwargs),
+            get_local_signature=self._get_local_signature,
+            build_cloud_revision=self._build_cloud_revision,
+            calculate_local_resource_signature=self._calculate_local_resource_signature,
+            rebuild_block_state=lambda *args, **kwargs: self._rebuild_block_state(*args, **kwargs),
+            should_sync_md_cloud_mirror=lambda *args, **kwargs: self._should_sync_md_cloud_mirror(*args, **kwargs),
+            sync_markdown_mirror_copy=lambda *args, **kwargs: self._sync_markdown_mirror_copy(*args, **kwargs),
+            silence_path=self._silence_path,
+            process_pending_deletes=lambda *args, **kwargs: self._process_pending_deletes(*args, **kwargs),
+            write_markdown=self._file_writer.write_markdown,
         )
         self._upload_orchestration_service = SyncUploadOrchestrationService(
             prefill_links_from_cloud=lambda *args, **kwargs: self._prefill_links_from_cloud(*args, **kwargs),
@@ -743,6 +777,18 @@ class SyncTaskRunner:
         force_paths: set[str] | None = None,
     ) -> None:
         self._task_meta[task.id] = task
+        runtime = self._resolve_download_runtime_services()
+        await self._download_orchestration_service.run_download(
+            task=task,
+            status=status,
+            runtime=runtime,
+            allow_deletes=allow_deletes,
+            selected_paths=selected_paths,
+            selected_cloud_tokens=selected_cloud_tokens,
+            force_paths=force_paths,
+        )
+
+    def _resolve_download_runtime_services(self) -> DownloadRuntimeServices:
         drive_service = self._drive_service or DriveService()
         docx_service = self._docx_service or DocxService()
         sheet_service = self._sheet_service or SheetService()
@@ -751,8 +797,7 @@ class SyncTaskRunner:
         file_uploader = self._file_uploader or FileUploader()
         export_task_service = self._export_task_service or ExportTaskService()
         bitable_service = self._bitable_service or BitableService()
-        link_service = self._link_service
-        owned_services = []
+        owned_services: list[object] = []
         if self._drive_service is None:
             owned_services.append(drive_service)
         if self._docx_service is None:
@@ -769,310 +814,18 @@ class SyncTaskRunner:
             owned_services.append(sheet_service)
         if self._bitable_service is None:
             owned_services.append(bitable_service)
-
-        try:
-            tree = await drive_service.scan_folder(
-                task.cloud_folder_token, name=task.name or "同步根目录"
-            )
-            folders = list(_flatten_folders(tree))
-            await self._sync_cloud_folder_links(task, folders)
-            files = list(_flatten_files(tree))
-            logger.info(
-                "下载阶段: task_id={} folders={} files={}",
-                task.id,
-                len(folders),
-                len(files),
-            )
-            link_map = _build_link_map(files, task.local_path)
-            persisted_links = await link_service.list_by_task(task.id)
-            link_map = _merge_synced_link_map(link_map, persisted_links)
-            persisted_by_path = {item.local_path: item for item in persisted_links}
-            candidates = [
-                self._build_download_candidate(task, node, relative_dir)
-                for node, relative_dir in files
-            ]
-            candidates = await self._hydrate_export_sub_ids(
-                candidates,
-                drive_service,
-                sheet_service=sheet_service,
-                bitable_service=bitable_service,
-            )
-            candidates = [
-                item
-                for item in candidates
-                if not self._should_ignore_path(task, item.target_path)
-            ]
-            selected_candidates, duplicated_candidates = self._select_download_candidates(
-                candidates,
-                persisted_by_path,
-            )
-            if selected_paths or selected_cloud_tokens:
-                selected_candidates = [
-                    item
-                    for item in selected_candidates
-                    if self._matches_download_selection(
-                        item,
-                        selected_paths=selected_paths,
-                        selected_cloud_tokens=selected_cloud_tokens,
-                    )
-                ]
-                duplicated_candidates = [
-                    item
-                    for item in duplicated_candidates
-                    if self._matches_download_selection(
-                        item,
-                        selected_paths=selected_paths,
-                        selected_cloud_tokens=selected_cloud_tokens,
-                    )
-                ]
-            known_cloud_tokens = _folder_cloud_tokens(folders)
-            known_cloud_tokens.update(item.effective_token for item in selected_candidates)
-            selected_cloud_paths = self._build_cloud_folder_paths(task, folders)
-            selected_cloud_paths.update(str(item.target_path) for item in selected_candidates)
-            if allow_deletes:
-                await self._enqueue_cloud_missing_deletes(
-                    task=task,
-                    status=status,
-                    persisted_links=persisted_links,
-                    cloud_paths=selected_cloud_paths,
-                )
-            status.total_files = len(selected_candidates) + len(duplicated_candidates)
-
-            for duplicated in duplicated_candidates:
-                status.skipped_files += 1
-                self._record_event(status, 
-                    SyncFileEvent(
-                        path=str(duplicated.target_path),
-                        status="skipped",
-                        message=(
-                            "云端存在同名文件，已跳过重复项: "
-                            f"type={duplicated.effective_type} token={duplicated.effective_token}"
-                        ),
-                    )
-                )
-                logger.info(
-                    "跳过重复同名云端文件: task_id={} path={} type={} token={}",
-                    task.id,
-                    duplicated.target_path,
-                    duplicated.effective_type,
-                    duplicated.effective_token,
-                )
-
-            for candidate in selected_candidates:
-                node = candidate.node
-                effective_token = candidate.effective_token
-                effective_type = candidate.effective_type
-                target_dir = candidate.target_dir
-                target_path = candidate.target_path
-                mtime = candidate.mtime
-                persisted = persisted_by_path.get(str(target_path))
-                forced = bool(force_paths and str(target_path) in force_paths)
-                if (not forced) and self._should_skip_download_for_local_newer(
-                    task=task,
-                    local_path=target_path,
-                    cloud_mtime=mtime,
-                ):
-                    status.skipped_files += 1
-                    self._record_event(status, 
-                        SyncFileEvent(
-                            path=str(target_path),
-                            status="skipped",
-                            message="本地较新，跳过下载",
-                        )
-                    )
-                    logger.info(
-                        "检测到本地较新文件，跳过下载: task_id={} path={} cloud_mtime={} local_mtime={}",
-                        task.id,
-                        target_path,
-                        mtime,
-                        target_path.stat().st_mtime,
-                    )
-                    continue
-                if (not forced) and self._should_skip_download_for_unchanged(
-                    local_path=target_path,
-                    cloud_mtime=mtime,
-                    persisted=persisted,
-                    effective_token=effective_token,
-                    effective_type=effective_type,
-                ):
-                    status.skipped_files += 1
-                    self._record_event(status, 
-                        SyncFileEvent(
-                            path=str(target_path),
-                            status="skipped",
-                            message="云端未更新，跳过下载",
-                        )
-                    )
-                    logger.info(
-                        "云端未更新，跳过下载: task_id={} path={} type={} token={} cloud_mtime={}",
-                        task.id,
-                        target_path,
-                        effective_type,
-                        effective_token,
-                        mtime,
-                    )
-                    continue
-                try:
-                    if effective_type in {"docx", "doc"}:
-                        markdown = await self._download_docx(
-                            effective_token,
-                            docx_service=docx_service,
-                            transcoder=transcoder,
-                            base_dir=target_dir,
-                            link_map=link_map,
-                        )
-                        self._silence_path(task.id, target_path)
-                        self._file_writer.write_markdown(target_path, markdown, mtime)
-                        signature = self._get_local_signature(target_path)
-                        cloud_revision = self._build_cloud_revision(effective_token, mtime)
-                        resource_signature = self._calculate_local_resource_signature(
-                            markdown,
-                            target_dir,
-                        )
-                        await link_service.upsert_link(
-                            local_path=str(target_path),
-                            cloud_token=effective_token,
-                            cloud_type=effective_type,
-                            task_id=task.id,
-                            updated_at=mtime,
-                            cloud_parent_token=node.parent_token,
-                            local_hash=signature[0] if signature else None,
-                            local_size=signature[1] if signature else None,
-                            local_mtime=signature[2] if signature else None,
-                            cloud_revision=cloud_revision,
-                            cloud_mtime=mtime,
-                            local_resource_signature=resource_signature,
-                            resource_sync_revision=cloud_revision,
-                        )
-                        if task.sync_mode in {"bidirectional", "upload_only"} and (
-                            (task.update_mode or "auto") != "full"
-                        ):
-                            await self._rebuild_block_state(
-                                task=task,
-                                docx_service=docx_service,
-                                document_id=effective_token,
-                                markdown=markdown,
-                                base_path=target_dir.as_posix(),
-                                file_path=target_path,
-                                user_id_type="open_id",
-                            )
-                        if self._should_sync_md_cloud_mirror(task):
-                            await self._sync_markdown_mirror_copy(
-                                task=task,
-                                status=status,
-                                path=target_path,
-                                file_uploader=file_uploader,
-                                drive_service=drive_service,
-                            )
-                        self._silence_path(task.id, target_path)
-                        status.completed_files += 1
-                        self._record_event(status, 
-                            SyncFileEvent(
-                                path=str(target_path), status="downloaded"
-                            )
-                        )
-                    elif effective_type in _EXPORT_EXTENSION_MAP:
-                        export_extension = _EXPORT_EXTENSION_MAP[effective_type]
-                        self._silence_path(task.id, target_path)
-                        await self._download_exported_file(
-                            export_task_service=export_task_service,
-                            file_downloader=file_downloader,
-                            file_token=effective_token,
-                            file_type=effective_type,
-                            target_path=target_path,
-                            mtime=mtime,
-                            export_extension=export_extension,
-                            export_sub_id=candidate.export_sub_id,
-                        )
-                        signature = self._get_local_signature(target_path)
-                        await link_service.upsert_link(
-                            local_path=str(target_path),
-                            cloud_token=effective_token,
-                            cloud_type=effective_type,
-                            task_id=task.id,
-                            updated_at=mtime,
-                            cloud_parent_token=node.parent_token,
-                            local_hash=signature[0] if signature else None,
-                            local_size=signature[1] if signature else None,
-                            local_mtime=signature[2] if signature else None,
-                            cloud_revision=self._build_cloud_revision(effective_token, mtime),
-                            cloud_mtime=mtime,
-                        )
-                        self._silence_path(task.id, target_path)
-                        status.completed_files += 1
-                        self._record_event(status, 
-                            SyncFileEvent(
-                                path=str(target_path), status="downloaded"
-                            )
-                            )
-                    elif effective_type == "file":
-                        self._silence_path(task.id, target_path)
-                        await file_downloader.download(
-                            file_token=effective_token,
-                            file_name=target_path.name,
-                            target_dir=target_dir,
-                            mtime=mtime,
-                        )
-                        signature = self._get_local_signature(target_path)
-                        await link_service.upsert_link(
-                            local_path=str(target_path),
-                            cloud_token=effective_token,
-                            cloud_type=effective_type,
-                            task_id=task.id,
-                            updated_at=mtime,
-                            cloud_parent_token=node.parent_token,
-                            local_hash=signature[0] if signature else None,
-                            local_size=signature[1] if signature else None,
-                            local_mtime=signature[2] if signature else None,
-                            cloud_revision=self._build_cloud_revision(effective_token, mtime),
-                            cloud_mtime=mtime,
-                        )
-                        self._silence_path(task.id, target_path)
-                        status.completed_files += 1
-                        self._record_event(status, 
-                            SyncFileEvent(
-                                path=str(target_path), status="downloaded"
-                            )
-                        )
-                    else:
-                        status.skipped_files += 1
-                        self._record_event(status, 
-                            SyncFileEvent(
-                                path=str(target_path),
-                                status="skipped",
-                                message=f"暂不支持类型: {effective_type}",
-                            )
-                        )
-                except Exception as exc:
-                    status.failed_files += 1
-                    status.last_error = str(exc)
-                    self._record_event(status, 
-                        SyncFileEvent(
-                            path=str(target_path),
-                            status="failed",
-                            message=f"type={effective_type} token={effective_token} error={exc}",
-                        )
-                    )
-                    logger.error(
-                        "下载失败: task_id={} path={} type={} token={} error={}",
-                        task.id,
-                        target_path,
-                        effective_type,
-                        effective_token,
-                        exc,
-                    )
-            if allow_deletes:
-                await self._process_pending_deletes(
-                    task=task,
-                    status=status,
-                    drive_service=drive_service,
-                    known_cloud_tokens=known_cloud_tokens,
-                )
-        finally:
-            for service in owned_services:
-                close = getattr(service, "close", None)
-                if close:
-                    await close()
+        return DownloadRuntimeServices(
+            drive_service=drive_service,
+            docx_service=docx_service,
+            sheet_service=sheet_service,
+            transcoder=transcoder,
+            file_downloader=file_downloader,
+            file_uploader=file_uploader,
+            export_task_service=export_task_service,
+            bitable_service=bitable_service,
+            link_service=self._link_service,
+            owned_services=owned_services,
+        )
 
     @staticmethod
     def _should_skip_download_for_local_newer(

@@ -440,6 +440,64 @@ async def test_download_additive_mode_does_not_enqueue_cloud_missing_delete(
 
 
 @pytest.mark.asyncio
+async def test_run_download_uses_latest_download_docx_callback(tmp_path: Path) -> None:
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="doc-latest",
+                name="主文档",
+                type="docx",
+                modified_time="1700000000",
+            )
+        ],
+    )
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=FakeTranscoder(),
+        file_downloader=FakeFileDownloader(),
+        file_uploader=FakeFileUploader(),
+        file_writer=FileWriter(),
+        link_service=FakeLinkService(),
+    )
+    task = SyncTaskItem(
+        id="task-latest-download-callback",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+
+    async def _capture_download_docx(
+        document_id: str,
+        *,
+        docx_service,
+        transcoder,
+        base_dir: Path | None = None,
+        link_map=None,
+    ) -> str:
+        assert document_id == "doc-latest"
+        return "# latest callback"
+
+    runner._download_docx = _capture_download_docx  # type: ignore[method-assign]
+
+    await runner._run_download(task, status, allow_deletes=False)
+
+    assert status.completed_files == 1
+    assert (tmp_path / "主文档.md").read_text(encoding="utf-8") == "# latest callback"
+
+
+@pytest.mark.asyncio
 async def test_runner_downloads_docx_and_files(tmp_path: Path) -> None:
     tree = DriveNode(
         token="root",
