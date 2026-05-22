@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Awaitable, Callable, Optional, Union
 
 from loguru import logger
 from sqlalchemy import event, text
@@ -16,6 +17,20 @@ from . import models as _models  # noqa: F401  # 确保所有 ORM 模型在 crea
 
 
 _ENGINE_CACHE: dict[str, AsyncEngine] = {}
+SCHEMA_VERSION_KEY = "schema_version"
+
+
+MigrationFn = Callable[[object], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class SchemaMigration:
+    version: int
+    description: str
+    upgrade: MigrationFn
+
+
+CURRENT_SCHEMA_VERSION = 1
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -40,7 +55,7 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            await _ensure_schema(conn)
+            await _run_schema_migrations(conn)
         return engine
     except DatabaseError as exc:
         if not _is_sqlite_corrupt_error(exc):
@@ -53,7 +68,7 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
         engine = create_engine(database_url)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            await _ensure_schema(conn)
+            await _run_schema_migrations(conn)
         return engine
 
 
@@ -67,7 +82,60 @@ async def dispose_engines() -> None:
             _ENGINE_CACHE.pop(url, None)
 
 
-async def _ensure_schema(conn) -> None:
+async def _run_schema_migrations(conn) -> None:
+    current_version = await _read_schema_version(conn)
+    for migration in _SCHEMA_MIGRATIONS:
+        if migration.version <= current_version:
+            continue
+        logger.info("执行数据库迁移 v{}: {}", migration.version, migration.description)
+        await migration.upgrade(conn)
+        await _set_schema_version(conn, migration.version)
+        current_version = migration.version
+
+
+async def _read_schema_version(conn) -> int:
+    meta_exists = (
+        await conn.execute(
+            text(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='sync_meta'"
+            )
+        )
+    ).first()
+    if not meta_exists:
+        return 0
+    value = (
+        await conn.execute(
+            text("SELECT value FROM sync_meta WHERE key = :key"),
+            {"key": SCHEMA_VERSION_KEY},
+        )
+    ).scalar_one_or_none()
+    try:
+        return int(value) if value is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+async def _set_schema_version(conn, version: int) -> None:
+    timestamp = datetime.now().timestamp()
+    await conn.execute(
+        text(
+            """
+            INSERT INTO sync_meta (key, value, updated_at)
+            VALUES (:key, :value, :updated_at)
+            ON CONFLICT(key) DO UPDATE SET
+              value = excluded.value,
+              updated_at = excluded.updated_at
+            """
+        ),
+        {
+            "key": SCHEMA_VERSION_KEY,
+            "value": str(version),
+            "updated_at": timestamp,
+        },
+    )
+
+
+async def _apply_schema_v1(conn) -> None:
     await _ensure_column(
         conn,
         table="sync_tasks",
@@ -220,6 +288,15 @@ async def _ensure_schema(conn) -> None:
     )
 
 
+_SCHEMA_MIGRATIONS = [
+    SchemaMigration(
+        version=1,
+        description="补齐 sync_tasks/sync_links 历史列，并创建 sync_runs/sync_run_events 复合索引",
+        upgrade=_apply_schema_v1,
+    ),
+]
+
+
 async def _ensure_column(
     conn,
     *,
@@ -334,6 +411,7 @@ def _backup_corrupt_db(database_url: Optional[str]) -> Optional[Path]:
 
 
 __all__ = [
+    "CURRENT_SCHEMA_VERSION",
     "create_engine",
     "get_session_maker",
     "init_db",

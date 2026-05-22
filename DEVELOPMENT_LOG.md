@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.3 (2026-05-22)
+
+- 目标：
+  - 按第三阶段规划把数据库结构演进从“启动时散落补列/补索引”升级为显式、可追踪的 schema version 迁移流程，并补齐老库升级测试。
+- 结果：
+  - `apps/backend/src/db/session.py` 新增 `SchemaMigration` 注册表、`CURRENT_SCHEMA_VERSION`、`sync_meta.schema_version` 读写逻辑和顺序迁移执行流程；`init_db()` 在 `create_all()` 后不再直接调用单个 `_ensure_schema()`，而是执行显式迁移列表。
+  - 现有历史 `_ensure_column` / `_ensure_index` 补齐逻辑已收拢到第一个基线迁移 `v1`，作为当前 schema 的显式升级步骤，后续新增列/索引可以继续按版本追加，不再无限堆回 `init_db()` 主体。
+  - 新增 `test_init_db_records_schema_version()` 与 `test_init_db_upgrades_legacy_schema_with_versioned_migrations()`，验证新库会写入 schema version，且旧库在缺少列/索引时能够通过迁移注册表自动升级到当前版本。
+- 测试：
+  - `python -m pytest tests/test_db_session.py -q`（工作目录：`apps/backend/`）
+  - 后续完整回归会继续覆盖所有依赖 `init_db()` 的数据库服务测试
+- 问题：
+  - 当前只建立了 schema version 机制和 `v1` 基线迁移，尚未把所有历史结构变化拆成更细粒度的多版本迁移；下一步应在新增 schema 变更时严格通过新 migration 条目落地，而不是再回到散落 `_ensure_*` 的路径。
+
 ## v0.7.17-dev.2 (2026-05-22)
 
 - 目标：
