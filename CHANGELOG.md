@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.16-dev.1 fix(auto-update): 修复 Windows 静默安装生成的 `bootstrap.ps1` / `worker.ps1` 以无 BOM UTF-8 写入时被 Windows PowerShell 5.1 误解码、进而在中文日志文本处触发 ParserError 的问题；脚本现改为 BOM UTF-8，并新增真实 `powershell.exe -File` 回归测试，避免 handoff 永远卡在 `bootstrap_started`
+
 [2026-05-22] v0.7.15 release: v0.7.15
 
 [2026-05-22] v0.7.15-dev.2 fix(log-center): 日志中心事件回填改为后台 checkpoint 增量追平，启动不再阻塞等待旧日志全量入库；`/sync/logs/sync` 不再在请求链路里执行回填或清理，`sync_runs`/`sync_run_events` 补齐复合索引与后台维护任务，完成日志中心性能治理闭环

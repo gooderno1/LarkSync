@@ -341,6 +341,12 @@ def _install_script_stem(path: Path, request_id: str) -> str:
     return (safe or "install")[:80]
 
 
+def _write_powershell_script(path: Path, content: str) -> None:
+    """使用 Windows PowerShell 5.1 可稳定识别的编码写入脚本。"""
+    encoding = "utf-8-sig" if sys.platform == "win32" else "utf-8"
+    path.write_text(content, encoding=encoding)
+
+
 def _build_windows_installer_worker_script(
     path: Path,
     *,
@@ -540,7 +546,7 @@ def _build_windows_silent_bootstrap_command(
     )
     worker_path = target_dir / f"{stem}-worker.ps1"
     bootstrap_path = target_dir / f"{stem}-bootstrap.ps1"
-    worker_path.write_text(worker_script, encoding="utf-8")
+    _write_powershell_script(worker_path, worker_script)
     worker_escaped = str(worker_path).replace("'", "''")
     script = (
         f"$installerPath = '{installer_escaped}'; "
@@ -581,7 +587,7 @@ def _build_windows_silent_bootstrap_command(
         "Write-Handoff 'bootstrap_started' ('worker_pid=' + $process.Id) 0; "
         "Write-InstallLog (\"静默安装 worker 已启动 pid=\" + $process.Id); "
     )
-    bootstrap_path.write_text(script, encoding="utf-8")
+    _write_powershell_script(bootstrap_path, script)
     return _build_windows_powershell_file_command(bootstrap_path)
 
 

@@ -4205,3 +4205,25 @@
 - 问题：
   
   - macOS 安装包仍由 GitHub Actions 的手动 `workflow_dispatch` 构建，当前正式版发布默认只自动生成并上传 Windows 安装包与校验文件。
+
+## v0.7.16-dev.1 (2026-05-22)
+
+- 目标：
+  
+  - 彻底修复 Windows 静默安装在 `v0.7.15` 上再次失败、handoff 长时间停在 `bootstrap_started` 的问题，并补齐能真实执行 `powershell.exe -File` 的回归测试，避免后续再漏掉脚本编码/解析层面的失败。
+
+- 结果：
+  
+  - 通过检查本机 `C:\Users\85406\AppData\Roaming\LarkSync\logs\update-install.log` 和 `install-handoff.json`，确认当前失败并非安装器退出码或重启阶段问题，而是 worker 从未写出 `helper_started`；静默安装现场始终停留在 `worker_pid=...` 的 `bootstrap_started`。
+  - 进一步用真实 `powershell.exe -File` 手工执行生成的 worker 脚本后，定位到 Windows PowerShell 5.1 读取“无 BOM UTF-8 `.ps1` + 中文日志文本”时会发生误解码，并在脚本末尾触发 `ParserError: The string is missing the terminator`；因此 worker 尚未运行到 `Write-Handoff 'helper_started'` 就已在解析阶段崩溃。
+  - 托盘现在通过 `_write_powershell_script()` 统一将静默安装生成的 `bootstrap.ps1` / `worker.ps1` 以 `utf-8-sig` 写入，保证 Windows PowerShell 5.1 能稳定解析含中文文本的脚本文件；同时保留 handoff JSON 无 BOM 写入，避免回退到旧的 UTF-8 BOM 读取问题。
+  - 新增两层回归测试：一层验证生成脚本文件在 Windows 上确实带 BOM，另一层直接用真实 `powershell.exe -File` 执行生成的 worker 脚本，确认它不再因 ParserError 失败，而是按预期写出 `launch_failed` handoff。
+
+- 测试：
+  
+  - `python -m pytest tests/test_tray_update_install.py -q`（工作目录：`apps/backend/`）
+  - 后续联动回归会继续覆盖 `test_system_update_api.py`、`test_update_service.py`、`test_update_scheduler.py`
+
+- 问题：
+  
+  - 当前修复聚焦于 Windows PowerShell 5.1 的脚本文件解码问题；如后续仍出现静默安装失败，下一优先级应直接比对 `update-install.log` 与新生成脚本内容，而不是再把问题默认归因到 handoff 时序。

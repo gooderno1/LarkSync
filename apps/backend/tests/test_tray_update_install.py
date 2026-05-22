@@ -1,7 +1,10 @@
 import base64
 import json
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
@@ -276,6 +279,69 @@ def test_build_windows_installer_worker_verifies_version_and_retries_restart(tmp
     assert "restart_succeeded" in script
     assert "restart_failed" in script
     assert "exit_code=<null>" in script
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires Windows")
+def test_generated_powershell_scripts_use_utf8_bom_on_windows(tmp_path: Path) -> None:
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.58.exe"
+    restart_path = tmp_path / "LarkSync.exe"
+    log_path = tmp_path / "update-install.log"
+    handoff_path = tmp_path / "install-handoff.json"
+    script_dir = tmp_path / "install-scripts"
+
+    command = tray_app._build_windows_silent_bootstrap_command(
+        installer_path,
+        restart_path=restart_path,
+        log_path=log_path,
+        handoff_path=handoff_path,
+        request_id="req-bom-script",
+        script_dir=script_dir,
+    )
+    bootstrap_path = Path(command[command.index("-File") + 1])
+    worker_path = next(script_dir.glob("*worker*.ps1"))
+
+    assert bootstrap_path.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert worker_path.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires Windows PowerShell")
+def test_generated_worker_script_runs_under_windows_powershell(tmp_path: Path) -> None:
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.58.exe"
+    log_path = tmp_path / "update-install.log"
+    handoff_path = tmp_path / "install-handoff.json"
+    script_path = tmp_path / "worker.ps1"
+
+    script = tray_app._build_windows_installer_worker_script(
+        installer_path,
+        silent=True,
+        restart_path=None,
+        log_path=log_path,
+        handoff_path=handoff_path,
+        request_id="req-ps51",
+    )
+    tray_app._write_powershell_script(script_path, script)
+
+    result = subprocess.run(
+        [
+            tray_app._resolve_powershell_executable(),
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 1
+    assert "ParserError" not in (result.stderr or "")
+
+    payload = json.loads(handoff_path.read_text(encoding="utf-8-sig"))
+    assert payload["request_id"] == "req-ps51"
+    assert payload["stage"] == "launch_failed"
 
 
 def test_windows_handoff_scripts_write_json_without_bom(tmp_path: Path) -> None:
