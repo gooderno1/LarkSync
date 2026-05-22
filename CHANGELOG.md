@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.23 refactor(backend): 为 `docx_service` 新增 `DocxContentWriteService`，将内容替换、`convert -> create` 写入编排与 Markdown 块插入逻辑下沉到独立服务，并保留原方法兼容代理以维持文档写入回归稳定
+
 [2026-05-22] v0.7.17-dev.22 refactor(backend): 为 `docx_service` 新增 `DocxBlockCreateService`，将子块创建、失败拆分重试与图片/附件回填逻辑下沉到独立服务，并保留原方法兼容代理以维持文档写回回归稳定
 
 [2026-05-22] v0.7.17-dev.21 refactor(backend): 为 `docx_service` 新增 `DocxPartialUpdateService`，将块级局部更新 diff、重复签名规避与锚点匹配逻辑下沉到独立服务，并保留原方法兼容代理以维持文档局部更新回归稳定

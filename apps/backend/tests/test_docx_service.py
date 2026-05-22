@@ -221,6 +221,49 @@ async def test_replace_document_content_creates_nested_children() -> None:
 
 
 @pytest.mark.asyncio
+async def test_insert_markdown_block_creates_children_at_index() -> None:
+    responses = [
+        {
+            "code": 0,
+            "data": {
+                "first_level_block_ids": ["t1"],
+                "blocks": [
+                    {"block_id": "t1", "block_type": 2, "text": {"elements": []}}
+                ],
+            },
+        },
+        {
+            "code": 0,
+            "data": {
+                "children": [{"block_id": "n1"}],
+                "document_revision_id": 2,
+                "client_token": "t2",
+            },
+        },
+    ]
+    client = FakeClient(responses)
+    service = DocxService(client=client)
+
+    created = await service.insert_markdown_block(
+        "doc-insert",
+        "root",
+        "段落",
+        base_path=None,
+        insert_index=3,
+    )
+
+    assert created == 1
+    assert client.requests[0][0] == "POST"
+    assert client.requests[0][1].endswith("/open-apis/docx/v1/documents/blocks/convert")
+    create_call = client.requests[1]
+    assert create_call[0] == "POST"
+    assert create_call[1].endswith(
+        "/open-apis/docx/v1/documents/doc-insert/blocks/root/children"
+    )
+    assert create_call[2]["json"]["index"] == 3
+
+
+@pytest.mark.asyncio
 async def test_replace_document_content_uploads_local_images(tmp_path) -> None:
     assets_dir = tmp_path / "assets"
     assets_dir.mkdir()

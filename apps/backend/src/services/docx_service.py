@@ -18,6 +18,7 @@ from src.services.docx_block_create_service import (
     DocxBlockCreateService,
     build_create_chunks as _build_create_chunks,
 )
+from src.services.docx_content_write_service import DocxContentWriteService
 from src.services.docx_markdown_asset_service import DocxMarkdownAssetService
 from src.services.docx_partial_update_service import DocxPartialUpdateService
 from src.services.docx_table_runtime_service import DocxTableRuntimeService
@@ -166,6 +167,18 @@ class DocxService:
             file_parent_type=self._file_parent_type,
             service_error_cls=DocxServiceError,
         )
+        self._content_write_service = DocxContentWriteService(
+            list_blocks=self.list_blocks,
+            find_root_block=self._find_root_block,
+            convert_markdown_with_images=self.convert_markdown_with_images,
+            normalize_convert=self._normalize_convert,
+            apply_partial_update=self._apply_partial_update,
+            create_children_recursive=self._create_children_recursive,
+            delete_children=self.delete_children,
+            summarize_block_types=_summarize_block_types,
+            extract_children_ids=_extract_children_ids,
+            service_error_cls=DocxServiceError,
+        )
 
     async def replace_document_content(
         self,
@@ -175,79 +188,12 @@ class DocxService:
         base_path: str | Path | None = None,
         update_mode: str = "auto",
     ) -> None:
-        logger.info(
-            "替换文档内容: document_id={} length={}", document_id, len(markdown)
-        )
-        items = await self.list_blocks(document_id, user_id_type=user_id_type)
-        root_block = self._find_root_block(items)
-        if not root_block:
-            raise DocxServiceError("未找到文档根 Block")
-
-        convert = await self.convert_markdown_with_images(
-            markdown,
+        await self._content_write_service.replace_document_content(
             document_id=document_id,
+            markdown=markdown,
             user_id_type=user_id_type,
             base_path=base_path,
-        )
-        convert = self._normalize_convert(convert)
-        logger.info(
-            "转换结果: document_id={} blocks={} first_level={} types={}",
-            document_id,
-            len(convert.blocks),
-            len(convert.first_level_block_ids),
-            _summarize_block_types(convert.blocks),
-        )
-
-        children = root_block.get("children") or []
-        logger.info(
-            "根块信息: block_id={} children={}",
-            root_block.get("block_id"),
-            len(children),
-        )
-        if update_mode not in {"auto", "partial", "full"}:
-            update_mode = "auto"
-
-        partial_applied = False
-        if update_mode in {"auto", "partial"} and children:
-            partial_applied = await self._apply_partial_update(
-                document_id=document_id,
-                root_block_id=root_block["block_id"],
-                current_children=children,
-                current_blocks=items,
-                convert=convert,
-                user_id_type=user_id_type,
-                force=update_mode == "partial",
-            )
-
-        if not partial_applied:
-            ok = await self._create_from_convert(
-                document_id=document_id,
-                root_block_id=root_block["block_id"],
-                convert=convert,
-                user_id_type=user_id_type,
-            )
-            if not ok:
-                raise DocxServiceError("创建块失败，已中止替换")
-            logger.info(
-                "新内容已创建: document_id={} blocks={}",
-                document_id,
-                len(convert.blocks),
-            )
-
-            if children:
-                await self.delete_children(
-                    document_id=document_id,
-                    block_id=root_block["block_id"],
-                    start_index=0,
-                    end_index=len(children),
-                )
-                logger.info(
-                    "旧内容已删除: document_id={} count={}", document_id, len(children)
-                )
-        logger.info(
-            "替换完成: document_id={} blocks={}",
-            document_id,
-            len(convert.blocks),
+            update_mode=update_mode,
         )
 
     async def convert_markdown(
@@ -411,25 +357,13 @@ class DocxService:
         user_id_type: str,
         insert_index: int = -1,
     ) -> bool:
-        error_flag = {"error": False}
-        block_map = {block.get("block_id"): block for block in convert.blocks}
-        children_map = {
-            block.get("block_id"): _extract_children_ids(block)
-            for block in convert.blocks
-        }
-        await self._create_children_recursive(
+        return await self._content_write_service.create_from_convert(
             document_id=document_id,
-            parent_block_id=root_block_id,
-            child_ids=convert.first_level_block_ids,
-            block_map=block_map,
-            children_map=children_map,
+            root_block_id=root_block_id,
+            convert=convert,
             user_id_type=user_id_type,
             insert_index=insert_index,
-            image_paths=convert.image_paths,
-            file_paths=convert.file_paths,
-            error_flag=error_flag,
         )
-        return not error_flag["error"]
 
     async def insert_markdown_block(
         self,
@@ -441,23 +375,14 @@ class DocxService:
         user_id_type: str = "open_id",
         insert_index: int = -1,
     ) -> int:
-        convert = await self.convert_markdown_with_images(
-            markdown,
-            document_id=document_id,
-            user_id_type=user_id_type,
-            base_path=base_path,
-        )
-        convert = self._normalize_convert(convert)
-        ok = await self._create_from_convert(
+        return await self._content_write_service.insert_markdown_block(
             document_id=document_id,
             root_block_id=root_block_id,
-            convert=convert,
+            markdown=markdown,
+            base_path=base_path,
             user_id_type=user_id_type,
             insert_index=insert_index,
         )
-        if not ok:
-            raise DocxServiceError("创建块失败，已中止插入")
-        return len(convert.first_level_block_ids)
 
     async def _create_children_recursive(
         self,

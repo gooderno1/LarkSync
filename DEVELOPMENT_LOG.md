@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.23 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 B，拆 `apps/backend/src/services/docx_service.py` 中的内容写入主编排，把文档替换、`convert -> create` 写入和 Markdown 块插入从文档服务主类中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/docx_content_write_service.py`，承载 `replace_document_content`、`create_from_convert` 与 `insert_markdown_block` 的写入编排。
+  - `DocxService` 现通过组合 `DocxContentWriteService` 复用这部分能力，并保留 `replace_document_content`、`_create_from_convert`、`insert_markdown_block` 原方法作为兼容代理，现有文档替换与插入回归无需改写。
+  - 新增 `insert_markdown_block` 目标测试，补齐块插入路径的自动化覆盖；`docx_service` 继续向“文档 API 能力集合 + 薄编排层”收口。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py -k "insert_markdown_block_creates_children_at_index or replace_document_content_clears_and_creates or replace_document_content_creates_nested_children" -q`
+  - `python -m pytest tests/test_docx_service.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py tests/test_docx_service.py tests/test_main.py -q`
+- 问题：
+  - `docx_service.py` 仍保留请求基类、转换入口和部分 block mutation；下一轮应优先考虑继续拆 `convert_markdown_with_images`/请求适配层，或切回 `sync_runner` 的 `run_download/run_upload` 主编排。
+
 ## v0.7.17-dev.22 (2026-05-22)
 
 - 目标：
