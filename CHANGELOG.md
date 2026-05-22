@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.20 refactor(backend): 为 `docx_service` 新增 `DocxTableRuntimeService`，将大表格降级、单元格回填与插行补足等表格运行时逻辑下沉到独立服务，并保留原方法兼容代理以维持表格回归稳定
+
 [2026-05-22] v0.7.17-dev.19 refactor(backend): 为 `docx_service` 新增 `DocxMarkdownAssetService`，将 Markdown 图片/附件 placeholder 构建、HTML 图片解析、资源路径解析与 placeholder 回填逻辑下沉到独立服务，并保留原方法兼容代理以维持文档转换回归稳定
 
 [2026-05-22] v0.7.17-dev.18 refactor(backend): 为 `sync_runner` 新增 `SyncDownloadSupportService`，将下载候选构建、表格/多维表格 `sub_id` 补齐、导出任务轮询、导出文件下载与候选去重逻辑下沉到独立服务，并保留原私有方法兼容代理以维持下载回归稳定

@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlsplit
 from loguru import logger
 
 from src.services.docx_markdown_asset_service import DocxMarkdownAssetService
+from src.services.docx_table_runtime_service import DocxTableRuntimeService
 from src.services.feishu_client import FeishuClient
 from src.services.file_uploader import FileUploadError, FileUploader
 from src.services.media_uploader import MediaUploadError, MediaUploader
@@ -127,6 +128,20 @@ class DocxService:
             strip_placeholders_from_block=_strip_placeholders_from_block,
             set_block_plain_text=_set_block_plain_text,
             has_text_elements=_has_text_elements,
+        )
+        self._table_runtime_service = DocxTableRuntimeService(
+            convert_markdown=self.convert_markdown,
+            normalize_convert=self._normalize_convert,
+            create_children_recursive=self._create_children_recursive,
+            insert_table_row=self.insert_table_row,
+            list_blocks=self.list_blocks,
+            try_delete_children=self._try_delete_children,
+            split_large_markdown_tables_for_convert=_split_large_markdown_tables_for_convert,
+            patch_table_properties=_patch_table_properties,
+            extract_children_ids=_extract_children_ids,
+            flatten_table_cells=_flatten_table_cells,
+            table_dimensions=_table_dimensions,
+            plain_text_block=_plain_text_block,
         )
 
     async def replace_document_content(
@@ -749,92 +764,15 @@ class DocxService:
         insert_index: int,
         error_flag: dict[str, bool] | None = None,
     ) -> bool:
-        table_block = block_map.get(table_block_id)
-        if not table_block:
-            return False
-        parser = DocxParser(list(block_map.values()))
-        table_markdown = parser.table_markdown(table_block).strip()
-        if not table_markdown:
-            logger.warning(
-                "表格降级失败，无法生成 Markdown: document_id={} block_id={}",
-                document_id,
-                table_block_id,
-            )
-            return False
-        split_markdown = _split_large_markdown_tables_for_convert(table_markdown)
-        if split_markdown != table_markdown:
-            logger.warning(
-                "表格块创建失败，拆分大表格重试: document_id={} parent={} block_id={}",
-                document_id,
-                parent_block_id,
-                table_block_id,
-            )
-            try:
-                convert = await self.convert_markdown(
-                    split_markdown, user_id_type=user_id_type
-                )
-                convert = _patch_table_properties(convert, split_markdown)
-                convert = self._normalize_convert(convert)
-                fallback_block_map = {
-                    block_id: block
-                    for block in convert.blocks
-                    if isinstance((block_id := block.get("block_id")), str)
-                }
-                fallback_children_map = {
-                    block_id: _extract_children_ids(block)
-                    for block_id, block in fallback_block_map.items()
-                }
-                await self._create_children_recursive(
-                    document_id=document_id,
-                    parent_block_id=parent_block_id,
-                    child_ids=convert.first_level_block_ids,
-                    block_map=fallback_block_map,
-                    children_map=fallback_children_map,
-                    user_id_type=user_id_type,
-                    insert_index=insert_index,
-                    image_paths=None,
-                    file_paths=None,
-                    error_flag=error_flag,
-                )
-                return True
-            except Exception as exc:
-                logger.warning(
-                    "大表格拆分重试失败: document_id={} block_id={} error={}",
-                    document_id,
-                    table_block_id,
-                    exc,
-                )
-
-        fallback_id = f"larksync_table_text_{uuid.uuid4().hex}"
-        fallback_block = _plain_text_block(fallback_id, table_markdown)
-        logger.warning(
-            "表格块创建失败，降级为普通文本重试: document_id={} parent={} block_id={}",
-            document_id,
-            parent_block_id,
-            table_block_id,
+        return await self._table_runtime_service.fallback_table_block_without_code(
+            document_id=document_id,
+            parent_block_id=parent_block_id,
+            table_block_id=table_block_id,
+            block_map=block_map,
+            user_id_type=user_id_type,
+            insert_index=insert_index,
+            error_flag=error_flag,
         )
-        try:
-            await self._create_children_recursive(
-                document_id=document_id,
-                parent_block_id=parent_block_id,
-                child_ids=[fallback_id],
-                block_map={fallback_id: fallback_block},
-                children_map={fallback_id: []},
-                user_id_type=user_id_type,
-                insert_index=insert_index,
-                image_paths=None,
-                file_paths=None,
-                error_flag=error_flag,
-            )
-            return True
-        except Exception as exc:
-            logger.warning(
-                "表格普通文本降级重试失败: document_id={} block_id={} error={}",
-                document_id,
-                table_block_id,
-                exc,
-            )
-            return False
 
     async def _populate_table_cells(
         self,
@@ -849,93 +787,17 @@ class DocxService:
         file_paths: dict[str, Path] | None,
         error_flag: dict[str, bool] | None = None,
     ) -> None:
-        source_cells = _extract_children_ids(source_table_block)
-        if not source_cells:
-            return
-        target_cells = _extract_children_ids(table_block)
-        if not target_cells:
-            table = table_block.get("table") or {}
-            target_cells = _flatten_table_cells(table.get("cells") or [])
-        source_rows, source_cols = _table_dimensions(
-            source_table_block, len(source_cells)
+        await self._table_runtime_service.populate_table_cells(
+            document_id=document_id,
+            table_block=table_block,
+            source_table_block=source_table_block,
+            block_map=block_map,
+            children_map=children_map,
+            user_id_type=user_id_type,
+            image_paths=image_paths,
+            file_paths=file_paths,
+            error_flag=error_flag,
         )
-        target_rows, target_cols = _table_dimensions(table_block, len(target_cells))
-        if (
-            source_rows > target_rows
-            and source_cols > 0
-            and (target_cols <= 0 or target_cols == source_cols)
-        ):
-            target_cells = await self._ensure_table_row_capacity(
-                document_id=document_id,
-                table_block=table_block,
-                current_rows=target_rows,
-                desired_rows=source_rows,
-                user_id_type=user_id_type,
-                error_flag=error_flag,
-            )
-        if not target_cells:
-            try:
-                items = await self.list_blocks(document_id, user_id_type=user_id_type)
-            except Exception as exc:
-                logger.warning(
-                    "获取表格单元格失败: document_id={} table_id={} error={}",
-                    document_id,
-                    table_block.get("block_id"),
-                    exc,
-                )
-                if error_flag is not None:
-                    error_flag["error"] = True
-                return
-            for item in items:
-                if item.get("block_id") == table_block.get("block_id"):
-                    target_cells = _extract_children_ids(item)
-                    if not target_cells:
-                        table = item.get("table") or {}
-                        target_cells = _flatten_table_cells(table.get("cells") or [])
-                    break
-        if not target_cells:
-            logger.warning(
-                "表格单元格为空，跳过填充: document_id={} table_id={}",
-                document_id,
-                table_block.get("block_id"),
-            )
-            return
-
-        if len(target_cells) != len(source_cells):
-            logger.warning(
-                "表格单元格数量不一致: document_id={} table_id={} source={} target={}",
-                document_id,
-                table_block.get("block_id"),
-                len(source_cells),
-                len(target_cells),
-            )
-        limit = min(len(source_cells), len(target_cells))
-        for idx in range(limit):
-            source_cell_id = source_cells[idx]
-            target_cell_id = target_cells[idx]
-            content_ids = children_map.get(source_cell_id, [])
-            if not content_ids:
-                continue
-            await self._create_children_recursive(
-                document_id=document_id,
-                parent_block_id=target_cell_id,
-                child_ids=content_ids,
-                block_map=block_map,
-                children_map=children_map,
-                user_id_type=user_id_type,
-                insert_index=0,
-                image_paths=image_paths,
-                file_paths=file_paths,
-                error_flag=error_flag,
-            )
-            # New table cells contain a default empty paragraph. Insert real
-            # content at the top, then remove the shifted placeholder.
-            await self._try_delete_children(
-                document_id=document_id,
-                block_id=target_cell_id,
-                start_index=len(content_ids),
-                end_index=len(content_ids) + 1,
-            )
 
     async def _ensure_table_row_capacity(
         self,
@@ -947,55 +809,14 @@ class DocxService:
         user_id_type: str,
         error_flag: dict[str, bool] | None = None,
     ) -> list[str]:
-        table_block_id = table_block.get("block_id")
-        if not isinstance(table_block_id, str) or not table_block_id:
-            return _extract_children_ids(table_block)
-        if desired_rows <= current_rows:
-            return _extract_children_ids(table_block)
-
-        missing_rows = desired_rows - current_rows
-        for _ in range(missing_rows):
-            try:
-                await self.insert_table_row(
-                    document_id,
-                    table_block_id,
-                    row_index=-1,
-                    user_id_type=user_id_type,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "插入表格行失败: document_id={} table_id={} current_rows={} desired_rows={} error={}",
-                    document_id,
-                    table_block_id,
-                    current_rows,
-                    desired_rows,
-                    exc,
-                )
-                if error_flag is not None:
-                    error_flag["error"] = True
-                return _extract_children_ids(table_block)
-
-        try:
-            items = await self.list_blocks(document_id, user_id_type=user_id_type)
-        except Exception as exc:
-            logger.warning(
-                "插入表格行后刷新单元格失败: document_id={} table_id={} error={}",
-                document_id,
-                table_block_id,
-                exc,
-            )
-            if error_flag is not None:
-                error_flag["error"] = True
-            return _extract_children_ids(table_block)
-
-        for item in items:
-            if item.get("block_id") == table_block_id:
-                refreshed_cells = _extract_children_ids(item)
-                if refreshed_cells:
-                    return refreshed_cells
-                table = item.get("table") or {}
-                return _flatten_table_cells(table.get("cells") or [])
-        return _extract_children_ids(table_block)
+        return await self._table_runtime_service.ensure_table_row_capacity(
+            document_id=document_id,
+            table_block=table_block,
+            current_rows=current_rows,
+            desired_rows=desired_rows,
+            user_id_type=user_id_type,
+            error_flag=error_flag,
+        )
 
     async def _apply_partial_update(
         self,

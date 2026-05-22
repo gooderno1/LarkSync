@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.20 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 B，拆 `apps/backend/src/services/docx_service.py` 中的表格运行时逻辑，把大表格降级、单元格回填和插行补足从文档服务主类中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/docx_table_runtime_service.py`，承载大表格降级重建、表格单元格回填和插入缺失行后的单元格刷新。
+  - `DocxService` 现通过组合 `DocxTableRuntimeService` 复用这部分能力，并保留 `_fallback_table_block_without_code`、`_populate_table_cells`、`_ensure_table_row_capacity` 等原方法作为兼容代理，现有表格回归无需改写。
+  - `docx_service` 现已初步拆出“Markdown 资源处理”和“表格运行时处理”两块服务边界，主类进一步向“飞书文档 API 编排层”收口。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py -k "populate_large_table or falls_back_to_plain_text_when_table_create_invalid or convert_markdown_patches_table_property or patch_table_properties or split_large_markdown_tables_for_convert or has_markdown_table_exceeding_create_limit or partial_update_table_children" -q`
+  - `python -m pytest tests/test_docx_service.py -k "replace_document_content_populates_table_cells_without_creating_cells or sanitize_block_caps_large_table_rows_on_create" -q`
+  - `python -m pytest tests/test_docx_service.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py tests/test_docx_service.py tests/test_main.py -q`
+- 问题：
+  - `docx_service.py` 仍然集中着块级局部更新 diff、块创建重试与网络请求编排；下一轮应优先拆局部更新链路，或转去继续拆 `sync_runner` 的 `run_download/run_upload` 主编排。
+
 ## v0.7.17-dev.19 (2026-05-22)
 
 - 目标：
