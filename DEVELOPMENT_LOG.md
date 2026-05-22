@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.7 (2026-05-22)
+
+- 目标：
+  - 继续压缩日志中心任务诊断详情组件，把 `overview / problems / events` 三个大分支从 `TaskDiagnosticsDetailPanel.tsx` 中独立出去，避免详情组件再次演化成新的大文件。
+- 结果：
+  - 新增 `apps/frontend/src/components/log-center/TaskDiagnosticsOverviewTab.tsx`、`TaskDiagnosticsProblemsTab.tsx`、`TaskDiagnosticsEventsTab.tsx`，分别承载概览、问题、事件三个展示分支。
+  - 新增 `apps/frontend/src/components/log-center/TaskDiagnosticsDetailTabs.test.tsx`，单独锁定三类详情 tab 的关键渲染内容与分页壳层。
+  - `TaskDiagnosticsDetailPanel.tsx` 已从约 326 行进一步收口到约 181 行，当前主要负责 header、tab 切换与数据接线，不再承载大段详情 JSX。
+- 测试：
+  - `npm --prefix apps/frontend exec vitest run src/components/log-center/TaskDiagnosticsDetailTabs.test.tsx src/components/log-center/TaskDiagnosticsPanels.test.tsx src/pages/LogCenterPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - 详情区的纯展示已经拆开，但 `useLogCenterTaskDiagnostics.ts` 仍同时管理任务选择、运行选择、事件筛选、分页与多个 query；下一轮应考虑把事件筛选/分页状态从主 hook 中进一步分离，继续降低 hook 的职责密度。
+
 ## v0.7.17-dev.6 (2026-05-22)
 
 - 目标：

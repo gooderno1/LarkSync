@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.7 refactor(frontend): 将日志中心任务诊断详情继续拆成 `TaskDiagnosticsOverviewTab`、`TaskDiagnosticsProblemsTab`、`TaskDiagnosticsEventsTab` 三个独立展示组件，并新增 tab 级 smoke test；`TaskDiagnosticsDetailPanel.tsx` 进一步收口为 header、tab 切换与数据接线层
+
 [2026-05-22] v0.7.17-dev.6 refactor(frontend): 将日志中心任务诊断工作台拆成 `TaskSelectionPanel`、`RunHistoryPanel`、`TaskDiagnosticsDetailPanel` 三个独立视图组件，并新增组件级 smoke test；`LogCenterPage.tsx` 进一步收口为查询编排和面板装配层
 
 [2026-05-22] v0.7.17-dev.5 refactor(frontend): 抽出日志中心冲突处理状态机到 `useConflictResolutionQueue`，并将忙闲重试判断、队列统计和状态文案判断下沉到 `src/lib/conflictResolution.ts`；冲突管理面板改为消费独立 hook/summary，不再依赖页面内部 queue ref 与重试细节
