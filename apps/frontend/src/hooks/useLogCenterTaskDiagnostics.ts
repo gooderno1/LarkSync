@@ -3,6 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { computeTaskProgress } from "../lib/progress";
 import { apiFetch } from "../lib/api";
+import {
+  buildTaskDiagnosticsQueryPath,
+  shouldIncludeDiagnosticProblems,
+  shouldPollTaskDiagnostics,
+} from "../lib/taskDiagnosticsQuery";
 import { resolveActiveRunSelection } from "../lib/taskDiagnosticsSelection";
 import {
   mapSyncTaskDiagnostics,
@@ -71,27 +76,26 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
   } = useTaskDiagnosticsSelection({
     sortedOverviews,
   });
+  const includeProblems = shouldIncludeDiagnosticProblems(detailTab);
 
   const diagnosticsQuery = useQuery<SyncTaskDiagnostics>({
-    queryKey: ["sync-task-diagnostics", selectedTaskId, selectedRunId, detailTab === "problems"],
+    queryKey: ["sync-task-diagnostics", selectedTaskId, selectedRunId, includeProblems],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set("limit", "200");
-      params.set("include_events", "false");
-      params.set("include_problems", detailTab === "problems" ? "true" : "false");
-      if (selectedRunId) params.set("run_id", selectedRunId);
-      const raw = await apiFetch<SyncTaskDiagnosticsRaw>(`/sync/tasks/${selectedTaskId}/diagnostics?${params.toString()}`);
+      const raw = await apiFetch<SyncTaskDiagnosticsRaw>(buildTaskDiagnosticsQueryPath({
+        selectedTaskId: selectedTaskId!,
+        selectedRunId,
+        includeProblems,
+      }));
       return mapSyncTaskDiagnostics(raw);
     },
     enabled: enabled && Boolean(selectedTaskId),
     placeholderData: (previousData) => previousData,
     staleTime: 5_000,
-    refetchInterval:
-      enabled && selectedOverview?.status.state === "running"
-        ? 5_000
-        : enabled && Boolean(selectedTaskId)
-          ? 10_000
-          : false,
+    refetchInterval: shouldPollTaskDiagnostics({
+      enabled,
+      selectedTaskId,
+      selectedTaskState: selectedOverview?.status.state ?? null,
+    }),
   });
 
   const activeOverview = diagnosticsQuery.data?.overview ?? selectedOverview;

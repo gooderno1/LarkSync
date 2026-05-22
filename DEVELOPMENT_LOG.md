@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.10 (2026-05-22)
+
+- 目标：
+  - 继续压缩日志中心主诊断 hook，把诊断 query 的 `include_problems` 判断、URL 参数组装和轮询间隔判断从 `useLogCenterTaskDiagnostics.ts` 中拆出去，避免 hook 内继续保留低层查询细节。
+- 结果：
+  - 新增 `apps/frontend/src/lib/taskDiagnosticsQuery.ts` 与 `taskDiagnosticsQuery.test.ts`，把诊断请求参数拼装、`include_problems` 判断和轮询间隔判断下沉到可测试 helper。
+  - `useLogCenterTaskDiagnostics.ts` 现在通过 helper 驱动诊断 query key、API path 和 polling 间隔，不再在 hook 内直接拼 `URLSearchParams`。
+  - 这轮没有改页面或组件对外接口，日志中心视图层和既有子 hook 接线保持不变。
+- 测试：
+  - `npm --prefix apps/frontend exec vitest run src/lib/taskDiagnosticsQuery.test.ts src/lib/taskDiagnosticsSelection.test.ts src/lib/taskEventTimeline.test.ts src/components/log-center/TaskDiagnosticsDetailTabs.test.tsx src/components/log-center/TaskDiagnosticsPanels.test.tsx src/pages/LogCenterPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - 当前主诊断 hook 的剩余复杂度主要集中在概览排序、展示派生状态和 `runAlert` 判断；下一轮应评估是否继续把这些纯派生逻辑下沉到 helper，进一步让主 hook 更接近纯编排层。
+
 ## v0.7.17-dev.9 (2026-05-22)
 
 - 目标：
