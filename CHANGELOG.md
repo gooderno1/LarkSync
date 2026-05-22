@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-23] v0.7.17-dev.24 refactor(backend): 为 `sync_runner` 新增 `SyncUploadOrchestrationService`，将上传全量扫描、按路径上传批次、运行时服务组装与失败归档逻辑下沉到独立服务，并补充 `_run_upload_paths` 回调透传回归
+
 [2026-05-22] v0.7.17-dev.23 refactor(backend): 为 `docx_service` 新增 `DocxContentWriteService`，将内容替换、`convert -> create` 写入编排与 Markdown 块插入逻辑下沉到独立服务，并保留原方法兼容代理以维持文档写入回归稳定
 
 [2026-05-22] v0.7.17-dev.22 refactor(backend): 为 `docx_service` 新增 `DocxBlockCreateService`，将子块创建、失败拆分重试与图片/附件回填逻辑下沉到独立服务，并保留原方法兼容代理以维持文档写回回归稳定

@@ -46,6 +46,10 @@ from src.services.sync_run_service import SyncRunService
 from src.services.sync_runner_state import SYNC_LOG_LIMIT, SyncFileEvent, SyncState, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
 from src.services.sync_tombstone_service import SyncTombstoneService
+from src.services.sync_upload_orchestration_service import (
+    SyncUploadOrchestrationService,
+    UploadRuntimeServices,
+)
 from src.services.transcoder import DocxTranscoder
 from src.services.watcher import FileChangeEvent, WatcherService
 
@@ -209,6 +213,14 @@ class SyncTaskRunner:
             task_resolver=lambda task_id: self._task_meta.get(task_id),
             flush_delay_seconds=0.25,
             batch_size=100,
+        )
+        self._upload_orchestration_service = SyncUploadOrchestrationService(
+            prefill_links_from_cloud=lambda *args, **kwargs: self._prefill_links_from_cloud(*args, **kwargs),
+            enqueue_missing_local_deletes=lambda *args, **kwargs: self._enqueue_missing_local_deletes(*args, **kwargs),
+            iter_local_files=lambda *args, **kwargs: self._iter_local_files(*args, **kwargs),
+            upload_path=lambda *args, **kwargs: self._upload_path(*args, **kwargs),
+            process_pending_deletes=lambda *args, **kwargs: self._process_pending_deletes(*args, **kwargs),
+            record_event=lambda *args, **kwargs: self._record_event(*args, **kwargs),
         )
 
     @property
@@ -1237,68 +1249,13 @@ class SyncTaskRunner:
         allow_deletes: bool = True,
     ) -> None:
         self._task_meta[task.id] = task
-        docx_service = self._docx_service or DocxService()
-        file_uploader = self._file_uploader or FileUploader()
-        drive_service = self._drive_service or DriveService()
-        import_task_service = self._import_task_service or ImportTaskService()
-        owned_services = []
-        if self._docx_service is None:
-            owned_services.append(docx_service)
-        if self._file_uploader is None:
-            owned_services.append(file_uploader)
-        if self._drive_service is None:
-            owned_services.append(drive_service)
-        if self._import_task_service is None:
-            owned_services.append(import_task_service)
-
-        try:
-            if task.sync_mode == "upload_only":
-                await self._prefill_links_from_cloud(task, drive_service)
-            if allow_deletes:
-                await self._enqueue_missing_local_deletes(task=task, status=status)
-            files = list(self._iter_local_files(task))
-            logger.info(
-                "上传阶段: task_id={} files={}", task.id, len(files)
-            )
-            status.total_files += len(files)
-            for path in files:
-                try:
-                    await self._upload_path(
-                        task,
-                        status,
-                        path,
-                        docx_service,
-                        file_uploader,
-                        drive_service,
-                        import_task_service,
-                    )
-                except Exception as exc:
-                    status.failed_files += 1
-                    status.last_error = str(exc)
-                    self._record_event(status, 
-                        SyncFileEvent(
-                            path=str(path),
-                            status="failed",
-                            message=str(exc),
-                        )
-                    )
-                    logger.error(
-                        "上传失败: task_id={} path={} error={}",
-                        task.id,
-                        path,
-                        exc,
-                    )
-            if allow_deletes:
-                await self._process_pending_deletes(
-                    task=task,
-                    status=status,
-                    drive_service=drive_service,
-                )
-        finally:
-            for service in owned_services:
-                close = getattr(service, "close", None)
-                if close:
-                    await close()
+        runtime = self._resolve_upload_runtime_services()
+        await self._upload_orchestration_service.run_upload(
+            task=task,
+            status=status,
+            runtime=runtime,
+            allow_deletes=allow_deletes,
+        )
 
     async def _run_upload_paths(
         self,
@@ -1309,11 +1266,22 @@ class SyncTaskRunner:
         allow_deletes: bool = True,
         force_paths: set[str] | None = None,
     ) -> None:
+        runtime = self._resolve_upload_runtime_services()
+        await self._upload_orchestration_service.run_upload_paths(
+            task=task,
+            status=status,
+            paths=paths,
+            runtime=runtime,
+            allow_deletes=allow_deletes,
+            force_paths=force_paths,
+        )
+
+    def _resolve_upload_runtime_services(self) -> UploadRuntimeServices:
         docx_service = self._docx_service or DocxService()
         file_uploader = self._file_uploader or FileUploader()
         drive_service = self._drive_service or DriveService()
         import_task_service = self._import_task_service or ImportTaskService()
-        owned_services = []
+        owned_services: list[object] = []
         if self._docx_service is None:
             owned_services.append(docx_service)
         if self._file_uploader is None:
@@ -1322,53 +1290,13 @@ class SyncTaskRunner:
             owned_services.append(drive_service)
         if self._import_task_service is None:
             owned_services.append(import_task_service)
-
-        try:
-            if task.sync_mode == "upload_only":
-                await self._prefill_links_from_cloud(task, drive_service)
-            if allow_deletes:
-                await self._enqueue_missing_local_deletes(task=task, status=status)
-            path_list = list(paths)
-            status.total_files += len(path_list)
-            for path in path_list:
-                try:
-                    await self._upload_path(
-                        task,
-                        status,
-                        path,
-                        docx_service,
-                        file_uploader,
-                        drive_service,
-                        import_task_service,
-                        force=bool(force_paths and str(path) in force_paths),
-                    )
-                except Exception as exc:
-                    status.failed_files += 1
-                    status.last_error = str(exc)
-                    self._record_event(status, 
-                        SyncFileEvent(
-                            path=str(path),
-                            status="failed",
-                            message=str(exc),
-                        )
-                    )
-                    logger.error(
-                        "上传失败: task_id={} path={} error={}",
-                        task.id,
-                        path,
-                        exc,
-                    )
-            if allow_deletes:
-                await self._process_pending_deletes(
-                    task=task,
-                    status=status,
-                    drive_service=drive_service,
-                )
-        finally:
-            for service in owned_services:
-                close = getattr(service, "close", None)
-                if close:
-                    await close()
+        return UploadRuntimeServices(
+            docx_service=docx_service,
+            file_uploader=file_uploader,
+            drive_service=drive_service,
+            import_task_service=import_task_service,
+            owned_services=owned_services,
+        )
 
     async def _upload_path(
         self,

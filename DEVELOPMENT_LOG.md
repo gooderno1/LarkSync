@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.24 (2026-05-23)
+
+- 目标：
+  - 继续落实工作流 B，开始拆 `apps/backend/src/services/sync_runner.py` 的上传主编排，把全量上传、按路径上传和运行时服务组装从主 runner 中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/sync_upload_orchestration_service.py`，承载上传阶段的运行时服务容器、全量上传循环、按路径上传循环、失败归档和资源关闭逻辑。
+  - `SyncTaskRunner` 现通过 `_resolve_upload_runtime_services()` 组装运行时服务，并通过 `SyncUploadOrchestrationService` 执行 `_run_upload` / `_run_upload_paths`，保留原方法作为兼容入口。
+  - 新增 `_run_upload_paths` 目标回归，验证 runner 创建后再 monkeypatch `_upload_path` 仍然生效，且 `force_paths` 能正确透传到上传执行层。
+- 测试：
+  - `python -m pytest tests/test_sync_runner.py -k "run_upload_paths_uses_latest_upload_callback or handle_local_event_calls_upload_with_all_dependencies or run_task_performs_additive_reconcile_for_new_task or run_task_skips_additive_reconcile_when_recently_run" -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest tests/test_sync_runner.py -k "_run_download or runner_downloads_docx_and_files or download_only_never_creates_cloud_md_mirror_even_if_md_mode_is_enhanced or runner_prefers_persisted_link_when_cloud_has_duplicates or runner_skips_unchanged_when_persisted" -q`
+- 问题：
+  - `sync_runner.py` 仍保留下载主编排和单文件上传/下载细节；下一轮应继续优先拆下载主编排，把 `run_download` 的扫描、候选筛选和写回循环从主 runner 中分离。
+
 ## v0.7.17-dev.23 (2026-05-22)
 
 - 目标：

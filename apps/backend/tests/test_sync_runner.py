@@ -1542,6 +1542,64 @@ async def test_handle_local_event_calls_upload_with_all_dependencies(tmp_path: P
 
 
 @pytest.mark.asyncio
+async def test_run_upload_paths_uses_latest_upload_callback(tmp_path: Path) -> None:
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(DriveNode(token="root", name="root", type="folder")),
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        import_task_service=FakeImportTaskService(),
+        link_service=FakeLinkService(),
+    )
+    task = SyncTaskItem(
+        id="task-upload-paths",
+        name="上传路径测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("# first", encoding="utf-8")
+    second.write_text("# second", encoding="utf-8")
+    captured: list[tuple[str, bool]] = []
+
+    async def _capture_upload_path(
+        task_arg,
+        status_arg,
+        path_arg,
+        docx_service,
+        file_uploader,
+        drive_service,
+        import_task_service,
+        *,
+        force: bool = False,
+    ) -> None:
+        assert task_arg is task
+        assert status_arg is status
+        captured.append((path_arg.name, force))
+
+    runner._upload_path = _capture_upload_path  # type: ignore[method-assign]
+
+    await runner._run_upload_paths(
+        task,
+        status,
+        [first, second],
+        allow_deletes=False,
+        force_paths={str(second)},
+    )
+
+    assert status.total_files == 2
+    assert captured == [("first.md", False), ("second.md", True)]
+
+
+@pytest.mark.asyncio
 async def test_handle_local_event_records_run_id_for_active_queued_event(tmp_path: Path) -> None:
     store = SyncEventStore(tmp_path / "sync-events.jsonl")
     runner = SyncTaskRunner(link_service=FakeLinkService(), event_store=store)
