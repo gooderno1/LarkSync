@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.18 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 B，把 `sync_runner.py` 中与下载候选构建、导出任务和导出文件下载强相关的逻辑抽成独立服务，减少下载链路在主 runner 中的实现细节。
+- 结果：
+  - 新增 `apps/backend/src/services/sync_download_support_service.py`，承载下载候选构建、表格/多维表格 `sub_id` 补齐、候选去重/优选、Docx 下载转码、导出任务轮询与导出文件下载。
+  - `SyncTaskRunner` 现通过组合 `SyncDownloadSupportService` 复用这部分能力，并保留 `_build_download_candidate`、`_hydrate_export_sub_ids`、`_select_download_candidates`、`_download_exported_file`、`_wait_for_export_task` 等原私有方法作为兼容代理，现有下载回归无需改写。
+  - 下载链路的“候选规划 + 导出执行”边界已经开始从主同步 runner 中脱离，为后续继续抽 `run_download` 主编排与下载后状态落库逻辑预留了更清晰的服务边界。
+- 测试：
+  - `python -m pytest tests/test_sync_runner.py -k "runner_downloads_docx_and_files or export_poll or export_retries_with_sub_id or should_skip_download_for_unchanged or download_prefers_persisted_link" -q`
+  - `python -m pytest tests/test_sync_runner.py -k "run_download_silences or run_download_enqueues_cloud_missing_delete or runner_download_only_never_creates_cloud_md_mirror_even_if_md_mode_is_enhanced" -q`
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest tests/test_sync_task_api.py tests/test_main.py -q`
+- 问题：
+  - `sync_runner.py` 虽已进一步降薄，但 `run_download` / `run_upload` 主编排与 `docx_service.py` 内的差量更新/表格/资源处理仍集中；下一轮应继续向“下载编排服务”或 `docx_service` 拆分推进。
+
 ## v0.7.17-dev.17 (2026-05-22)
 
 - 目标：
