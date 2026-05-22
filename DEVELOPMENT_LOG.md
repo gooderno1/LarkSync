@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.14 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 B，优先拆分 `apps/backend/src/api/sync_tasks.py` 中已经自然聚集的任务诊断与同步日志接口，实现“共享对象保留、实现下沉”的第一轮后端 API 收口。
+- 结果：
+  - 新增 `apps/backend/src/api/sync_task_models.py`，把 `SyncTaskCreateRequest / SyncTaskUpdateRequest / MarkdownReplaceRequest` 以及任务状态、任务概览、任务诊断、同步日志等请求/响应模型从 `sync_tasks.py` 中独立出来。
+  - 新增 `apps/backend/src/services/sync_task_diagnostics_service.py`，统一承载任务运行摘要构建、`sync_run_events`/JSONL 的 DB-first 回退读取、任务诊断拼装和同步日志响应组装。
+  - `apps/backend/src/api/sync_tasks.py` 已从 1065 行压到 312 行，当前主要保留共享依赖对象、兼容导出、任务 CRUD/维护动作以及薄路由包装层；现有测试仍可继续通过 `sync_tasks` 模块级对象做 monkeypatch。
+- 测试：
+  - `python -m pytest tests/test_sync_task_api.py tests/test_tray_status.py tests/test_main.py -q`
+- 问题：
+  - `sync_tasks.py` 已明显降薄，但工作流 B 还没有完成；下一轮最该继续的是把任务维护动作再独立，或直接进入 `sync_runner.py` / `docx_service.py` 的主服务边界拆分。
+
 ## v0.7.17-dev.13 (2026-05-22)
 
 - 目标：

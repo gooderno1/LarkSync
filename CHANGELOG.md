@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.14 refactor(backend): 将 `sync_tasks` 的请求/响应模型抽到 `sync_task_models.py`，并把任务诊断与同步日志查询实现下沉到 `sync_task_diagnostics_service.py`，保留原路由和共享对象兼容层，开始按域收口后端同步任务 API
+
 [2026-05-22] v0.7.17-dev.13 refactor(frontend): 将 `TasksPage` 和 `NewTaskModal` 拆成独立任务卡片、空态、向导步骤组件，并新增 `taskManagement` / `newTaskWizard` helper 测试与组件级 smoke test，继续推进前端页面组件化治理
 
 [2026-05-22] v0.7.17-dev.12 refactor(frontend): 将 `SettingsPage` 拆成 `OAuth / 同步策略 / 自动更新 / 忽略目录 / 维护工具` 等独立面板组件，并新增组件级 smoke test，继续推进前端页面组件化收口
