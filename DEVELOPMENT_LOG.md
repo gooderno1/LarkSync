@@ -4227,3 +4227,25 @@
 - 问题：
   
   - 当前修复聚焦于 Windows PowerShell 5.1 的脚本文件解码问题；如后续仍出现静默安装失败，下一优先级应直接比对 `update-install.log` 与新生成脚本内容，而不是再把问题默认归因到 handoff 时序。
+
+## v0.7.16 release (2026-05-22)
+
+- 目标：
+  
+  - 发布 `v0.7.16` 稳定版，将 Windows 静默安装脚本编码修复和真实 PowerShell 回归测试作为正式能力对外发布，结束 `v0.7.15` 上静默安装卡死在 `bootstrap_started` 的回归问题。
+
+- 结果：
+  
+  - 正式版纳入 `v0.7.16-dev.1` 的全部修复：托盘生成的 `bootstrap.ps1` / `worker.ps1` 现统一以 BOM UTF-8 写入，兼容 Windows PowerShell 5.1 对含中文脚本的解码行为，避免 helper 在解析阶段直接抛出 `ParserError`。
+  - 新增真实 `powershell.exe -File` 回归测试后，这类“脚本已生成但 PowerShell 尚未真正执行”的问题已被纳入自动化覆盖，后续再次回归时能在测试阶段而不是正式版安装阶段暴露。
+  - 当前稳定版的自动更新链路至此覆盖：下载校验、确认安装、bootstrap/worker handoff、安装器拉起、安装后重启与过期安装请求防抖，Windows 静默升级主链路完成本轮修复收口。
+
+- 测试：
+  
+  - `python -m pytest tests/test_tray_update_install.py tests/test_system_update_api.py tests/test_update_service.py tests/test_update_scheduler.py -q`（工作目录：`apps/backend/`）
+  - `npm --prefix apps/frontend run build`
+  - `python scripts/build_installer.py --nsis`
+
+- 问题：
+  
+  - GitHub Release 默认仍自动发布 Windows 安装包；如需同时提供 macOS 安装包，仍需后续手动触发对应工作流。

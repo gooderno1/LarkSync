@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.16 release: v0.7.16
+
 [2026-05-22] v0.7.16-dev.1 fix(auto-update): 修复 Windows 静默安装生成的 `bootstrap.ps1` / `worker.ps1` 以无 BOM UTF-8 写入时被 Windows PowerShell 5.1 误解码、进而在中文日志文本处触发 ParserError 的问题；脚本现改为 BOM UTF-8，并新增真实 `powershell.exe -File` 回归测试，避免 handoff 永远卡在 `bootstrap_started`
 
 [2026-05-22] v0.7.15 release: v0.7.15
