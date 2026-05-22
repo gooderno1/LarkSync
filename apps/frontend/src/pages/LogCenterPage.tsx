@@ -5,39 +5,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useConflicts } from "../hooks/useConflicts";
+import { useLogCenterTaskDiagnostics, type DetailTab } from "../hooks/useLogCenterTaskDiagnostics";
 import { formatTimestamp, formatShortTime } from "../lib/formatters";
 import { modeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
-import { computeTaskProgress } from "../lib/progress";
 import { apiFetch } from "../lib/api";
 import {
   DANGER_STATUSES,
   EVENT_FILTERS,
   WARNING_STATUSES,
-  buildStatusParams,
-  type EventFilter,
 } from "../lib/eventFilters";
 import {
   compactRunId,
-  diagnosticActivityTime,
   formatDuration,
-  mapSyncLogResponse,
-  mapSyncTaskDiagnostics,
   shortPath,
   statusTone,
-  type SyncLogResponse,
-  type SyncLogResponseRaw,
-  type SyncTaskDiagnosticsRaw,
+  diagnosticActivityTime,
 } from "../lib/logCenter";
 import { StatusPill } from "../components/StatusPill";
 import { Pagination } from "../components/Pagination";
-import { IconRefresh, IconConflicts, IconTasks, IconActivity } from "../components/Icons";
+import { IconRefresh, IconTasks, IconActivity } from "../components/Icons";
 import { useToast } from "../components/ui/toast";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { SystemLogPanel } from "../components/log-center/SystemLogPanel";
+import { ConflictManagementPanel } from "../components/log-center/ConflictManagementPanel";
 import type {
   ConflictResolutionAction,
-  SyncTaskDiagnostics,
-  SyncTaskOverview,
 } from "../types";
 
 type FileLogEntry = {
@@ -51,7 +44,6 @@ type FileLogResponse = {
   items: FileLogEntry[];
 };
 
-type DetailTab = "overview" | "problems" | "events";
 type ConflictResolutionState = "queued" | "running" | "waiting" | "success" | "error";
 type ConflictResolutionQueueItem = {
   id: string;
@@ -67,41 +59,10 @@ type ConflictResolutionStatus = {
 
 const CONFLICT_BUSY_RETRY_DELAY_MS = 5_000;
 const CONFLICT_BUSY_RETRY_LIMIT = 24;
-const EMPTY_OVERVIEWS: SyncTaskOverview[] = [];
 const CONFLICT_ACTION_LABELS: Record<ConflictResolutionAction, string> = {
   use_local: "使用本地",
   use_cloud: "使用云端",
 };
-
-function getRunAlertMeta(message?: string | null): { label: string; className: string; message: string } | null {
-  const trimmed = message?.trim();
-  if (!trimmed) return null;
-  if (
-    trimmed.includes("运行被中断") ||
-    trimmed.includes("partial 模式不支持超限表格文档，请改用 auto/full")
-  ) {
-    return {
-      label: trimmed.includes("运行被中断") ? "最近中断" : "最近提示",
-      className: "border-amber-500/40 bg-amber-500/10 text-amber-300",
-      message: trimmed,
-    };
-  }
-  return {
-    label: "最近错误",
-    className: "border-rose-500/40 bg-rose-500/10 text-rose-300",
-    message: trimmed,
-  };
-}
-
-function levelColor(level: string) {
-  switch (level) {
-    case "ERROR": return "text-rose-400";
-    case "WARNING": return "text-amber-400";
-    case "INFO": return "text-zinc-400";
-    case "DEBUG": return "text-zinc-600";
-    default: return "text-zinc-400";
-  }
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -128,16 +89,6 @@ export function LogCenterPage() {
   const conflictResolutionProcessingRef = useRef(false);
   const activeConflictResolutionIdRef = useRef<string | null>(null);
 
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [taskPickerQuery, setTaskPickerQuery] = useState("");
-  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
-  const [detailTab, setDetailTab] = useState<DetailTab>("overview");
-  const [eventFilter, setEventFilter] = useState<EventFilter>("all");
-  const [eventSearch, setEventSearch] = useState("");
-  const [eventPage, setEventPage] = useState(1);
-  const [eventPageSize, setEventPageSize] = useState(30);
-
   const [fileLogLevel, setFileLogLevel] = useState("");
   const [fileLogSearch, setFileLogSearch] = useState("");
   const [fileLogPage, setFileLogPage] = useState(1);
@@ -146,124 +97,45 @@ export function LogCenterPage() {
   const [conflictResolutionStates, setConflictResolutionStates] = useState<
     Record<string, ConflictResolutionStatus>
   >({});
-
-  const selectTask = (taskId: string) => {
-    setSelectedTaskId(taskId);
-    setDetailTab("overview");
-    setEventPage(1);
-  };
-
-  const overviewQuery = useQuery<SyncTaskOverview[]>({
-    queryKey: ["sync-task-overview"],
-    queryFn: () => apiFetch<SyncTaskOverview[]>("/sync/tasks/overview"),
-    enabled: logTab === "tasks",
-    staleTime: 5_000,
-    refetchInterval: logTab === "tasks" ? 10_000 : false,
-    placeholderData: [],
-  });
-
-  const overviewItems = overviewQuery.data ?? EMPTY_OVERVIEWS;
-
-  const sortedOverviews = useMemo(
-    () => [...overviewItems].sort((a, b) => diagnosticActivityTime(b) - diagnosticActivityTime(a)),
-    [overviewItems]
-  );
-
-  useEffect(() => {
-    if (sortedOverviews.length === 0) {
-      setSelectedTaskId(null);
-      setSelectedRunId(null);
-      setDetailTab("overview");
-      return;
-    }
-    if (!selectedTaskId || !sortedOverviews.some((overview) => overview.task.id === selectedTaskId)) {
-      selectTask(sortedOverviews[0].task.id);
-    }
-  }, [selectedTaskId, sortedOverviews]);
-
-  const filteredOverviews = useMemo(() => {
-    const search = taskPickerQuery.trim().toLowerCase();
-    if (!search) return sortedOverviews;
-    return sortedOverviews.filter((overview) =>
-      [overview.task.name, overview.task.local_path, overview.task.cloud_folder_name, overview.task.cloud_folder_token]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(search))
-    );
-  }, [sortedOverviews, taskPickerQuery]);
-
-  const selectedOverview = sortedOverviews.find((overview) => overview.task.id === selectedTaskId) || null;
-  const taskPickerOptions = filteredOverviews;
-
-  const diagnosticsQuery = useQuery<SyncTaskDiagnostics>({
-    queryKey: ["sync-task-diagnostics", selectedTaskId, selectedRunId, detailTab === "problems"],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set("limit", "200");
-      params.set("include_events", "false");
-      params.set("include_problems", detailTab === "problems" ? "true" : "false");
-      if (selectedRunId) params.set("run_id", selectedRunId);
-      const raw = await apiFetch<SyncTaskDiagnosticsRaw>(`/sync/tasks/${selectedTaskId}/diagnostics?${params.toString()}`);
-      return mapSyncTaskDiagnostics(raw);
-    },
-    enabled: logTab === "tasks" && Boolean(selectedTaskId),
-    placeholderData: (previousData) => previousData,
-    staleTime: 5_000,
-    refetchInterval:
-      logTab === "tasks" && selectedOverview?.status.state === "running"
-        ? 5_000
-        : logTab === "tasks" && Boolean(selectedTaskId)
-          ? 10_000
-          : false,
-  });
-
-  const activeOverview = diagnosticsQuery.data?.overview ?? selectedOverview;
-  const selectedTask = activeOverview?.task ?? null;
-  const selectedStatus = activeOverview?.status ?? null;
-  const recentRuns = diagnosticsQuery.data?.recent_runs || [];
-  const activeRunId = selectedRunId && recentRuns.some((run) => run.run_id === selectedRunId)
-    ? selectedRunId
-    : (diagnosticsQuery.data?.selected_run?.run_id ?? recentRuns[0]?.run_id ?? null);
-  const activeRunSummary = recentRuns.find((run) => run.run_id === activeRunId) || null;
-
-  const selectedEventsQuery = useQuery<SyncLogResponse>({
-    queryKey: ["sync-log-task-events", selectedTaskId, activeRunId, detailTab, eventFilter, eventSearch, eventPage, eventPageSize],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.set("limit", String(eventPageSize));
-      params.set("offset", String((eventPage - 1) * eventPageSize));
-      params.set("order", "desc");
-      if (selectedTaskId) params.append("task_ids", selectedTaskId);
-      if (activeRunId) params.append("run_ids", activeRunId);
-      for (const status of buildStatusParams(eventFilter)) {
-        params.append("statuses", status);
-      }
-      if (eventSearch.trim()) params.set("search", eventSearch.trim());
-      const raw = await apiFetch<SyncLogResponseRaw>(`/sync/logs/sync?${params.toString()}`);
-      return mapSyncLogResponse(raw);
-    },
-    enabled: logTab === "tasks" && detailTab === "events" && Boolean(selectedTaskId) && Boolean(activeRunId),
-    placeholderData: (previousData) => previousData ?? { total: 0, items: [] },
-    staleTime: 5_000,
-    refetchInterval:
-      logTab === "tasks" && detailTab === "events" && activeRunSummary?.state === "running"
-        ? 5_000
-        : false,
-  });
-
-  const selectedRun = diagnosticsQuery.data?.selected_run ?? activeRunSummary;
-  const selectedTimelineEntries = selectedEventsQuery.data?.items || [];
-  const selectedTimelineTotal = selectedEventsQuery.data?.total || 0;
-  const selectedProblems = diagnosticsQuery.data?.problems || [];
-
-  useEffect(() => {
-    setEventPage(1);
-  }, [activeRunId]);
-
-  useEffect(() => {
-    if (!taskPickerOpen) {
-      setTaskPickerQuery("");
-    }
-  }, [taskPickerOpen]);
+  const {
+    selectedTaskId,
+    setSelectedRunId,
+    taskPickerQuery,
+    setTaskPickerQuery,
+    taskPickerOpen,
+    setTaskPickerOpen,
+    detailTab,
+    setDetailTab,
+    eventFilter,
+    setEventFilter,
+    eventSearch,
+    setEventSearch,
+    eventPage,
+    setEventPage,
+    eventPageSize,
+    setEventPageSize,
+    selectTask,
+    overviewQuery,
+    selectedTask,
+    selectedStatus,
+    taskPickerOptions,
+    diagnosticsQuery,
+    recentRuns,
+    activeRunId,
+    selectedEventsQuery,
+    selectedRun,
+    selectedTimelineEntries,
+    selectedTimelineTotal,
+    selectedProblems,
+    progress,
+    currentFile,
+    diagnosticCounts,
+    lastActivityAt,
+    selectedStateKey,
+    runAlert,
+    resetEventPage,
+    refreshDiagnostics,
+  } = useLogCenterTaskDiagnostics(logTab === "tasks");
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -274,22 +146,7 @@ export function LogCenterPage() {
     };
     window.addEventListener("mousedown", handlePointerDown);
     return () => window.removeEventListener("mousedown", handlePointerDown);
-  }, []);
-
-  const progress = computeTaskProgress(selectedStatus);
-  const currentFile = selectedRun?.current_file ?? activeOverview?.current_file ?? null;
-  const diagnosticCounts = selectedRun?.counts ?? activeOverview?.counts;
-  const lastActivityAt =
-    selectedRun?.last_event_at ??
-    selectedStatus?.finished_at ??
-    selectedStatus?.started_at ??
-    selectedTask?.last_run_at ??
-    activeOverview?.last_event_at ??
-    null;
-  const selectedStateKey = selectedTask
-    ? (!selectedTask.enabled ? "paused" : selectedStatus?.state || "idle")
-    : "idle";
-  const runAlert = getRunAlertMeta(selectedRun?.last_error || selectedStatus?.last_error);
+  }, [setTaskPickerOpen]);
 
   const fileLogsQuery = useQuery<FileLogResponse>({
     queryKey: ["file-logs", fileLogLevel, fileLogSearch, fileLogOrder, fileLogPage, fileLogPageSize],
@@ -312,16 +169,7 @@ export function LogCenterPage() {
   const fileLogs = fileLogsQuery.data?.items || [];
   const fileLogTotal = fileLogsQuery.data?.total || 0;
 
-  const resetEventPage = () => setEventPage(1);
   const resetFileLogPage = () => setFileLogPage(1);
-
-  const refreshDiagnostics = () => {
-    overviewQuery.refetch();
-    diagnosticsQuery.refetch();
-    if (detailTab === "events") {
-      selectedEventsQuery.refetch();
-    }
-  };
 
   const processConflictResolutionQueue = async () => {
     if (conflictResolutionProcessingRef.current) {
@@ -920,224 +768,39 @@ export function LogCenterPage() {
       ) : null}
 
       {logTab === "file-logs" ? (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-zinc-50">系统日志</h3>
-              <p className="mt-1 text-xs text-zinc-400">来自 loguru 日志文件，适合查看底层异常和 API 调用错误。</p>
-            </div>
-            <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => fileLogsQuery.refetch()} type="button">
-              <IconRefresh className="h-3.5 w-3.5" /> 刷新
-            </button>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.5fr_0.6fr_0.6fr]">
-            <input
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-              placeholder="搜索日志内容（如 error、token、频率限制）"
-              value={fileLogSearch}
-              onChange={(e) => { setFileLogSearch(e.target.value); resetFileLogPage(); }}
-            />
-            <select
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
-              value={fileLogOrder}
-              onChange={(e) => { setFileLogOrder(e.target.value as "asc" | "desc"); resetFileLogPage(); }}
-            >
-              <option value="desc">最新优先</option>
-              <option value="asc">最早优先</option>
-            </select>
-            <select
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-sm text-zinc-200 outline-none"
-              value={fileLogLevel}
-              onChange={(e) => { setFileLogLevel(e.target.value); resetFileLogPage(); }}
-            >
-              <option value="">全部级别</option>
-              <option value="ERROR">ERROR</option>
-              <option value="WARNING">WARNING</option>
-              <option value="INFO">INFO</option>
-            </select>
-            <button className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { setFileLogLevel(""); setFileLogSearch(""); setFileLogOrder("desc"); resetFileLogPage(); }} type="button">
-              重置
-            </button>
-          </div>
-
-          {fileLogsQuery.error ? (
-            <div className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
-              系统日志加载失败：{fileLogsQuery.error.message}
-            </div>
-          ) : null}
-          <div className="mt-5 max-h-[620px] space-y-2 overflow-auto pr-1 log-scroll-area">
-            {fileLogsQuery.isLoading ? (
-              [1, 2, 3, 4, 5].map((item) => <div key={item} className="h-10 animate-pulse rounded-lg bg-zinc-800/50" />)
-            ) : fileLogs.length === 0 ? (
-              <div className="py-8 text-center">
-                <IconConflicts className="mx-auto h-10 w-10 text-zinc-700" />
-                <p className="mt-3 text-sm text-zinc-500">暂无匹配的系统日志。</p>
-              </div>
-            ) : (
-              fileLogs.map((entry, i) => (
-                <div key={`${entry.timestamp}-${i}`} className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="shrink-0 text-[11px] font-mono text-zinc-500">{entry.timestamp}</span>
-                    <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold", levelColor(entry.level),
-                      entry.level === "ERROR" ? "bg-rose-500/15" : entry.level === "WARNING" ? "bg-amber-500/15" : "bg-zinc-800/50"
-                    )}>
-                      {entry.level}
-                    </span>
-                  </div>
-                  <p className="mt-1 whitespace-pre-wrap break-all font-mono text-xs text-zinc-300">{entry.message}</p>
-                </div>
-              ))
-            )}
-          </div>
-
-          {(fileLogTotal > 0 || fileLogs.length > 0) ? (
-            <div className="mt-4 border-t border-zinc-800 pt-4">
-              <Pagination
-                page={fileLogPage}
-                pageSize={fileLogPageSize}
-                total={fileLogTotal}
-                onPageChange={setFileLogPage}
-                onPageSizeChange={(size) => { setFileLogPageSize(size); resetFileLogPage(); }}
-                pageSizeOptions={[20, 50, 100, 200]}
-              />
-            </div>
-          ) : null}
-        </div>
+        <SystemLogPanel
+          query={fileLogsQuery}
+          fileLogs={fileLogs}
+          fileLogTotal={fileLogTotal}
+          fileLogSearch={fileLogSearch}
+          setFileLogSearch={setFileLogSearch}
+          fileLogLevel={fileLogLevel}
+          setFileLogLevel={setFileLogLevel}
+          fileLogOrder={fileLogOrder}
+          setFileLogOrder={setFileLogOrder}
+          fileLogPage={fileLogPage}
+          setFileLogPage={setFileLogPage}
+          fileLogPageSize={fileLogPageSize}
+          setFileLogPageSize={setFileLogPageSize}
+          resetFileLogPage={resetFileLogPage}
+        />
       ) : null}
 
       {logTab === "conflicts" ? (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-            <div>
-              <h3 className="text-lg font-semibold text-zinc-50">冲突管理</h3>
-              <p className="mt-1 text-xs text-zinc-400">处理云端与本地同时修改产生的冲突。支持连续为多条冲突选择方案，系统会按顺序提交。</p>
-            </div>
-            <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={refreshConflicts} disabled={conflictLoading} type="button">
-              <IconRefresh className="h-3.5 w-3.5" /> {conflictLoading ? "加载中..." : "刷新"}
-            </button>
-          </div>
-          {(queuedConflictCount > 0 || runningConflictCount > 0 || waitingConflictCount > 0 || successConflictCount > 0 || failedConflictCount > 0) ? (
-            <div className="rounded-2xl border border-[#3370FF]/30 bg-[#3370FF]/10 px-4 py-3 text-sm text-zinc-200">
-              当前冲突处理队列：处理中 {runningConflictCount} 条，等待任务空闲 {waitingConflictCount} 条，排队中 {queuedConflictCount} 条，最近成功 {successConflictCount} 条，失败 {failedConflictCount} 条。
-            </div>
-          ) : null}
-          {conflictError ? <p className="text-sm text-rose-400">加载失败：{conflictError}</p> : null}
-          {conflicts.length === 0 ? (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 py-16 text-center">
-              <IconConflicts className="mx-auto h-12 w-12 text-zinc-700" />
-              <p className="mt-4 text-sm text-zinc-500">暂无冲突记录。</p>
-            </div>
-          ) : (
-            conflicts.map((c) => (
-              <div key={c.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-                {(() => {
-                  const resolutionState = conflictResolutionStates[c.id];
-                  const isResolving = resolutionState?.state === "running";
-                  const isQueued = resolutionState?.state === "queued";
-                  const isWaiting = resolutionState?.state === "waiting";
-                  const isFailed = resolutionState?.state === "error";
-                  const isSucceeded = resolutionState?.state === "success";
-                  const statusLabel = c.resolved
-                    ? "已处理"
-                    : isSucceeded
-                      ? "已完成"
-                    : isResolving
-                      ? "处理中"
-                      : isWaiting
-                        ? "等待重试"
-                      : isQueued
-                        ? "已排队"
-                        : isFailed
-                          ? "处理失败"
-                        : "待处理";
-                  const statusTone = c.resolved
-                    ? "success"
-                    : isSucceeded
-                      ? "success"
-                    : isResolving
-                      ? "info"
-                      : isWaiting
-                        ? "warning"
-                        : isFailed
-                          ? "danger"
-                      : "warning";
-                  return (
-                    <>
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-widest text-zinc-500">本地路径</p>
-                    <p className="text-sm text-zinc-200">{c.local_path}</p>
-                    <p className="text-xs text-zinc-500">云端 token：{c.cloud_token}</p>
-                    <p className="text-xs text-zinc-600">哈希：{c.local_hash.slice(0, 8)} / {c.db_hash.slice(0, 8)}</p>
-                  </div>
-                  <StatusPill label={statusLabel} tone={statusTone} />
-                </div>
-                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <div>
-                    <p className="text-xs uppercase tracking-widest text-zinc-500">本地版本</p>
-                    <pre className="mt-2 max-h-56 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-300">
-                      {c.local_preview || "暂无本地预览。"}
-                    </pre>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-widest text-zinc-500">云端版本</p>
-                    <pre className="mt-2 max-h-56 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-zinc-300">
-                      {c.cloud_preview || "暂无云端预览。"}
-                    </pre>
-                  </div>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    className="rounded-lg bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50"
-                    disabled={c.resolved || (resolutionState ? resolutionState.state !== "error" : false)}
-                    onClick={() => handleResolveConflict(c.id, "use_local", "已采用本地版本")}
-                    type="button"
-                  >
-                    {isResolving ? "处理中..." : isWaiting ? "等待重试..." : isQueued ? "已排队" : "使用本地"}
-                  </button>
-                  <button
-                    className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
-                    disabled={c.resolved || (resolutionState ? resolutionState.state !== "error" : false)}
-                    onClick={() => handleResolveConflict(c.id, "use_cloud", "已采用云端版本")}
-                    type="button"
-                  >
-                    {isResolving ? "处理中..." : isWaiting ? "等待重试..." : isQueued ? "已排队" : "使用云端"}
-                  </button>
-                  {c.resolved ? (
-                    <span className="self-center text-xs text-zinc-500">已处理：{c.resolved_action}</span>
-                  ) : resolutionState ? (
-                    <span className={cn(
-                      "self-center text-xs",
-                      resolutionState.state === "error"
-                        ? "text-rose-400"
-                        : resolutionState.state === "success"
-                          ? "text-emerald-300"
-                          : resolutionState.state === "waiting"
-                            ? "text-amber-300"
-                            : "text-zinc-500"
-                    )}>
-                      {resolutionState.state === "running"
-                        ? "正在处理"
-                        : resolutionState.state === "waiting"
-                          ? "等待重试"
-                          : resolutionState.state === "success"
-                            ? "已完成"
-                            : resolutionState.state === "error"
-                              ? "处理失败"
-                              : "已排队"}：
-                      {CONFLICT_ACTION_LABELS[resolutionState.action]}
-                      {resolutionState.message ? `，${resolutionState.message}` : ""}
-                    </span>
-                  ) : null}
-                </div>
-                    </>
-                  );
-                })()}
-              </div>
-            ))
-          )}
-        </div>
+        <ConflictManagementPanel
+          conflicts={conflicts}
+          conflictLoading={conflictLoading}
+          conflictError={conflictError}
+          refreshConflicts={refreshConflicts}
+          queuedConflictCount={queuedConflictCount}
+          runningConflictCount={runningConflictCount}
+          waitingConflictCount={waitingConflictCount}
+          successConflictCount={successConflictCount}
+          failedConflictCount={failedConflictCount}
+          conflictResolutionStates={conflictResolutionStates}
+          onResolveConflict={handleResolveConflict}
+          conflictActionLabels={CONFLICT_ACTION_LABELS}
+        />
       ) : null}
     </section>
   );

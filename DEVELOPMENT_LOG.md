@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.4 (2026-05-22)
+
+- 目标：
+  - 继续推进第二阶段前端结构拆分，把日志中心从“页面内同时管理查询、派生状态和多块大 JSX”推进到“组合层 + hook + 分区视图”的结构。
+- 结果：
+  - 新增 `apps/frontend/src/hooks/useLogCenterTaskDiagnostics.ts`，将任务诊断 Tab 的任务选择、运行选择、事件筛选、分页、三组查询以及派生状态统一收口到独立 hook。
+  - 新增 `apps/frontend/src/components/log-center/SystemLogPanel.tsx` 与 `apps/frontend/src/components/log-center/ConflictManagementPanel.tsx`，分别承载系统日志和冲突管理的视图层，`LogCenterPage.tsx` 进一步退化为组合与编排层。
+  - 现有 `apps/frontend/src/lib/logCenter.ts` 继续承接纯 helper，页面结构现在已经形成“lib helper -> hook 状态/查询 -> panel 视图 -> page 组合层”的清晰分层，为下一轮继续拆任务诊断详情区和冲突处理队列 hook 打下边界。
+- 测试：
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend exec vitest run src/pages/LogCenterPage.test.tsx src/lib/logCenter.test.ts`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - 当前任务诊断视图本身的 JSX 仍然较大，且冲突处理队列状态机还留在页面组合层；下一轮应继续把任务诊断主视图和冲突处理状态机各自再抽一层，而不是停在“只把系统日志/冲突视图分出去”。
+
 ## v0.7.17-dev.3 (2026-05-22)
 
 - 目标：
