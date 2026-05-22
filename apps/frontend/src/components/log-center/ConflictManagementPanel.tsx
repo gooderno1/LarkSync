@@ -1,67 +1,30 @@
 import { StatusPill } from "../StatusPill";
 import { IconConflicts, IconRefresh } from "../Icons";
 import { cn } from "../../lib/utils";
-import type { ConflictItem, ConflictResolutionAction, Tone } from "../../types";
-
-type ConflictResolutionState = "queued" | "running" | "waiting" | "success" | "error";
-type ConflictResolutionStatus = {
-  action: ConflictResolutionAction;
-  state: ConflictResolutionState;
-  message?: string | null;
-  attempt?: number;
-};
+import {
+  getConflictStatusMeta,
+  type ConflictResolutionStatus,
+  type ConflictResolutionSummary,
+} from "../../lib/conflictResolution";
+import type { ConflictItem, ConflictResolutionAction } from "../../types";
 
 type ConflictManagementPanelProps = {
   conflicts: ConflictItem[];
   conflictLoading: boolean;
   conflictError: string | null;
   refreshConflicts: () => void;
-  queuedConflictCount: number;
-  runningConflictCount: number;
-  waitingConflictCount: number;
-  successConflictCount: number;
-  failedConflictCount: number;
+  queueSummary: ConflictResolutionSummary;
   conflictResolutionStates: Record<string, ConflictResolutionStatus>;
   onResolveConflict: (id: string, action: ConflictResolutionAction, successMessage: string) => void;
   conflictActionLabels: Record<ConflictResolutionAction, string>;
 };
-
-function getConflictStatusMeta(
-  resolved: boolean,
-  resolvedAction: string | null | undefined,
-  resolutionState: ConflictResolutionStatus | undefined,
-): { label: string; tone: Tone; detail: string | null } {
-  if (resolved) {
-    return { label: "已处理", tone: "success", detail: resolvedAction || null };
-  }
-  if (!resolutionState) {
-    return { label: "待处理", tone: "warning", detail: null };
-  }
-  if (resolutionState.state === "success") {
-    return { label: "已完成", tone: "success", detail: resolutionState.message ?? null };
-  }
-  if (resolutionState.state === "running") {
-    return { label: "处理中", tone: "info", detail: resolutionState.message ?? null };
-  }
-  if (resolutionState.state === "waiting") {
-    return { label: "等待重试", tone: "warning", detail: resolutionState.message ?? null };
-  }
-  if (resolutionState.state === "queued") {
-    return { label: "已排队", tone: "warning", detail: resolutionState.message ?? null };
-  }
-  return { label: "处理失败", tone: "danger", detail: resolutionState.message ?? null };
-}
 
 export function ConflictManagementPanel({
   conflicts,
   conflictLoading,
   conflictError,
   refreshConflicts,
-  queuedConflictCount,
-  runningConflictCount,
-  waitingConflictCount,
-  successConflictCount,
-  failedConflictCount,
+  queueSummary,
   conflictResolutionStates,
   onResolveConflict,
   conflictActionLabels,
@@ -77,9 +40,9 @@ export function ConflictManagementPanel({
           <IconRefresh className="h-3.5 w-3.5" /> {conflictLoading ? "加载中..." : "刷新"}
         </button>
       </div>
-      {(queuedConflictCount > 0 || runningConflictCount > 0 || waitingConflictCount > 0 || successConflictCount > 0 || failedConflictCount > 0) ? (
+      {(queueSummary.queued > 0 || queueSummary.running > 0 || queueSummary.waiting > 0 || queueSummary.success > 0 || queueSummary.failed > 0) ? (
         <div className="rounded-2xl border border-[#3370FF]/30 bg-[#3370FF]/10 px-4 py-3 text-sm text-zinc-200">
-          当前冲突处理队列：处理中 {runningConflictCount} 条，等待任务空闲 {waitingConflictCount} 条，排队中 {queuedConflictCount} 条，最近成功 {successConflictCount} 条，失败 {failedConflictCount} 条。
+          当前冲突处理队列：处理中 {queueSummary.running} 条，等待任务空闲 {queueSummary.waiting} 条，排队中 {queueSummary.queued} 条，最近成功 {queueSummary.success} 条，失败 {queueSummary.failed} 条。
         </div>
       ) : null}
       {conflictError ? <p className="text-sm text-rose-400">加载失败：{conflictError}</p> : null}

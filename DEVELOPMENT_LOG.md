@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.5 (2026-05-22)
+
+- 目标：
+  - 把日志中心页面里剩余的冲突处理队列状态机从组合层抽走，避免页面继续直接维护 queue ref、处理中标记、活动 ID 和重试逻辑。
+- 结果：
+  - 新增 `apps/frontend/src/hooks/useConflictResolutionQueue.ts`，统一管理冲突处理队列、串行提交、任务忙时自动重试、成功/失败状态写回与 toast 提示。
+  - 新增 `apps/frontend/src/lib/conflictResolution.ts`，沉淀 `isTaskBusyConflictError()`、状态统计汇总、状态文案/色调判断以及冲突动作文案常量；`ConflictManagementPanel` 改为直接消费这些 helper，而不是在组件内部重复判断。
+  - 新增 `apps/frontend/src/lib/conflictResolution.test.ts`，独立锁定冲突忙闲重试识别、状态统计汇总和状态文案映射，保证后续继续拆冲突管理时能维持行为不漂移。
+  - `LogCenterPage.tsx` 不再直接维护冲突队列 ref 或多段状态统计 memo，日志中心组合层进一步变薄。
+- 测试：
+  - `npm --prefix apps/frontend exec vitest run src/lib/conflictResolution.test.ts src/pages/LogCenterPage.test.tsx src/lib/logCenter.test.ts`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - 当前日志中心剩余的大头主要是“任务诊断详情工作台”本身的 JSX 与交互分支；下一轮应优先继续拆任务诊断视图组件，而不是再在系统日志或冲突管理上做边际收益较小的整理。
+
 ## v0.7.17-dev.4 (2026-05-22)
 
 - 目标：

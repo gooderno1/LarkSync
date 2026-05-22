@@ -2,9 +2,10 @@
 /*  日志中心页面：任务诊断 + 系统日志 + 冲突管理                         */
 /* ------------------------------------------------------------------ */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useConflicts } from "../hooks/useConflicts";
+import { useConflictResolutionQueue } from "../hooks/useConflictResolutionQueue";
 import { useLogCenterTaskDiagnostics, type DetailTab } from "../hooks/useLogCenterTaskDiagnostics";
 import { formatTimestamp, formatShortTime } from "../lib/formatters";
 import { modeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
@@ -25,13 +26,11 @@ import { StatusPill } from "../components/StatusPill";
 import { Pagination } from "../components/Pagination";
 import { IconRefresh, IconTasks, IconActivity } from "../components/Icons";
 import { useToast } from "../components/ui/toast";
+import { CONFLICT_ACTION_LABELS } from "../lib/conflictResolution";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { SystemLogPanel } from "../components/log-center/SystemLogPanel";
 import { ConflictManagementPanel } from "../components/log-center/ConflictManagementPanel";
-import type {
-  ConflictResolutionAction,
-} from "../types";
 
 type FileLogEntry = {
   timestamp: string;
@@ -44,59 +43,21 @@ type FileLogResponse = {
   items: FileLogEntry[];
 };
 
-type ConflictResolutionState = "queued" | "running" | "waiting" | "success" | "error";
-type ConflictResolutionQueueItem = {
-  id: string;
-  action: ConflictResolutionAction;
-  successMessage: string;
-};
-type ConflictResolutionStatus = {
-  action: ConflictResolutionAction;
-  state: ConflictResolutionState;
-  message?: string | null;
-  attempt?: number;
-};
-
-const CONFLICT_BUSY_RETRY_DELAY_MS = 5_000;
-const CONFLICT_BUSY_RETRY_LIMIT = 24;
-const CONFLICT_ACTION_LABELS: Record<ConflictResolutionAction, string> = {
-  use_local: "使用本地",
-  use_cloud: "使用云端",
-};
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    globalThis.setTimeout(resolve, ms);
-  });
-}
-
-function isTaskBusyConflictError(message?: string | null): boolean {
-  const text = (message || "").trim();
-  if (!text) return false;
-  return (
-    text.includes("任务运行中") ||
-    text.includes("请稍后再试") ||
-    text.includes("正在同步")
-  );
-}
-
 export function LogCenterPage() {
   const [logTab, setLogTab] = useState<"tasks" | "file-logs" | "conflicts">("tasks");
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflictAsync } = useConflicts(logTab === "conflicts");
   const { toast } = useToast();
   const taskPickerRef = useRef<HTMLDivElement | null>(null);
-  const conflictQueueRef = useRef<ConflictResolutionQueueItem[]>([]);
-  const conflictResolutionProcessingRef = useRef(false);
-  const activeConflictResolutionIdRef = useRef<string | null>(null);
 
   const [fileLogLevel, setFileLogLevel] = useState("");
   const [fileLogSearch, setFileLogSearch] = useState("");
   const [fileLogPage, setFileLogPage] = useState(1);
   const [fileLogPageSize, setFileLogPageSize] = useState(50);
   const [fileLogOrder, setFileLogOrder] = useState<"asc" | "desc">("desc");
-  const [conflictResolutionStates, setConflictResolutionStates] = useState<
-    Record<string, ConflictResolutionStatus>
-  >({});
+  const { conflictResolutionStates, queueSummary, handleResolveConflict } = useConflictResolutionQueue({
+    resolveConflictAsync,
+    toast,
+  });
   const {
     selectedTaskId,
     setSelectedRunId,
@@ -170,126 +131,6 @@ export function LogCenterPage() {
   const fileLogTotal = fileLogsQuery.data?.total || 0;
 
   const resetFileLogPage = () => setFileLogPage(1);
-
-  const processConflictResolutionQueue = async () => {
-    if (conflictResolutionProcessingRef.current) {
-      return;
-    }
-    conflictResolutionProcessingRef.current = true;
-    try {
-      while (conflictQueueRef.current.length > 0) {
-        const [next, ...rest] = conflictQueueRef.current;
-        conflictQueueRef.current = rest;
-        activeConflictResolutionIdRef.current = next.id;
-        const resolveWithRetry = async (attempt: number): Promise<void> => {
-          setConflictResolutionStates((current) => ({
-            ...current,
-            [next.id]: {
-              action: next.action,
-              state: attempt === 0 ? "running" : "waiting",
-              message:
-                attempt === 0
-                  ? "正在提交处理请求…"
-                  : `目标任务仍在同步，${Math.ceil(CONFLICT_BUSY_RETRY_DELAY_MS / 1000)} 秒后自动重试（第 ${attempt + 1} 次）`,
-              attempt,
-            },
-          }));
-          if (attempt > 0) {
-            await sleep(CONFLICT_BUSY_RETRY_DELAY_MS);
-            setConflictResolutionStates((current) => ({
-              ...current,
-              [next.id]: {
-                action: next.action,
-                state: "running",
-                message: `正在重试（第 ${attempt + 1} 次）…`,
-                attempt,
-              },
-            }));
-          }
-          try {
-            await resolveConflictAsync({ id: next.id, action: next.action });
-            setConflictResolutionStates((current) => ({
-              ...current,
-              [next.id]: {
-                action: next.action,
-                state: "success",
-                message: next.successMessage,
-                attempt,
-              },
-            }));
-            toast(next.successMessage, "success");
-          } catch (err) {
-            const message = err instanceof Error ? err.message : "冲突处理失败";
-            if (isTaskBusyConflictError(message) && attempt < CONFLICT_BUSY_RETRY_LIMIT) {
-              await resolveWithRetry(attempt + 1);
-              return;
-            }
-            setConflictResolutionStates((current) => ({
-              ...current,
-              [next.id]: {
-                action: next.action,
-                state: "error",
-                message,
-                attempt,
-              },
-            }));
-            toast(message, "danger");
-          }
-        };
-        await resolveWithRetry(0);
-      }
-    } finally {
-      activeConflictResolutionIdRef.current = null;
-      conflictResolutionProcessingRef.current = false;
-      if (conflictQueueRef.current.length > 0) {
-        void processConflictResolutionQueue();
-      }
-    }
-  };
-
-  const handleResolveConflict = (
-    id: string,
-    action: ConflictResolutionAction,
-    successMessage: string
-  ) => {
-    setConflictResolutionStates((current) => {
-      if (current[id] && current[id].state !== "error") return current;
-      return {
-        ...current,
-        [id]: { action, state: "queued", message: "已加入处理队列" },
-      };
-    });
-    if (
-      conflictQueueRef.current.some((item) => item.id === id) ||
-      activeConflictResolutionIdRef.current === id
-    ) {
-      return;
-    }
-    const nextQueue = [...conflictQueueRef.current, { id, action, successMessage }];
-    conflictQueueRef.current = nextQueue;
-    void processConflictResolutionQueue();
-  };
-
-  const queuedConflictCount = useMemo(
-    () => Object.values(conflictResolutionStates).filter((item) => item.state === "queued").length,
-    [conflictResolutionStates]
-  );
-  const runningConflictCount = useMemo(
-    () => Object.values(conflictResolutionStates).filter((item) => item.state === "running").length,
-    [conflictResolutionStates]
-  );
-  const waitingConflictCount = useMemo(
-    () => Object.values(conflictResolutionStates).filter((item) => item.state === "waiting").length,
-    [conflictResolutionStates]
-  );
-  const successConflictCount = useMemo(
-    () => Object.values(conflictResolutionStates).filter((item) => item.state === "success").length,
-    [conflictResolutionStates]
-  );
-  const failedConflictCount = useMemo(
-    () => Object.values(conflictResolutionStates).filter((item) => item.state === "error").length,
-    [conflictResolutionStates]
-  );
 
   return (
     <section
@@ -792,11 +633,7 @@ export function LogCenterPage() {
           conflictLoading={conflictLoading}
           conflictError={conflictError}
           refreshConflicts={refreshConflicts}
-          queuedConflictCount={queuedConflictCount}
-          runningConflictCount={runningConflictCount}
-          waitingConflictCount={waitingConflictCount}
-          successConflictCount={successConflictCount}
-          failedConflictCount={failedConflictCount}
+          queueSummary={queueSummary}
           conflictResolutionStates={conflictResolutionStates}
           onResolveConflict={handleResolveConflict}
           conflictActionLabels={CONFLICT_ACTION_LABELS}

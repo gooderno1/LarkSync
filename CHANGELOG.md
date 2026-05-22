@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.5 refactor(frontend): 抽出日志中心冲突处理状态机到 `useConflictResolutionQueue`，并将忙闲重试判断、队列统计和状态文案判断下沉到 `src/lib/conflictResolution.ts`；冲突管理面板改为消费独立 hook/summary，不再依赖页面内部 queue ref 与重试细节
+
 [2026-05-22] v0.7.17-dev.4 refactor(frontend): 将日志中心“任务诊断”查询与派生状态抽到 `useLogCenterTaskDiagnostics`，并把“系统日志”“冲突管理”拆成独立视图组件，主页面进一步收口为组合层，便于继续拆分任务诊断详情与冲突队列状态
 
 [2026-05-22] v0.7.17-dev.3 feat(db): 为 SQLite 初始化引入显式 schema version 迁移注册表，启动时按版本顺序执行迁移并将当前版本写入 `sync_meta.schema_version`；新增老库升级与 schema version 测试，替代只靠 `_ensure_column/_ensure_index` 的隐式演进方式
