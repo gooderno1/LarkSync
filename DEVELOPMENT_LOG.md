@@ -4182,3 +4182,26 @@
 - 问题：
   
   - 当前仅治理了同步事件链路，系统日志 `larksync.log` 仍是文件读取模式；若后续需要统一观测面板，可再评估是否将系统日志摘要化或引入单独检索层。
+
+## v0.7.15 release (2026-05-22)
+
+- 目标：
+  
+  - 发布 `v0.7.15` 稳定版，收口日志中心性能治理，将 DB-first 事件读取、后台 checkpoint 回填和后台维护清理作为正式能力对外发布。
+
+- 结果：
+  
+  - 稳定版纳入 `v0.7.15-dev.1` 与 `v0.7.15-dev.2`：日志中心事件链路已经从“JSONL 顺序扫描优先”切到“`sync_runs` + `sync_run_events` SQLite 优先”，旧 `sync-events.jsonl` 改为后台持续追平与受控降级来源。
+  - 后端新增后台日志维护服务，启动不再阻塞等待旧日志全量回填；事件回填支持 checkpoint、断点恢复、文件截断后游标重置，以及按保留天数低频清理 SQLite 事件与 JSONL 归档。
+  - 日志中心首屏无效冲突请求、切任务详情闪空、`list_latest_by_tasks()` 全量拉历史运行等放大器已一并收口，正式版具备发布条件。
+
+- 测试：
+  
+  - `python -m pytest tests/test_sync_run_event_service.py tests/test_sync_log_maintenance_service.py tests/test_sync_task_api.py tests/test_sync_run_service.py tests/test_db_session.py tests/test_tray_status.py`（工作目录：`apps/backend/`）
+  - `python -m pytest tests/test_sync_event_store.py`（工作目录：`apps/backend/`）
+  - `npm --prefix apps/frontend run build`
+  - `python scripts/build_installer.py --nsis`
+
+- 问题：
+  
+  - macOS 安装包仍由 GitHub Actions 的手动 `workflow_dispatch` 构建，当前正式版发布默认只自动生成并上传 Windows 安装包与校验文件。

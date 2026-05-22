@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.15 release: v0.7.15
+
 [2026-05-22] v0.7.15-dev.2 fix(log-center): 日志中心事件回填改为后台 checkpoint 增量追平，启动不再阻塞等待旧日志全量入库；`/sync/logs/sync` 不再在请求链路里执行回填或清理，`sync_runs`/`sync_run_events` 补齐复合索引与后台维护任务，完成日志中心性能治理闭环
 
 [2026-05-22] v0.7.15-dev.1 fix(log-center): 为日志中心新增 `sync_run_events` SQLite 事件持久化层，同步事件改为双写数据库与 `sync-events.jsonl`；启动时自动回填旧日志，任务诊断与 `/sync/logs/sync` 优先读取数据库并仅在必要时回退 JSONL；日志中心冲突列表改为按 Tab 懒加载，切任务保留旧详情减少闪空
