@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.19 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 B，开始拆 `apps/backend/src/services/docx_service.py` 中与 Markdown 资源占位/替换强相关的逻辑，把本地图片、HTML 图片和附件链接处理从文档服务主类中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/docx_markdown_asset_service.py`，承载 Markdown 图片 placeholder 构建、HTML 图片解析、本地附件 placeholder 构建、资源路径解析与 placeholder 回填。
+  - `DocxService` 现通过组合 `DocxMarkdownAssetService` 复用这部分能力，并保留 `_build_image_placeholders`、`_build_file_placeholders`、`_resolve_html_image_path`、`_resolve_markdown_image_path`、`_replace_placeholders_with_images`、`_resolve_image_path` 等原方法作为兼容代理，现有文档转换回归无需改写。
+  - `docx_service` 的“文档 API 编排 / 表格策略 / Markdown 资源处理”边界开始分层，为后续继续拆表格处理和局部更新链路预留了更清晰的切口。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py -k "build_image_placeholders or convert_markdown_with_images_falls_back_on_missing_image or replace_placeholders_with_files_attaches_to_list_children or replace_placeholders_keeps_list_text_and_appends_image or replace_document_content_uploads_local_images or replace_document_content_uploads_embedded_html_images or replace_document_content_uploads_local_file_link_as_file_block" -q`
+  - `python -m pytest tests/test_docx_service.py -k "resolve_image_path_supports_file_url_and_encoded_relative_path or convert_markdown_patches_table_property" -q`
+  - `python -m pytest tests/test_docx_service.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py tests/test_docx_service.py tests/test_main.py -q`
+- 问题：
+  - `docx_service.py` 仍集中着表格行扩容、表格降级重建、局部更新 diff 和块创建重试等复杂逻辑；下一轮应优先拆表格处理或局部更新链路，而不是继续在主类中堆叠分支。
+
 ## v0.7.17-dev.18 (2026-05-22)
 
 - 目标：

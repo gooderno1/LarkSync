@@ -17,6 +17,7 @@ from urllib.parse import unquote, urlsplit
 
 from loguru import logger
 
+from src.services.docx_markdown_asset_service import DocxMarkdownAssetService
 from src.services.feishu_client import FeishuClient
 from src.services.file_uploader import FileUploadError, FileUploader
 from src.services.media_uploader import MediaUploadError, MediaUploader
@@ -111,6 +112,21 @@ class DocxService:
         self._file_uploader = file_uploader or FileUploader(
             client=self._client,
             base_url=self._base_url,
+        )
+        self._markdown_asset_service = DocxMarkdownAssetService(
+            normalize_image_ref=_normalize_image_ref,
+            is_remote_image=_is_remote_image,
+            is_remote_link=_is_remote_link,
+            hash_text=_hash_text,
+            find_figure_id_for_offset=_find_figure_id_for_offset,
+            find_local_figure_asset=_find_local_figure_asset,
+            extract_figure_id_from_image_ref=_extract_figure_id_from_image_ref,
+            write_data_image_to_temp=_write_data_image_to_temp,
+            compile_placeholder_pattern=_compile_placeholder_pattern,
+            find_placeholders=_find_placeholders,
+            strip_placeholders_from_block=_strip_placeholders_from_block,
+            set_block_plain_text=_set_block_plain_text,
+            has_text_elements=_has_text_elements,
         )
 
     async def replace_document_content(
@@ -1270,68 +1286,12 @@ class DocxService:
     def _build_image_placeholders(
         self, markdown: str, base_path: str | Path | None
     ) -> tuple[str, dict[str, str], dict[str, Path]]:
-        processed = markdown
-        placeholders: dict[str, str] = {}
-        image_paths: dict[str, Path] = {}
-        for match in _IMAGE_PATTERN.finditer(markdown):
-            raw = match.group(0)
-            ref = _normalize_image_ref(match.group(1))
-            if _is_remote_image(ref):
-                continue
-            image_path = self._resolve_markdown_image_path(ref, base_path)
-            if not image_path.exists() or not image_path.is_file():
-                processed = processed.replace(raw, f"[图片缺失: {ref}]")
-                continue
-            placeholder = f"[[LARKSYNC_IMAGE:{_hash_text(str(image_path))}]]"
-            placeholders[placeholder] = ref
-            image_paths[placeholder] = image_path
-            processed = processed.replace(raw, placeholder)
-        for match in _HTML_IMAGE_PATTERN.finditer(markdown):
-            raw = match.group(0)
-            src_match = _HTML_IMAGE_SRC_PATTERN.search(raw)
-            if not src_match:
-                continue
-            ref = src_match.group("src").strip()
-            if _is_remote_link(ref) and not ref.lower().startswith("data:"):
-                continue
-            image_path = self._resolve_html_image_path(
-                ref=ref,
-                markdown=markdown,
-                offset=match.start(),
-                base_path=base_path,
-            )
-            if image_path is None or not image_path.exists() or not image_path.is_file():
-                processed = processed.replace(raw, "[图片缺失: 嵌入图片]", 1)
-                continue
-            placeholder = f"[[LARKSYNC_IMAGE:{_hash_text(str(image_path))}]]"
-            placeholders[placeholder] = ref
-            image_paths[placeholder] = image_path
-            processed = processed.replace(raw, placeholder, 1)
-        return processed, placeholders, image_paths
+        return self._markdown_asset_service.build_image_placeholders(markdown, base_path)
 
     def _build_file_placeholders(
         self, markdown: str, base_path: str | Path | None
     ) -> tuple[str, dict[str, str], dict[str, Path]]:
-        processed = markdown
-        placeholders: dict[str, str] = {}
-        file_paths: dict[str, Path] = {}
-        for match in _LINK_PATTERN.finditer(markdown):
-            raw = match.group(0)
-            ref = _normalize_image_ref(match.group(1))
-            if _is_remote_link(ref):
-                continue
-            file_path = self._resolve_image_path(ref, base_path)
-            if (
-                not file_path.exists()
-                or not file_path.is_file()
-                or file_path.suffix.lower() == ".md"
-            ):
-                continue
-            placeholder = f"[[LARKSYNC_FILE:{_hash_text(str(file_path))}]]"
-            placeholders[placeholder] = ref
-            file_paths[placeholder] = file_path
-            processed = processed.replace(raw, placeholder)
-        return processed, placeholders, file_paths
+        return self._markdown_asset_service.build_file_placeholders(markdown, base_path)
 
     def _resolve_html_image_path(
         self,
@@ -1341,36 +1301,17 @@ class DocxService:
         offset: int,
         base_path: str | Path | None,
     ) -> Path | None:
-        figure_id = _find_figure_id_for_offset(markdown, offset)
-        local_figure = _find_local_figure_asset(base_path, figure_id)
-        if local_figure is not None:
-            return local_figure
-        if ref.lower().startswith("data:"):
-            return _write_data_image_to_temp(ref, figure_id=figure_id)
-        if _is_remote_link(ref):
-            return None
-        image_path = self._resolve_image_path(ref, base_path)
-        if image_path.exists() and image_path.is_file():
-            return image_path
-        return None
+        return self._markdown_asset_service.resolve_html_image_path(
+            ref=ref,
+            markdown=markdown,
+            offset=offset,
+            base_path=base_path,
+        )
 
     def _resolve_markdown_image_path(
         self, ref: str, base_path: str | Path | None
     ) -> Path:
-        image_path = self._resolve_image_path(ref, base_path)
-        if image_path.exists() and image_path.is_file():
-            return image_path
-        local_figure = _find_local_figure_asset(
-            base_path, _extract_figure_id_from_image_ref(ref)
-        )
-        if local_figure is not None:
-            logger.info(
-                "Markdown 图片路径失效，已按图号匹配本地资源: ref={} resolved={}",
-                ref,
-                local_figure,
-            )
-            return local_figure
-        return image_path
+        return self._markdown_asset_service.resolve_markdown_image_path(ref, base_path)
 
     def _replace_placeholders_with_images(
         self,
@@ -1381,200 +1322,17 @@ class DocxService:
         file_placeholders: dict[str, str] | None = None,
         file_paths: dict[str, Path] | None = None,
     ) -> ConvertResult:
-        file_placeholders = file_placeholders or {}
-        file_paths = file_paths or {}
-        if not placeholders and not file_placeholders:
-            return convert
-        blocks: list[dict[str, Any]] = [dict(block) for block in convert.blocks]
-        parser = DocxParser(blocks)
-        first_level_ids = list(convert.first_level_block_ids)
-        block_map = {
-            block_id: block
-            for block in blocks
-            if isinstance((block_id := block.get("block_id")), str)
-        }
-        parent_map: dict[str, str] = {}
-        for parent in blocks:
-            parent_id = parent.get("block_id")
-            if not isinstance(parent_id, str):
-                continue
-            for child_id in parent.get("children") or []:
-                if isinstance(child_id, str):
-                    parent_map[child_id] = parent_id
-
-        image_pattern = _compile_placeholder_pattern(placeholders.keys())
-        file_pattern = _compile_placeholder_pattern(file_placeholders.keys())
-        placeholder_pattern = _compile_placeholder_pattern(
-            list(placeholders.keys()) + list(file_placeholders.keys())
-        )
-        if placeholder_pattern is None:
-            return convert
-
-        def _resolve_placeholder_type(token: str) -> str | None:
-            if image_pattern and image_pattern.fullmatch(token):
-                return "image"
-            if file_pattern and file_pattern.fullmatch(token):
-                return "file"
-            return None
-
-        def _path_for_placeholder(token: str) -> Path | None:
-            if token in image_paths:
-                return image_paths[token]
-            return file_paths.get(token)
-
-        def _build_asset_block(block_id: str, token: str) -> tuple[dict[str, Any], Path] | None:
-            asset_type = _resolve_placeholder_type(token)
-            asset_path = _path_for_placeholder(token)
-            if asset_type is None or asset_path is None:
-                return None
-            if asset_type == "image":
-                return (
-                    {"block_id": block_id, "block_type": BLOCK_TYPE_IMAGE, "image": {}},
-                    asset_path,
-                )
-            return (
-                {"block_id": block_id, "block_type": BLOCK_TYPE_FILE, "file": {}},
-                asset_path,
-            )
-
-        def insert_siblings_after(after_block_id: str, sibling_ids: list[str]) -> None:
-            if not sibling_ids:
-                return
-            if after_block_id in first_level_ids:
-                insert_at = first_level_ids.index(after_block_id) + 1
-                first_level_ids[insert_at:insert_at] = sibling_ids
-                return
-            parent_id = parent_map.get(after_block_id)
-            if not parent_id:
-                first_level_ids.extend(sibling_ids)
-                return
-            parent_block = block_map.get(parent_id)
-            if parent_block is None:
-                first_level_ids.extend(sibling_ids)
-                return
-            parent_children = list(parent_block.get("children") or [])
-            insert_at = (
-                parent_children.index(after_block_id) + 1
-                if after_block_id in parent_children
-                else len(parent_children)
-            )
-            parent_children[insert_at:insert_at] = sibling_ids
-            parent_block["children"] = parent_children
-            for sibling_id in sibling_ids:
-                parent_map[sibling_id] = parent_id
-
-        appended_blocks: list[dict[str, Any]] = []
-        image_block_paths: dict[str, Path] = {}
-        file_block_paths: dict[str, Path] = {}
-        replaced = False
-
-        for block in blocks:
-            block_id = block.get("block_id")
-            if not isinstance(block_id, str):
-                continue
-            text = parser.text_from_block(block, strip=False)
-            if not text or "[[LARKSYNC_" not in text:
-                continue
-            matched = _find_placeholders(text, placeholder_pattern)
-            if not matched:
-                continue
-            replaced = True
-
-            if not _strip_placeholders_from_block(block, placeholder_pattern):
-                fallback_text = placeholder_pattern.sub("", text).strip()
-                _set_block_plain_text(block, fallback_text)
-
-            cleaned_text = parser.text_from_block(block, strip=True)
-            block_type = block.get("block_type")
-            existing_children = list(block.get("children") or [])
-            sibling_placeholders = list(matched)
-            if (
-                block_type in {BLOCK_TYPE_TEXT, 12, 13, 17}
-                and not cleaned_text
-                and not existing_children
-            ):
-                first = sibling_placeholders.pop(0)
-                built = _build_asset_block(block_id, first)
-                if built is not None:
-                    block.clear()
-                    asset_block, asset_path = built
-                    block.update(asset_block)
-                    if block.get("block_type") == BLOCK_TYPE_IMAGE:
-                        image_block_paths[block_id] = asset_path
-                    else:
-                        file_block_paths[block_id] = asset_path
-            elif block_type in {12, 13, 17} and not _has_text_elements(block):
-                # 飞书列表块不接受空 elements；保留一个空白占位防止 400。
-                _set_block_plain_text(block, " ")
-
-            sibling_ids: list[str] = []
-            for placeholder in sibling_placeholders:
-                asset_type = _resolve_placeholder_type(placeholder)
-                if asset_type is None:
-                    continue
-                asset_prefix = "img" if asset_type == "image" else "file"
-                asset_block_id = f"{asset_prefix}_{uuid.uuid4().hex}"
-                built = _build_asset_block(asset_block_id, placeholder)
-                if built is None:
-                    continue
-                asset_block, asset_path = built
-                sibling_ids.append(asset_block_id)
-                appended_blocks.append(asset_block)
-                if asset_block.get("block_type") == BLOCK_TYPE_IMAGE:
-                    image_block_paths[asset_block_id] = asset_path
-                else:
-                    file_block_paths[asset_block_id] = asset_path
-            if (
-                sibling_ids
-                and block_type in {12, 13, 17}
-                and cleaned_text
-            ):
-                children = list(block.get("children") or [])
-                children.extend(sibling_ids)
-                block["children"] = children
-                for sibling_id in sibling_ids:
-                    parent_map[sibling_id] = block_id
-            else:
-                insert_siblings_after(block_id, sibling_ids)
-
-        if not replaced:
-            return convert
-
-        blocks.extend(appended_blocks)
-        convert.image_paths.update(image_block_paths)
-        convert.file_paths.update(file_block_paths)
-        return ConvertResult(
-            first_level_block_ids=first_level_ids,
-            blocks=blocks,
-            image_paths=convert.image_paths,
-            file_paths=convert.file_paths,
+        return self._markdown_asset_service.replace_placeholders_with_images(
+            convert,
+            placeholders=placeholders,
+            image_paths=image_paths,
+            file_placeholders=file_placeholders,
+            file_paths=file_paths,
         )
 
     @staticmethod
     def _resolve_image_path(ref: str, base_path: str | Path | None) -> Path:
-        normalized = ref.strip()
-        if normalized.lower().startswith("file://"):
-            parsed = urlsplit(normalized)
-            normalized = parsed.path or ""
-            if parsed.netloc:
-                normalized = f"//{parsed.netloc}{normalized}"
-        else:
-            normalized = normalized.split("#", 1)[0].split("?", 1)[0]
-        normalized = unquote(normalized).replace("\\ ", " ").strip()
-        if (
-            normalized.startswith("/")
-            and len(normalized) >= 3
-            and normalized[1].isalpha()
-            and normalized[2] == ":"
-        ):
-            normalized = normalized[1:]
-        path = Path(normalized)
-        if not path.is_absolute() and base_path:
-            base = Path(base_path)
-            if base.is_file():
-                base = base.parent
-            path = base / path
-        return path.expanduser()
+        return DocxMarkdownAssetService.resolve_image_path(ref, base_path)
 
 
 
