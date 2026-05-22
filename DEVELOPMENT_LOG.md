@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.12 (2026-05-22)
+
+- 目标：
+  - 继续落实工程化规划中的前端页面拆分，把 `SettingsPage.tsx` 中仍然集中的设置区块拆成独立面板组件，降低页面体积并补上面板级 smoke test。
+- 结果：
+  - 新增 `apps/frontend/src/components/settings/SettingsOAuthPanel.tsx`、`SettingsSyncStrategyPanel.tsx`、`SettingsMorePanel.tsx`、`SettingsGeneralPanel.tsx`、`SettingsUpdatePanel.tsx`、`SettingsIgnoredDirectoriesPanel.tsx`、`SettingsMaintenancePanel.tsx`，将设置页主要配置区从单文件内联 JSX 拆成独立组件。
+  - `apps/frontend/src/pages/SettingsPage.tsx` 进一步收口为状态编排与事件接线层；同步策略、OAuth、高级设置、忽略目录和维护工具等区域都改为消费独立面板。
+  - 新增 `apps/frontend/src/components/settings/SettingsPanels.test.tsx`，把设置页面板组合的关键渲染入口单独锁定，避免后续继续拆分时回归风险上升。
+- 测试：
+  - `npm --prefix apps/frontend exec vitest run src/components/settings/SettingsPanels.test.tsx src/pages/SettingsPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - `SettingsPage` 虽已显著收口，但仍持有较多跨面板状态与 mutation 接线；下一轮可继续评估是否把更新状态、忽略目录草稿和维护动作下沉为更细的 state hook。
+
 ## v0.7.17-dev.11 (2026-05-22)
 
 - 目标：

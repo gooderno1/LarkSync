@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.12 refactor(frontend): 将 `SettingsPage` 拆成 `OAuth / 同步策略 / 自动更新 / 忽略目录 / 维护工具` 等独立面板组件，并新增组件级 smoke test，继续推进前端页面组件化收口
+
 [2026-05-22] v0.7.17-dev.11 refactor(frontend): 将日志中心概览排序、`runAlert` 和展示派生状态从 `useLogCenterTaskDiagnostics` 下沉到 `taskDiagnosticsState` helper，并新增独立测试，继续把主诊断 hook 压向纯编排层
 
 [2026-05-22] v0.7.17-dev.10 refactor(frontend): 将日志中心诊断 query 的 `include_problems` 判断、URL 参数组装与轮询间隔判断从 `useLogCenterTaskDiagnostics` 下沉到 `taskDiagnosticsQuery` helper，并新增独立测试，继续压缩主诊断 hook 的分支复杂度

@@ -6,14 +6,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useConfig } from "../hooks/useConfig";
 import { useUpdate } from "../hooks/useUpdate";
 import { useTasks } from "../hooks/useTasks";
-import { formatIntervalLabel } from "../lib/formatters";
 import { syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
 import { apiFetch } from "../lib/api";
 import { useToast } from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm-dialog";
-import { IconCopy, IconArrowUp, IconArrowDown, IconArrowRightLeft, IconFolder } from "../components/Icons";
-import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { SettingsOAuthPanel } from "../components/settings/SettingsOAuthPanel";
+import { SettingsSyncStrategyPanel } from "../components/settings/SettingsSyncStrategyPanel";
+import { SettingsMorePanel } from "../components/settings/SettingsMorePanel";
+import { SettingsGeneralPanel } from "../components/settings/SettingsGeneralPanel";
+import { SettingsUpdatePanel } from "../components/settings/SettingsUpdatePanel";
+import { SettingsIgnoredDirectoriesPanel } from "../components/settings/SettingsIgnoredDirectoriesPanel";
+import { SettingsMaintenancePanel } from "../components/settings/SettingsMaintenancePanel";
 
 export function SettingsPage() {
   const { config, configLoading, saveConfig, saving, saveError } = useConfig();
@@ -329,641 +333,132 @@ export function SettingsPage() {
     }
   };
 
+  const handleResetTask = async (task: (typeof tasks)[number]) => {
+    const confirmed = await confirm({
+      title: "重置同步映射",
+      description: `任务：${task.name || task.id}\n\n此操作会清除该任务的 SyncLink 映射，下次同步将重新建立本地文件与飞书文件的对应关系。\n\n不会删除本地文件，也不会删除飞书文件。`,
+      confirmLabel: "重置映射",
+      tone: "warning",
+    });
+    if (!confirmed) return;
+    try {
+      const result = await resetLinks(task.id);
+      toast(
+        `已清除 ${result.deleted_links} 条同步映射`,
+        "success"
+      );
+    } catch (err) {
+      toast(
+        err instanceof Error ? err.message : "重置失败",
+        "danger"
+      );
+    }
+  };
+
   const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF] placeholder:text-zinc-600";
 
   return (
     <section className="space-y-6 animate-fade-up">
-      {/* OAuth */}
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-50">OAuth 配置</h2>
-            <p className="mt-1 text-xs text-zinc-400">填写飞书开放平台的 App ID 和 App Secret 即可完成授权。</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <a
-              href="/oauth-guide.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 rounded-lg border border-[#3370FF]/30 bg-[#3370FF]/10 px-3 py-1.5 text-xs font-medium text-[#3370FF] transition hover:bg-[#3370FF]/20"
-            >
-              查看配置教程 ↗
-            </a>
-            <ThemeToggle />
-          </div>
-        </div>
+      <SettingsOAuthPanel
+        clientId={clientId}
+        setClientId={setClientId}
+        clientSecret={clientSecret}
+        setClientSecret={setClientSecret}
+        redirectUri={redirectUri}
+        copyRedirectUri={copyRedirectUri}
+        handleSave={handleSave}
+        saving={saving}
+        saveError={saveError}
+        showAdvanced={showAdvanced}
+        toggleAdvanced={() => setShowAdvanced((prev) => !prev)}
+        authorizeUrl={authorizeUrl}
+        setAuthorizeUrl={setAuthorizeUrl}
+        tokenUrl={tokenUrl}
+        setTokenUrl={setTokenUrl}
+        tokenStore={tokenStore}
+        setTokenStore={setTokenStore}
+        inputCls={inputCls}
+        themeSlot={<ThemeToggle />}
+      />
 
-        <div className="mt-5 space-y-4">
-          {/* App ID */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-400">App ID</label>
-            <input className={inputCls} placeholder="cli_xxxxxxxxxxxx" value={clientId} onChange={(e) => setClientId(e.target.value)} />
-          </div>
-          {/* App Secret */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-400">App Secret</label>
-            <input className={inputCls} placeholder="保存后自动清空" type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} />
-          </div>
-          {/* Redirect URI - 自动生成 */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-              Redirect URI
-              <span className="ml-2 text-zinc-500">（自动生成，请复制填入飞书后台）</span>
-            </label>
-            <div className="flex gap-2">
-              <input className={`${inputCls} bg-zinc-900 text-zinc-300`} value={redirectUri} readOnly />
-              <button
-                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-700"
-                onClick={copyRedirectUri}
-                type="button"
-              >
-                <IconCopy className="h-3.5 w-3.5" />
-                复制
-              </button>
-            </div>
-          </div>
-        </div>
+      <SettingsSyncStrategyPanel
+        syncMode={syncMode}
+        setSyncMode={setSyncMode}
+        uploadEnabled={uploadEnabled}
+        downloadEnabled={downloadEnabled}
+        uploadValue={uploadValue}
+        setUploadValue={setUploadValue}
+        uploadUnit={uploadUnit}
+        setUploadUnit={setUploadUnit}
+        uploadTime={uploadTime}
+        setUploadTime={setUploadTime}
+        downloadValue={downloadValue}
+        setDownloadValue={setDownloadValue}
+        downloadUnit={downloadUnit}
+        setDownloadUnit={setDownloadUnit}
+        downloadTime={downloadTime}
+        setDownloadTime={setDownloadTime}
+        handleSave={handleSave}
+        saving={saving}
+      />
 
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <button className="rounded-lg bg-[#3370FF] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50" onClick={handleSave} disabled={saving} type="button">
-            {saving ? "保存中..." : "保存配置"}
-          </button>
-          <button className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200" onClick={() => setShowAdvanced((prev) => !prev)} type="button">
-            {showAdvanced ? "收起高级设置" : "高级设置"}
-          </button>
-          {saveError ? <span className="text-sm text-rose-400">错误：{saveError}</span> : null}
-        </div>
-
-        {showAdvanced ? (
-          <div className="mt-5 space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-            <p className="text-xs font-medium text-zinc-400">高级 OAuth 参数（通常无需修改）</p>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs text-zinc-500">授权地址</label>
-                <input className={inputCls} placeholder="默认可空" value={authorizeUrl} onChange={(e) => setAuthorizeUrl(e.target.value)} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-zinc-500">Token 地址</label>
-                <input className={inputCls} placeholder="默认可空" value={tokenUrl} onChange={(e) => setTokenUrl(e.target.value)} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-zinc-500">Token 存储方式</label>
-                <select className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none" value={tokenStore} onChange={(e) => setTokenStore(e.target.value)}>
-                  <option value="keyring">系统密钥库</option>
-                  <option value="file">文件存储</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      {/* Sync Strategy — 重新设计 */}
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-50">同步策略</h2>
-            <p className="mt-1 text-xs text-zinc-400">
-              当前：
-              {uploadEnabled
-                ? ` 本地上行每 ${formatIntervalLabel(uploadValue || "60", uploadUnit, uploadTime)}，`
-                : " 本地上行已关闭，"}
-              {downloadEnabled
-                ? ` 云端下行每 ${formatIntervalLabel(downloadValue || "1", downloadUnit, downloadTime)}`
-                : " 云端下行已关闭"}
-            </p>
-          </div>
-        </div>
-
-        {/* 默认同步模式 — 卡片选择器 */}
-        <div className="mt-5">
-          <label className="mb-2 block text-xs font-medium text-zinc-400">默认同步模式</label>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { value: "bidirectional", label: "双向同步", desc: "本地与云端互相同步", Icon: IconArrowRightLeft },
-              { value: "download_only", label: "仅下载", desc: "仅从云端拉取到本地", Icon: IconArrowDown },
-              { value: "upload_only", label: "仅上传", desc: "仅从本地推送到云端", Icon: IconArrowUp },
-            ].map(({ value, label, desc, Icon }) => (
-              <button
-                key={value}
-                className={cn(
-                  "flex flex-col items-center gap-2 rounded-xl border p-5 text-center transition",
-                  syncMode === value
-                    ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                    : "border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-800/30"
-                )}
-                onClick={() => setSyncMode(value)}
-                type="button"
-              >
-                <Icon className="h-6 w-6" />
-                <span className="text-sm font-medium">{label}</span>
-                <span className="text-[11px] text-zinc-500">{desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 上行/下行间隔 — 双列卡片 */}
-        <div className="mt-6 grid gap-5 lg:grid-cols-2">
-          {/* 本地上行 */}
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-5">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-emerald-500/15 p-2 text-emerald-400">
-                <IconArrowUp className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-zinc-200">本地上行</p>
-                <p className="text-xs text-zinc-500">
-                  {uploadEnabled ? "本地变更推送到云端的频率" : "当前默认模式为仅下载，本地上行配置不适用"}
-                </p>
-              </div>
-            </div>
-            {uploadEnabled ? (
-              <div className="mt-4 flex items-center gap-2">
-                <span className="text-xs text-zinc-400 shrink-0">每</span>
-                <input
-                  className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={uploadValue}
-                  onChange={(e) => setUploadValue(e.target.value)}
-                />
-                <select
-                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none"
-                  value={uploadUnit}
-                  onChange={(e) => setUploadUnit(e.target.value)}
-                >
-                  <option value="seconds">秒</option>
-                  <option value="hours">小时</option>
-                  <option value="days">天</option>
-                </select>
-                {uploadUnit === "days" ? (
-                  <>
-                    <span className="text-xs text-zinc-400 shrink-0">于</span>
-                    <input
-                      className="w-24 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                      type="time"
-                      value={uploadTime}
-                      onChange={(e) => setUploadTime(e.target.value)}
-                    />
-                  </>
-                ) : null}
-              </div>
-            ) : (
-              <div className="mt-4 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-3 text-xs text-zinc-500">
-                仅下载模式不会使用本地上行频率；切回“双向同步”或“仅上传”后再配置即可。
-              </div>
-            )}
-          </div>
-
-          {/* 云端下行 */}
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-5">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-[#3370FF]/15 p-2 text-[#3370FF]">
-                <IconArrowDown className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-zinc-200">云端下行</p>
-                <p className="text-xs text-zinc-500">
-                  {downloadEnabled ? "从云端拉取更新到本地的频率" : "当前默认模式为仅上传，云端下行配置不适用"}
-                </p>
-              </div>
-            </div>
-            {downloadEnabled ? (
-              <div className="mt-4 flex items-center gap-2">
-                <span className="text-xs text-zinc-400 shrink-0">每</span>
-                <input
-                  className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  value={downloadValue}
-                  onChange={(e) => setDownloadValue(e.target.value)}
-                />
-                <select
-                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 outline-none"
-                  value={downloadUnit}
-                  onChange={(e) => setDownloadUnit(e.target.value)}
-                >
-                  <option value="seconds">秒</option>
-                  <option value="hours">小时</option>
-                  <option value="days">天</option>
-                </select>
-                {downloadUnit === "days" ? (
-                  <>
-                    <span className="text-xs text-zinc-400 shrink-0">于</span>
-                    <input
-                      className="w-24 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-center text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
-                      type="time"
-                      value={downloadTime}
-                      onChange={(e) => setDownloadTime(e.target.value)}
-                    />
-                  </>
-                ) : null}
-              </div>
-            ) : (
-              <div className="mt-4 rounded-lg border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-3 text-xs text-zinc-500">
-                仅上传模式不会使用云端下行频率；切回“双向同步”或“仅下载”后再配置即可。
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 保存按钮 */}
-        <div className="mt-5">
-          <button className="rounded-lg bg-[#3370FF] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50" onClick={handleSave} disabled={saving} type="button">
-            {saving ? "保存中..." : "保存策略"}
-          </button>
-        </div>
-      </div>
-
-      {/* 更多设置 */}
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-50">更多设置</h2>
-            <p className="mt-1 text-xs text-zinc-400">日志保留与提醒阈值配置（一般无需频繁调整）。</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {showMoreSettings ? (
-              <button
-                className="rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
-                onClick={handleSaveMoreSettings}
-                disabled={saving}
-                type="button"
-              >
-                {saving ? "保存中..." : "保存更多设置"}
-              </button>
-            ) : null}
-            <button
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-              onClick={() => setShowMoreSettings((prev) => !prev)}
-              type="button"
-            >
-              {showMoreSettings ? "收起设置" : "展开设置"}
-            </button>
-          </div>
-        </div>
-
-        {showMoreSettings ? (
-          <div className="mt-5 space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-              <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-                设备显示名称
-              </label>
-              <input
-                className={inputCls}
-                placeholder="例如：家里笔记本 / 公司主力机"
-                value={deviceDisplayName}
-                onChange={(e) => setDeviceDisplayName(e.target.value)}
-              />
-              <p className="mt-1 text-[11px] text-zinc-500">
-                仅用于页面展示，内部仍使用设备 ID 做归属隔离。
-              </p>
-            </div>
-            <div className="grid gap-4 md:grid-cols-3">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">同步日志保留天数</label>
-                <input
-                  className={inputCls}
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={syncLogRetentionDays}
-                  onChange={(e) => setSyncLogRetentionDays(e.target.value)}
-                />
-                <p className="mt-1 text-[11px] text-zinc-500">0 表示永久保留（不自动清理）。</p>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">同步日志提醒阈值（MB）</label>
-                <input
-                  className={inputCls}
-                  type="number"
-                  min="0"
-                  step="10"
-                  value={syncLogWarnSizeMb}
-                  onChange={(e) => setSyncLogWarnSizeMb(e.target.value)}
-                />
-                <p className="mt-1 text-[11px] text-zinc-500">超过该体积会提示调整保留天数。</p>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">系统日志保留天数</label>
-                <input
-                  className={inputCls}
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={systemLogRetentionDays}
-                  onChange={(e) => setSystemLogRetentionDays(e.target.value)}
-                />
-                <p className="mt-1 text-[11px] text-zinc-500">默认 1 天，避免系统日志过大。</p>
-              </div>
-            </div>
-
-            <div className="mt-6 border-t border-zinc-800/80 pt-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-medium text-zinc-200">自动更新</h3>
-                  <p className="mt-1 text-[11px] text-zinc-500">仅检查稳定版（GitHub Releases）。</p>
-                </div>
-                <button
-                  className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                  onClick={handleCheckUpdate}
-                  disabled={checking}
-                  type="button"
-                >
-                  {checking ? "检查中..." : "检查更新"}
-                </button>
-              </div>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-3">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">自动更新开关</label>
-                  <div className="flex items-center gap-3">
-                    <button
-                      className={cn(
-                        "relative h-6 w-11 rounded-full transition",
-                        autoUpdateEnabled ? "bg-[#3370FF]" : "bg-zinc-700"
-                      )}
-                      onClick={() => setAutoUpdateEnabled((prev) => !prev)}
-                      type="button"
-                    >
-                      <span
-                        className={cn(
-                          "absolute top-0.5 h-5 w-5 rounded-full bg-white transition",
-                          autoUpdateEnabled ? "left-6" : "left-0.5"
-                        )}
-                      />
-                    </button>
-                    <span className="text-xs text-zinc-500">{autoUpdateEnabled ? "已启用" : "未启用"}</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">检查间隔（小时）</label>
-                  <input
-                    className={inputCls}
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={updateCheckIntervalHours}
-                    onChange={(e) => setUpdateCheckIntervalHours(e.target.value)}
-                  />
-                  <p className="mt-1 text-[11px] text-zinc-500">默认 24 小时，可手动触发检查。</p>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">允许 dev 升级到稳定版</label>
-                  <div className="flex items-center gap-3">
-                    <button
-                      className={cn(
-                        "relative h-6 w-11 rounded-full transition",
-                        allowDevToStable ? "bg-[#3370FF]" : "bg-zinc-700"
-                      )}
-                      onClick={() => setAllowDevToStable((prev) => !prev)}
-                      type="button"
-                    >
-                      <span
-                        className={cn(
-                          "absolute top-0.5 h-5 w-5 rounded-full bg-white transition",
-                          allowDevToStable ? "left-6" : "left-0.5"
-                        )}
-                      />
-                    </button>
-                    <span className="text-xs text-zinc-500">{allowDevToStable ? "已允许" : "默认禁用"}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-xs text-zinc-400">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div>
-                    <p className="text-zinc-500">当前版本</p>
-                    <p className="mt-1 text-sm text-zinc-200">{status.current_version || "未知"}</p>
-                  </div>
-                  <div>
-                    <p className="text-zinc-500">最新版本</p>
-                    <p className="mt-1 text-sm text-zinc-200">{status.latest_version || "—"}</p>
-                  </div>
-                  <div>
-                    <p className="text-zinc-500">上次检查</p>
-                    <p className="mt-1 text-sm text-zinc-200">{lastCheckLabel}</p>
-                  </div>
-                  <div>
-                    <p className="text-zinc-500">发布时间</p>
-                    <p className="mt-1 text-sm text-zinc-200">{publishedLabel}</p>
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  {status.update_available ? (
-                    <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-300">发现新版本</span>
-                  ) : (
-                    <span className="rounded-full bg-zinc-700/40 px-3 py-1 text-xs text-zinc-400">已是最新</span>
-                  )}
-                  {status.last_error ? (
-                    <span className="text-rose-300">检查失败：{status.last_error}</span>
-                  ) : null}
-                  {status.asset?.name ? (
-                    <span className="text-zinc-500">包名：{status.asset.name}</span>
-                  ) : null}
-                </div>
-                {status.update_available ? (
-                  <div className="mt-3">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        className="rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
-                        onClick={handleDownloadUpdate}
-                        disabled={downloading || installing}
-                        type="button"
-                      >
-                        {downloading ? "下载中..." : "下载更新包"}
-                      </button>
-                      {status.download_path ? (
-                        <button
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900/70 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800/60 disabled:opacity-50"
-                          onClick={handleOpenDownloadedUpdateFolder}
-                          disabled={openingUpdateFolder || installing || downloading}
-                          type="button"
-                        >
-                          <IconFolder className="h-3.5 w-3.5" />
-                          {openingUpdateFolder ? "打开中..." : "打开安装包目录"}
-                        </button>
-                      ) : null}
-                      {status.download_path ? (
-                        <button
-                          className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
-                          onClick={handleInstallDownloadedUpdate}
-                          disabled={installing || downloading}
-                          type="button"
-                        >
-                          {installing ? "启动中..." : "静默安装已下载更新"}
-                        </button>
-                      ) : null}
-                    </div>
-                    {status.download_path ? (
-                      <p className="mt-2 break-all text-[11px] text-zinc-500">已下载：{status.download_path}</p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-6 border-t border-zinc-800/80 pt-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-medium text-zinc-200">本地忽略目录</h3>
-                  <p className="mt-1 text-[11px] text-zinc-500">
-                    为指定任务配置双向忽略的子目录。加入后，该目录及其内容不会再参与上传、下载和删除联动。适合 `node_modules`、`.git`、构建产物或缓存目录。
-                  </p>
-                </div>
-                <button
-                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
-                  onClick={() => setShowIgnoredDirectorySettings((prev) => !prev)}
-                  type="button"
-                >
-                  {showIgnoredDirectorySettings ? "收起配置" : "展开配置"}
-                </button>
-              </div>
-
-              {showIgnoredDirectorySettings ? (
-                <div className="mt-3 space-y-3">
-                  {tasks.length === 0 ? (
-                    <p className="text-xs text-zinc-500">暂无同步任务。</p>
-                  ) : (
-                    tasks.map((task) => {
-                      const ignoredSubpaths = ignoredSubpathsMap[task.id] ?? task.ignored_subpaths ?? [];
-                      return (
-                        <div
-                          key={`${task.id}-ignored-subpaths`}
-                          className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm text-zinc-200">{task.name || "未命名任务"}</p>
-                              <p className="truncate text-[11px] text-zinc-500">{task.local_path}</p>
-                            </div>
-                            <button
-                              className="shrink-0 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
-                              disabled={updatingIgnoredSubpaths}
-                              onClick={() => void handleSaveIgnoredSubpaths(task.id)}
-                              type="button"
-                            >
-                              {updatingIgnoredSubpaths ? "保存中..." : "应用忽略目录"}
-                            </button>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {ignoredSubpaths.length > 0 ? (
-                              ignoredSubpaths.map((item) => (
-                                <span
-                                  key={`${task.id}-${item}`}
-                                  className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300"
-                                >
-                                  <span>{item}</span>
-                                  <button
-                                    className="rounded-full px-1.5 py-0.5 text-rose-400 transition hover:bg-rose-500/10 hover:text-rose-300"
-                                    onClick={() => removeIgnoredSubpath(task.id, item)}
-                                    type="button"
-                                  >
-                                    移除
-                                  </button>
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-xs text-zinc-500">暂无忽略目录</span>
-                            )}
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <input
-                              className="min-w-[260px] flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 outline-none focus:border-[#3370FF]"
-                              placeholder="输入相对路径，例如：POC/GENESIS/node_modules"
-                              value={ignoredPathDrafts[task.id] ?? ""}
-                              onChange={(e) =>
-                                setIgnoredPathDrafts((prev) => ({
-                                  ...prev,
-                                  [task.id]: e.target.value,
-                                }))
-                              }
-                            />
-                            <button
-                              className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
-                              onClick={() => addIgnoredSubpath(task.id, ignoredPathDrafts[task.id] ?? "")}
-                              type="button"
-                            >
-                              添加路径
-                            </button>
-                            <button
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
-                              disabled={pickingIgnoredTaskId === task.id}
-                              onClick={() => void handlePickIgnoredSubpath(task.id, task.local_path)}
-                              type="button"
-                            >
-                              <IconFolder className="h-3.5 w-3.5" />
-                              {pickingIgnoredTaskId === task.id ? "选择中..." : "选择子目录"}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              ) : null}
-            </div>
-
-            {/* 维护工具 */}
-            <div className="mt-6 border-t border-zinc-800/80 pt-4">
-              <h3 className="text-sm font-medium text-zinc-200">维护工具</h3>
-              <p className="mt-1 text-[11px] text-zinc-500">
-                当同步映射出现异常时，可重置指定任务的同步映射（SyncLink）。重置后下次同步将重新建立映射关系。
-              </p>
-              <div className="mt-3 space-y-2">
-                {tasks.length === 0 ? (
-                  <p className="text-xs text-zinc-500">暂无同步任务。</p>
-                ) : (
-                  tasks.map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-zinc-200">{t.name || "未命名任务"}</p>
-                        <p className="truncate text-[11px] text-zinc-500">{t.local_path}</p>
-                      </div>
-                      <button
-                        className="ml-3 shrink-0 rounded-lg border border-amber-700/50 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20 disabled:opacity-50"
-                        disabled={resettingLinks}
-                        onClick={async () => {
-                          const confirmed = await confirm({
-                            title: "重置同步映射",
-                            description: `任务：${t.name || t.id}\n\n此操作会清除该任务的 SyncLink 映射，下次同步将重新建立本地文件与飞书文件的对应关系。\n\n不会删除本地文件，也不会删除飞书文件。`,
-                            confirmLabel: "重置映射",
-                            tone: "warning",
-                          });
-                          if (!confirmed) return;
-                          try {
-                            const result = await resetLinks(t.id);
-                            toast(
-                              `已清除 ${result.deleted_links} 条同步映射`,
-                              "success"
-                            );
-                          } catch (err) {
-                            toast(
-                              err instanceof Error ? err.message : "重置失败",
-                              "danger"
-                            );
-                          }
-                        }}
-                        type="button"
-                      >
-                        重置映射
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-          </div>
-        ) : null}
-      </div>
+      <SettingsMorePanel
+        showMoreSettings={showMoreSettings}
+        toggleMoreSettings={() => setShowMoreSettings((prev) => !prev)}
+        handleSaveMoreSettings={handleSaveMoreSettings}
+        saving={saving}
+      >
+        <SettingsGeneralPanel
+          inputCls={inputCls}
+          deviceDisplayName={deviceDisplayName}
+          setDeviceDisplayName={setDeviceDisplayName}
+          syncLogRetentionDays={syncLogRetentionDays}
+          setSyncLogRetentionDays={setSyncLogRetentionDays}
+          syncLogWarnSizeMb={syncLogWarnSizeMb}
+          setSyncLogWarnSizeMb={setSyncLogWarnSizeMb}
+          systemLogRetentionDays={systemLogRetentionDays}
+          setSystemLogRetentionDays={setSystemLogRetentionDays}
+        />
+        <SettingsUpdatePanel
+          status={status}
+          inputCls={inputCls}
+          autoUpdateEnabled={autoUpdateEnabled}
+          setAutoUpdateEnabled={setAutoUpdateEnabled}
+          updateCheckIntervalHours={updateCheckIntervalHours}
+          setUpdateCheckIntervalHours={setUpdateCheckIntervalHours}
+          allowDevToStable={allowDevToStable}
+          setAllowDevToStable={setAllowDevToStable}
+          handleCheckUpdate={handleCheckUpdate}
+          checking={checking}
+          handleDownloadUpdate={handleDownloadUpdate}
+          downloading={downloading}
+          installing={installing}
+          handleOpenDownloadedUpdateFolder={handleOpenDownloadedUpdateFolder}
+          openingUpdateFolder={openingUpdateFolder}
+          handleInstallDownloadedUpdate={handleInstallDownloadedUpdate}
+          lastCheckLabel={lastCheckLabel}
+          publishedLabel={publishedLabel}
+        />
+        <SettingsIgnoredDirectoriesPanel
+          tasks={tasks}
+          showIgnoredDirectorySettings={showIgnoredDirectorySettings}
+          toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
+          ignoredSubpathsMap={ignoredSubpathsMap}
+          ignoredPathDrafts={ignoredPathDrafts}
+          setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}
+          updatingIgnoredSubpaths={updatingIgnoredSubpaths}
+          handleSaveIgnoredSubpaths={handleSaveIgnoredSubpaths}
+          removeIgnoredSubpath={removeIgnoredSubpath}
+          addIgnoredSubpath={addIgnoredSubpath}
+          pickingIgnoredTaskId={pickingIgnoredTaskId}
+          handlePickIgnoredSubpath={handlePickIgnoredSubpath}
+        />
+        <SettingsMaintenancePanel
+          tasks={tasks}
+          resettingLinks={resettingLinks}
+          onResetTask={handleResetTask}
+        />
+      </SettingsMorePanel>
     </section>
   );
 }
