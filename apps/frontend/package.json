@@ -1,7 +1,7 @@
 {
   "name": "larksync-frontend",
   "private": true,
-  "version": "0.7.17-dev.10",
+  "version": "0.7.17-dev.11",
   "type": "module",
   "scripts": {
     "dev": "vite --port 3666",

@@ -1,5 +1,6 @@
 import type { EventFilter } from "../../lib/eventFilters";
 import { formatTimestamp } from "../../lib/formatters";
+import type { RunAlertMeta } from "../../lib/taskDiagnosticsState";
 import { stateLabels, stateTones } from "../../lib/constants";
 import { compactRunId, shortPath } from "../../lib/logCenter";
 import type { TaskProgress } from "../../lib/progress";
@@ -15,7 +16,7 @@ import type {
   SyncTaskStatus,
 } from "../../types";
 import type { DetailTab } from "../../hooks/useLogCenterTaskDiagnostics";
-import { TaskDiagnosticsOverviewTab, type RunAlertMeta } from "./TaskDiagnosticsOverviewTab";
+import { TaskDiagnosticsOverviewTab } from "./TaskDiagnosticsOverviewTab";
 import { TaskDiagnosticsProblemsTab } from "./TaskDiagnosticsProblemsTab";
 import { TaskDiagnosticsEventsTab } from "./TaskDiagnosticsEventsTab";
 

@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.11 refactor(frontend): 将日志中心概览排序、`runAlert` 和展示派生状态从 `useLogCenterTaskDiagnostics` 下沉到 `taskDiagnosticsState` helper，并新增独立测试，继续把主诊断 hook 压向纯编排层
+
 [2026-05-22] v0.7.17-dev.10 refactor(frontend): 将日志中心诊断 query 的 `include_problems` 判断、URL 参数组装与轮询间隔判断从 `useLogCenterTaskDiagnostics` 下沉到 `taskDiagnosticsQuery` helper，并新增独立测试，继续压缩主诊断 hook 的分支复杂度
 
 [2026-05-22] v0.7.17-dev.9 refactor(frontend): 将日志中心任务选择与运行选择状态从 `useLogCenterTaskDiagnostics` 下沉到 `useTaskDiagnosticsSelection` hook，并新增 `taskDiagnosticsSelection` helper 测试覆盖默认选中、任务筛选和 active run 解析，继续压缩主诊断 hook 的职责面

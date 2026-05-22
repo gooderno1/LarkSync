@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.11 (2026-05-22)
+
+- 目标：
+  - 继续压缩日志中心主诊断 hook，把概览排序、`runAlert` 判断和展示派生状态从 `useLogCenterTaskDiagnostics.ts` 中拆出去，减少 hook 内的纯派生分支。
+- 结果：
+  - 新增 `apps/frontend/src/lib/taskDiagnosticsState.ts` 与 `taskDiagnosticsState.test.ts`，把任务概览按最近活动排序、`runAlert` 生成、`currentFile / diagnosticCounts / lastActivityAt / selectedStateKey` 等展示派生状态集中到可测试 helper。
+  - `useLogCenterTaskDiagnostics.ts` 现通过 `deriveTaskDiagnosticsState()` 和 `sortTaskOverviewsByActivity()` 获取展示派生结果，不再直接维护多段 `??` 链和 `runAlert` 文案判断。
+  - `TaskDiagnosticsOverviewTab.tsx` 与 `TaskDiagnosticsDetailPanel.tsx` 的 `RunAlertMeta` 类型也已改为直接复用 helper 导出的类型，减少重复定义。
+- 测试：
+  - `npm --prefix apps/frontend exec vitest run src/lib/taskDiagnosticsState.test.ts src/lib/taskDiagnosticsQuery.test.ts src/lib/taskDiagnosticsSelection.test.ts src/lib/taskEventTimeline.test.ts src/components/log-center/TaskDiagnosticsDetailTabs.test.tsx src/components/log-center/TaskDiagnosticsPanels.test.tsx src/pages/LogCenterPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - 当前主诊断 hook 已明显变薄，但仍承担 overview query、diagnostics query 和多个子 hook 编排；下一轮可评估是否把 overview query 自身也抽成独立 resource hook，进一步统一“query hook + state hook + panel 组件”的边界。
+
 ## v0.7.17-dev.10 (2026-05-22)
 
 - 目标：

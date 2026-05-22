@@ -1,5 +1,6 @@
 import { formatTimestamp } from "../../lib/formatters";
 import type { TaskProgress } from "../../lib/progress";
+import type { RunAlertMeta } from "../../lib/taskDiagnosticsState";
 import { StatusPill } from "../StatusPill";
 import { cn } from "../../lib/utils";
 import { formatDuration, shortPath } from "../../lib/logCenter";
@@ -10,12 +11,6 @@ import type {
   SyncTaskRunSummary,
   SyncTaskStatus,
 } from "../../types";
-
-export type RunAlertMeta = {
-  label: string;
-  className: string;
-  message: string;
-};
 
 type TaskDiagnosticsOverviewTabProps = {
   selectedTask: SyncTask;

@@ -10,8 +10,11 @@ import {
 } from "../lib/taskDiagnosticsQuery";
 import { resolveActiveRunSelection } from "../lib/taskDiagnosticsSelection";
 import {
+  deriveTaskDiagnosticsState,
+  sortTaskOverviewsByActivity,
+} from "../lib/taskDiagnosticsState";
+import {
   mapSyncTaskDiagnostics,
-  diagnosticActivityTime,
   type SyncTaskDiagnosticsRaw,
 } from "../lib/logCenter";
 import type { SyncTaskDiagnostics, SyncTaskOverview } from "../types";
@@ -21,26 +24,6 @@ import { useTaskEventTimeline } from "./useTaskEventTimeline";
 export type DetailTab = "overview" | "problems" | "events";
 
 const EMPTY_OVERVIEWS: SyncTaskOverview[] = [];
-
-function getRunAlertMeta(message?: string | null): { label: string; className: string; message: string } | null {
-  const trimmed = message?.trim();
-  if (!trimmed) return null;
-  if (
-    trimmed.includes("运行被中断") ||
-    trimmed.includes("partial 模式不支持超限表格文档，请改用 auto/full")
-  ) {
-    return {
-      label: trimmed.includes("运行被中断") ? "最近中断" : "最近提示",
-      className: "border-amber-500/40 bg-amber-500/10 text-amber-300",
-      message: trimmed,
-    };
-  }
-  return {
-    label: "最近错误",
-    className: "border-rose-500/40 bg-rose-500/10 text-rose-300",
-    message: trimmed,
-  };
-}
 
 export function useLogCenterTaskDiagnostics(enabled: boolean) {
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
@@ -57,7 +40,7 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
   const overviewItems = overviewQuery.data ?? EMPTY_OVERVIEWS;
 
   const sortedOverviews = useMemo(
-    () => [...overviewItems].sort((a, b) => diagnosticActivityTime(b) - diagnosticActivityTime(a)),
+    () => sortTaskOverviewsByActivity(overviewItems),
     [overviewItems],
   );
 
@@ -136,19 +119,18 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
   }, [selectedTaskId]);
 
   const progress = computeTaskProgress(selectedStatus);
-  const currentFile = selectedRun?.current_file ?? activeOverview?.current_file ?? null;
-  const diagnosticCounts = selectedRun?.counts ?? activeOverview?.counts;
-  const lastActivityAt =
-    selectedRun?.last_event_at ??
-    selectedStatus?.finished_at ??
-    selectedStatus?.started_at ??
-    selectedTask?.last_run_at ??
-    activeOverview?.last_event_at ??
-    null;
-  const selectedStateKey = selectedTask
-    ? (!selectedTask.enabled ? "paused" : selectedStatus?.state || "idle")
-    : "idle";
-  const runAlert = getRunAlertMeta(selectedRun?.last_error || selectedStatus?.last_error);
+  const {
+    currentFile,
+    diagnosticCounts,
+    lastActivityAt,
+    selectedStateKey,
+    runAlert,
+  } = deriveTaskDiagnosticsState({
+    selectedTask,
+    selectedStatus,
+    selectedRun,
+    activeOverview,
+  });
 
   const refreshDiagnostics = () => {
     overviewQuery.refetch();
