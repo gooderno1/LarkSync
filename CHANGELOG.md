@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.2 refactor(engineering): 抽出 `sync_runner` 的事件状态流水线到独立 `SyncEventPipeline` / `sync_runner_state` 模块，并将日志中心页面中的日志映射、路径压缩、运行时长与 run_id 格式化等纯逻辑下沉到 `src/lib/logCenter.ts`，为后续继续拆分 `sync_runner` 与 `LogCenterPage` 降低耦合面
+
 [2026-05-22] v0.7.17-dev.1 feat(engineering): 固定安装包发布基线为 `Python 3.14.x / Node 25.x` 并让 `scripts/build_installer.py` 在非基线环境下 fail fast、输出环境摘要；FastAPI 切换为 `lifespan` 管理后台服务；前端补齐 `eslint + vitest` 页面 smoke 质量门；新增 `python scripts/update_install_smoke.py` 与 CI Windows 静默安装 smoke 验证
 
 [2026-05-22] v0.7.16 release: v0.7.16

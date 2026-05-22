@@ -8,7 +8,6 @@ import re
 import shutil
 import time
 import uuid
-from contextlib import suppress
 from datetime import datetime
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -36,16 +35,16 @@ from src.services.export_task_service import ExportTaskError, ExportTaskResult, 
 from src.services.conflict_service import ConflictService
 from src.services.sync_block_service import BlockStateItem, SyncBlockService
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
+from src.services.sync_event_pipeline import SyncEventPipeline
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_run_event_service import SyncRunEventService
 from src.services.sync_run_service import SyncRunService
+from src.services.sync_runner_state import SYNC_LOG_LIMIT, SyncFileEvent, SyncState, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
 from src.services.sync_tombstone_service import SyncTombstoneService
 from src.services.transcoder import DocxTranscoder
 from src.services.watcher import FileChangeEvent, WatcherService
 
-SyncState = Literal["idle", "running", "success", "failed", "cancelled"]
-SYNC_LOG_LIMIT = 200
 _LOCAL_IMAGE_UPLOAD_REVISION_MARKER = "#local-images-v2"
 _MARKDOWN_TABLE_RENDER_REVISION_MARKER = "#md-table-render-v10"
 _MARKDOWN_IMAGE_REF_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
@@ -86,41 +85,6 @@ _MD_SYNC_MODE_VALUES = {
     _MD_SYNC_MODE_DOC_ONLY,
 }
 _STARTUP_ADD_ONLY_THRESHOLD_SECONDS = 48 * 3600
-
-
-@dataclass
-class SyncFileEvent:
-    path: str
-    status: str
-    message: str | None = None
-    timestamp: float = field(default_factory=time.time)
-
-
-@dataclass
-class SyncTaskStatus:
-    task_id: str
-    state: SyncState = "idle"
-    trigger_source: str | None = None
-    started_at: float | None = None
-    finished_at: float | None = None
-    total_files: int = 0
-    completed_files: int = 0
-    failed_files: int = 0
-    skipped_files: int = 0
-    uploaded_files: int = 0
-    downloaded_files: int = 0
-    deleted_files: int = 0
-    conflict_files: int = 0
-    delete_pending_files: int = 0
-    delete_failed_files: int = 0
-    last_error: str | None = None
-    current_run_id: str | None = None
-    last_files: list[SyncFileEvent] = field(default_factory=list)
-
-    def record_event(self, event: SyncFileEvent, limit: int = SYNC_LOG_LIMIT) -> None:
-        self.last_files.append(event)
-        if len(self.last_files) > limit:
-            self.last_files = self.last_files[-limit:]
 
 
 @dataclass(frozen=True)
@@ -211,11 +175,13 @@ class SyncTaskRunner:
         self._initial_upload_scanned: set[str] = set()
         # 缓存: (task_id, relative_dir_posix) -> cloud_folder_token
         self._cloud_folder_cache: dict[tuple[str, str], str] = {}
-        self._pending_event_records: list[SyncEventRecord] = []
-        self._event_flush_task: asyncio.Task[None] | None = None
-        self._event_flush_lock: asyncio.Lock | None = None
-        self._event_flush_delay_seconds = 0.25
-        self._event_flush_batch_size = 100
+        self._event_pipeline = SyncEventPipeline(
+            event_store=self._event_store,
+            run_event_service=self._run_event_service,
+            task_resolver=lambda task_id: self._task_meta.get(task_id),
+            flush_delay_seconds=0.25,
+            batch_size=100,
+        )
 
     def get_status(self, task_id: str) -> SyncTaskStatus:
         return self._statuses.get(task_id) or SyncTaskStatus(task_id=task_id)
@@ -229,81 +195,10 @@ class SyncTaskRunner:
         event: SyncFileEvent,
         task: SyncTaskItem | None = None,
     ) -> None:
-        status.record_event(event)
-        if event.status == "uploaded":
-            status.uploaded_files += 1
-        elif event.status == "downloaded":
-            status.downloaded_files += 1
-        elif event.status == "deleted":
-            status.deleted_files += 1
-        elif event.status == "conflict":
-            status.conflict_files += 1
-        elif event.status == "delete_pending":
-            status.delete_pending_files += 1
-        elif event.status == "delete_failed":
-            status.delete_failed_files += 1
-        task_info = task or self._task_meta.get(status.task_id)
-        task_name = (
-            task_info.name
-            if task_info and task_info.name
-            else (task_info.local_path if task_info else "未命名任务")
-        )
-        record = SyncEventRecord(
-            timestamp=event.timestamp,
-            task_id=status.task_id,
-            task_name=task_name,
-            status=event.status,
-            path=event.path,
-            message=event.message,
-            run_id=status.current_run_id if status.current_run_id else None,
-        )
-        self._event_store.append(record)
-        self._enqueue_persisted_event(record)
-
-    def _enqueue_persisted_event(self, record: SyncEventRecord) -> None:
-        self._pending_event_records.append(record)
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        if len(self._pending_event_records) >= self._event_flush_batch_size:
-            task = self._event_flush_task
-            if task and not task.done():
-                task.cancel()
-            self._event_flush_task = loop.create_task(
-                self._flush_pending_events(delay=0.0)
-            )
-            return
-        if self._event_flush_task is None or self._event_flush_task.done():
-            self._event_flush_task = loop.create_task(
-                self._flush_pending_events(delay=self._event_flush_delay_seconds)
-            )
-
-    async def _flush_pending_events(self, *, delay: float) -> None:
-        if delay > 0:
-            await asyncio.sleep(delay)
-        lock = self._event_flush_lock
-        if lock is None:
-            lock = asyncio.Lock()
-            self._event_flush_lock = lock
-        async with lock:
-            while self._pending_event_records:
-                batch = self._pending_event_records[: self._event_flush_batch_size]
-                del self._pending_event_records[: self._event_flush_batch_size]
-                try:
-                    await self._run_event_service.append_batch(batch)
-                except Exception:
-                    logger.exception("运行事件批量落库失败")
-        self._event_flush_task = None
+        self._event_pipeline.record_event(status, event, task)
 
     async def _flush_pending_events_now(self) -> None:
-        task = self._event_flush_task
-        if task and not task.done():
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
-        if self._pending_event_records:
-            await self._flush_pending_events(delay=0.0)
+        await self._event_pipeline.flush_now()
 
     def ensure_watcher(self, task: SyncTaskItem) -> None:
         self._ensure_watcher(task)

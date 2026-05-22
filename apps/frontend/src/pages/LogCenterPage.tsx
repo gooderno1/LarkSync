@@ -16,6 +16,18 @@ import {
   buildStatusParams,
   type EventFilter,
 } from "../lib/eventFilters";
+import {
+  compactRunId,
+  diagnosticActivityTime,
+  formatDuration,
+  mapSyncLogResponse,
+  mapSyncTaskDiagnostics,
+  shortPath,
+  statusTone,
+  type SyncLogResponse,
+  type SyncLogResponseRaw,
+  type SyncTaskDiagnosticsRaw,
+} from "../lib/logCenter";
 import { StatusPill } from "../components/StatusPill";
 import { Pagination } from "../components/Pagination";
 import { IconRefresh, IconConflicts, IconTasks, IconActivity } from "../components/Icons";
@@ -24,10 +36,8 @@ import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type {
   ConflictResolutionAction,
-  SyncLogEntry,
   SyncTaskDiagnostics,
   SyncTaskOverview,
-  Tone,
 } from "../types";
 
 type FileLogEntry = {
@@ -39,43 +49,6 @@ type FileLogEntry = {
 type FileLogResponse = {
   total: number;
   items: FileLogEntry[];
-};
-
-type SyncLogResponse = {
-  total: number;
-  items: SyncLogEntry[];
-  warning?: string | null;
-  meta?: {
-    file_size_bytes?: number;
-    retention_days?: number;
-    warn_size_mb?: number;
-  } | null;
-};
-
-type SyncLogEntryRaw = {
-  task_id: string;
-  task_name: string;
-  timestamp: number;
-  status: string;
-  path: string;
-  message?: string | null;
-  run_id?: string | null;
-};
-
-type SyncLogResponseRaw = {
-  total: number;
-  items: SyncLogEntryRaw[];
-  warning?: string | null;
-  meta?: {
-    file_size_bytes?: number;
-    retention_days?: number;
-    warn_size_mb?: number;
-  } | null;
-};
-
-type SyncTaskDiagnosticsRaw = Omit<SyncTaskDiagnostics, "recent_events" | "problems"> & {
-  recent_events: SyncLogEntryRaw[];
-  problems: SyncLogEntryRaw[];
 };
 
 type DetailTab = "overview" | "problems" | "events";
@@ -99,44 +72,6 @@ const CONFLICT_ACTION_LABELS: Record<ConflictResolutionAction, string> = {
   use_local: "使用本地",
   use_cloud: "使用云端",
 };
-
-function mapSyncLogEntry(item: SyncLogEntryRaw): SyncLogEntry {
-  return {
-    taskId: item.task_id,
-    taskName: item.task_name,
-    timestamp: item.timestamp,
-    status: item.status,
-    path: item.path,
-    message: item.message ?? null,
-    runId: item.run_id ?? null,
-  };
-}
-
-function mapSyncLogResponse(raw: SyncLogResponseRaw): SyncLogResponse {
-  return {
-    total: raw.total,
-    items: raw.items.map(mapSyncLogEntry),
-    warning: raw.warning ?? null,
-    meta: raw.meta ?? null,
-  };
-}
-
-function mapSyncTaskDiagnostics(raw: SyncTaskDiagnosticsRaw): SyncTaskDiagnostics {
-  return {
-    overview: raw.overview,
-    selected_run: raw.selected_run ?? null,
-    recent_runs: raw.recent_runs ?? [],
-    recent_events: raw.recent_events.map(mapSyncLogEntry),
-    problems: raw.problems.map(mapSyncLogEntry),
-  };
-}
-
-function statusTone(status: string): Tone {
-  if (DANGER_STATUSES.has(status)) return "danger";
-  if (WARNING_STATUSES.has(status)) return "warning";
-  if (status === "started" || status === "queued") return "info";
-  return "success";
-}
 
 function getRunAlertMeta(message?: string | null): { label: string; className: string; message: string } | null {
   const trimmed = message?.trim();
@@ -166,49 +101,6 @@ function levelColor(level: string) {
     case "DEBUG": return "text-zinc-600";
     default: return "text-zinc-400";
   }
-}
-
-function shortPath(value: string, maxChars = 72): string {
-  const text = value.trim();
-  if (!text) return "-";
-  if (text.length <= maxChars) return text;
-  const segments = text.split(/[\\/]+/).filter(Boolean);
-  if (segments.length >= 4) {
-    const tail = segments.slice(-4).join("/");
-    return tail.length <= maxChars ? `.../${tail}` : `...${text.slice(-maxChars)}`;
-  }
-  return `...${text.slice(-maxChars)}`;
-}
-
-function diagnosticActivityTime(overview: SyncTaskOverview): number {
-  return (
-    overview.last_event_at ??
-    overview.status.finished_at ??
-    overview.status.started_at ??
-    overview.task.last_run_at ??
-    overview.task.updated_at ??
-    overview.task.created_at
-  );
-}
-
-function formatDuration(startedAt?: number | null, finishedAt?: number | null, fallbackAt?: number | null): string {
-  if (!startedAt) return "暂无";
-  const end = finishedAt ?? fallbackAt;
-  if (!end || end <= startedAt) return "进行中";
-  const totalSeconds = Math.max(1, Math.round(end - startedAt));
-  if (totalSeconds < 60) return `${totalSeconds} 秒`;
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes < 60) return seconds ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分`;
-  const hours = Math.floor(minutes / 60);
-  const remainMinutes = minutes % 60;
-  return remainMinutes ? `${hours} 小时 ${remainMinutes} 分` : `${hours} 小时`;
-}
-
-function compactRunId(runId?: string | null): string {
-  if (!runId) return "暂无";
-  if (runId.length <= 18) return runId;
-  return `${runId.slice(0, 8)}...${runId.slice(-6)}`;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -992,7 +884,10 @@ export function LogCenterPage() {
                                     {entry.runId ? <p className="text-[11px] text-zinc-700">运行 {entry.runId}</p> : null}
                                     <p className="break-all text-xs text-zinc-400">{entry.path}</p>
                                   </div>
-                                  <StatusPill label={statusLabelMap[entry.status] || entry.status} tone={statusTone(entry.status)} />
+                                  <StatusPill
+                                    label={statusLabelMap[entry.status] || entry.status}
+                                    tone={statusTone(entry.status, DANGER_STATUSES, WARNING_STATUSES)}
+                                  />
                                 </div>
                                 {entry.message ? <p className="mt-2 text-xs text-zinc-600">{entry.message}</p> : null}
                               </div>

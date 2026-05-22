@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.2 (2026-05-22)
+
+- 目标：
+  - 按第二阶段规划做第一轮低风险结构拆分，优先把 `sync_runner` 中独立的事件状态流水线抽离出来，同时收口日志中心页面中的纯映射和格式化逻辑，为后续继续拆大文件降低耦合面。
+- 结果：
+  - 新增 `apps/backend/src/services/sync_runner_state.py`，将 `SyncFileEvent`、`SyncTaskStatus` 和状态日志窗口逻辑从 `sync_runner.py` 中独立出来，后续相关测试和其他模块不再必须依赖整个 runner 文件。
+  - 新增 `apps/backend/src/services/sync_event_pipeline.py`，负责同步事件的状态计数、`SyncEventStore` 追加、SQLite 运行事件批量落库和异步 flush；`SyncTaskRunner` 现在通过该服务组合事件流水线，而不再自己持有 pending queue / flush task / flush lock 这些内部细节。
+  - 新增 `apps/backend/tests/test_sync_event_pipeline.py`，单独锁定事件状态计数、任务名解析和批量落库 flush 行为，避免后续继续拆 `sync_runner` 时回归只能靠全量 runner 测试兜底。
+  - 新增 `apps/frontend/src/lib/logCenter.ts`，把日志中心页面里的 snake_case -> camelCase 映射、最近活动时间选择、路径压缩、运行耗时格式化和 run_id 短码化等纯逻辑集中到独立 helper。
+  - 新增 `apps/frontend/src/lib/logCenter.test.ts`，与既有 `LogCenterPage.test.tsx` 一起为日志中心后续继续拆 hook / view / state 分层提供稳定回归基线。
+- 测试：
+  - `python -m pytest tests/test_sync_event_pipeline.py tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py tests/test_conflict_resolution_runner.py -q`（工作目录：`apps/backend/`）
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend exec vitest run src/lib/logCenter.test.ts src/pages/LogCenterPage.test.tsx`
+- 问题：
+  - 当前这轮只先拆了“纯状态/纯 helper”边界，`sync_runner` 的上传/下载/删除主流程以及 `LogCenterPage` 的查询状态仍在原文件中；下一轮应继续向“组合服务 + hook/state/view 分层”推进，而不是重新把新 helper 逻辑回流进页面或 runner 主文件。
+
 ## v0.7.17-dev.1 (2026-05-22)
 
 - 目标：
