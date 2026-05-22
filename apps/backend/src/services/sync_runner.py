@@ -3,9 +3,7 @@ from __future__ import annotations
 import asyncio
 import difflib
 import hashlib
-import os
 import re
-import shutil
 import time
 import uuid
 from datetime import datetime
@@ -36,6 +34,7 @@ from src.services.conflict_service import ConflictService
 from src.services.sync_block_service import BlockStateItem, SyncBlockService
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_event_pipeline import SyncEventPipeline
+from src.services.sync_delete_sync_service import SyncDeleteSyncService
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_cloud_folder_service import SyncCloudFolderService
 from src.services.sync_run_event_service import SyncRunEventService
@@ -179,6 +178,13 @@ class SyncTaskRunner:
             should_ignore_path=self._should_ignore_path,
             md_mirror_folder_name=_CLOUD_MD_MIRROR_FOLDER_NAME,
             md_mirror_cache_prefix=_CLOUD_MD_MIRROR_CACHE_PREFIX,
+        )
+        self._delete_sync_service = SyncDeleteSyncService(
+            link_service=self._link_service,
+            tombstone_service=self._tombstone_service,
+            block_service=self._block_service,
+            should_ignore_path=self._should_ignore_path,
+            local_trash_dir_name=_LOCAL_TRASH_DIR_NAME,
         )
         self._event_pipeline = SyncEventPipeline(
             event_store=self._event_store,
@@ -2202,38 +2208,13 @@ class SyncTaskRunner:
 
     @staticmethod
     def _normalize_delete_policy(raw_policy: object) -> DeletePolicy:
-        if isinstance(raw_policy, DeletePolicy):
-            return raw_policy
-        try:
-            return DeletePolicy(str(raw_policy))
-        except ValueError:
-            return DeletePolicy.safe
+        return SyncDeleteSyncService.normalize_delete_policy(raw_policy)
 
     def _resolve_delete_policy(self, task: SyncTaskItem | None = None) -> tuple[DeletePolicy, float]:
-        config = ConfigManager.get().config
-        policy_raw: object = config.delete_policy
-        grace_raw: object = config.delete_grace_minutes
-        if task is not None:
-            if task.delete_policy:
-                policy_raw = task.delete_policy
-            if task.delete_grace_minutes is not None:
-                grace_raw = task.delete_grace_minutes
-        policy = self._normalize_delete_policy(policy_raw)
-        grace_minutes = int(grace_raw or 0)
-        if grace_minutes < 0:
-            grace_minutes = 0
-        grace_seconds = float(grace_minutes * 60)
-        if policy == DeletePolicy.strict:
-            grace_seconds = 0.0
-        return policy, grace_seconds
+        return self._delete_sync_service.resolve_delete_policy(task)
 
     async def _has_pending_tombstones(self, task_id: str) -> bool:
-        try:
-            pending = await self._tombstone_service.list_pending(task_id)
-        except Exception:
-            logger.exception("读取删除墓碑失败: task_id={}", task_id)
-            return False
-        return bool(pending)
+        return await self._delete_sync_service.has_pending_tombstones(task_id)
 
     @staticmethod
     def _build_cloud_revision(
@@ -2274,45 +2255,13 @@ class SyncTaskRunner:
         local_path: Path,
         reason: str,
     ) -> bool:
-        policy, grace_seconds = self._resolve_delete_policy(task)
-        if policy == DeletePolicy.off:
-            return False
-        if self._normalize_local_path_key(local_path) == self._normalize_local_path_key(
-            task.local_path
-        ):
-            logger.warning("忽略同步根目录删除事件: task_id={} path={}", task.id, local_path)
-            return False
-        link = await self._link_service.get_by_local_path(str(local_path))
-        if not link:
-            return False
-        expire_at = time.time() + grace_seconds
-        try:
-            await self._tombstone_service.create_or_refresh(
-                task_id=task.id,
-                local_path=str(local_path),
-                cloud_token=link.cloud_token,
-                cloud_type=link.cloud_type,
-                source="local",
-                reason=reason,
-                expire_at=expire_at,
-            )
-        except Exception:
-            logger.exception(
-                "写入本地删除墓碑失败: task_id={} path={}",
-                task.id,
-                local_path,
-            )
-            return False
-        self._record_event(
-            status,
-            SyncFileEvent(
-                path=str(local_path),
-                status="delete_pending",
-                message=f"{reason}，待处理删除同步",
-            ),
-            task,
+        return await self._delete_sync_service.enqueue_local_delete_tombstone(
+            task=task,
+            status=status,
+            local_path=local_path,
+            reason=reason,
+            record_event=self._record_event,
         )
-        return True
 
     async def _enqueue_missing_local_deletes(
         self,
@@ -2320,69 +2269,11 @@ class SyncTaskRunner:
         task: SyncTaskItem,
         status: SyncTaskStatus,
     ) -> None:
-        policy, grace_seconds = self._resolve_delete_policy(task)
-        if policy == DeletePolicy.off:
-            return
-        root = Path(task.local_path)
-        if not root.exists() or not root.is_dir():
-            logger.warning(
-                "同步根目录不存在，跳过本地缺失删除判定: task_id={} path={}",
-                task.id,
-                root,
-            )
-            return
-        links = await self._link_service.list_by_task(task.id)
-        if not links:
-            return
-        expire_at = time.time() + grace_seconds
-        missing_folder_roots: list[str] = []
-        sorted_links = sorted(
-            links,
-            key=lambda item: len(Path(item.local_path).parts),
+        await self._delete_sync_service.enqueue_missing_local_deletes(
+            task=task,
+            status=status,
+            record_event=self._record_event,
         )
-        for link in sorted_links:
-            local_path = Path(link.local_path)
-            if local_path.exists():
-                continue
-            is_descendant_of_missing_folder = any(
-                self._is_same_or_descendant_path(link.local_path, folder_root)
-                and self._normalize_local_path_key(link.local_path)
-                != self._normalize_local_path_key(folder_root)
-                for folder_root in missing_folder_roots
-            )
-            if is_descendant_of_missing_folder:
-                continue
-            if link.updated_at <= 0 and not link.local_hash:
-                # 仅云端预填映射、尚未建立本地基线时，不判定为“本地删除”。
-                continue
-            try:
-                await self._tombstone_service.create_or_refresh(
-                    task_id=task.id,
-                    local_path=link.local_path,
-                    cloud_token=link.cloud_token,
-                    cloud_type=link.cloud_type,
-                    source="local",
-                    reason="检测到本地已删除",
-                    expire_at=expire_at,
-                )
-            except Exception:
-                logger.exception(
-                    "写入本地删除墓碑失败: task_id={} path={}",
-                    task.id,
-                    link.local_path,
-                )
-                continue
-            self._record_event(
-                status,
-                SyncFileEvent(
-                    path=link.local_path,
-                    status="delete_pending",
-                    message="检测到本地已删除，待处理删除同步",
-                ),
-                task,
-            )
-            if link.cloud_type == "folder":
-                missing_folder_roots.append(link.local_path)
 
     async def _enqueue_cloud_missing_deletes(
         self,
@@ -2392,57 +2283,13 @@ class SyncTaskRunner:
         persisted_links: list[SyncLinkItem],
         cloud_paths: set[str],
     ) -> None:
-        policy, grace_seconds = self._resolve_delete_policy(task)
-        if policy == DeletePolicy.off:
-            return
-        expire_at = time.time() + grace_seconds
-        cloud_path_keys = {self._normalize_local_path_key(path) for path in cloud_paths}
-        missing_folder_roots: list[str] = []
-        sorted_links = sorted(
-            persisted_links,
-            key=lambda item: len(Path(item.local_path).parts),
+        await self._delete_sync_service.enqueue_cloud_missing_deletes(
+            task=task,
+            status=status,
+            persisted_links=persisted_links,
+            cloud_paths=cloud_paths,
+            record_event=self._record_event,
         )
-        for link in sorted_links:
-            if self._should_ignore_path(task, Path(link.local_path)):
-                continue
-            if self._normalize_local_path_key(link.local_path) in cloud_path_keys:
-                continue
-            is_descendant_of_missing_folder = any(
-                self._is_same_or_descendant_path(link.local_path, folder_root)
-                and self._normalize_local_path_key(link.local_path)
-                != self._normalize_local_path_key(folder_root)
-                for folder_root in missing_folder_roots
-            )
-            if is_descendant_of_missing_folder:
-                continue
-            try:
-                await self._tombstone_service.create_or_refresh(
-                    task_id=task.id,
-                    local_path=link.local_path,
-                    cloud_token=link.cloud_token,
-                    cloud_type=link.cloud_type,
-                    source="cloud",
-                    reason="检测到云端已删除",
-                    expire_at=expire_at,
-                )
-            except Exception:
-                logger.exception(
-                    "写入云端删除墓碑失败: task_id={} path={}",
-                    task.id,
-                    link.local_path,
-                )
-                continue
-            self._record_event(
-                status,
-                SyncFileEvent(
-                    path=link.local_path,
-                    status="delete_pending",
-                    message="检测到云端已删除，待处理本地删除",
-                ),
-                task,
-            )
-            if link.cloud_type == "folder":
-                missing_folder_roots.append(link.local_path)
 
     async def _process_pending_deletes(
         self,
@@ -2452,202 +2299,15 @@ class SyncTaskRunner:
         drive_service: DriveService,
         known_cloud_tokens: set[str] | None = None,
     ) -> None:
-        retry_delay_seconds = 300.0
-        policy, _ = self._resolve_delete_policy(task)
-        try:
-            pending = await self._tombstone_service.list_pending(
-                task.id,
-                before=time.time(),
-            )
-        except Exception:
-            logger.exception("查询待处理删除墓碑失败: task_id={}", task.id)
-            return
-        if not pending:
-            return
-        if policy == DeletePolicy.off:
-            for tombstone in pending:
-                await self._tombstone_service.mark_status(
-                    tombstone.id,
-                    status="cancelled",
-                    reason="删除同步已关闭",
-                )
-            return
-
-        delete_file = getattr(drive_service, "delete_file", None)
-        for tombstone in pending:
-            local_path = Path(tombstone.local_path)
-            try:
-                if self._should_ignore_path(task, local_path):
-                    await self._tombstone_service.mark_status(
-                        tombstone.id,
-                        status="cancelled",
-                        reason="路径已加入忽略目录",
-                    )
-                    self._record_event(
-                        status,
-                        SyncFileEvent(
-                            path=tombstone.local_path,
-                            status="skipped",
-                            message="路径已加入忽略目录，取消删除联动",
-                        ),
-                        task,
-                    )
-                    continue
-                if tombstone.source == "local":
-                    if local_path.exists():
-                        await self._tombstone_service.mark_status(
-                            tombstone.id,
-                            status="cancelled",
-                            reason="本地文件已恢复",
-                        )
-                        continue
-                    if tombstone.cloud_token:
-                        active_link = await self._find_active_link_for_cloud_token(
-                            task=task,
-                            cloud_token=tombstone.cloud_token,
-                            excluding_local_path=tombstone.local_path,
-                        )
-                        if active_link:
-                            await self._tombstone_service.mark_status(
-                                tombstone.id,
-                                status="cancelled",
-                                reason="云端文件仍绑定到其他本地路径",
-                            )
-                            self._record_event(
-                                status,
-                                SyncFileEvent(
-                                    path=tombstone.local_path,
-                                    status="skipped",
-                                    message=f"云端文件仍绑定到其他本地路径，取消删除: {active_link.local_path}",
-                                ),
-                                task,
-                            )
-                            continue
-                        if not callable(delete_file):
-                            await self._tombstone_service.mark_status(
-                                tombstone.id,
-                                status="failed",
-                                reason="当前 DriveService 不支持云端删除",
-                                expire_at=time.time() + retry_delay_seconds,
-                            )
-                            self._record_event(
-                                status,
-                                SyncFileEvent(
-                                    path=tombstone.local_path,
-                                    status="delete_failed",
-                                    message="云端删除失败：当前 DriveService 不支持删除接口",
-                                ),
-                                task,
-                            )
-                            continue
-                        try:
-                            await delete_file(tombstone.cloud_token, tombstone.cloud_type)
-                        except Exception as exc:
-                            if self._is_cloud_already_deleted_error(exc):
-                                logger.info(
-                                    "云端文件已不存在，按幂等成功处理: token={} type={} path={}",
-                                    tombstone.cloud_token,
-                                    tombstone.cloud_type,
-                                    tombstone.local_path,
-                                )
-                            else:
-                                raise
-                    await self._cleanup_md_mirror_copy(
-                        task=task,
-                        local_path=local_path,
-                        drive_service=drive_service,
-                    )
-                    await self._cleanup_deleted_state(
-                        task_id=task.id,
-                        local_path=tombstone.local_path,
-                        cloud_token=tombstone.cloud_token,
-                        recursive=tombstone.cloud_type == "folder",
-                    )
-                    await self._tombstone_service.mark_status(
-                        tombstone.id,
-                        status="executed",
-                    )
-                    self._record_event(
-                        status,
-                        SyncFileEvent(
-                            path=tombstone.local_path,
-                            status="deleted",
-                            message="已删除云端文件并清理映射",
-                        ),
-                        task,
-                    )
-                    continue
-
-                if known_cloud_tokens and tombstone.cloud_token:
-                    if tombstone.cloud_token in known_cloud_tokens:
-                        await self._tombstone_service.mark_status(
-                            tombstone.id,
-                            status="cancelled",
-                            reason="云端文件已恢复",
-                        )
-                        continue
-
-                await self._cleanup_md_mirror_copy(
-                    task=task,
-                    local_path=local_path,
-                    drive_service=drive_service,
-                )
-
-                if local_path.exists():
-                    if policy == DeletePolicy.strict:
-                        if local_path.is_dir():
-                            shutil.rmtree(local_path, ignore_errors=True)
-                        else:
-                            local_path.unlink(missing_ok=True)
-                        local_message = "本地文件已删除"
-                    else:
-                        moved_to = self._move_to_local_trash(task, local_path)
-                        local_message = f"本地文件已移入回收目录: {moved_to}"
-                else:
-                    local_message = "本地文件已不存在"
-
-                await self._cleanup_deleted_state(
-                    task_id=task.id,
-                    local_path=tombstone.local_path,
-                    cloud_token=tombstone.cloud_token,
-                    recursive=tombstone.cloud_type == "folder",
-                )
-                await self._tombstone_service.mark_status(
-                    tombstone.id,
-                    status="executed",
-                )
-                self._record_event(
-                    status,
-                    SyncFileEvent(
-                        path=tombstone.local_path,
-                        status="deleted",
-                        message=local_message,
-                    ),
-                    task,
-                )
-            except Exception as exc:
-                await self._tombstone_service.mark_status(
-                    tombstone.id,
-                    status="failed",
-                    reason=str(exc),
-                    expire_at=time.time() + retry_delay_seconds,
-                )
-                self._record_event(
-                    status,
-                    SyncFileEvent(
-                        path=tombstone.local_path,
-                        status="delete_failed",
-                        message=str(exc),
-                    ),
-                    task,
-                )
-                logger.warning(
-                    "处理删除墓碑失败: task_id={} source={} path={} error={}",
-                    task.id,
-                    tombstone.source,
-                    tombstone.local_path,
-                    exc,
-                )
+        await self._delete_sync_service.process_pending_deletes(
+            task=task,
+            status=status,
+            drive_service=drive_service,
+            known_cloud_tokens=known_cloud_tokens,
+            record_event=self._record_event,
+            cleanup_md_mirror_copy=self._cleanup_md_mirror_copy,
+            silence_path=self._silence_path,
+        )
 
     async def _cleanup_deleted_state(
         self,
@@ -2657,41 +2317,12 @@ class SyncTaskRunner:
         cloud_token: str | None,
         recursive: bool = False,
     ) -> None:
-        cleanup_targets: list[tuple[str, str | None]] = []
-        if recursive:
-            try:
-                links = await self._link_service.list_by_task(task_id)
-            except Exception:
-                logger.exception("查询递归清理同步映射失败: task_id={}", task_id)
-                links = []
-            for link in links:
-                if self._is_same_or_descendant_path(link.local_path, local_path):
-                    cleanup_targets.append((link.local_path, link.cloud_token))
-        if not cleanup_targets:
-            link = await self._link_service.get_by_local_path(local_path)
-            token = cloud_token or (link.cloud_token if link else None)
-            cleanup_targets.append((local_path, token))
-
-        seen_paths: set[str] = set()
-        for target_path, target_token in cleanup_targets:
-            normalized = self._normalize_local_path_key(target_path)
-            if normalized in seen_paths:
-                continue
-            seen_paths.add(normalized)
-            token = target_token or cloud_token
-            try:
-                await self._link_service.delete_by_local_path(target_path)
-            except Exception:
-                logger.exception("清理同步映射失败: {}", target_path)
-            if token:
-                try:
-                    await self._block_service.replace_blocks(target_path, token, [])
-                except Exception:
-                    logger.exception(
-                        "清理块级映射失败: path={} token={}",
-                        target_path,
-                        token,
-                    )
+        await self._delete_sync_service.cleanup_deleted_state(
+            task_id=task_id,
+            local_path=local_path,
+            cloud_token=cloud_token,
+            recursive=recursive,
+        )
 
     async def _find_active_link_for_cloud_token(
         self,
@@ -2700,28 +2331,15 @@ class SyncTaskRunner:
         cloud_token: str,
         excluding_local_path: str,
     ) -> SyncLinkItem | None:
-        excluded = self._normalize_local_path_key(excluding_local_path)
-        try:
-            links = await self._link_service.list_by_task(task.id)
-        except Exception:
-            logger.exception("查询同步映射失败: task_id={} token={}", task.id, cloud_token)
-            return None
-        for link in links:
-            if link.cloud_token != cloud_token:
-                continue
-            if self._normalize_local_path_key(link.local_path) == excluded:
-                continue
-            candidate = Path(link.local_path)
-            if not candidate.exists():
-                continue
-            if self._should_ignore_path(task, candidate):
-                continue
-            return link
-        return None
+        return await self._delete_sync_service.find_active_link_for_cloud_token(
+            task=task,
+            cloud_token=cloud_token,
+            excluding_local_path=excluding_local_path,
+        )
 
     @staticmethod
     def _normalize_local_path_key(path: str | Path) -> str:
-        return os.path.normcase(os.path.normpath(str(path)))
+        return SyncDeleteSyncService.normalize_local_path_key(path)
 
     @classmethod
     def _is_same_or_descendant_path(
@@ -2729,57 +2347,18 @@ class SyncTaskRunner:
         path: str | Path,
         ancestor: str | Path,
     ) -> bool:
-        normalized_path = cls._normalize_local_path_key(path)
-        normalized_ancestor = cls._normalize_local_path_key(ancestor)
-        if normalized_path == normalized_ancestor:
-            return True
-        try:
-            return (
-                os.path.commonpath([normalized_path, normalized_ancestor])
-                == normalized_ancestor
-            )
-        except ValueError:
-            return False
+        return SyncDeleteSyncService.is_same_or_descendant_path(path, ancestor)
 
     def _move_to_local_trash(self, task: SyncTaskItem, local_path: Path) -> Path:
-        root = Path(task.local_path)
-        trash_root = root / _LOCAL_TRASH_DIR_NAME
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        try:
-            relative = local_path.relative_to(root)
-        except ValueError:
-            relative = Path(local_path.name)
-        candidate = trash_root / timestamp / relative
-        candidate.parent.mkdir(parents=True, exist_ok=True)
-        target = candidate
-        if target.exists():
-            index = 1
-            while True:
-                if target.suffix:
-                    name = f"{target.stem}.{index}{target.suffix}"
-                else:
-                    name = f"{target.name}.{index}"
-                alt = target.with_name(name)
-                if not alt.exists():
-                    target = alt
-                    break
-                index += 1
-        self._silence_path(task.id, local_path, ttl_seconds=60.0)
-        self._silence_path(task.id, target, ttl_seconds=60.0)
-        shutil.move(str(local_path), str(target))
-        return target
+        return self._delete_sync_service.move_to_local_trash(
+            task,
+            local_path,
+            silence_path=self._silence_path,
+        )
 
     @staticmethod
     def _is_cloud_already_deleted_error(exc: Exception) -> bool:
-        lowered = str(exc).lower()
-        markers = (
-            "file has been delete",
-            "file already deleted",
-            "file not found",
-            "resource not found",
-            "not exist",
-        )
-        return any(marker in lowered for marker in markers)
+        return SyncDeleteSyncService.is_cloud_already_deleted_error(exc)
 
     async def _cleanup_md_mirror_copy(
         self,

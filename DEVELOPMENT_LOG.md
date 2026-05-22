@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.16 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 B，把 `sync_runner.py` 中与删除墓碑、本地回收目录和删除映射清理强相关的逻辑抽成独立服务，减少主 runner 继续承担删除链路细节。
+- 结果：
+  - 新增 `apps/backend/src/services/sync_delete_sync_service.py`，承载删除策略解析、删除墓碑创建/执行、活动映射保护、本地回收目录移动、删除后映射/块状态清理，以及“云端已删除”错误的幂等判断。
+  - `SyncTaskRunner` 现通过组合 `SyncDeleteSyncService` 复用这部分能力，并保留 `_enqueue_local_delete_tombstone`、`_process_pending_deletes`、`_move_to_local_trash`、`_cleanup_deleted_state` 等原私有方法作为兼容代理，现有测试和调用面无需改写。
+  - 拆分过程中补回了 `sync_runner.py` 顶部缺失的 `datetime` 导入，修复 `_parse_mtime()` 解析 ISO8601 字符串时的兼容回归。
+- 测试：
+  - `python -m pytest tests/test_sync_runner.py -k "process_pending_deletes or move_to_local_trash or pending_tombstones" -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -k "cloud_mirror" -q`
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py -q`
+- 问题：
+  - `sync_runner.py` 仍有较大的上传/下载主流程分支，下一轮应继续沿“上传文档导入/重导入”或“下载候选/导出任务”方向抽专项服务，避免在主 runner 中继续累积条件分支。
+
 ## v0.7.17-dev.15 (2026-05-22)
 
 - 目标：
