@@ -228,14 +228,14 @@ function isTaskBusyConflictError(message?: string | null): boolean {
 }
 
 export function LogCenterPage() {
-  const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflictAsync } = useConflicts();
+  const [logTab, setLogTab] = useState<"tasks" | "file-logs" | "conflicts">("tasks");
+  const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflictAsync } = useConflicts(logTab === "conflicts");
   const { toast } = useToast();
   const taskPickerRef = useRef<HTMLDivElement | null>(null);
   const conflictQueueRef = useRef<ConflictResolutionQueueItem[]>([]);
   const conflictResolutionProcessingRef = useRef(false);
   const activeConflictResolutionIdRef = useRef<string | null>(null);
 
-  const [logTab, setLogTab] = useState<"tasks" | "file-logs" | "conflicts">("tasks");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [taskPickerQuery, setTaskPickerQuery] = useState("");
@@ -259,7 +259,6 @@ export function LogCenterPage() {
 
   const selectTask = (taskId: string) => {
     setSelectedTaskId(taskId);
-    setSelectedRunId(null);
     setDetailTab("overview");
     setEventPage(1);
   };
@@ -317,6 +316,7 @@ export function LogCenterPage() {
       return mapSyncTaskDiagnostics(raw);
     },
     enabled: logTab === "tasks" && Boolean(selectedTaskId),
+    placeholderData: (previousData) => previousData,
     staleTime: 5_000,
     refetchInterval:
       logTab === "tasks" && selectedOverview?.status.state === "running"
@@ -352,12 +352,12 @@ export function LogCenterPage() {
       return mapSyncLogResponse(raw);
     },
     enabled: logTab === "tasks" && detailTab === "events" && Boolean(selectedTaskId) && Boolean(activeRunId),
+    placeholderData: (previousData) => previousData ?? { total: 0, items: [] },
     staleTime: 5_000,
     refetchInterval:
       logTab === "tasks" && detailTab === "events" && activeRunSummary?.state === "running"
         ? 5_000
         : false,
-    placeholderData: { total: 0, items: [] },
   });
 
   const selectedRun = diagnosticsQuery.data?.selected_run ?? activeRunSummary;

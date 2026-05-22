@@ -6,12 +6,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import type { ConflictItem, ConflictResolutionAction } from "../types";
 
-export function useConflicts() {
+export function useConflicts(enabled = true) {
   const qc = useQueryClient();
 
   const conflictsQuery = useQuery<ConflictItem[]>({
     queryKey: ["conflicts"],
     queryFn: () => apiFetch<ConflictItem[]>("/conflicts"),
+    enabled,
     placeholderData: [],
     staleTime: 30_000,
   });

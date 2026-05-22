@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -250,19 +250,71 @@ class SyncRunService:
     async def list_latest_by_tasks(self, task_ids: list[str]) -> dict[str, SyncRunItem]:
         if not task_ids:
             return {}
-        stmt = (
-            select(SyncRun)
+        ranked_runs = (
+            select(
+                SyncRun.run_id,
+                SyncRun.task_id,
+                SyncRun.state,
+                SyncRun.trigger_source,
+                SyncRun.started_at,
+                SyncRun.finished_at,
+                SyncRun.last_event_at,
+                SyncRun.total_files,
+                SyncRun.completed_files,
+                SyncRun.failed_files,
+                SyncRun.skipped_files,
+                SyncRun.uploaded_files,
+                SyncRun.downloaded_files,
+                SyncRun.deleted_files,
+                SyncRun.conflict_files,
+                SyncRun.delete_pending_files,
+                SyncRun.delete_failed_files,
+                SyncRun.last_error,
+                SyncRun.created_at,
+                SyncRun.updated_at,
+                func.row_number()
+                .over(
+                    partition_by=SyncRun.task_id,
+                    order_by=(SyncRun.started_at.desc(), SyncRun.updated_at.desc()),
+                )
+                .label("row_number"),
+            )
             .where(SyncRun.task_id.in_(task_ids))
-            .order_by(SyncRun.task_id.asc(), SyncRun.started_at.desc(), SyncRun.updated_at.desc())
+            .subquery()
+        )
+        stmt = (
+            select(ranked_runs)
+            .where(ranked_runs.c.row_number == 1)
+            .order_by(ranked_runs.c.task_id.asc())
         )
         try:
             async with self._session_maker() as session:
                 result = await session.execute(stmt)
-                latest: dict[str, SyncRunItem] = {}
-                for record in result.scalars().all():
-                    if record.task_id not in latest:
-                        latest[record.task_id] = self._to_item(record)
-                return latest
+                return {
+                    row.task_id: SyncRunItem(
+                        run_id=row.run_id,
+                        task_id=row.task_id,
+                        state=row.state,
+                        trigger_source=row.trigger_source,
+                        started_at=row.started_at,
+                        finished_at=row.finished_at,
+                        last_event_at=row.last_event_at,
+                        total_files=row.total_files,
+                        completed_files=row.completed_files,
+                        failed_files=row.failed_files,
+                        skipped_files=row.skipped_files,
+                        uploaded_files=row.uploaded_files,
+                        downloaded_files=row.downloaded_files,
+                        deleted_files=row.deleted_files,
+                        conflict_files=row.conflict_files,
+                        delete_pending_files=row.delete_pending_files,
+                        delete_failed_files=row.delete_failed_files,
+                        last_error=row.last_error,
+                        created_at=row.created_at,
+                        updated_at=row.updated_at,
+                    )
+                    for row in result.all()
+                }
         except SQLAlchemyError:
             logger.exception("运行摘要批量查询失败: task_ids={}", task_ids)
             return {}

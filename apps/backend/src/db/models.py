@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Float, Integer, String, Text
+from sqlalchemy import Boolean, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -100,6 +100,14 @@ class SyncTask(Base):
 
 class SyncRun(Base):
     __tablename__ = "sync_runs"
+    __table_args__ = (
+        Index(
+            "idx_sync_runs_task_started_updated",
+            "task_id",
+            "started_at",
+            "updated_at",
+        ),
+    )
 
     run_id: Mapped[str] = mapped_column(String, primary_key=True)
     task_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
@@ -120,6 +128,33 @@ class SyncRun(Base):
     delete_failed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class SyncRunEvent(Base):
+    __tablename__ = "sync_run_events"
+    __table_args__ = (
+        Index("idx_sync_run_events_run_timestamp", "run_id", "timestamp"),
+        Index("idx_sync_run_events_task_timestamp", "task_id", "timestamp"),
+        Index("idx_sync_run_events_run_status_timestamp", "run_id", "status", "timestamp"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    task_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    task_name: Mapped[str] = mapped_column(String, nullable=False, default="未命名任务")
+    run_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True, default=None)
+    timestamp: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class SyncMeta(Base):
+    __tablename__ = "sync_meta"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False)
 
 

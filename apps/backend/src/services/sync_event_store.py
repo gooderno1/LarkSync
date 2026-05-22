@@ -22,6 +22,12 @@ class SyncEventRecord:
     run_id: str | None = None
 
 
+@dataclass(frozen=True)
+class SyncEventFrame:
+    next_offset: int
+    record: SyncEventRecord | None
+
+
 class SyncEventStore:
     def __init__(self, log_file: Path | None = None) -> None:
         self._log_file = log_file or (logs_dir() / "sync-events.jsonl")
@@ -54,23 +60,16 @@ class SyncEventStore:
             return []
         records: list[SyncEventRecord] = []
         try:
-            with self._log_file.open("r", encoding="utf-8", errors="replace") as handle:
-                for raw in handle:
-                    line = raw.strip()
-                    if not line:
-                        continue
-                    try:
-                        payload = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    record = _record_from_payload(payload)
-                    if record is None:
-                        continue
-                    records.append(record)
+            for frame in self.iter_frames():
+                if frame.record is not None:
+                    records.append(frame.record)
         except Exception:
             logger.exception("同步日志读取失败")
             return []
         return records
+
+    def iter_frames(self, *, start_offset: int = 0) -> Iterable[SyncEventFrame]:
+        yield from self._iter_frames_stream(start_offset=start_offset)
 
     def read_events(
         self,
@@ -207,26 +206,55 @@ class SyncEventStore:
         except FileNotFoundError:
             return 0
 
-    def _iter_records_stream(self) -> Iterable[SyncEventRecord]:
-        if not self._log_file.exists():
-            return []
+    def file_mtime_ns(self) -> int:
         try:
-            with self._log_file.open("r", encoding="utf-8", errors="replace") as handle:
-                for raw in handle:
+            return self._log_file.stat().st_mtime_ns
+        except FileNotFoundError:
+            return 0
+
+    def _iter_records_stream(self) -> Iterable[SyncEventRecord]:
+        for frame in self._iter_frames_stream():
+            if frame.record is not None:
+                yield frame.record
+
+    def _iter_frames_stream(self, *, start_offset: int = 0) -> Iterable[SyncEventFrame]:
+        if not self._log_file.exists():
+            return
+        try:
+            with self._log_file.open("rb") as handle:
+                file_size = handle.seek(0, 2)
+                safe_offset = min(max(0, int(start_offset)), file_size)
+                if safe_offset > 0:
+                    handle.seek(safe_offset - 1)
+                    if handle.read(1) != b"\n":
+                        logger.warning(
+                            "同步日志断点不在行边界，回退到文件开头: file={} offset={}",
+                            self._log_file,
+                            safe_offset,
+                        )
+                        safe_offset = 0
+                handle.seek(safe_offset)
+                while True:
+                    raw = handle.readline()
+                    if not raw:
+                        break
+                    next_offset = handle.tell()
                     line = raw.strip()
                     if not line:
+                        yield SyncEventFrame(next_offset=next_offset, record=None)
                         continue
                     try:
-                        payload = json.loads(line)
+                        payload = json.loads(line.decode("utf-8", errors="replace"))
                     except json.JSONDecodeError:
+                        yield SyncEventFrame(next_offset=next_offset, record=None)
                         continue
-                    record = _record_from_payload(payload)
-                    if record is None:
-                        continue
-                    yield record
+                    yield SyncEventFrame(
+                        next_offset=next_offset,
+                        record=_record_from_payload(payload),
+                    )
         except Exception:
             logger.exception("同步日志读取失败")
-            return []
+            return
 
 
 def _record_from_payload(payload: object) -> SyncEventRecord | None:
@@ -259,4 +287,4 @@ def _record_from_payload(payload: object) -> SyncEventRecord | None:
     )
 
 
-__all__ = ["SyncEventRecord", "SyncEventStore"]
+__all__ = ["SyncEventFrame", "SyncEventRecord", "SyncEventStore"]

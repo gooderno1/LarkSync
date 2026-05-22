@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from src.core.config import ConfigManager
 from .base import Base
+from . import models as _models  # noqa: F401  # 确保所有 ORM 模型在 create_all 前完成注册
 
 
 _ENGINE_CACHE: dict[str, AsyncEngine] = {}
@@ -39,132 +40,7 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="update_mode",
-                column_type="TEXT",
-                default_value="auto",
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="md_sync_mode",
-                column_type="TEXT",
-                default_value="enhanced",
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="ignored_subpaths",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="cloud_folder_name",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="owner_device_id",
-                column_type="TEXT",
-                default_value="",
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="owner_open_id",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="is_test",
-                column_type="INTEGER",
-                default_value=False,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="delete_policy",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="delete_grace_minutes",
-                column_type="INTEGER",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="last_run_at",
-                column_type="REAL",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="cloud_parent_token",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="local_hash",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="local_size",
-                column_type="INTEGER",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="local_mtime",
-                column_type="REAL",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="cloud_revision",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="cloud_mtime",
-                column_type="REAL",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="local_resource_signature",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="resource_sync_revision",
-                column_type="TEXT",
-                default_value=None,
-            )
+            await _ensure_schema(conn)
         return engine
     except DatabaseError as exc:
         if not _is_sqlite_corrupt_error(exc):
@@ -177,132 +53,7 @@ async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
         engine = create_engine(database_url)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="update_mode",
-                column_type="TEXT",
-                default_value="auto",
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="md_sync_mode",
-                column_type="TEXT",
-                default_value="enhanced",
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="ignored_subpaths",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="cloud_folder_name",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="owner_device_id",
-                column_type="TEXT",
-                default_value="",
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="owner_open_id",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="is_test",
-                column_type="INTEGER",
-                default_value=False,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="delete_policy",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="delete_grace_minutes",
-                column_type="INTEGER",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_tasks",
-                column="last_run_at",
-                column_type="REAL",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="cloud_parent_token",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="local_hash",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="local_size",
-                column_type="INTEGER",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="local_mtime",
-                column_type="REAL",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="cloud_revision",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="cloud_mtime",
-                column_type="REAL",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="local_resource_signature",
-                column_type="TEXT",
-                default_value=None,
-            )
-            await _ensure_column(
-                conn,
-                table="sync_links",
-                column="resource_sync_revision",
-                column_type="TEXT",
-                default_value=None,
-            )
+            await _ensure_schema(conn)
         return engine
 
 
@@ -314,6 +65,159 @@ async def dispose_engines() -> None:
             logger.warning("释放数据库连接失败 ({}): {}", url, exc)
         finally:
             _ENGINE_CACHE.pop(url, None)
+
+
+async def _ensure_schema(conn) -> None:
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="update_mode",
+        column_type="TEXT",
+        default_value="auto",
+    )
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="md_sync_mode",
+        column_type="TEXT",
+        default_value="enhanced",
+    )
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="ignored_subpaths",
+        column_type="TEXT",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="cloud_folder_name",
+        column_type="TEXT",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="owner_device_id",
+        column_type="TEXT",
+        default_value="",
+    )
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="owner_open_id",
+        column_type="TEXT",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="is_test",
+        column_type="INTEGER",
+        default_value=False,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="delete_policy",
+        column_type="TEXT",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="delete_grace_minutes",
+        column_type="INTEGER",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_tasks",
+        column="last_run_at",
+        column_type="REAL",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_links",
+        column="cloud_parent_token",
+        column_type="TEXT",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_links",
+        column="local_hash",
+        column_type="TEXT",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_links",
+        column="local_size",
+        column_type="INTEGER",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_links",
+        column="local_mtime",
+        column_type="REAL",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_links",
+        column="cloud_revision",
+        column_type="TEXT",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_links",
+        column="cloud_mtime",
+        column_type="REAL",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_links",
+        column="local_resource_signature",
+        column_type="TEXT",
+        default_value=None,
+    )
+    await _ensure_column(
+        conn,
+        table="sync_links",
+        column="resource_sync_revision",
+        column_type="TEXT",
+        default_value=None,
+    )
+    await _ensure_index(
+        conn,
+        table="sync_runs",
+        index_name="idx_sync_runs_task_started_updated",
+        columns_sql="task_id, started_at DESC, updated_at DESC",
+    )
+    await _ensure_index(
+        conn,
+        table="sync_run_events",
+        index_name="idx_sync_run_events_run_timestamp",
+        columns_sql="run_id, timestamp DESC",
+    )
+    await _ensure_index(
+        conn,
+        table="sync_run_events",
+        index_name="idx_sync_run_events_task_timestamp",
+        columns_sql="task_id, timestamp DESC",
+    )
+    await _ensure_index(
+        conn,
+        table="sync_run_events",
+        index_name="idx_sync_run_events_run_status_timestamp",
+        columns_sql="run_id, status, timestamp DESC",
+    )
 
 
 async def _ensure_column(
@@ -333,6 +237,22 @@ async def _ensure_column(
         text(
             f"ALTER TABLE {table} ADD COLUMN {column} {column_type} DEFAULT {default_literal}"
         )
+    )
+
+
+async def _ensure_index(
+    conn,
+    *,
+    table: str,
+    index_name: str,
+    columns_sql: str,
+) -> None:
+    result = await conn.execute(text(f"PRAGMA index_list({table})"))
+    indexes = {str(row[1]) for row in result}
+    if index_name in indexes:
+        return
+    await conn.execute(
+        text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} ({columns_sql})")
     )
 
 

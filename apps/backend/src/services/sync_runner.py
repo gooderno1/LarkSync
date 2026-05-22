@@ -8,6 +8,7 @@ import re
 import shutil
 import time
 import uuid
+from contextlib import suppress
 from datetime import datetime
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -36,6 +37,7 @@ from src.services.conflict_service import ConflictService
 from src.services.sync_block_service import BlockStateItem, SyncBlockService
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
+from src.services.sync_run_event_service import SyncRunEventService
 from src.services.sync_run_service import SyncRunService
 from src.services.sync_task_service import SyncTaskItem
 from src.services.sync_tombstone_service import SyncTombstoneService
@@ -164,6 +166,7 @@ class SyncTaskRunner:
         import_task_service: ImportTaskService | None = None,
         export_task_service: ExportTaskService | None = None,
         event_store: SyncEventStore | None = None,
+        run_event_service: SyncRunEventService | None = None,
         run_service: SyncRunService | None = None,
         task_service: object | None = None,
         conflict_service: ConflictService | None = None,
@@ -186,6 +189,7 @@ class SyncTaskRunner:
         self._import_task_service = import_task_service
         self._export_task_service = export_task_service
         self._event_store = event_store or SyncEventStore()
+        self._run_event_service = run_event_service or SyncRunEventService()
         self._run_service = run_service or SyncRunService()
         self._task_service = task_service
         self._conflict_service = conflict_service or ConflictService()
@@ -207,6 +211,11 @@ class SyncTaskRunner:
         self._initial_upload_scanned: set[str] = set()
         # 缓存: (task_id, relative_dir_posix) -> cloud_folder_token
         self._cloud_folder_cache: dict[tuple[str, str], str] = {}
+        self._pending_event_records: list[SyncEventRecord] = []
+        self._event_flush_task: asyncio.Task[None] | None = None
+        self._event_flush_lock: asyncio.Lock | None = None
+        self._event_flush_delay_seconds = 0.25
+        self._event_flush_batch_size = 100
 
     def get_status(self, task_id: str) -> SyncTaskStatus:
         return self._statuses.get(task_id) or SyncTaskStatus(task_id=task_id)
@@ -239,17 +248,62 @@ class SyncTaskRunner:
             if task_info and task_info.name
             else (task_info.local_path if task_info else "未命名任务")
         )
-        self._event_store.append(
-            SyncEventRecord(
-                timestamp=event.timestamp,
-                task_id=status.task_id,
-                task_name=task_name,
-                status=event.status,
-                path=event.path,
-                message=event.message,
-                run_id=status.current_run_id if status.current_run_id else None,
-            )
+        record = SyncEventRecord(
+            timestamp=event.timestamp,
+            task_id=status.task_id,
+            task_name=task_name,
+            status=event.status,
+            path=event.path,
+            message=event.message,
+            run_id=status.current_run_id if status.current_run_id else None,
         )
+        self._event_store.append(record)
+        self._enqueue_persisted_event(record)
+
+    def _enqueue_persisted_event(self, record: SyncEventRecord) -> None:
+        self._pending_event_records.append(record)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if len(self._pending_event_records) >= self._event_flush_batch_size:
+            task = self._event_flush_task
+            if task and not task.done():
+                task.cancel()
+            self._event_flush_task = loop.create_task(
+                self._flush_pending_events(delay=0.0)
+            )
+            return
+        if self._event_flush_task is None or self._event_flush_task.done():
+            self._event_flush_task = loop.create_task(
+                self._flush_pending_events(delay=self._event_flush_delay_seconds)
+            )
+
+    async def _flush_pending_events(self, *, delay: float) -> None:
+        if delay > 0:
+            await asyncio.sleep(delay)
+        lock = self._event_flush_lock
+        if lock is None:
+            lock = asyncio.Lock()
+            self._event_flush_lock = lock
+        async with lock:
+            while self._pending_event_records:
+                batch = self._pending_event_records[: self._event_flush_batch_size]
+                del self._pending_event_records[: self._event_flush_batch_size]
+                try:
+                    await self._run_event_service.append_batch(batch)
+                except Exception:
+                    logger.exception("运行事件批量落库失败")
+        self._event_flush_task = None
+
+    async def _flush_pending_events_now(self) -> None:
+        task = self._event_flush_task
+        if task and not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        if self._pending_event_records:
+            await self._flush_pending_events(delay=0.0)
 
     def ensure_watcher(self, task: SyncTaskItem) -> None:
         self._ensure_watcher(task)
@@ -717,6 +771,7 @@ class SyncTaskRunner:
     async def _finalize_run_status(
         self, task: SyncTaskItem, status: SyncTaskStatus
     ) -> None:
+        await self._flush_pending_events_now()
         await self._persist_run_finished(task, status)
         if status.state != "cancelled":
             await self._mark_task_run(task)

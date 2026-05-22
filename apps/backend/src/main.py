@@ -25,10 +25,16 @@ from src.api import (
 from src.core.logging import init_logging
 from src.db.session import init_db
 from src.api.watcher import watcher_manager
-from src.api.sync_tasks import runner as sync_runner, service as sync_task_service
+from src.api.sync_tasks import (
+    event_store,
+    runner as sync_runner,
+    run_event_service,
+    service as sync_task_service,
+)
 from src.services.sync_scheduler import SyncScheduler
 from src.services.conflict_service import ConflictService
 from src.core.paths import bundle_root
+from src.services.sync_log_maintenance_service import SyncLogMaintenanceService
 from src.services.update_scheduler import UpdateScheduler
 
 app = FastAPI(title="LarkSync API")
@@ -74,9 +80,14 @@ async def _unhandled_exception_handler(request: Request, exc: Exception):
 
 sync_scheduler = SyncScheduler(runner=sync_runner, task_service=sync_task_service)
 conflict_service = ConflictService()
+log_maintenance_service = SyncLogMaintenanceService(
+    run_event_service=run_event_service,
+    event_store=event_store,
+)
 update_scheduler = UpdateScheduler()
 app.state.sync_scheduler = sync_scheduler
 app.state.sync_runner = sync_runner
+app.state.log_maintenance_service = log_maintenance_service
 app.state.update_scheduler = update_scheduler
 
 app.add_middleware(
@@ -151,6 +162,7 @@ async def startup_event() -> None:
     init_logging()
     watcher_manager.set_loop(asyncio.get_running_loop())
     await init_db()
+    await log_maintenance_service.start()
     await sync_scheduler.start()
     await update_scheduler.start()
     if _FRONTEND_DIST.is_dir():
@@ -161,6 +173,7 @@ async def startup_event() -> None:
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
+    await log_maintenance_service.stop()
     await sync_scheduler.stop()
     await update_scheduler.stop()
 

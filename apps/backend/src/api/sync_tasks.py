@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
+from loguru import logger
 from pydantic import BaseModel, Field
 
 from src.core.config import ConfigManager, DeletePolicy, SyncMode
@@ -12,6 +13,10 @@ from src.services.docx_service import DocxService, DocxServiceError
 from src.services.log_reader import prune_log_file, read_log_entries
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_link_service import SyncLinkService
+from src.services.sync_run_event_service import (
+    SyncRunEventBackfillState,
+    SyncRunEventService,
+)
 from src.services.sync_run_service import SyncRunItem, SyncRunService
 from src.services.sync_runner import SyncFileEvent, SyncTaskRunner, SyncTaskStatus
 from src.services.sync_task_service import (
@@ -102,6 +107,7 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 service = SyncTaskService()
 runner = SyncTaskRunner(task_service=service)
 event_store = SyncEventStore()
+run_event_service = SyncRunEventService()
 run_service = SyncRunService()
 _PROBLEM_STATUSES = {"failed", "delete_failed", "conflict", "cancelled"}
 _TERMINAL_STATUSES = {"success", "failed", "cancelled"}
@@ -229,6 +235,82 @@ def _sync_log_entry_from_record(record: SyncEventRecord) -> SyncLogEntry:
         path=record.path,
         message=record.message,
         run_id=record.run_id,
+    )
+
+
+async def get_persisted_run_event_backfill_state() -> SyncRunEventBackfillState | None:
+    try:
+        return await run_event_service.get_backfill_state(event_store)
+    except Exception:
+        logger.exception("读取运行事件回填状态失败")
+        return None
+
+
+async def _read_sync_events_db_first(
+    *,
+    limit: int,
+    offset: int,
+    status: str,
+    statuses: list[str] | None = None,
+    search: str,
+    task_id: str,
+    task_ids: list[str] | None = None,
+    run_id: str = "",
+    run_ids: list[str] | None = None,
+    order: str = "desc",
+) -> tuple[int, list[SyncEventRecord]]:
+    backfill_state = await get_persisted_run_event_backfill_state()
+    try:
+        total, records = await run_event_service.read_events(
+            limit=limit,
+            offset=offset,
+            status=status,
+            statuses=statuses,
+            search=search,
+            task_id=task_id,
+            task_ids=task_ids,
+            run_id=run_id,
+            run_ids=run_ids,
+            order=order,
+            suppress_errors=False,
+        )
+    except Exception:
+        logger.exception("运行事件数据库查询失败，回退 JSONL")
+        return event_store.read_events(
+            limit=limit,
+            offset=offset,
+            status=status,
+            statuses=statuses,
+            search=search,
+            task_id=task_id,
+            task_ids=task_ids,
+            run_id=run_id,
+            run_ids=run_ids,
+            order=order,
+        )
+    if total > 0:
+        return total, records
+
+    if backfill_state is not None and backfill_state.completed:
+        return total, records
+
+    logger.debug(
+        "运行事件回填未完成，回退读取 sync-events.jsonl: task_id={} run_id={} search={}",
+        task_id,
+        run_id,
+        search,
+    )
+    return event_store.read_events(
+        limit=limit,
+        offset=offset,
+        status=status,
+        statuses=statuses,
+        search=search,
+        task_id=task_id,
+        task_ids=task_ids,
+        run_id=run_id,
+        run_ids=run_ids,
+        order=order,
     )
 
 
@@ -674,12 +756,16 @@ async def get_task_diagnostics(
     )
     should_scan_history_fallback = bool(run_id.strip()) or include_events or include_problems
     if not run_summaries and item.last_run_at and should_scan_history_fallback:
-        _, task_records = event_store.read_events(
+        _, task_records = await _read_sync_events_db_first(
             limit=5000,
             offset=0,
             status="",
+            statuses=[],
             search="",
             task_id=task_id,
+            task_ids=[],
+            run_id="",
+            run_ids=[],
             order="desc",
         )
         run_summaries = await _load_run_summaries(
@@ -696,13 +782,16 @@ async def get_task_diagnostics(
     selected_run_records: list[SyncEventRecord] = []
     if selected_run_id and (include_events or include_problems):
         scan_limit = max(limit if include_events else 0, 1000 if include_problems else 0, 100)
-        _, selected_run_records = event_store.read_events(
+        _, selected_run_records = await _read_sync_events_db_first(
             limit=min(scan_limit, 5000),
             offset=0,
             status="",
+            statuses=[],
             search="",
             task_id=task_id,
+            task_ids=[],
             run_id=selected_run_id,
+            run_ids=[],
             order="desc",
         )
     problem_records = [
@@ -903,9 +992,7 @@ async def read_sync_logs(
     config = ConfigManager.get().config
     retention_days = int(config.sync_log_retention_days or 0)
     warn_size_mb = int(config.sync_log_warn_size_mb or 0)
-    if retention_days > 0:
-        event_store.prune(retention_days=retention_days, min_interval_seconds=120)
-    total, entries = event_store.read_events(
+    total, entries = await _read_sync_events_db_first(
         limit=limit,
         offset=offset,
         status=status,
@@ -919,6 +1006,7 @@ async def read_sync_logs(
     )
     items = [_sync_log_entry_from_record(entry) for entry in entries]
     file_size = event_store.file_size_bytes()
+    backfill_state = await get_persisted_run_event_backfill_state()
     warning: str | None = None
     if warn_size_mb > 0:
         threshold = warn_size_mb * 1024 * 1024
@@ -937,6 +1025,10 @@ async def read_sync_logs(
         "file_size_bytes": file_size,
         "retention_days": retention_days,
         "warn_size_mb": warn_size_mb,
+        "backfill_status": backfill_state.status if backfill_state else "unknown",
+        "backfill_completed": backfill_state.completed if backfill_state else False,
+        "backfill_offset": backfill_state.offset if backfill_state else 0,
+        "backfill_file_size": backfill_state.log_size if backfill_state else file_size,
     }
     return SyncLogResponse(total=total, items=items, warning=warning, meta=meta)
 

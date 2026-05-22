@@ -11,6 +11,7 @@ from src.db.session import (
     _sqlite_literal,
     create_engine,
     dispose_engines,
+    init_db,
 )
 
 
@@ -65,3 +66,31 @@ async def test_sqlite_pragmas_applied(tmp_path: Path) -> None:
     assert str(journal_mode).lower() == "wal"
     assert int(busy_timeout) == 5000
     assert int(foreign_keys) == 1
+
+
+@pytest.mark.asyncio
+async def test_init_db_creates_run_event_tables(tmp_path: Path) -> None:
+    db_path = tmp_path / "larksync.db"
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+    engine = await init_db(url)
+    async with engine.begin() as conn:
+        tables = {
+            row[0]
+            for row in (await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))).all()
+        }
+        sync_run_indexes = {
+            row[1]
+            for row in (await conn.execute(text("PRAGMA index_list(sync_runs)"))).all()
+        }
+        sync_run_event_indexes = {
+            row[1]
+            for row in (await conn.execute(text("PRAGMA index_list(sync_run_events)"))).all()
+        }
+    await dispose_engines()
+    assert "sync_runs" in tables
+    assert "sync_run_events" in tables
+    assert "sync_meta" in tables
+    assert "idx_sync_runs_task_started_updated" in sync_run_indexes
+    assert "idx_sync_run_events_run_timestamp" in sync_run_event_indexes
+    assert "idx_sync_run_events_task_timestamp" in sync_run_event_indexes
+    assert "idx_sync_run_events_run_status_timestamp" in sync_run_event_indexes
