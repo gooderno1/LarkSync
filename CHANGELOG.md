@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.13 refactor(frontend): 将 `TasksPage` 和 `NewTaskModal` 拆成独立任务卡片、空态、向导步骤组件，并新增 `taskManagement` / `newTaskWizard` helper 测试与组件级 smoke test，继续推进前端页面组件化治理
+
 [2026-05-22] v0.7.17-dev.12 refactor(frontend): 将 `SettingsPage` 拆成 `OAuth / 同步策略 / 自动更新 / 忽略目录 / 维护工具` 等独立面板组件，并新增组件级 smoke test，继续推进前端页面组件化收口
 
 [2026-05-22] v0.7.17-dev.11 refactor(frontend): 将日志中心概览排序、`runAlert` 和展示派生状态从 `useLogCenterTaskDiagnostics` 下沉到 `taskDiagnosticsState` helper，并新增独立测试，继续把主诊断 hook 压向纯编排层

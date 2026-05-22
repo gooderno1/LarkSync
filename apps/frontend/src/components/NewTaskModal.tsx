@@ -5,14 +5,17 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { apiFetch } from "../lib/api";
+import { buildCreateTaskPayload, resolveManualCloudSelection } from "../lib/newTaskWizard";
 import { useDriveTree } from "../hooks/useDriveTree";
 import { useAuth } from "../hooks/useAuth";
-import { mdSyncModeLabels, modeLabels, syncModeSupportsUpload, updateModeLabels } from "../lib/constants";
-import { TreeNode } from "./TreeNode";
-import { IconRefresh, IconFolder, IconCloud, IconArrowRightLeft, IconArrowDown, IconArrowUp } from "./Icons";
+import { syncModeSupportsUpload } from "../lib/constants";
 import { useToast } from "./ui/toast";
 import { cn } from "../lib/utils";
 import type { CloudSelection } from "../types";
+import { NewTaskCloudStep } from "./tasks/NewTaskCloudStep";
+import { NewTaskLocalStep } from "./tasks/NewTaskLocalStep";
+import { NewTaskStrategyStep } from "./tasks/NewTaskStrategyStep";
+import { NewTaskWizardStepIndicator } from "./tasks/NewTaskWizardStepIndicator";
 
 type Props = {
   open: boolean;
@@ -65,25 +68,18 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
     setTaskCloudToken(sel.token);
   };
 
-  const extractFolderToken = (value: string): string | null => {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const urlMatch = trimmed.match(/folder\/([A-Za-z0-9_-]+)(?:[/?#]|$)/);
-    if (urlMatch) return urlMatch[1];
-    if (/^[A-Za-z0-9_-]+$/.test(trimmed)) return trimmed;
-    return null;
-  };
-
   const applyManualCloud = () => {
-    const token = extractFolderToken(manualCloudInput);
-    if (!token) {
-      setManualCloudError("未识别到有效的共享链接或 Token。");
+    const { selection, error: nextError } = resolveManualCloudSelection(
+      manualCloudInput,
+      manualCloudName
+    );
+    if (!selection) {
+      setManualCloudError(nextError);
       return;
     }
     setManualCloudError(null);
-    const label = manualCloudName.trim() || token;
-    setSelectedCloud({ token, name: label, path: label });
-    setTaskCloudToken(token);
+    setSelectedCloud(selection);
+    setTaskCloudToken(selection.token);
   };
 
   const handleCreate = async () => {
@@ -97,22 +93,22 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
       await apiFetch("/sync/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: taskName.trim() || null,
-          local_path: taskLocalPath.trim(),
-          cloud_folder_token: taskCloudToken.trim(),
-          cloud_folder_name: selectedCloud?.path || null,
-          base_path: taskBasePath.trim() || null,
-          sync_mode: taskSyncMode,
-          update_mode: taskUpdateMode,
-          md_sync_mode: taskUploadEnabled ? taskMdSyncMode : "download_only",
-          delete_policy: taskDeletePolicy,
-          delete_grace_minutes:
-            taskDeletePolicy === "strict"
-              ? 0
-              : Math.max(0, Number.parseInt(taskDeleteGraceMinutes || "0", 10) || 0),
-          enabled: taskEnabled,
-        }),
+        body: JSON.stringify(
+          buildCreateTaskPayload({
+            taskName,
+            taskLocalPath,
+            taskCloudToken,
+            selectedCloud,
+            taskBasePath,
+            taskSyncMode,
+            taskUpdateMode,
+            taskMdSyncMode,
+            taskUploadEnabled,
+            taskDeletePolicy,
+            taskDeleteGraceMinutes,
+            taskEnabled,
+          })
+        ),
       });
       toast("任务创建成功", "success");
       resetAndClose();
@@ -148,12 +144,6 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
 
   const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF] placeholder:text-zinc-600";
 
-  const stepMeta = [
-    { num: 1, label: "选择本地目录", icon: IconFolder, done: !!taskLocalPath.trim() },
-    { num: 2, label: "选择云端目录", icon: IconCloud, done: !!taskCloudToken.trim() },
-    { num: 3, label: "配置与确认", icon: IconArrowRightLeft, done: false },
-  ];
-
   const modal = (
     <div className="fixed inset-0 z-50 bg-black/50">
         <div className="flex min-h-full items-center justify-center overflow-y-auto px-4 py-6">
@@ -169,331 +159,75 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
           </button>
         </div>
 
-        {/* Step Indicator */}
-        <div className="flex border-b border-zinc-800">
-          {stepMeta.map((s) => {
-            const isActive = step === s.num;
-            const isPast = step > s.num;
-            return (
-              <button
-                key={s.num}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-2.5 px-4 py-3.5 text-xs font-medium transition",
-                  isActive
-                    ? "border-b-2 border-[#3370FF] text-[#3370FF] bg-[#3370FF]/5"
-                    : isPast
-                      ? "text-emerald-400"
-                      : "text-zinc-500"
-                )}
-                onClick={() => setStep(s.num)}
-                type="button"
-              >
-                <span className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold",
-                  isActive ? "bg-[#3370FF] text-white" : isPast ? "bg-emerald-500/20 text-emerald-400" : "bg-zinc-800 text-zinc-500"
-                )}>
-                  {isPast ? "✓" : s.num}
-                </span>
-                {s.label}
-              </button>
-            );
-          })}
-        </div>
+        <NewTaskWizardStepIndicator
+          step={step}
+          taskLocalPath={taskLocalPath}
+          taskCloudToken={taskCloudToken}
+          onSelectStep={setStep}
+        />
 
         {/* Content */}
         <div className="px-6 py-5">
           {/* Step 1: Local */}
           {step === 1 ? (
-            <div className="space-y-5">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">任务名称 <span className="text-zinc-600">（可选）</span></label>
-                <input className={inputCls} placeholder="例如：笔记同步" value={taskName} onChange={(e) => setTaskName(e.target.value)} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">本地同步目录</label>
-                <div className="flex gap-2">
-                  <input className={`flex-1 ${inputCls}`} placeholder="点击右侧按钮选择目录" value={taskLocalPath} onChange={(e) => setTaskLocalPath(e.target.value)} />
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 px-4 py-2.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-700"
-                    onClick={pickLocalFolder}
-                    type="button"
-                  >
-                    <IconFolder className="h-3.5 w-3.5" />
-                    {folderPickLoading ? "选择中..." : "浏览"}
-                  </button>
-                </div>
-                {folderPickError ? <p className="mt-1.5 text-xs text-rose-400">{folderPickError}</p> : null}
-                {taskLocalPath ? (
-                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
-                    <IconFolder className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{taskLocalPath}</span>
-                  </div>
-                ) : null}
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">Base Path <span className="text-zinc-600">（可选，默认同本地目录）</span></label>
-                <input className={inputCls} placeholder="用于计算相对路径" value={taskBasePath} onChange={(e) => setTaskBasePath(e.target.value)} />
-              </div>
-            </div>
+            <NewTaskLocalStep
+              inputCls={inputCls}
+              taskName={taskName}
+              taskLocalPath={taskLocalPath}
+              taskBasePath={taskBasePath}
+              folderPickLoading={folderPickLoading}
+              folderPickError={folderPickError}
+              onTaskNameChange={setTaskName}
+              onTaskLocalPathChange={setTaskLocalPath}
+              onTaskBasePathChange={setTaskBasePath}
+              onPickLocalFolder={pickLocalFolder}
+            />
           ) : null}
 
           {/* Step 2: Cloud */}
           {step === 2 ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-400">选择飞书云端目录</label>
-                <button className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200" onClick={refreshTree} type="button">
-                  <IconRefresh className="h-3 w-3" /> 刷新
-                </button>
-              </div>
-              <div className="max-h-[320px] overflow-auto rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-                {treeLoading ? (
-                  <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-6 animate-pulse rounded bg-zinc-800/50" />)}</div>
-                ) : treeError ? (
-                  <div className="space-y-2">
-                    <p className="text-sm text-rose-400">{treeError}</p>
-                    {(treeError.includes("Unauthorized") || treeError.includes("权限") || treeError.includes("permission")) && (
-                      <div className="space-y-1.5 rounded-lg border border-amber-500/40 bg-amber-500/20 p-3 text-xs">
-                        <p className="font-semibold text-amber-300">权限不足，请按以下步骤操作：</p>
-                        <ol className="list-decimal list-inside space-y-1 text-zinc-200">
-                          <li>在飞书开发者后台确认已添加 <code className="bg-zinc-800 px-1 rounded">drive:drive</code> 等权限</li>
-                          <li>进入「版本管理与发布」→ 创建版本并发布应用</li>
-                          <li>回到 LarkSync → 点击「退出登录」清除旧令牌</li>
-                          <li>重新点击「飞书授权登录」完成授权</li>
-                        </ol>
-                        <a href="https://open.feishu.cn/document/uAjLw4CM/ugTN1YjL4UTN24CO1UjN/trouble-shooting/how-to-resolve-error-99991679"
-                           target="_blank" rel="noopener noreferrer"
-                           className="mt-1 inline-block font-medium text-amber-300 underline hover:text-amber-200">
-                          查看飞书官方排查指南 →
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                ) : tree ? (
-                  <ul className="space-y-3">
-                    <TreeNode node={tree} selectable selectedToken={taskCloudToken} onSelect={selectCloudFolder} />
-                  </ul>
-                ) : (
-                  <div className="py-6 text-center">
-                    <IconCloud className="mx-auto h-8 w-8 text-zinc-700" />
-                    <p className="mt-2 text-sm text-zinc-500">暂无目录数据，请先刷新。</p>
-                  </div>
-                )}
-              </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 space-y-3">
-                <div>
-                  <p className="text-xs font-medium text-zinc-400">共享链接 / Token</p>
-                  <p className="mt-1 text-[11px] text-zinc-600">非所有者的共享文件夹可能不会出现在目录树中，请使用分享链接或 Token 创建同步。</p>
-                </div>
-                <input
-                  className={inputCls}
-                  placeholder="例如：https://.../drive/folder/xxxxxxxx 或 Token"
-                  value={manualCloudInput}
-                  onChange={(e) => {
-                    setManualCloudInput(e.target.value);
-                    setManualCloudError(null);
-                  }}
-                />
-                <input
-                  className={inputCls}
-                  placeholder="云端目录显示名称（可选）"
-                  value={manualCloudName}
-                  onChange={(e) => setManualCloudName(e.target.value)}
-                />
-                <div className="flex items-center gap-3">
-                  <button
-                    className="rounded-lg bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 hover:bg-zinc-700"
-                    onClick={applyManualCloud}
-                    type="button"
-                  >
-                    使用链接
-                  </button>
-                  {manualCloudError ? <span className="text-xs text-rose-400">{manualCloudError}</span> : null}
-                </div>
-              </div>
-              {selectedCloud ? (
-                <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2.5 text-xs text-emerald-300">
-                  <IconCloud className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{selectedCloud.path}</span>
-                </div>
-              ) : null}
-            </div>
+            <NewTaskCloudStep
+              inputCls={inputCls}
+              tree={tree}
+              treeLoading={treeLoading}
+              treeError={treeError}
+              taskCloudToken={taskCloudToken}
+              selectedCloud={selectedCloud}
+              manualCloudInput={manualCloudInput}
+              manualCloudName={manualCloudName}
+              manualCloudError={manualCloudError}
+              onRefreshTree={refreshTree}
+              onSelectCloudFolder={selectCloudFolder}
+              onManualCloudInputChange={(value) => {
+                setManualCloudInput(value);
+                setManualCloudError(null);
+              }}
+              onManualCloudNameChange={setManualCloudName}
+              onApplyManualCloud={applyManualCloud}
+            />
           ) : null}
 
           {/* Step 3: Strategy + Confirm */}
           {step === 3 ? (
-            <div className="space-y-5">
-              {/* Sync mode cards */}
-              <div>
-                <label className="mb-2 block text-xs font-medium text-zinc-400">同步模式</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: "bidirectional", label: "双向同步", Icon: IconArrowRightLeft },
-                    { value: "download_only", label: "仅下载", Icon: IconArrowDown },
-                    { value: "upload_only", label: "仅上传", Icon: IconArrowUp },
-                  ].map(({ value, label, Icon }) => (
-                    <button
-                      key={value}
-                      className={cn(
-                        "flex flex-col items-center gap-1.5 rounded-xl border p-3.5 transition",
-                        taskSyncMode === value
-                          ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                          : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
-                      )}
-                      onClick={() => {
-                        setTaskSyncMode(value);
-                        if (value === "download_only") {
-                          setTaskMdSyncMode("download_only");
-                        }
-                      }}
-                      type="button"
-                    >
-                      <Icon className="h-5 w-5" />
-                      <span className="text-xs font-medium">{label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Update mode */}
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">更新模式</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { value: "auto", label: "自动", desc: "智能选择" },
-                    { value: "partial", label: "局部更新", desc: "仅更新变更块" },
-                    { value: "full", label: "全量覆盖", desc: "完整替换" },
-                  ].map(({ value, label, desc }) => (
-                    <button
-                      key={value}
-                      className={cn(
-                        "rounded-xl border p-3 text-center transition",
-                        taskUpdateMode === value
-                          ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                          : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
-                      )}
-                      onClick={() => setTaskUpdateMode(value)}
-                      type="button"
-                    >
-                      <p className="text-xs font-medium">{label}</p>
-                      <p className="mt-0.5 text-[10px] text-zinc-600">{desc}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-zinc-400">MD 上传模式</label>
-                {taskUploadEnabled ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                      {[
-                        {
-                          value: "enhanced",
-                          label: "增强 MD 上传",
-                          desc: "上传云文档并维护云端 MD 副本",
-                        },
-                        {
-                          value: "download_only",
-                          label: "MD 仅下载",
-                          desc: "仅云端下行，不执行本地 MD 上行",
-                        },
-                        {
-                          value: "doc_only",
-                          label: "仅云文档上传",
-                          desc: "仅更新云文档，不保留云端 MD 副本",
-                        },
-                      ].map(({ value, label, desc }) => (
-                        <button
-                          key={value}
-                          className={cn(
-                            "rounded-xl border p-3 text-left transition",
-                            taskMdSyncMode === value
-                              ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                              : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
-                          )}
-                          onClick={() =>
-                            setTaskMdSyncMode(
-                              value as "enhanced" | "download_only" | "doc_only"
-                            )
-                          }
-                          type="button"
-                        >
-                          <p className="text-xs font-medium">{label}</p>
-                          <p className="mt-0.5 text-[10px] text-zinc-600">{desc}</p>
-                        </button>
-                      ))}
-                    </div>
-                    {taskMdSyncMode === "doc_only" ? (
-                      <p className="mt-2 text-[11px] text-amber-300">
-                        提示：仅云文档上传会经历 Markdown 转换，复杂内容可能存在格式损耗风险。
-                      </p>
-                    ) : null}
-                  </>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 px-4 py-3 text-xs text-zinc-500">
-                    当前任务为仅下载，不会执行任何本地 Markdown 上行，因此无需配置 MD 上传模式。
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">删除同步策略</label>
-                  <select
-                    className={inputCls}
-                    value={taskDeletePolicy}
-                    onChange={(e) =>
-                      setTaskDeletePolicy(e.target.value as "off" | "safe" | "strict")
-                    }
-                  >
-                    <option value="off">关闭（不联动）</option>
-                    <option value="safe">安全模式（宽限后）</option>
-                    <option value="strict">严格模式（立即）</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-zinc-400">删除宽限（分钟）</label>
-                  <input
-                    className={inputCls}
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={taskDeleteGraceMinutes}
-                    onChange={(e) => setTaskDeleteGraceMinutes(e.target.value)}
-                    disabled={taskDeletePolicy === "strict"}
-                  />
-                </div>
-              </div>
-
-              <label className="flex items-center gap-2.5 text-sm text-zinc-200">
-                <input type="checkbox" checked={taskEnabled} onChange={(e) => setTaskEnabled(e.target.checked)} className="accent-[#3370FF] h-4 w-4" />
-                创建后立即启用
-              </label>
-
-              {/* Summary */}
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                <p className="text-xs font-semibold text-zinc-300">任务摘要</p>
-                <div className="mt-3 grid grid-cols-2 gap-y-2 text-xs">
-                  <span className="text-zinc-500">任务名称</span>
-                  <span className="text-zinc-200 truncate">{taskName || "未命名"}</span>
-                  <span className="text-zinc-500">本地目录</span>
-                  <span className="text-zinc-200 truncate">{taskLocalPath || "—"}</span>
-                  <span className="text-zinc-500">云端目录</span>
-                  <span className="text-zinc-200 truncate">{selectedCloud?.path || "—"}</span>
-                  <span className="text-zinc-500">同步模式</span>
-                  <span className="text-zinc-200">{modeLabels[taskSyncMode]}</span>
-                  <span className="text-zinc-500">更新模式</span>
-                  <span className="text-zinc-200">{updateModeLabels[taskUpdateMode]}</span>
-                  <span className="text-zinc-500">MD 模式</span>
-                  <span className="text-zinc-200">{taskUploadEnabled ? mdSyncModeLabels[taskMdSyncMode] : "不适用（仅下载）"}</span>
-                  <span className="text-zinc-500">删除策略</span>
-                  <span className="text-zinc-200">{taskDeletePolicy}</span>
-                </div>
-              </div>
-
-              {error ? <p className="text-sm text-rose-400">错误：{error}</p> : null}
-            </div>
+            <NewTaskStrategyStep
+              inputCls={inputCls}
+              taskName={taskName}
+              taskLocalPath={taskLocalPath}
+              selectedCloud={selectedCloud}
+              taskSyncMode={taskSyncMode}
+              taskUpdateMode={taskUpdateMode}
+              taskMdSyncMode={taskMdSyncMode}
+              taskDeletePolicy={taskDeletePolicy}
+              taskDeleteGraceMinutes={taskDeleteGraceMinutes}
+              taskEnabled={taskEnabled}
+              error={error}
+              onTaskSyncModeChange={setTaskSyncMode}
+              onTaskUpdateModeChange={setTaskUpdateMode}
+              onTaskMdSyncModeChange={setTaskMdSyncMode}
+              onTaskDeletePolicyChange={setTaskDeletePolicy}
+              onTaskDeleteGraceMinutesChange={setTaskDeleteGraceMinutes}
+              onTaskEnabledChange={setTaskEnabled}
+            />
           ) : null}
         </div>
 

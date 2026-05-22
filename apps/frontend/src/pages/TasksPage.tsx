@@ -5,41 +5,14 @@
 import { useMemo, useState } from "react";
 import { useTasks } from "../hooks/useTasks";
 import { useConflicts } from "../hooks/useConflicts";
-import { formatTimestamp } from "../lib/formatters";
-import {
-  mdSyncModeLabels,
-  modeLabels,
-  syncModeSupportsUpload,
-  updateModeLabels,
-  stateLabels,
-} from "../lib/constants";
-import { computeTaskProgress } from "../lib/progress";
-import { StatusPill } from "../components/StatusPill";
-import { ModeIcon, IconRefresh, IconPlus, IconPlay, IconTrash, IconFolder, IconCloud, IconChevronDown, IconChevronRight } from "../components/Icons";
 import { NewTaskModal } from "../components/NewTaskModal";
+import { TaskCard } from "../components/tasks/TaskCard";
+import { TasksEmptyState } from "../components/tasks/TasksEmptyState";
+import { TasksPageHeader } from "../components/tasks/TasksPageHeader";
+import { parseDeleteGraceMinutes } from "../lib/taskManagement";
 import { confirm } from "../components/ui/confirm-dialog";
 import { useToast } from "../components/ui/toast";
-import { ThemeToggle } from "../components/ThemeToggle";
-import type { Tone } from "../types";
-
-function summarizePath(value: string, keepSegments = 3, maxTailChars = 48): string {
-  const text = value.trim();
-  if (!text) return "-";
-  if (text.length <= maxTailChars) return text;
-  const segments = text.split(/[\\/]+/).filter(Boolean);
-  if (segments.length >= keepSegments) {
-    return `.../${segments.slice(-keepSegments).join("/")}`;
-  }
-  return `...${text.slice(-maxTailChars)}`;
-}
-
-const pendingRealtimeStatuses = new Set(["queued", "creating", "created", "reimporting", "delete_pending"]);
-
-function deletePolicyLabel(value?: string | null): string {
-  if (value === "off") return "关闭删除联动";
-  if (value === "strict") return "严格删除";
-  return "安全删除";
-}
+import type { SyncTask } from "../types";
 
 export function TasksPage() {
   const {
@@ -82,7 +55,7 @@ export function TasksPage() {
     return mapped;
   }, [conflicts, tasks]);
 
-  const handleDelete = async (task: typeof tasks[0]) => {
+  const handleDelete = async (task: SyncTask) => {
     const ok = await confirm({
       title: "确认删除任务",
       description: `即将删除任务「${task.name || task.local_path}」，此操作不可恢复。`,
@@ -97,31 +70,13 @@ export function TasksPage() {
 
   return (
     <section className="space-y-6 animate-fade-up">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-        <div>
-          <h2 className="text-lg font-semibold text-zinc-50">同步任务</h2>
-          <p className="mt-1 text-xs text-zinc-400">管理任务的同步模式、更新策略与执行状态。</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {showTestToggle ? (
-            <button
-              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-              onClick={() => setHideTestTasks((prev) => !prev)}
-              type="button"
-            >
-              {hideTestTasks ? "显示测试任务" : "隐藏测试任务"}
-            </button>
-          ) : null}
-          <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={refreshTasks} type="button">
-            <IconRefresh className="h-3.5 w-3.5" /> 刷新
-          </button>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-[#3370FF] px-4 py-2 text-xs font-semibold text-white hover:bg-[#3370FF]/80" onClick={() => setShowModal(true)} type="button">
-            <IconPlus className="h-3.5 w-3.5" /> 新建任务
-          </button>
-          <ThemeToggle />
-        </div>
-      </div>
+      <TasksPageHeader
+        showTestToggle={showTestToggle}
+        hideTestTasks={hideTestTasks}
+        onToggleTestTasks={() => setHideTestTasks((prev) => !prev)}
+        onRefresh={refreshTasks}
+        onCreate={() => setShowModal(true)}
+      />
 
       {taskError ? <p className="text-sm text-rose-400">错误：{taskError}</p> : null}
 
@@ -130,382 +85,101 @@ export function TasksPage() {
         {taskLoading ? (
           <div className="space-y-4">{[1, 2, 3].map((i) => <div key={i} className="h-48 animate-pulse rounded-2xl bg-zinc-800/30" />)}</div>
         ) : displayTasks.length === 0 ? (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 py-16 text-center">
-            <IconPlus className="mx-auto h-12 w-12 text-zinc-700" />
-            <p className="mt-4 text-sm text-zinc-500">
-              {tasks.length > 0
-                ? hideTestTasks && testTaskCount > 0
-                  ? "当前已隐藏测试任务，可点击「显示测试任务」查看。"
-                  : "暂无符合当前筛选条件的任务。"
-                : "暂无同步任务，请点击「新建任务」。"}
-            </p>
-          </div>
+          <TasksEmptyState
+            hasAnyTasks={tasks.length > 0}
+            hideTestTasks={hideTestTasks}
+            testTaskCount={testTaskCount}
+          />
         ) : (
           displayTasks.map((task) => {
             const st = statusMap[task.id];
-            const stateKey = !task.enabled ? "paused" : st?.state || "idle";
-            const progressState = computeTaskProgress(st);
-            const progress = progressState.progress;
-            const isRunning = st?.state === "running";
-            const pendingRealtimeCount = (st?.last_files || []).filter((item) => pendingRealtimeStatuses.has(item.status)).length;
             const conflictCount = Math.max(unresolvedConflictCountByTask[task.id] || 0, st?.conflict_files ?? 0);
-            const hasFailure = Boolean(
-              st?.last_error ||
-              (st?.failed_files ?? 0) > 0 ||
-              (st?.delete_failed_files ?? 0) > 0 ||
-              st?.state === "failed"
-            );
-            const healthTone: Tone = hasFailure ? "danger" : conflictCount > 0 || pendingRealtimeCount > 0 ? "warning" : isRunning ? "info" : task.enabled ? "success" : "neutral";
-            const healthLabel = hasFailure ? "需要排查" : conflictCount > 0 ? "有冲突" : pendingRealtimeCount > 0 ? "待处理" : isRunning ? "同步中" : task.enabled ? "已同步" : "已停用";
             const isExpanded = Boolean(expanded[task.id]);
-            const lastSyncTime = st?.finished_at ?? st?.started_at ?? task.last_run_at ?? null;
-            const localPathExpanded = Boolean(expandedPaths[pathKey(task.id, "local")]);
-            const cloudPathExpanded = Boolean(expandedPaths[pathKey(task.id, "cloud")]);
-            const cloudPath = task.cloud_folder_name || task.cloud_folder_token || "-";
             const effectiveSyncMode = localSyncModeMap[task.id] || task.sync_mode;
-            const taskUploadEnabled = syncModeSupportsUpload(effectiveSyncMode);
-            const effectiveMdSyncMode = (
-              localMdSyncModeMap[task.id] ||
+            const effectiveMdSyncMode = (localMdSyncModeMap[task.id] ||
               task.md_sync_mode ||
-              "enhanced"
-            ) as "enhanced" | "download_only" | "doc_only";
-            const effectiveDeletePolicy = (
-              localDeletePolicyMap[task.id] ||
+              "enhanced") as "enhanced" | "download_only" | "doc_only";
+            const effectiveDeletePolicy = (localDeletePolicyMap[task.id] ||
               (task.delete_policy as "off" | "safe" | "strict") ||
-              "safe"
-            ) as "off" | "safe" | "strict";
-            const effectiveDeleteGrace =
-              effectiveDeletePolicy === "strict"
-                ? 0
-                : Math.max(
-                    0,
-                    Number.parseInt(
-                      localDeleteGraceMap[task.id] ??
-                        String(task.delete_grace_minutes ?? 30),
-                      10
-                    ) || 0
-                  );
+              "safe") as "off" | "safe" | "strict";
+            const effectiveDeleteGrace = localDeleteGraceMap[task.id] ?? String(task.delete_grace_minutes ?? 30);
 
             return (
-              <div key={task.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
-                {/* Top row */}
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <StatusPill label={healthLabel} tone={healthTone} dot={isRunning} />
-                      <p className="text-lg font-semibold text-zinc-50">{task.name || "未命名任务"}</p>
-                    </div>
-                    <p className="text-xs text-zinc-500">
-                      {summarizePath(task.local_path, 2, 42)} 与 {summarizePath(cloudPath, 2, 42)} 保持同步
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                    <span className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-1">
-                      <ModeIcon mode={task.sync_mode} className="h-3.5 w-3.5" />
-                      {modeLabels[task.sync_mode] || task.sync_mode}
-                    </span>
-                    <span className="rounded-lg border border-zinc-700 px-3 py-1">
-                      更新：{updateModeLabels[task.update_mode || "auto"]}
-                    </span>
-                    <span className="rounded-lg border border-zinc-700 px-3 py-1">
-                      MD：{task.sync_mode === "download_only" ? "不适用（仅下载）" : mdSyncModeLabels[task.md_sync_mode || "enhanced"]}
-                    </span>
-                    <span className="rounded-lg border border-zinc-700 px-3 py-1">
-                      {deletePolicyLabel(task.delete_policy)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Path visualizer */}
-                <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                  <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-emerald-500/20 p-2 text-emerald-300"><IconFolder className="h-4 w-4" /></div>
-                      <div className="min-w-0 w-full">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] uppercase tracking-widest text-zinc-500">本地目录</p>
-                          <button
-                            className="text-[11px] text-zinc-500 hover:text-zinc-300"
-                            onClick={() =>
-                              setExpandedPaths((prev) => ({
-                                ...prev,
-                                [pathKey(task.id, "local")]: !prev[pathKey(task.id, "local")],
-                              }))
-                            }
-                            type="button"
-                          >
-                            {localPathExpanded ? "收起" : "展开"}
-                          </button>
-                        </div>
-                        <button
-                          className={`mt-1 w-full text-left font-mono text-xs leading-relaxed text-zinc-200 ${
-                            localPathExpanded ? "break-all" : "truncate"
-                          }`}
-                          onClick={() =>
-                            setExpandedPaths((prev) => ({
-                              ...prev,
-                              [pathKey(task.id, "local")]: !prev[pathKey(task.id, "local")],
-                            }))
-                          }
-                          title={task.local_path}
-                          type="button"
-                        >
-                          {localPathExpanded ? task.local_path : summarizePath(task.local_path)}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-center">
-                      <span className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-zinc-400">
-                        <ModeIcon mode={task.sync_mode} className="h-4 w-4" />
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-end gap-3 text-right">
-                      <div className="min-w-0 w-full">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] uppercase tracking-widest text-zinc-500">云端目录</p>
-                          <button
-                            className="text-[11px] text-zinc-500 hover:text-zinc-300"
-                            onClick={() =>
-                              setExpandedPaths((prev) => ({
-                                ...prev,
-                                [pathKey(task.id, "cloud")]: !prev[pathKey(task.id, "cloud")],
-                              }))
-                            }
-                            type="button"
-                          >
-                            {cloudPathExpanded ? "收起" : "展开"}
-                          </button>
-                        </div>
-                        <button
-                          className={`mt-1 w-full text-left text-xs leading-relaxed text-zinc-200 ${
-                            cloudPathExpanded ? "break-all" : "truncate"
-                          }`}
-                          onClick={() =>
-                            setExpandedPaths((prev) => ({
-                              ...prev,
-                              [pathKey(task.id, "cloud")]: !prev[pathKey(task.id, "cloud")],
-                            }))
-                          }
-                          title={task.cloud_folder_token}
-                          type="button"
-                        >
-                          {cloudPathExpanded ? cloudPath : summarizePath(cloudPath)}
-                        </button>
-                      </div>
-                      <div className="rounded-xl bg-[#3370FF]/15 p-2 text-[#3370FF]"><IconCloud className="h-4 w-4" /></div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Meta */}
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                  <span>最近同步：{lastSyncTime ? formatTimestamp(lastSyncTime) : "暂无"}</span>
-                  <span className="text-zinc-600">|</span>
-                  <span>待处理 {pendingRealtimeCount}</span>
-                  <span className="text-zinc-600">|</span>
-                  <span>删除 {st?.deleted_files ?? 0}</span>
-                  <span className="text-zinc-600">|</span>
-                  <span>待删 {st?.delete_pending_files ?? 0}</span>
-                  <span className="text-zinc-600">|</span>
-                  <span>删失败 {st?.delete_failed_files ?? 0}</span>
-                  <span className="text-zinc-600">|</span>
-                  <span>失败 {st?.failed_files ?? 0}</span>
-                  <span className="text-zinc-600">|</span>
-                  <span>冲突 {conflictCount}</span>
-                  {progress !== null ? (
-                    <>
-                      <span className="text-zinc-600">|</span>
-                      <span>完成率：{progress}%</span>
-                    </>
-                  ) : null}
-                </div>
-                {st?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{st.last_error}</p> : null}
-                {progress !== null ? (
-                  <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
-                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
-                  </div>
-                ) : null}
-
-                {/* Action buttons */}
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <button className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50" onClick={() => { runTask(task); toast("同步已触发", "info"); }} disabled={isRunning} type="button">
-                    <IconPlay className="h-3.5 w-3.5" /> {isRunning ? "同步中" : "立即同步"}
-                  </button>
-                  <button className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800" onClick={() => { toggleTask(task); toast(task.enabled ? "已停用" : "已启用", "info"); }} type="button">
-                    {task.enabled ? "停用" : "启用"}
-                  </button>
-                  <button className="inline-flex items-center gap-2 rounded-lg border border-rose-500/40 px-4 py-2 text-xs font-medium text-rose-300 transition hover:bg-rose-500/10" onClick={() => handleDelete(task)} type="button">
-                    <IconTrash className="h-3.5 w-3.5" /> 删除
-                  </button>
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                    onClick={() => setExpanded((prev) => ({ ...prev, [task.id]: !prev[task.id] }))}
-                    type="button"
-                  >
-                    {isExpanded ? <IconChevronDown className="h-3 w-3" /> : <IconChevronRight className="h-3 w-3" />}
-                    {isExpanded ? "收起管理" : "任务管理"}
-                  </button>
-                </div>
-
-                {/* Expanded management */}
-                {isExpanded ? (
-                  <div className="mt-4 grid gap-4 lg:grid-cols-4">
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 lg:col-span-4">
-                      <p className="text-xs uppercase tracking-widest text-zinc-500">高级信息</p>
-                      <div className="mt-3 grid gap-2 text-xs text-zinc-500 md:grid-cols-2">
-                        <p className="break-all">任务 ID：{task.id}</p>
-                        <p className="break-all">base_path：{task.base_path || "默认同本地目录"}</p>
-                        {st ? <p>已处理 {progressState.processed}/{progressState.effectiveTotal}，完成 {st.completed_files}，删除 {st.deleted_files}，待删 {st.delete_pending_files}，删失败 {st.delete_failed_files}，跳过 {st.skipped_files}</p> : null}
-                        <p>原始状态：{stateLabels[stateKey] || stateKey}</p>
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                      <p className="text-xs uppercase tracking-widest text-zinc-500">同步模式</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <select
-                          className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-xs text-zinc-200 outline-none"
-                          value={localSyncModeMap[task.id] || task.sync_mode}
-                          onChange={(e) => setLocalSyncModeMap((prev) => ({ ...prev, [task.id]: e.target.value }))}
-                        >
-                          <option value="bidirectional">双向同步</option>
-                          <option value="download_only">仅下载</option>
-                          <option value="upload_only">仅上传</option>
-                        </select>
-                        <button
-                          className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                          onClick={() => { updateSyncMode({ id: task.id, sync_mode: localSyncModeMap[task.id] || task.sync_mode }); toast("同步模式已更新", "success"); }}
-                          type="button"
-                        >
-                          应用
-                        </button>
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                      <p className="text-xs uppercase tracking-widest text-zinc-500">更新模式</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <select
-                          className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-xs text-zinc-200 outline-none"
-                          value={localUpdateModeMap[task.id] || task.update_mode || "auto"}
-                          onChange={(e) => setLocalUpdateModeMap((prev) => ({ ...prev, [task.id]: e.target.value }))}
-                        >
-                          <option value="auto">自动更新</option>
-                          <option value="partial">局部更新</option>
-                          <option value="full">全量覆盖</option>
-                        </select>
-                        <button
-                          className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                          onClick={() => { updateMode({ id: task.id, update_mode: localUpdateModeMap[task.id] || task.update_mode || "auto" }); toast("更新模式已更新", "success"); }}
-                          type="button"
-                        >
-                          应用
-                        </button>
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                      <p className="text-xs uppercase tracking-widest text-zinc-500">MD 上传模式</p>
-                      {taskUploadEnabled ? (
-                        <>
-                          <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <select
-                              className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-xs text-zinc-200 outline-none"
-                              value={effectiveMdSyncMode}
-                              onChange={(e) =>
-                                setLocalMdSyncModeMap((prev) => ({
-                                  ...prev,
-                                  [task.id]: e.target.value,
-                                }))
-                              }
-                            >
-                              <option value="enhanced">增强 MD 上传</option>
-                              <option value="download_only">MD 仅下载</option>
-                              <option value="doc_only">仅云文档上传</option>
-                            </select>
-                            <button
-                              className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                              onClick={() => {
-                                updateMdSyncMode({
-                                  id: task.id,
-                                  md_sync_mode: effectiveMdSyncMode,
-                                });
-                                toast("MD 上传模式已更新", "success");
-                              }}
-                              type="button"
-                            >
-                              应用
-                            </button>
-                          </div>
-                          <p className="mt-2 text-[11px] text-zinc-500">
-                            {effectiveMdSyncMode === "enhanced"
-                              ? "增强：上传云文档，并维护云端 MD 副本目录。"
-                              : effectiveMdSyncMode === "download_only"
-                                ? "仅下载：不执行本地 MD 上行，适合把飞书作为默认编辑端。"
-                                : "仅云文档：只更新云文档，不保留云端 MD 副本（复杂格式可能有损耗）。"}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="mt-3 text-sm leading-6 text-zinc-400">
-                          当前任务为仅下载，不会执行本地 Markdown 上行，因此不显示 MD 上传配置。
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-                      <p className="text-xs uppercase tracking-widest text-zinc-500">删除策略</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <select
-                          className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 outline-none"
-                          value={effectiveDeletePolicy}
-                          onChange={(e) =>
-                            setLocalDeletePolicyMap((prev) => ({
-                              ...prev,
-                              [task.id]: e.target.value as "off" | "safe" | "strict",
-                            }))
-                          }
-                        >
-                          <option value="off">关闭</option>
-                          <option value="safe">安全</option>
-                          <option value="strict">严格</option>
-                        </select>
-                        <input
-                          className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 outline-none"
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={localDeleteGraceMap[task.id] ?? String(task.delete_grace_minutes ?? 30)}
-                          onChange={(e) =>
-                            setLocalDeleteGraceMap((prev) => ({
-                              ...prev,
-                              [task.id]: e.target.value,
-                            }))
-                          }
-                          disabled={effectiveDeletePolicy === "strict"}
-                        />
-                        <span className="text-xs text-zinc-500">分钟</span>
-                        <button
-                          className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
-                          onClick={() => {
-                            updateDeletePolicy({
-                              id: task.id,
-                              delete_policy: effectiveDeletePolicy,
-                              delete_grace_minutes: effectiveDeleteGrace,
-                            });
-                            toast("删除策略已更新", "success");
-                          }}
-                          type="button"
-                        >
-                          应用
-                        </button>
-                      </div>
-                      <p className="mt-2 text-[11px] text-zinc-500">
-                        {effectiveDeletePolicy === "off"
-                          ? "关闭：本地删除和云端删除都不联动。"
-                          : effectiveDeletePolicy === "safe"
-                            ? "安全：先进入删除待处理，宽限后执行；云端删本地时先移入 .larksync_trash。"
-                            : "严格：删除会尽快联动执行，宽限时间固定为 0 分钟。"}
-                      </p>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              <TaskCard
+                key={task.id}
+                task={task}
+                status={st}
+                conflictCount={conflictCount}
+                expanded={isExpanded}
+                onToggleExpanded={() => setExpanded((prev) => ({ ...prev, [task.id]: !prev[task.id] }))}
+                localPathExpanded={Boolean(expandedPaths[pathKey(task.id, "local")])}
+                cloudPathExpanded={Boolean(expandedPaths[pathKey(task.id, "cloud")])}
+                onTogglePath={(side) =>
+                  setExpandedPaths((prev) => ({
+                    ...prev,
+                    [pathKey(task.id, side)]: !prev[pathKey(task.id, side)],
+                  }))
+                }
+                syncModeValue={effectiveSyncMode}
+                updateModeValue={localUpdateModeMap[task.id] || task.update_mode || "auto"}
+                mdSyncModeValue={effectiveMdSyncMode}
+                deletePolicyValue={effectiveDeletePolicy}
+                deleteGraceValue={effectiveDeleteGrace}
+                onSyncModeChange={(value) =>
+                  setLocalSyncModeMap((prev) => ({ ...prev, [task.id]: value }))
+                }
+                onUpdateModeChange={(value) =>
+                  setLocalUpdateModeMap((prev) => ({ ...prev, [task.id]: value }))
+                }
+                onMdSyncModeChange={(value) =>
+                  setLocalMdSyncModeMap((prev) => ({ ...prev, [task.id]: value }))
+                }
+                onDeletePolicyChange={(value) =>
+                  setLocalDeletePolicyMap((prev) => ({ ...prev, [task.id]: value }))
+                }
+                onDeleteGraceChange={(value) =>
+                  setLocalDeleteGraceMap((prev) => ({ ...prev, [task.id]: value }))
+                }
+                onApplySyncMode={() => {
+                  updateSyncMode({ id: task.id, sync_mode: effectiveSyncMode });
+                  toast("同步模式已更新", "success");
+                }}
+                onApplyUpdateMode={() => {
+                  updateMode({
+                    id: task.id,
+                    update_mode: localUpdateModeMap[task.id] || task.update_mode || "auto",
+                  });
+                  toast("更新模式已更新", "success");
+                }}
+                onApplyMdSyncMode={() => {
+                  updateMdSyncMode({
+                    id: task.id,
+                    md_sync_mode: effectiveMdSyncMode,
+                  });
+                  toast("MD 上传模式已更新", "success");
+                }}
+                onApplyDeletePolicy={() => {
+                  updateDeletePolicy({
+                    id: task.id,
+                    delete_policy: effectiveDeletePolicy,
+                    delete_grace_minutes: parseDeleteGraceMinutes(
+                      effectiveDeletePolicy,
+                      effectiveDeleteGrace,
+                      task.delete_grace_minutes ?? 30
+                    ),
+                  });
+                  toast("删除策略已更新", "success");
+                }}
+                onRun={() => {
+                  runTask(task);
+                  toast("同步已触发", "info");
+                }}
+                onToggleEnabled={() => {
+                  toggleTask(task);
+                  toast(task.enabled ? "已停用" : "已启用", "info");
+                }}
+                onDelete={() => handleDelete(task)}
+              />
             );
           })
         )}

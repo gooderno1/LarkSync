@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.13 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 D，把 `TasksPage.tsx` 与 `NewTaskModal.tsx` 从大段内联渲染收口为“页面编排 + 独立卡片/步骤组件 + 纯逻辑 helper”的结构。
+- 结果：
+  - 新增 `apps/frontend/src/components/tasks/TasksPageHeader.tsx`、`TasksEmptyState.tsx`、`TaskCard.tsx`，任务页主文件现在只保留任务列表编排、局部状态与 mutation 接线；`TasksPage.tsx` 已从 517 行压到 191 行。
+  - 新增 `apps/frontend/src/components/tasks/NewTaskWizardStepIndicator.tsx`、`NewTaskLocalStep.tsx`、`NewTaskCloudStep.tsx`、`NewTaskStrategyStep.tsx`，`NewTaskModal.tsx` 已从 535 行压到 269 行，主要只负责向导状态和创建提交。
+  - 新增 `apps/frontend/src/lib/taskManagement.ts` 与 `newTaskWizard.ts`，把路径摘要、任务健康判断、删除宽限解析、手动云端目录解析和创建 payload 组装沉到可测试 helper。
+  - 新增 `TaskPanels.test.tsx`、`NewTaskWizardPanels.test.tsx`、`taskManagement.test.ts`、`newTaskWizard.test.ts`，为任务页卡片和新建任务向导补上组件级 smoke 与纯逻辑测试。
+- 测试：
+  - `npm --prefix apps/frontend exec vitest run src/lib/taskManagement.test.ts src/lib/newTaskWizard.test.ts src/components/tasks/TaskPanels.test.tsx src/components/tasks/NewTaskWizardPanels.test.tsx src/pages/TasksPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - 前端大页拆分已基本收口到日志中心、设置页、任务页三个主入口，但后续若要完全完成本轮规划，仍需要继续推进后端 `sync_runner.py` / `sync_tasks.py` 等大文件的服务边界拆分。
+
 ## v0.7.17-dev.12 (2026-05-22)
 
 - 目标：
