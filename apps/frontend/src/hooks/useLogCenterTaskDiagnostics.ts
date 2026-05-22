@@ -3,12 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 
 import { computeTaskProgress } from "../lib/progress";
 import { apiFetch } from "../lib/api";
+import { resolveActiveRunSelection } from "../lib/taskDiagnosticsSelection";
 import {
   mapSyncTaskDiagnostics,
   diagnosticActivityTime,
   type SyncTaskDiagnosticsRaw,
 } from "../lib/logCenter";
 import type { SyncTaskDiagnostics, SyncTaskOverview } from "../types";
+import { useTaskDiagnosticsSelection } from "./useTaskDiagnosticsSelection";
 import { useTaskEventTimeline } from "./useTaskEventTimeline";
 
 export type DetailTab = "overview" | "problems" | "events";
@@ -36,10 +38,6 @@ function getRunAlertMeta(message?: string | null): { label: string; className: s
 }
 
 export function useLogCenterTaskDiagnostics(enabled: boolean) {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [taskPickerQuery, setTaskPickerQuery] = useState("");
-  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
 
   const overviewQuery = useQuery<SyncTaskOverview[]>({
@@ -58,31 +56,21 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
     [overviewItems],
   );
 
-  useEffect(() => {
-    if (sortedOverviews.length === 0) {
-      setSelectedTaskId(null);
-      setSelectedRunId(null);
-      setDetailTab("overview");
-      return;
-    }
-    if (!selectedTaskId || !sortedOverviews.some((overview) => overview.task.id === selectedTaskId)) {
-      setSelectedTaskId(sortedOverviews[0].task.id);
-      setDetailTab("overview");
-    }
-  }, [selectedTaskId, sortedOverviews]);
-
-  const filteredOverviews = useMemo(() => {
-    const search = taskPickerQuery.trim().toLowerCase();
-    if (!search) return sortedOverviews;
-    return sortedOverviews.filter((overview) =>
-      [overview.task.name, overview.task.local_path, overview.task.cloud_folder_name, overview.task.cloud_folder_token]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(search)),
-    );
-  }, [sortedOverviews, taskPickerQuery]);
-
-  const selectedOverview = sortedOverviews.find((overview) => overview.task.id === selectedTaskId) || null;
-  const taskPickerOptions = filteredOverviews;
+  const {
+    selectedTaskId,
+    setSelectedTaskId,
+    selectedRunId,
+    setSelectedRunId,
+    taskPickerQuery,
+    setTaskPickerQuery,
+    taskPickerOpen,
+    setTaskPickerOpen,
+    selectedOverview,
+    taskPickerOptions,
+    selectTask,
+  } = useTaskDiagnosticsSelection({
+    sortedOverviews,
+  });
 
   const diagnosticsQuery = useQuery<SyncTaskDiagnostics>({
     queryKey: ["sync-task-diagnostics", selectedTaskId, selectedRunId, detailTab === "problems"],
@@ -110,10 +98,11 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
   const selectedTask = activeOverview?.task ?? null;
   const selectedStatus = activeOverview?.status ?? null;
   const recentRuns = diagnosticsQuery.data?.recent_runs || [];
-  const activeRunId = selectedRunId && recentRuns.some((run) => run.run_id === selectedRunId)
-    ? selectedRunId
-    : (diagnosticsQuery.data?.selected_run?.run_id ?? recentRuns[0]?.run_id ?? null);
-  const activeRunSummary = recentRuns.find((run) => run.run_id === activeRunId) || null;
+  const { activeRunId, activeRunSummary } = resolveActiveRunSelection({
+    recentRuns,
+    selectedRunId,
+    diagnosticsSelectedRunId: diagnosticsQuery.data?.selected_run?.run_id ?? null,
+  });
   const {
     eventFilter,
     setEventFilter,
@@ -139,16 +128,8 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
   const selectedProblems = diagnosticsQuery.data?.problems || [];
 
   useEffect(() => {
-    if (!taskPickerOpen) {
-      setTaskPickerQuery("");
-    }
-  }, [taskPickerOpen]);
-
-  const selectTask = (taskId: string) => {
-    setSelectedTaskId(taskId);
     setDetailTab("overview");
-    resetEventPage();
-  };
+  }, [selectedTaskId]);
 
   const progress = computeTaskProgress(selectedStatus);
   const currentFile = selectedRun?.current_file ?? activeOverview?.current_file ?? null;

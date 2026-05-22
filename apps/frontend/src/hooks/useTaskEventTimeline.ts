@@ -70,7 +70,7 @@ export function useTaskEventTimeline({
 
   useEffect(() => {
     setEventPage(1);
-  }, [activeRunId]);
+  }, [activeRunId, selectedTaskId]);
 
   const selectedTimelineEntries = selectedEventsQuery.data?.items || [];
   const selectedTimelineTotal = selectedEventsQuery.data?.total || 0;

@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.9 (2026-05-22)
+
+- 目标：
+  - 继续收口日志中心主诊断 hook，把任务选择、任务筛选和运行选择状态从 `useLogCenterTaskDiagnostics.ts` 中拆出去，避免主 hook 继续直接承担 selection 状态管理。
+- 结果：
+  - 新增 `apps/frontend/src/hooks/useTaskDiagnosticsSelection.ts`，统一管理任务选择、运行选择、任务选择器搜索与开合状态。
+  - 新增 `apps/frontend/src/lib/taskDiagnosticsSelection.ts` 与 `taskDiagnosticsSelection.test.ts`，把默认任务选中、任务筛选和 active run 解析下沉到可测试 helper。
+  - `useLogCenterTaskDiagnostics.ts` 现主要负责概览排序、诊断 query、事件时间线 hook 编排和派生展示状态；事件分页也补到 `selectedTaskId` 变更时自动重置，避免切任务后沿用旧页码。
+- 测试：
+  - `npm --prefix apps/frontend exec vitest run src/lib/taskDiagnosticsSelection.test.ts src/lib/taskEventTimeline.test.ts src/components/log-center/TaskDiagnosticsDetailTabs.test.tsx src/components/log-center/TaskDiagnosticsPanels.test.tsx src/pages/LogCenterPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - 当前主诊断 hook 的主要剩余复杂度集中在诊断 query、概览排序和展示派生状态；下一轮应评估是否继续把诊断请求参数组装/轮询判断也下沉成 helper，进一步减少 hook 内的分支判断。
+
 ## v0.7.17-dev.8 (2026-05-22)
 
 - 目标：
