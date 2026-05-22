@@ -37,6 +37,7 @@ from src.services.sync_block_service import BlockStateItem, SyncBlockService
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_event_pipeline import SyncEventPipeline
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
+from src.services.sync_cloud_folder_service import SyncCloudFolderService
 from src.services.sync_run_event_service import SyncRunEventService
 from src.services.sync_run_service import SyncRunService
 from src.services.sync_runner_state import SYNC_LOG_LIMIT, SyncFileEvent, SyncState, SyncTaskStatus
@@ -173,8 +174,12 @@ class SyncTaskRunner:
         self._task_meta: dict[str, SyncTaskItem] = {}
         self._pending_restarts: dict[str, SyncTaskItem] = {}
         self._initial_upload_scanned: set[str] = set()
-        # 缓存: (task_id, relative_dir_posix) -> cloud_folder_token
-        self._cloud_folder_cache: dict[tuple[str, str], str] = {}
+        self._cloud_folder_service = SyncCloudFolderService(
+            link_service=self._link_service,
+            should_ignore_path=self._should_ignore_path,
+            md_mirror_folder_name=_CLOUD_MD_MIRROR_FOLDER_NAME,
+            md_mirror_cache_prefix=_CLOUD_MD_MIRROR_CACHE_PREFIX,
+        )
         self._event_pipeline = SyncEventPipeline(
             event_store=self._event_store,
             run_event_service=self._run_event_service,
@@ -182,6 +187,14 @@ class SyncTaskRunner:
             flush_delay_seconds=0.25,
             batch_size=100,
         )
+
+    @property
+    def _cloud_folder_cache(self) -> dict[tuple[str, str], str]:
+        return self._cloud_folder_service.cache
+
+    @_cloud_folder_cache.setter
+    def _cloud_folder_cache(self, value: dict[tuple[str, str], str]) -> None:
+        self._cloud_folder_service.replace_cache(value)
 
     def get_status(self, task_id: str) -> SyncTaskStatus:
         return self._statuses.get(task_id) or SyncTaskStatus(task_id=task_id)
@@ -2775,36 +2788,13 @@ class SyncTaskRunner:
         local_path: Path,
         drive_service: DriveService,
     ) -> None:
-        if local_path.suffix.lower() != ".md":
-            return
-        if not self._supports_md_cloud_mirror(drive_service):
-            return
-        delete_file = getattr(drive_service, "delete_file", None)
-        if not callable(delete_file):
-            return
-        mirror_parent = await self._find_md_mirror_parent_no_create(
+        await self._cloud_folder_service.cleanup_md_mirror_copy(
             task=task,
-            path=local_path,
+            local_path=local_path,
             drive_service=drive_service,
+            supports_md_cloud_mirror=self._supports_md_cloud_mirror,
+            is_cloud_already_deleted_error=self._is_cloud_already_deleted_error,
         )
-        if not mirror_parent:
-            return
-        existing = await self._list_files_all(drive_service, mirror_parent)
-        for item in existing:
-            if item.type != "file" or item.name != local_path.name:
-                continue
-            try:
-                await delete_file(item.token, item.type)
-            except Exception as exc:
-                if self._is_cloud_already_deleted_error(exc):
-                    continue
-                logger.warning(
-                    "删除云端 MD 镜像失败: task_id={} path={} token={} error={}",
-                    task.id,
-                    local_path,
-                    item.token,
-                    exc,
-                )
 
     async def _find_md_mirror_parent_no_create(
         self,
@@ -2813,48 +2803,19 @@ class SyncTaskRunner:
         path: Path,
         drive_service: DriveService,
     ) -> str | None:
-        root_token = await self._find_md_mirror_root_no_create(task, drive_service)
-        if not root_token:
-            return None
-        try:
-            relative = path.relative_to(Path(task.local_path))
-        except ValueError:
-            return root_token
-
-        parent_parts = relative.parent.parts
-        if not parent_parts or parent_parts == (".",):
-            return root_token
-
-        current_token = root_token
-        accumulated = ""
-        for part in parent_parts:
-            accumulated = f"{accumulated}/{part}" if accumulated else part
-            cache_key = (task.id, f"{_CLOUD_MD_MIRROR_CACHE_PREFIX}/{accumulated}")
-            cached = self._cloud_folder_cache.get(cache_key)
-            if cached:
-                current_token = cached
-                continue
-            existing_token = await self._find_subfolder(drive_service, current_token, part)
-            if not existing_token:
-                return None
-            self._cloud_folder_cache[cache_key] = existing_token
-            current_token = existing_token
-        return current_token
+        return await self._cloud_folder_service.find_md_mirror_parent_no_create(
+            task=task,
+            path=path,
+            drive_service=drive_service,
+        )
 
     async def _find_md_mirror_root_no_create(
         self, task: SyncTaskItem, drive_service: DriveService
     ) -> str | None:
-        cache_key = (task.id, f"{_CLOUD_MD_MIRROR_CACHE_PREFIX}/root")
-        cached = self._cloud_folder_cache.get(cache_key)
-        if cached:
-            return cached
-        existing = await self._find_subfolder(
-            drive_service, task.cloud_folder_token, _CLOUD_MD_MIRROR_FOLDER_NAME
+        return await self._cloud_folder_service.find_md_mirror_root_no_create(
+            task,
+            drive_service,
         )
-        if not existing:
-            return None
-        self._cloud_folder_cache[cache_key] = existing
-        return existing
 
     async def _resolve_md_mirror_parent(
         self,
@@ -2863,63 +2824,19 @@ class SyncTaskRunner:
         path: Path,
         drive_service: DriveService,
     ) -> str:
-        root_token = await self._ensure_md_mirror_root(task, drive_service)
-        try:
-            relative = path.relative_to(Path(task.local_path))
-        except ValueError:
-            return root_token
-
-        parent_parts = relative.parent.parts
-        if not parent_parts or parent_parts == (".",):
-            return root_token
-
-        current_token = root_token
-        accumulated = ""
-        for part in parent_parts:
-            accumulated = f"{accumulated}/{part}" if accumulated else part
-            cache_key = (task.id, f"{_CLOUD_MD_MIRROR_CACHE_PREFIX}/{accumulated}")
-            if cache_key in self._cloud_folder_cache:
-                current_token = self._cloud_folder_cache[cache_key]
-                continue
-            existing_token = await self._find_subfolder(drive_service, current_token, part)
-            if existing_token:
-                self._cloud_folder_cache[cache_key] = existing_token
-                current_token = existing_token
-                continue
-            new_token = await drive_service.create_folder(current_token, part)
-            self._cloud_folder_cache[cache_key] = new_token
-            current_token = new_token
-            logger.info(
-                "创建云端 MD 镜像子目录: task_id={} path={} token={}",
-                task.id,
-                accumulated,
-                new_token,
-            )
-        return current_token
+        return await self._cloud_folder_service.resolve_md_mirror_parent(
+            task=task,
+            path=path,
+            drive_service=drive_service,
+        )
 
     async def _ensure_md_mirror_root(
         self, task: SyncTaskItem, drive_service: DriveService
     ) -> str:
-        cache_key = (task.id, f"{_CLOUD_MD_MIRROR_CACHE_PREFIX}/root")
-        cached = self._cloud_folder_cache.get(cache_key)
-        if cached:
-            return cached
-        existing = await self._find_subfolder(
-            drive_service, task.cloud_folder_token, _CLOUD_MD_MIRROR_FOLDER_NAME
+        return await self._cloud_folder_service.ensure_md_mirror_root(
+            task,
+            drive_service,
         )
-        if existing:
-            self._cloud_folder_cache[cache_key] = existing
-            return existing
-        created = await drive_service.create_folder(
-            task.cloud_folder_token, _CLOUD_MD_MIRROR_FOLDER_NAME
-        )
-        self._cloud_folder_cache[cache_key] = created
-        logger.info(
-            "创建云端 MD 镜像根目录: task_id={} token={}",
-            task.id,
-            created,
-        )
-        return created
 
     async def _upload_file(
         self,
@@ -3502,68 +3419,11 @@ class SyncTaskRunner:
         path: Path,
         drive_service: DriveService,
     ) -> str:
-        """根据本地文件的相对路径，在云端逐层查找/创建对应的子文件夹。
-
-        返回该文件应上传到的云端父文件夹 token。
-        例如：本地 ``sync_root/sub1/sub2/doc.md`` → 云端 ``cloud_root/sub1/sub2`` 的 token。
-        """
-        try:
-            relative = path.relative_to(Path(task.local_path))
-        except ValueError:
-            return task.cloud_folder_token
-
-        parent_parts = relative.parent.parts  # ('sub1', 'sub2') 或 ()
-        if not parent_parts or parent_parts == (".",):
-            return task.cloud_folder_token  # 文件在根目录
-
-        current_token = task.cloud_folder_token
-        accumulated = ""
-
-        for part in parent_parts:
-            accumulated = f"{accumulated}/{part}" if accumulated else part
-            cache_key = (task.id, accumulated)
-            parent_token = current_token
-
-            if cache_key in self._cloud_folder_cache:
-                current_token = self._cloud_folder_cache[cache_key]
-                await self._link_local_folder(
-                    task=task,
-                    relative_folder=Path(accumulated),
-                    cloud_token=current_token,
-                    cloud_parent_token=parent_token,
-                )
-                continue
-
-            # 先查找已有的同名子文件夹
-            existing_token = await self._find_subfolder(
-                drive_service, current_token, part
-            )
-            if existing_token:
-                self._cloud_folder_cache[cache_key] = existing_token
-                current_token = existing_token
-                await self._link_local_folder(
-                    task=task,
-                    relative_folder=Path(accumulated),
-                    cloud_token=existing_token,
-                    cloud_parent_token=parent_token,
-                )
-            else:
-                # 不存在则创建
-                new_token = await drive_service.create_folder(current_token, part)
-                self._cloud_folder_cache[cache_key] = new_token
-                current_token = new_token
-                await self._link_local_folder(
-                    task=task,
-                    relative_folder=Path(accumulated),
-                    cloud_token=new_token,
-                    cloud_parent_token=parent_token,
-                )
-                logger.info(
-                    "创建云端子文件夹: task_id={} path={} token={}",
-                    task.id, accumulated, new_token,
-                )
-
-        return current_token
+        return await self._cloud_folder_service.resolve_cloud_parent(
+            task,
+            path,
+            drive_service,
+        )
 
     async def _link_local_folder(
         self,
@@ -3573,15 +3433,10 @@ class SyncTaskRunner:
         cloud_token: str,
         cloud_parent_token: str | None,
     ) -> None:
-        local_path = Path(task.local_path) / relative_folder
-        if self._should_ignore_path(task, local_path):
-            return
-        await self._link_service.upsert_link(
-            local_path=str(local_path),
+        await self._cloud_folder_service.link_local_folder(
+            task=task,
+            relative_folder=relative_folder,
             cloud_token=cloud_token,
-            cloud_type="folder",
-            task_id=task.id,
-            updated_at=time.time(),
             cloud_parent_token=cloud_parent_token,
         )
 
@@ -3591,20 +3446,11 @@ class SyncTaskRunner:
         parent_token: str,
         name: str,
     ) -> str | None:
-        """在指定云端文件夹中按名称查找子文件夹。"""
-        expected_name = (name or "").strip().lower()
-        page_token: str | None = None
-        while True:
-            result = await drive_service.list_files(
-                parent_token, page_token=page_token
-            )
-            for f in result.files:
-                if f.type == "folder" and (f.name or "").strip().lower() == expected_name:
-                    return f.token
-            if not result.has_more or not result.next_page_token:
-                break
-            page_token = result.next_page_token
-        return None
+        return await self._cloud_folder_service.find_subfolder(
+            drive_service,
+            parent_token,
+            name,
+        )
 
     def _ensure_watcher(self, task: SyncTaskItem) -> None:
         if task.id in self._watchers:
@@ -3647,21 +3493,15 @@ class SyncTaskRunner:
     async def _list_folder_tokens(
         self, drive_service: DriveService, folder_token: str
     ) -> set[str]:
-        items = await self._list_files_all(drive_service, folder_token)
-        return {item.token for item in items}
+        return await self._cloud_folder_service.list_folder_tokens(
+            drive_service,
+            folder_token,
+        )
 
     async def _list_files_all(
         self, drive_service: DriveService, folder_token: str
     ) -> list[DriveFile]:
-        files: list[DriveFile] = []
-        page_token: str | None = None
-        while True:
-            result = await drive_service.list_files(folder_token, page_token=page_token)
-            files.extend(result.files)
-            if not result.has_more or not result.next_page_token:
-                break
-            page_token = result.next_page_token
-        return files
+        return await self._cloud_folder_service.list_files_all(drive_service, folder_token)
 
     async def _find_existing_doc_by_name(
         self,
@@ -3670,16 +3510,12 @@ class SyncTaskRunner:
         folder_token: str,
         expected_name: str,
     ) -> str | None:
-        items = await self._list_files_all(drive_service, folder_token)
-        matched = [
-            item
-            for item in items
-            if item.type in {"docx", "doc"} and item.name == expected_name
-        ]
-        if not matched:
-            return None
-        matched.sort(key=lambda item: _parse_mtime(item.modified_time), reverse=True)
-        return matched[0].token
+        return await self._cloud_folder_service.find_existing_doc_by_name(
+            drive_service=drive_service,
+            folder_token=folder_token,
+            expected_name=expected_name,
+            parse_mtime=_parse_mtime,
+        )
 
     async def _wait_for_imported_doc(
         self,
@@ -3689,18 +3525,14 @@ class SyncTaskRunner:
         expected_name: str,
         existing_tokens: set[str],
     ) -> DriveFile | None:
-        for attempt in range(self._import_poll_attempts):
-            items = await self._list_files_all(drive_service, folder_token)
-            for item in items:
-                if (
-                    item.name == expected_name
-                    and item.type in {"docx", "doc"}
-                    and item.token not in existing_tokens
-                ):
-                    return item
-            if attempt < self._import_poll_attempts - 1:
-                await asyncio.sleep(self._import_poll_interval)
-        return None
+        return await self._cloud_folder_service.wait_for_imported_doc(
+            drive_service=drive_service,
+            folder_token=folder_token,
+            expected_name=expected_name,
+            existing_tokens=existing_tokens,
+            poll_attempts=self._import_poll_attempts,
+            poll_interval=self._import_poll_interval,
+        )
 
     @staticmethod
     def _resolve_created_doc_mtime(

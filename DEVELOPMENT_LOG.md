@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.15 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 B，开始把 `sync_runner.py` 中与云端父目录解析、MD 镜像目录和目录缓存强相关的逻辑抽成独立服务，减少主 runner 继续承担目录编排细节。
+- 结果：
+  - 新增 `apps/backend/src/services/sync_cloud_folder_service.py`，承载云端父目录解析、目录链接持久化、MD 镜像目录查找/创建、目录缓存、目录遍历与导入后文档探测等逻辑。
+  - `SyncTaskRunner` 现通过组合 `SyncCloudFolderService` 复用这部分能力，并保留 `_resolve_cloud_parent`、`_cleanup_md_mirror_copy`、`_find_existing_doc_by_name`、`_wait_for_imported_doc` 等原私有方法作为兼容代理，现有测试和调用面无需改写。
+  - `apps/backend/src/services/sync_runner.py` 已从 4279 行压到 4111 行，虽然仍然很大，但“云端目录/镜像目录”这块边界已经独立，为后续继续抽下载/上传/删除链路打下基础。
+- 测试：
+  - `python -m pytest tests/test_sync_runner.py -k "resolve_cloud_parent or removes_md_mirror_copy or md_mirror" -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -k "cloud_mirror" -q`
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py -q`
+- 问题：
+  - `sync_runner.py` 仍是当前最大的技术债，下一轮应继续沿“删除墓碑处理”或“上传链路”抽服务，而不是回到主文件里追加新逻辑。
+
 ## v0.7.17-dev.14 (2026-05-22)
 
 - 目标：
