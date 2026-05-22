@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.8 refactor(frontend): 将日志中心事件时间线状态、分页与查询从 `useLogCenterTaskDiagnostics` 下沉到独立 `useTaskEventTimeline` hook，并新增 `taskEventTimeline` helper 测试覆盖查询参数拼装与轮询判断，继续压缩主诊断 hook 的职责面
+
 [2026-05-22] v0.7.17-dev.7 refactor(frontend): 将日志中心任务诊断详情继续拆成 `TaskDiagnosticsOverviewTab`、`TaskDiagnosticsProblemsTab`、`TaskDiagnosticsEventsTab` 三个独立展示组件，并新增 tab 级 smoke test；`TaskDiagnosticsDetailPanel.tsx` 进一步收口为 header、tab 切换与数据接线层
 
 [2026-05-22] v0.7.17-dev.6 refactor(frontend): 将日志中心任务诊断工作台拆成 `TaskSelectionPanel`、`RunHistoryPanel`、`TaskDiagnosticsDetailPanel` 三个独立视图组件，并新增组件级 smoke test；`LogCenterPage.tsx` 进一步收口为查询编排和面板装配层

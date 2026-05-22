@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.8 (2026-05-22)
+
+- 目标：
+  - 继续收口日志中心主诊断 hook，把事件时间线相关的筛选状态、分页状态与时间线查询从 `useLogCenterTaskDiagnostics.ts` 中拆出去，避免主 hook 继续同时承担过多职责。
+- 结果：
+  - 新增 `apps/frontend/src/hooks/useTaskEventTimeline.ts`，统一管理事件筛选、搜索、分页、轮询和时间线 query；`useLogCenterTaskDiagnostics.ts` 现在只负责组合任务概览、运行选择、问题列表与该子 hook 的接线。
+  - 新增 `apps/frontend/src/lib/taskEventTimeline.ts` 与 `taskEventTimeline.test.ts`，把时间线请求参数拼装和轮询判断下沉到可测试 helper，避免查询细节再次散落在 hook 内。
+  - `TaskDiagnosticsDetailPanel` / `LogCenterPage` 的对外接线保持不变，页面层无需感知这次 hook 内部拆分。
+- 测试：
+  - `npm --prefix apps/frontend exec vitest run src/lib/taskEventTimeline.test.ts src/components/log-center/TaskDiagnosticsDetailTabs.test.tsx src/components/log-center/TaskDiagnosticsPanels.test.tsx src/pages/LogCenterPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - 当前主 hook 已不再直接管理事件时间线 query，但任务选择、运行选择和诊断 query 仍在同一个 hook 中；下一轮应评估是否继续把任务选择/运行选择状态拆成更独立的 selection hook，进一步降低主 hook 的耦合面。
+
 ## v0.7.17-dev.7 (2026-05-22)
 
 - 目标：
