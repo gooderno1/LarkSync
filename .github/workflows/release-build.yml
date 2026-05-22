@@ -21,8 +21,8 @@ permissions:
   contents: write
 
 env:
-  PYTHON_VERSION: "3.10"
-  NODE_VERSION: "20"
+  PYTHON_VERSION: "3.14"
+  NODE_VERSION: "25"
 
 jobs:
   quality:
@@ -59,9 +59,20 @@ jobs:
           $env:PYTHONPATH = ""
           python -m pytest -q
 
+      - name: Run Windows silent install smoke
+        run: python scripts/update_install_smoke.py
+
       - name: Install frontend dependencies
         working-directory: apps/frontend
         run: npm ci
+
+      - name: Lint frontend
+        working-directory: apps/frontend
+        run: npm run lint
+
+      - name: Run frontend tests
+        working-directory: apps/frontend
+        run: npm run test
 
       - name: Build frontend
         working-directory: apps/frontend

@@ -12,7 +12,6 @@ import { apiFetch } from "../lib/api";
 import {
   DANGER_STATUSES,
   EVENT_FILTERS,
-  PROBLEM_STATUSES,
   WARNING_STATUSES,
   buildStatusParams,
   type EventFilter,
@@ -95,6 +94,7 @@ type ConflictResolutionStatus = {
 
 const CONFLICT_BUSY_RETRY_DELAY_MS = 5_000;
 const CONFLICT_BUSY_RETRY_LIMIT = 24;
+const EMPTY_OVERVIEWS: SyncTaskOverview[] = [];
 const CONFLICT_ACTION_LABELS: Record<ConflictResolutionAction, string> = {
   use_local: "使用本地",
   use_cloud: "使用云端",
@@ -251,8 +251,6 @@ export function LogCenterPage() {
   const [fileLogPage, setFileLogPage] = useState(1);
   const [fileLogPageSize, setFileLogPageSize] = useState(50);
   const [fileLogOrder, setFileLogOrder] = useState<"asc" | "desc">("desc");
-  const [queuedConflictResolutions, setQueuedConflictResolutions] = useState<ConflictResolutionQueueItem[]>([]);
-  const [activeConflictResolution, setActiveConflictResolution] = useState<ConflictResolutionQueueItem | null>(null);
   const [conflictResolutionStates, setConflictResolutionStates] = useState<
     Record<string, ConflictResolutionStatus>
   >({});
@@ -272,7 +270,7 @@ export function LogCenterPage() {
     placeholderData: [],
   });
 
-  const overviewItems = overviewQuery.data || [];
+  const overviewItems = overviewQuery.data ?? EMPTY_OVERVIEWS;
 
   const sortedOverviews = useMemo(
     () => [...overviewItems].sort((a, b) => diagnosticActivityTime(b) - diagnosticActivityTime(a)),
@@ -442,9 +440,7 @@ export function LogCenterPage() {
       while (conflictQueueRef.current.length > 0) {
         const [next, ...rest] = conflictQueueRef.current;
         conflictQueueRef.current = rest;
-        setQueuedConflictResolutions(rest);
         activeConflictResolutionIdRef.current = next.id;
-        setActiveConflictResolution(next);
         const resolveWithRetry = async (attempt: number): Promise<void> => {
           setConflictResolutionStates((current) => ({
             ...current,
@@ -504,7 +500,6 @@ export function LogCenterPage() {
       }
     } finally {
       activeConflictResolutionIdRef.current = null;
-      setActiveConflictResolution(null);
       conflictResolutionProcessingRef.current = false;
       if (conflictQueueRef.current.length > 0) {
         void processConflictResolutionQueue();
@@ -532,7 +527,6 @@ export function LogCenterPage() {
     }
     const nextQueue = [...conflictQueueRef.current, { id, action, successMessage }];
     conflictQueueRef.current = nextQueue;
-    setQueuedConflictResolutions(nextQueue);
     void processConflictResolutionQueue();
   };
 

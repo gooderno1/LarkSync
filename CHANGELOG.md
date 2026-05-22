@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.1 feat(engineering): 固定安装包发布基线为 `Python 3.14.x / Node 25.x` 并让 `scripts/build_installer.py` 在非基线环境下 fail fast、输出环境摘要；FastAPI 切换为 `lifespan` 管理后台服务；前端补齐 `eslint + vitest` 页面 smoke 质量门；新增 `python scripts/update_install_smoke.py` 与 CI Windows 静默安装 smoke 验证
+
 [2026-05-22] v0.7.16 release: v0.7.16
 
 [2026-05-22] v0.7.16-dev.1 fix(auto-update): 修复 Windows 静默安装生成的 `bootstrap.ps1` / `worker.ps1` 以无 BOM UTF-8 写入时被 Windows PowerShell 5.1 误解码、进而在中文日志文本处触发 ParserError 的问题；脚本现改为 BOM UTF-8，并新增真实 `powershell.exe -File` 回归测试，避免 handoff 永远卡在 `bootstrap_started`

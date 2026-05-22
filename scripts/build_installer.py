@@ -16,6 +16,7 @@ LarkSync 安装包构建脚本
 
 import argparse
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -34,6 +35,10 @@ PYPROJECT_FILE = BACKEND_DIR / "pyproject.toml"
 BRANDING_DIR = PROJECT_ROOT / "assets" / "branding"
 BRAND_ICON = BRANDING_DIR / "LarkSync_Logo_Icon_FullColor.png"
 WINDOWS_ICON = BRANDING_DIR / "LarkSync.ico"
+BUILD_BASELINE_PYTHON = (3, 14)
+BUILD_BASELINE_PYTHON_LABEL = "Python 3.14.x"
+BUILD_BASELINE_NODE_MAJOR = 25
+BUILD_BASELINE_NODE_LABEL = "Node 25.x"
 
 
 def _is_mismatched_site_packages(entry: str) -> bool:
@@ -110,6 +115,103 @@ def _configure_output() -> None:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except Exception:
             pass
+
+
+def _format_python_version(version_info: tuple[int, int, int] | object) -> str:
+    if hasattr(version_info, "major"):
+        major = int(version_info.major)  # type: ignore[attr-defined]
+        minor = int(version_info.minor)  # type: ignore[attr-defined]
+        micro = int(version_info.micro)  # type: ignore[attr-defined]
+    else:
+        major = int(version_info[0])  # type: ignore[index]
+        minor = int(version_info[1])  # type: ignore[index]
+        micro = int(version_info[2])  # type: ignore[index]
+    return f"{major}.{minor}.{micro}"
+
+
+def _read_command_version(cmd: list[str]) -> str | None:
+    try:
+        result = subprocess.run(
+            _resolve_cmd(cmd),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for candidate in (result.stdout, result.stderr):
+        text = (candidate or "").strip()
+        if text:
+            return text.splitlines()[0].strip()
+    return None
+
+
+def _validate_supported_build_python(version_info: tuple[int, int, int] | object) -> None:
+    if hasattr(version_info, "major"):
+        current = (int(version_info.major), int(version_info.minor))  # type: ignore[attr-defined]
+    else:
+        current = (int(version_info[0]), int(version_info[1]))  # type: ignore[index]
+    if current == BUILD_BASELINE_PYTHON:
+        return
+    if os.getenv("LARKSYNC_ALLOW_UNSUPPORTED_BUILD_PYTHON", "").strip().lower() in {"1", "true", "yes", "on"}:
+        print(
+            "  ! 检测到非发布基线 Python，已按 LARKSYNC_ALLOW_UNSUPPORTED_BUILD_PYTHON=1 继续："
+            f" 当前 {_format_python_version(version_info)}，基线 {BUILD_BASELINE_PYTHON_LABEL}"
+        )
+        return
+    raise RuntimeError(
+        "安装包构建必须使用受控解释器环境："
+        f" 当前 Python {_format_python_version(version_info)}，要求 {BUILD_BASELINE_PYTHON_LABEL}。"
+        " 如确需临时绕过，请显式设置 LARKSYNC_ALLOW_UNSUPPORTED_BUILD_PYTHON=1。"
+    )
+
+
+def _validate_supported_build_node(node_version: str | None) -> None:
+    if not node_version:
+        raise RuntimeError("未检测到 Node.js，请先安装受支持的构建环境。")
+    match = re.search(r"v?(\d+)\.(\d+)\.(\d+)", node_version)
+    if match and int(match.group(1)) == BUILD_BASELINE_NODE_MAJOR:
+        return
+    if os.getenv("LARKSYNC_ALLOW_UNSUPPORTED_BUILD_NODE", "").strip().lower() in {"1", "true", "yes", "on"}:
+        print(
+            "  ! 检测到非发布基线 Node.js，已按 LARKSYNC_ALLOW_UNSUPPORTED_BUILD_NODE=1 继续："
+            f" 当前 {node_version}，基线 {BUILD_BASELINE_NODE_LABEL}"
+        )
+        return
+    raise RuntimeError(
+        "安装包构建必须使用受控 Node.js 环境："
+        f" 当前 Node {node_version}，要求 {BUILD_BASELINE_NODE_LABEL}。"
+        " 如确需临时绕过，请显式设置 LARKSYNC_ALLOW_UNSUPPORTED_BUILD_NODE=1。"
+    )
+
+
+def _collect_build_environment_summary(
+    version_info: tuple[int, int, int] | object,
+    *,
+    python_executable: str | None = None,
+) -> dict[str, str]:
+    return {
+        "python_version": _format_python_version(version_info),
+        "python_executable": python_executable or sys.executable,
+        "python_baseline": BUILD_BASELINE_PYTHON_LABEL,
+        "node_version": _read_command_version(["node", "--version"]) or "未检测到",
+        "node_baseline": BUILD_BASELINE_NODE_LABEL,
+        "platform": platform.platform(),
+    }
+
+
+def _print_build_environment_summary(summary: dict[str, str]) -> None:
+    print("  构建环境：")
+    for label, key in (
+        ("Python", "python_version"),
+        ("Python 可执行文件", "python_executable"),
+        ("Python 发布基线", "python_baseline"),
+        ("Node.js", "node_version"),
+        ("Node.js 发布基线", "node_baseline"),
+        ("平台", "platform"),
+    ):
+        print(f"    - {label}: {summary[key]}")
 
 
 def _resolve_cmd(cmd: list[str]) -> list[str]:
@@ -457,6 +559,9 @@ def _ensure_windows_icon() -> None:
 def main() -> None:
     _configure_output()
     _sanitize_runtime_pythonpath()
+    _validate_supported_build_python(sys.version_info)
+    summary = _collect_build_environment_summary(sys.version_info, python_executable=sys.executable)
+    _validate_supported_build_node(summary["node_version"])
     parser = argparse.ArgumentParser(description="LarkSync 安装包构建工具")
     parser.add_argument("--nsis", action="store_true", help="Windows: 生成 NSIS 安装包")
     parser.add_argument("--dmg", action="store_true", help="macOS: 生成 DMG 安装包")
@@ -466,6 +571,7 @@ def main() -> None:
     print("=" * 50)
     print("  LarkSync 安装包构建")
     print("=" * 50)
+    _print_build_environment_summary(summary)
 
     if not args.skip_frontend:
         step_build_frontend()

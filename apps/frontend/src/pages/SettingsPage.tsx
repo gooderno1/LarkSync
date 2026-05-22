@@ -7,7 +7,7 @@ import { useConfig } from "../hooks/useConfig";
 import { useUpdate } from "../hooks/useUpdate";
 import { useTasks } from "../hooks/useTasks";
 import { formatIntervalLabel } from "../lib/formatters";
-import { modeLabels, syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
+import { syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
 import { apiFetch } from "../lib/api";
 import { useToast } from "../components/ui/toast";
 import { confirm } from "../components/ui/confirm-dialog";
@@ -138,7 +138,7 @@ export function SettingsPage() {
 
   const resolvePickedSubpath = (rootPath: string, pickedPath: string): string | null => {
     const normalizeFsPath = (value: string) =>
-      value.replace(/\//g, "\\").replace(/[\\\/]+$/, "");
+      value.replace(/\//g, "\\").replace(/[\\/]+$/, "");
     const root = normalizeFsPath(rootPath);
     const picked = normalizeFsPath(pickedPath);
     const rootLower = root.toLowerCase();

@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
@@ -44,6 +45,46 @@ def test_build_subprocess_env_removes_invalid_pythonpath() -> None:
 
     assert "PYTHONPATH" not in env
     assert env["LARKSYNC_PROJECT_ROOT"] == r"C:\repo\LarkSync"
+
+
+def test_validate_supported_build_python_accepts_baseline_version() -> None:
+    bi._validate_supported_build_python((3, 14, 2))
+
+
+def test_validate_supported_build_python_rejects_unsupported_version(monkeypatch) -> None:
+    monkeypatch.delenv("LARKSYNC_ALLOW_UNSUPPORTED_BUILD_PYTHON", raising=False)
+
+    with pytest.raises(RuntimeError, match="Python 3.14"):
+        bi._validate_supported_build_python((3, 9, 13))
+
+
+def test_validate_supported_build_python_allows_override(monkeypatch) -> None:
+    monkeypatch.setenv("LARKSYNC_ALLOW_UNSUPPORTED_BUILD_PYTHON", "1")
+
+    bi._validate_supported_build_python((3, 9, 13))
+
+
+def test_collect_build_environment_summary_includes_runtime_details(monkeypatch) -> None:
+    monkeypatch.setattr(bi, "_read_command_version", lambda cmd: "v25.2.1" if cmd == ["node", "--version"] else None)
+
+    summary = bi._collect_build_environment_summary((3, 14, 2), python_executable=r"C:\Python314\python.exe")
+
+    assert summary["python_version"] == "3.14.2"
+    assert summary["python_executable"] == r"C:\Python314\python.exe"
+    assert summary["node_version"] == "v25.2.1"
+    assert summary["python_baseline"] == bi.BUILD_BASELINE_PYTHON_LABEL
+    assert summary["node_baseline"] == bi.BUILD_BASELINE_NODE_LABEL
+
+
+def test_validate_supported_build_node_accepts_baseline_version() -> None:
+    bi._validate_supported_build_node("v25.2.1")
+
+
+def test_validate_supported_build_node_rejects_unsupported_version(monkeypatch) -> None:
+    monkeypatch.delenv("LARKSYNC_ALLOW_UNSUPPORTED_BUILD_NODE", raising=False)
+
+    with pytest.raises(RuntimeError, match="Node 25"):
+        bi._validate_supported_build_node("v20.12.0")
 
 
 def test_resolve_entry_script_prefers_tracked_launcher(tmp_path: Path) -> None:

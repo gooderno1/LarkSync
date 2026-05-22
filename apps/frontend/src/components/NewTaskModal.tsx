@@ -172,7 +172,6 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
         {/* Step Indicator */}
         <div className="flex border-b border-zinc-800">
           {stepMeta.map((s) => {
-            const Icon = s.icon;
             const isActive = step === s.num;
             const isPast = step > s.num;
             return (

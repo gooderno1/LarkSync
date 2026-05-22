@@ -1,5 +1,24 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.1 (2026-05-22)
+
+- 目标：
+  - 按 `engineering_hardening_plan_v0.7.17-dev.1` 的第一阶段落地工程化收口，先解决构建基线漂移、FastAPI 生命周期弃用、前端质量门薄弱，以及自动更新缺少更接近真实用户链路的 smoke 验证这四类问题。
+- 结果：
+  - `scripts/build_installer.py` 现在会固定校验发布构建基线为 `Python 3.14.x` 与 `Node 25.x`，启动时打印 Python/Node/平台环境摘要；若处于非基线环境会直接 fail fast，只允许通过显式环境变量临时放行。
+  - `apps/backend/src/main.py` 重构为 `create_app()` + `lifespan` 模式，统一收口数据库初始化、watcher、同步调度、更新调度和日志维护后台服务的启动/关闭顺序，并补充生命周期回归测试。
+  - 前端补齐 `eslint` 配置、`vitest` smoke 用例与页面壳层回归，覆盖 App、任务页、日志中心和设置页；为避免 Windows 上 `jsdom` + 大页面测试导致 Node 堆内存暴涨，smoke 用例最终改为 `renderToStaticMarkup` 的轻量字符串渲染，稳定保留挂载回归而不再依赖浏览器 DOM 环境。
+  - 新增 `scripts/update_install_smoke.py`，可在 Windows 上用真实 PowerShell bootstrap/worker 脚本和 handoff 文件验证静默安装链路是否能推进到目标阶段；脚本同时修复了仓库根目录运行时的导入路径、自定义 handoff 等待路径，以及 GBK 控制台输出 UTF-8 结果失败的问题。
+  - GitHub Actions `Release Build` 的 quality job 现补齐前端 `lint/test/build` 和 Windows 静默安装 smoke，使这类“脚本存在但流程未验证”的工程缝隙进入 CI 质量门。
+- 测试：
+  - `python -m pytest tests/test_main.py tests/test_build_installer.py tests/test_update_install_smoke.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_tray_status.py -q`（工作目录：`apps/backend/`）
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - `python scripts/update_install_smoke.py`
+- 问题：
+  - 当前发布构建基线固定在本机与 CI 都已验证过的 `Python 3.14.x / Node 25.x`；如果后续团队决定回退到 LTS 运行时，需要把这一轮基线约束、CI 版本和打包脚本一并调整，而不是只改单处版本号。
+
 ## v0.7.13 release (2026-05-16)
 
 - 目标：
