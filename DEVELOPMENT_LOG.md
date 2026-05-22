@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.6 (2026-05-22)
+
+- 目标：
+  - 继续推进日志中心页面拆分，把“任务选择 / 运行记录 / 诊断详情”三大块从 `LogCenterPage.tsx` 中抽离，避免页面继续承担大段诊断视图 JSX。
+- 结果：
+  - 新增 `apps/frontend/src/components/log-center/TaskSelectionPanel.tsx`、`RunHistoryPanel.tsx`、`TaskDiagnosticsDetailPanel.tsx`，分别承载任务选择、运行列表与任务诊断详情工作台。
+  - 新增 `apps/frontend/src/components/log-center/TaskDiagnosticsPanels.test.tsx`，用静态渲染 smoke test 锁定拆分后关键壳层文案与详情概览结构。
+  - `LogCenterPage.tsx` 已从约 800 行进一步收口到约 250 行，当前主要负责 query/hook 接线、页签切换和 panel 装配，不再直接承载大段任务诊断 JSX。
+- 测试：
+  - `npm --prefix apps/frontend exec vitest run src/components/log-center/TaskDiagnosticsPanels.test.tsx src/pages/LogCenterPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+- 问题：
+  - 任务诊断详情组件虽然已经脱离页面，但 `TaskDiagnosticsDetailPanel.tsx` 内部仍有多段概览/问题/事件视图分支；下一轮应继续把 detail tabs 按 `Overview / Problems / Events` 再拆成更细的纯展示组件，进一步降低单组件复杂度。
+
 ## v0.7.17-dev.5 (2026-05-22)
 
 - 目标：
