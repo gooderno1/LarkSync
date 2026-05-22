@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-23] v0.7.17-dev.26 refactor(backend): 为 `transcoder` 新增 `docx_parser.py`，将块类型常量、`DocxParser` 与解析 helper 下沉到独立模块，并保持 `transcoder` 原导出兼容
+
 [2026-05-23] v0.7.17-dev.25 refactor(backend): 为 `sync_runner` 新增 `SyncDownloadOrchestrationService`，将下载树扫描、候选筛选、写回循环与运行时服务组装下沉到独立服务，并补充 `_download_docx` 回调透传回归
 
 [2026-05-23] v0.7.17-dev.24 refactor(backend): 为 `sync_runner` 新增 `SyncUploadOrchestrationService`，将上传全量扫描、按路径上传批次、运行时服务组装与失败归档逻辑下沉到独立服务，并补充 `_run_upload_paths` 回调透传回归

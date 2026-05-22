@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.26 (2026-05-23)
+
+- 目标：
+  - 继续落实工作流 B，在 `apps/backend/src/services/transcoder.py` 中拆出块解析职责，把 `DocxParser`、块类型常量和相关 helper 从转码编排主类中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/docx_parser.py`，承载 `DocxParser`、块类型常量，以及提醒格式化、表格单元格文本规范化、编号列表索引解析等解析辅助逻辑。
+  - `transcoder.py` 现在从 `docx_parser.py` 导入并继续兼容导出 `DocxParser` 与相关常量，外部调用面保持不变，但转码编排与块解析职责已经分层。
+  - `transcoder.py` 文件规模已从 1270 行降到 956 行，为后续继续拆 `MediaDownloader` 或 sheet/table 渲染逻辑预留了更清晰的边界。
+- 测试：
+  - `python -m pytest tests/test_transcoder.py -k "sheet_block or internal_full_coverage_document" -q`
+  - `python -m pytest tests/test_transcoder.py -q`
+  - `python -m pytest tests/test_docx_service.py tests/test_transcoder.py tests/test_sync_runner.py -q`
+- 问题：
+  - 当前剩余最大模块仍是 `sync_runner.py`（2834 行）和 `docx_service.py`（1598 行）；下一轮应优先在 `sync_runner` 的单文件上传/下载细节与 `transcoder` 的 sheet/table 渲染逻辑之间择一继续拆分。
+
 ## v0.7.17-dev.25 (2026-05-23)
 
 - 目标：
