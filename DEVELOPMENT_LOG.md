@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.22 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 B，拆 `apps/backend/src/services/docx_service.py` 中的子块创建主链路，把创建请求、失败拆分重试和图片/附件回填从文档服务主类中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/docx_block_create_service.py`，承载子块批次规划、创建请求、图片/附件回填、失败拆分重试与表格块创建失败后的降级分支。
+  - `DocxService` 现通过组合 `DocxBlockCreateService` 复用这部分能力，并保留 `_create_children_recursive`、`_handle_create_children_error` 等原方法作为兼容代理，现有文档写回与上传回归无需改写。
+  - `docx_service` 现已进一步拆出“Markdown 资源处理 / 表格运行时处理 / 局部更新 diff / 子块创建执行”四块服务边界，主类继续向“飞书文档 API 编排层”收口。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py -k "build_create_chunks or replace_document_content_uploads_local_file_link_as_file_block or replace_document_content_falls_back_to_plain_text_when_table_create_invalid or replace_image_block_preserves_source_ratio" -q`
+  - `python -m pytest tests/test_docx_service.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py tests/test_docx_service.py tests/test_main.py -q`
+- 问题：
+  - `docx_service.py` 仍集中着 `replace_document_content` 主流程、网络请求基类和部分转换编排；下一轮应优先继续拆内容替换主编排，或转去继续拆 `sync_runner` 的 `run_download/run_upload` 主编排。
+
 ## v0.7.17-dev.21 (2026-05-22)
 
 - 目标：
