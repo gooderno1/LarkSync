@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.17 (2026-05-22)
+
+- 目标：
+  - 继续落实工作流 B，把 `sync_runner.py` 中与 Markdown 云端文档导入/重导入强相关的逻辑抽成独立服务，减少上传链路在主 runner 中的实现细节。
+- 结果：
+  - 新增 `apps/backend/src/services/sync_markdown_cloud_doc_service.py`，承载 Markdown 新建云端文档、复用同名文档、导入重建、导入源文件清理、同名旧文档清理与新建文档 `modified_time` 兜底等逻辑。
+  - `SyncTaskRunner` 现通过组合 `SyncMarkdownCloudDocService` 复用这部分能力，并保留 `_create_cloud_doc_for_markdown`、`_reimport_cloud_doc_for_markdown`、`_import_markdown_doc`、`_cleanup_duplicate_docs_by_name`、`_cleanup_import_source_file` 等原私有方法作为兼容代理，现有上传回归无需改写。
+  - `sync_runner` 的上传链路进一步从“主流程 + 细节实现”转向“主流程编排 + 专项服务”，为后续继续抽离下载候选/导出任务链路预留了更清晰的边界。
+- 测试：
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest tests/test_sync_runner.py -k "parse_mtime or upload_markdown or upload_file_replaces_previous_cloud_file" -q`
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest tests/test_sync_task_api.py tests/test_main.py -q`
+- 问题：
+  - `sync_runner.py` 仍然集中着下载候选筛选、导出任务轮询和块级更新编排；下一轮应继续沿下载/导出链路抽服务，而不是在主 runner 里继续堆条件分支。
+
 ## v0.7.17-dev.16 (2026-05-22)
 
 - 目标：

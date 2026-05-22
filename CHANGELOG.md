@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-22] v0.7.17-dev.17 refactor(backend): 为 `sync_runner` 新增 `SyncMarkdownCloudDocService`，将 Markdown 云端文档导入/重导入、导入源文件清理、同名旧文档清理与新建文档时间戳兜底等逻辑下沉到独立服务，并保留原私有方法兼容代理以维持上传回归稳定
+
 [2026-05-22] v0.7.17-dev.16 refactor(backend): 为 `sync_runner` 新增 `SyncDeleteSyncService`，将删除墓碑创建/执行、本地回收目录移动、删除映射清理与云端幂等删除判断等逻辑下沉到独立服务，并保留原私有方法兼容代理以维持测试与调用面稳定
 
 [2026-05-22] v0.7.17-dev.15 refactor(backend): 为 `sync_runner` 新增 `SyncCloudFolderService`，将云端父目录解析、MD 镜像目录查找/创建、目录缓存与导入后文档探测等逻辑从主 runner 中下沉，并保留原私有方法兼容代理以维持测试与调用面稳定

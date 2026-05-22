@@ -28,7 +28,7 @@ from src.services.file_uploader import FileUploader
 from src.services.file_writer import FileWriter
 from src.services.markdown_blocks import hash_block, split_markdown_blocks
 from src.services.path_sanitizer import sanitize_filename, sanitize_path_segment
-from src.services.import_task_service import ImportTaskError, ImportTaskService
+from src.services.import_task_service import ImportTaskService
 from src.services.export_task_service import ExportTaskError, ExportTaskResult, ExportTaskService
 from src.services.conflict_service import ConflictService
 from src.services.sync_block_service import BlockStateItem, SyncBlockService
@@ -37,6 +37,7 @@ from src.services.sync_event_pipeline import SyncEventPipeline
 from src.services.sync_delete_sync_service import SyncDeleteSyncService
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_cloud_folder_service import SyncCloudFolderService
+from src.services.sync_markdown_cloud_doc_service import SyncMarkdownCloudDocService
 from src.services.sync_run_event_service import SyncRunEventService
 from src.services.sync_run_service import SyncRunService
 from src.services.sync_runner_state import SYNC_LOG_LIMIT, SyncFileEvent, SyncState, SyncTaskStatus
@@ -185,6 +186,20 @@ class SyncTaskRunner:
             block_service=self._block_service,
             should_ignore_path=self._should_ignore_path,
             local_trash_dir_name=_LOCAL_TRASH_DIR_NAME,
+        )
+        self._markdown_cloud_doc_service = SyncMarkdownCloudDocService(
+            link_service=self._link_service,
+            block_service=self._block_service,
+            resolve_cloud_parent=self._resolve_cloud_parent,
+            find_existing_doc_by_name=self._find_existing_doc_by_name,
+            wait_for_imported_doc=self._wait_for_imported_doc,
+            list_folder_tokens=self._list_folder_tokens,
+            list_files_all=self._list_files_all,
+            get_local_signature=self._get_local_signature,
+            calculate_local_resource_signature=self._calculate_local_resource_signature,
+            build_cloud_revision=self._build_cloud_revision,
+            parse_mtime=_parse_mtime,
+            release_doc_lock=lambda token: self._doc_locks.pop(token, None),
         )
         self._event_pipeline = SyncEventPipeline(
             event_store=self._event_store,
@@ -2607,86 +2622,15 @@ class SyncTaskRunner:
         drive_service: DriveService,
         import_task_service: ImportTaskService,
     ) -> tuple[SyncLinkItem | None, bool]:
-        suffix = path.suffix.lower().lstrip(".")
-        if not suffix:
-            self._record_event(status, 
-                SyncFileEvent(
-                    path=str(path),
-                    status="failed",
-                    message="Markdown 文件缺少扩展名",
-                )
-            )
-            return None, False
-
-        # 根据本地子目录结构解析正确的云端父文件夹
-        parent_token = await self._resolve_cloud_parent(task, path, drive_service)
-
-        existing_doc_token = await self._find_existing_doc_by_name(
-            drive_service=drive_service,
-            folder_token=parent_token,
-            expected_name=path.stem,
-        )
-        if existing_doc_token:
-            link = await self._link_service.upsert_link(
-                local_path=str(path),
-                cloud_token=existing_doc_token,
-                cloud_type="docx",
-                task_id=task.id,
-                updated_at=0.0,
-                cloud_parent_token=parent_token,
-            )
-            self._record_event(status, 
-                SyncFileEvent(
-                    path=str(path),
-                    status="linked",
-                    message="复用云端同名文档",
-                )
-            )
-            return link, False
-        self._record_event(status, 
-            SyncFileEvent(path=str(path), status="creating", message="创建云端文档")
-        )
-        created_doc = await self._import_markdown_doc(
+        return await self._markdown_cloud_doc_service.create_cloud_doc_for_markdown(
             task=task,
             status=status,
             path=path,
-            parent_token=parent_token,
             file_uploader=file_uploader,
             drive_service=drive_service,
             import_task_service=import_task_service,
+            record_event=self._record_event,
         )
-        if not created_doc:
-            return None, False
-
-        local_signature = self._get_local_signature(path)
-        cloud_mtime = self._resolve_created_doc_mtime(
-            created_doc, local_signature[2] if local_signature else None
-        )
-        resource_signature = self._calculate_local_resource_signature(
-            path.read_text(encoding="utf-8"),
-            path.parent,
-        )
-        cloud_revision = self._build_cloud_revision(created_doc.token, cloud_mtime)
-
-        link = await self._link_service.upsert_link(
-            local_path=str(path),
-            cloud_token=created_doc.token,
-            cloud_type="docx",
-            task_id=task.id,
-            updated_at=cloud_mtime,
-            cloud_parent_token=parent_token,
-            local_hash=local_signature[0] if local_signature else None,
-            local_size=local_signature[1] if local_signature else None,
-            local_mtime=local_signature[2] if local_signature else None,
-            cloud_revision=cloud_revision,
-            cloud_mtime=cloud_mtime,
-            local_resource_signature=resource_signature,
-            resource_sync_revision=cloud_revision,
-        )
-        self._record_event(status, 
-            SyncFileEvent(path=str(path), status="created", message="云端文档已创建")
-        )
-        return link, True
 
     async def _reimport_cloud_doc_for_markdown(
         self,
@@ -2699,54 +2643,15 @@ class SyncTaskRunner:
         drive_service: DriveService,
         import_task_service: ImportTaskService,
     ) -> SyncLinkItem | None:
-        parent_token = await self._resolve_cloud_parent(task, path, drive_service)
-        self._record_event(
-            status,
-            SyncFileEvent(path=str(path), status="reimporting", message="检测到超限表格，改用导入重建"),
-        )
-        created_doc = await self._import_markdown_doc(
+        return await self._markdown_cloud_doc_service.reimport_cloud_doc_for_markdown(
             task=task,
             status=status,
             path=path,
-            parent_token=parent_token,
+            old_link=old_link,
             file_uploader=file_uploader,
             drive_service=drive_service,
             import_task_service=import_task_service,
-        )
-        if not created_doc:
-            return None
-        await self._block_service.replace_blocks(str(path), old_link.cloud_token, [])
-        await self._cleanup_duplicate_docs_by_name(
-            drive_service=drive_service,
-            parent_token=parent_token,
-            expected_name=path.stem,
-            keep_token=created_doc.token,
-            path=path,
-        )
-        local_signature = self._get_local_signature(path)
-        cloud_mtime = self._resolve_created_doc_mtime(
-            created_doc,
-            local_signature[2] if local_signature else old_link.local_mtime,
-        )
-        resource_signature = self._calculate_local_resource_signature(
-            path.read_text(encoding="utf-8"),
-            path.parent,
-        )
-        cloud_revision = self._build_cloud_revision(created_doc.token, cloud_mtime)
-        return await self._link_service.upsert_link(
-            local_path=str(path),
-            cloud_token=created_doc.token,
-            cloud_type="docx",
-            task_id=task.id,
-            updated_at=cloud_mtime,
-            cloud_parent_token=parent_token,
-            local_hash=local_signature[0] if local_signature else old_link.local_hash,
-            local_size=local_signature[1] if local_signature else old_link.local_size,
-            local_mtime=local_signature[2] if local_signature else old_link.local_mtime,
-            cloud_revision=cloud_revision,
-            cloud_mtime=cloud_mtime,
-            local_resource_signature=resource_signature,
-            resource_sync_revision=cloud_revision,
+            record_event=self._record_event,
         )
 
     async def _import_markdown_doc(
@@ -2760,84 +2665,16 @@ class SyncTaskRunner:
         drive_service: DriveService,
         import_task_service: ImportTaskService,
     ) -> DriveFile | None:
-        suffix = path.suffix.lower().lstrip(".")
-        if not suffix:
-            self._record_event(
-                status,
-                SyncFileEvent(
-                    path=str(path),
-                    status="failed",
-                    message="Markdown 文件缺少扩展名",
-                ),
-            )
-            return None
-        existing_tokens = await self._list_folder_tokens(
-            drive_service, parent_token
-        )
-        source_file_token: str | None = None
-        try:
-            upload = await file_uploader.upload_file(
-                file_path=path,
-                parent_node=parent_token,
-                parent_type="explorer",
-                record_db=False,
-            )
-            source_file_token = upload.file_token
-            await import_task_service.create_import_task(
-                file_extension=suffix,
-                file_token=upload.file_token,
-                mount_key=parent_token,
-                file_name=path.stem,
-                doc_type="docx",
-            )
-        except ImportTaskError as exc:
-            self._record_event(status, 
-                SyncFileEvent(path=str(path), status="failed", message=str(exc))
-            )
-            await self._cleanup_import_source_file(
-                drive_service=drive_service,
-                source_file_token=source_file_token,
-                task_id=task.id,
-                parent_token=parent_token,
-                source_name=path.name,
-            )
-            return None
-        except Exception as exc:
-            self._record_event(status, 
-                SyncFileEvent(path=str(path), status="failed", message=str(exc))
-            )
-            await self._cleanup_import_source_file(
-                drive_service=drive_service,
-                source_file_token=source_file_token,
-                task_id=task.id,
-                parent_token=parent_token,
-                source_name=path.name,
-            )
-            return None
-
-        created_doc = await self._wait_for_imported_doc(
-            drive_service=drive_service,
-            folder_token=parent_token,
-            expected_name=path.stem,
-            existing_tokens=existing_tokens,
-        )
-        await self._cleanup_import_source_file(
-            drive_service=drive_service,
-            source_file_token=source_file_token,
-            task_id=task.id,
+        return await self._markdown_cloud_doc_service.import_markdown_doc(
+            task=task,
+            status=status,
+            path=path,
             parent_token=parent_token,
-            source_name=path.name,
+            file_uploader=file_uploader,
+            drive_service=drive_service,
+            import_task_service=import_task_service,
+            record_event=self._record_event,
         )
-        if not created_doc:
-            self._record_event(status, 
-                SyncFileEvent(
-                    path=str(path),
-                    status="failed",
-                    message="导入任务完成但未找到新文档",
-                )
-            )
-            return None
-        return created_doc
 
     async def _cleanup_duplicate_docs_by_name(
         self,
@@ -2848,29 +2685,13 @@ class SyncTaskRunner:
         keep_token: str,
         path: Path,
     ) -> None:
-        items = await self._list_files_all(drive_service, parent_token)
-        for item in items:
-            if item.type not in {"docx", "doc"}:
-                continue
-            if item.name != expected_name or item.token == keep_token:
-                continue
-            try:
-                await drive_service.delete_file(item.token, item.type)
-            except Exception:
-                logger.warning(
-                    "删除同名旧文档失败，保留新文档: keep_token={} stale_token={} path={}",
-                    keep_token,
-                    item.token,
-                    path,
-                )
-                continue
-            self._doc_locks.pop(item.token, None)
-            logger.info(
-                "已清理同名旧文档: keep_token={} stale_token={} path={}",
-                keep_token,
-                item.token,
-                path,
-            )
+        await self._markdown_cloud_doc_service.cleanup_duplicate_docs_by_name(
+            drive_service=drive_service,
+            parent_token=parent_token,
+            expected_name=expected_name,
+            keep_token=keep_token,
+            path=path,
+        )
 
     async def _cleanup_import_source_file(
         self,
@@ -2881,30 +2702,13 @@ class SyncTaskRunner:
         parent_token: str,
         source_name: str,
     ) -> None:
-        token = (source_file_token or "").strip()
-        if not token:
-            return
-        delete_file = getattr(drive_service, "delete_file", None)
-        if not callable(delete_file):
-            return
-        try:
-            await delete_file(token, "file")
-            logger.info(
-                "清理导入源文件成功: task_id={} parent={} file={} token={}",
-                task_id,
-                parent_token,
-                source_name,
-                token,
-            )
-        except Exception as exc:
-            logger.warning(
-                "清理导入源文件失败: task_id={} parent={} file={} token={} error={}",
-                task_id,
-                parent_token,
-                source_name,
-                token,
-                exc,
-            )
+        await self._markdown_cloud_doc_service.cleanup_import_source_file(
+            drive_service=drive_service,
+            source_file_token=source_file_token,
+            task_id=task_id,
+            parent_token=parent_token,
+            source_name=source_name,
+        )
 
     def _iter_local_files(self, task: SyncTaskItem) -> Iterable[Path]:
         root = Path(task.local_path)
@@ -3117,18 +2921,11 @@ class SyncTaskRunner:
     def _resolve_created_doc_mtime(
         created_doc: DriveFile, fallback_local_mtime: float | None
     ) -> float:
-        modified_time = created_doc.modified_time
-        if modified_time is not None:
-            try:
-                return _parse_mtime(modified_time)
-            except Exception:
-                logger.warning(
-                    "解析新建云端文档 modified_time 失败，改用本地/当前时间兜底: token={} modified_time={}",
-                    created_doc.token,
-                    modified_time,
-                )
-        baseline = max(float(fallback_local_mtime or 0.0), time.time())
-        return baseline
+        return SyncMarkdownCloudDocService.resolve_created_doc_mtime(
+            created_doc,
+            fallback_local_mtime,
+            parse_mtime=_parse_mtime,
+        )
 
     async def _handle_local_event(self, task: SyncTaskItem, event: FileChangeEvent) -> None:
         if task.sync_mode == "download_only":
