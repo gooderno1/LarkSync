@@ -70,6 +70,10 @@ jobs:
         working-directory: apps/frontend
         run: npm run lint
 
+      - name: Typecheck frontend
+        working-directory: apps/frontend
+        run: npm run typecheck
+
       - name: Run frontend tests
         working-directory: apps/frontend
         run: npm run test

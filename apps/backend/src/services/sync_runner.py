@@ -43,8 +43,10 @@ from src.services.sync_download_orchestration_service import (
     SyncDownloadOrchestrationService,
 )
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
+from src.services.sync_path_upload_service import SyncPathUploadService
 from src.services.sync_cloud_folder_service import SyncCloudFolderService
 from src.services.sync_markdown_cloud_doc_service import SyncMarkdownCloudDocService
+from src.services.sync_markdown_upload_service import SyncMarkdownUploadService
 from src.services.sync_run_event_service import SyncRunEventService
 from src.services.sync_run_service import SyncRunService
 from src.services.sync_runner_state import SYNC_LOG_LIMIT, SyncFileEvent, SyncState, SyncTaskStatus
@@ -254,6 +256,44 @@ class SyncTaskRunner:
             iter_local_files=lambda *args, **kwargs: self._iter_local_files(*args, **kwargs),
             upload_path=lambda *args, **kwargs: self._upload_path(*args, **kwargs),
             process_pending_deletes=lambda *args, **kwargs: self._process_pending_deletes(*args, **kwargs),
+            record_event=lambda *args, **kwargs: self._record_event(*args, **kwargs),
+        )
+        self._path_upload_service = SyncPathUploadService(
+            uploading_paths=self._uploading_paths,
+            link_service=self._link_service,
+            should_ignore_path=lambda *args, **kwargs: self._should_ignore_path(*args, **kwargs),
+            should_upload_markdown_doc=lambda *args, **kwargs: self._should_upload_markdown_doc(*args, **kwargs),
+            upload_markdown=lambda *args, **kwargs: self._upload_markdown(*args, **kwargs),
+            upload_file_callback=lambda *args, **kwargs: self._upload_file(*args, **kwargs),
+            resolve_cloud_parent=lambda *args, **kwargs: self._resolve_cloud_parent(*args, **kwargs),
+            get_local_signature=self._get_local_signature,
+            build_cloud_revision=self._build_cloud_revision,
+            list_files_all=lambda *args, **kwargs: self._list_files_all(*args, **kwargs),
+            record_event=lambda *args, **kwargs: self._record_event(*args, **kwargs),
+        )
+        self._markdown_upload_service = SyncMarkdownUploadService(
+            link_service=self._link_service,
+            doc_locks=self._doc_locks,
+            upload_file=lambda *args, **kwargs: self._upload_file(*args, **kwargs),
+            create_cloud_doc_for_markdown=lambda *args, **kwargs: self._create_cloud_doc_for_markdown(*args, **kwargs),
+            block_markdown_upload_when_cloud_changed=lambda *args, **kwargs: self._block_markdown_upload_when_cloud_changed(*args, **kwargs),
+            list_block_states=lambda *args, **kwargs: self._block_service.list_blocks(*args, **kwargs),
+            has_uploadable_markdown_images=self._has_uploadable_markdown_images,
+            calculate_local_resource_signature=self._calculate_local_resource_signature,
+            is_local_resource_state_synced=self._is_local_resource_state_synced,
+            is_markdown_table_render_state_synced=self._is_markdown_table_render_state_synced,
+            should_reimport_markdown_doc=self._should_reimport_markdown_doc,
+            bootstrap_block_state=lambda *args, **kwargs: self._bootstrap_block_state(*args, **kwargs),
+            apply_block_update=lambda *args, **kwargs: self._apply_block_update(*args, **kwargs),
+            rebuild_block_state=lambda *args, **kwargs: self._rebuild_block_state(*args, **kwargs),
+            reimport_cloud_doc_for_markdown=lambda *args, **kwargs: self._reimport_cloud_doc_for_markdown(*args, **kwargs),
+            build_cloud_revision=self._build_cloud_revision,
+            resolve_cloud_parent=lambda *args, **kwargs: self._resolve_cloud_parent(*args, **kwargs),
+            should_sync_md_cloud_mirror=lambda *args, **kwargs: self._should_sync_md_cloud_mirror(*args, **kwargs),
+            sync_markdown_mirror_copy=lambda *args, **kwargs: self._sync_markdown_mirror_copy(*args, **kwargs),
+            cleanup_md_mirror_copy=lambda *args, **kwargs: self._cleanup_md_mirror_copy(*args, **kwargs),
+            has_local_image_revision=_has_local_image_upload_revision,
+            has_markdown_table_render_revision=_has_markdown_table_render_revision,
             record_event=lambda *args, **kwargs: self._record_event(*args, **kwargs),
         )
 
@@ -1063,63 +1103,16 @@ class SyncTaskRunner:
         *,
         force: bool = False,
     ) -> None:
-        key = str(path)
-        if key in self._uploading_paths:
-            status.skipped_files += 1
-            self._record_event(status, 
-                SyncFileEvent(path=key, status="skipped", message="上传中，跳过重复触发")
-            )
-            logger.info("重复上传触发，已跳过: task_id={} path={}", task.id, key)
-            return
-        self._uploading_paths.add(key)
-        try:
-            if self._should_ignore_path(task, path):
-                status.skipped_files += 1
-                self._record_event(status, 
-                    SyncFileEvent(path=key, status="skipped", message="忽略内部目录")
-                )
-                return
-            if not path.exists() or not path.is_file():
-                return
-            suffix = path.suffix.lower()
-            if suffix == ".md":
-                if not self._should_upload_markdown_doc(task):
-                    status.skipped_files += 1
-                    self._record_event(
-                        status,
-                        SyncFileEvent(
-                            path=key,
-                            status="skipped",
-                            message="当前 MD 模式为仅下载，跳过 MD 上传",
-                        ),
-                    )
-                    logger.info(
-                        "跳过 MD 上传（md_sync_mode=download_only）: task_id={} path={}",
-                        task.id,
-                        path,
-                    )
-                    return
-                await self._upload_markdown(
-                    task,
-                    status,
-                    path,
-                    docx_service,
-                    file_uploader,
-                    drive_service,
-                    import_task_service,
-                    force=force,
-                )
-                return
-            await self._upload_file(
-                task,
-                status,
-                path,
-                file_uploader,
-                drive_service,
-                force=force,
-            )
-        finally:
-            self._uploading_paths.discard(key)
+        await self._path_upload_service.upload_path(
+            task,
+            status,
+            path,
+            docx_service,
+            file_uploader,
+            drive_service,
+            import_task_service,
+            force=force,
+        )
 
     async def _upload_markdown(
         self,
@@ -1133,325 +1126,16 @@ class SyncTaskRunner:
         *,
         force: bool = False,
     ) -> None:
-        link = await self._link_service.get_by_local_path(str(path))
-        if link and link.cloud_type == "file":
-            await self._upload_file(
-                task,
-                status,
-                path,
-                file_uploader,
-                drive_service,
-                force=force,
-            )
-            return
-        imported_doc = False
-        if not link:
-            link, imported_doc = await self._create_cloud_doc_for_markdown(
-                task=task,
-                status=status,
-                path=path,
-                file_uploader=file_uploader,
-                drive_service=drive_service,
-                import_task_service=import_task_service,
-            )
-            if not link:
-                status.failed_files += 1
-                self._record_event(status, 
-                    SyncFileEvent(
-                        path=str(path),
-                        status="failed",
-                        message="创建云端文档失败",
-                    )
-                )
-                return
-        markdown = path.read_text(encoding="utf-8")
-        base_path = path.parent.as_posix()
-        mtime = path.stat().st_mtime
-        file_hash = calculate_file_hash(path)
-        has_uploadable_images = self._has_uploadable_markdown_images(
-            markdown, base_path
-        )
-        resource_signature = self._calculate_local_resource_signature(
-            markdown,
-            base_path,
-        )
-        update_mode = task.update_mode or "auto"
-        has_large_table_over_limit = has_markdown_table_exceeding_create_limit(
-            markdown,
-            max_rows=8,
-        )
-        table_render_repair_required = (
-            has_large_table_over_limit and update_mode != "partial"
-        )
-        if await self._block_markdown_upload_when_cloud_changed(
-            task=task,
-            status=status,
-            path=path,
-            link=link,
-            file_hash=file_hash,
-            markdown=markdown,
-            drive_service=drive_service,
+        await self._markdown_upload_service.upload_markdown(
+            task,
+            status,
+            path,
+            docx_service,
+            file_uploader,
+            drive_service,
+            import_task_service,
             force=force,
-        ):
-            return
-        local_images_repaired = _has_local_image_upload_revision(link.cloud_revision)
-        table_render_repaired = _has_markdown_table_render_revision(
-            link.cloud_revision
         )
-        block_states = await self._block_service.list_blocks(str(path), link.cloud_token)
-        if block_states:
-            if all(item.file_hash == file_hash for item in block_states) and (
-                self._is_local_resource_state_synced(
-                    link=link,
-                    resource_signature=resource_signature,
-                    has_uploadable_images=has_uploadable_images,
-                    local_images_repaired=local_images_repaired,
-                )
-                and self._is_markdown_table_render_state_synced(
-                    repair_required=table_render_repair_required,
-                    repaired=table_render_repaired,
-                )
-            ):
-                status.skipped_files += 1
-                self._record_event(status, 
-                    SyncFileEvent(path=str(path), status="skipped", message="内容未变化")
-                )
-                return
-        else:
-            if (
-                (not imported_doc)
-                and
-                link.local_hash
-                and link.local_hash == file_hash
-                and self._is_local_resource_state_synced(
-                    link=link,
-                    resource_signature=resource_signature,
-                    has_uploadable_images=has_uploadable_images,
-                    local_images_repaired=local_images_repaired,
-                )
-                and self._is_markdown_table_render_state_synced(
-                    repair_required=table_render_repair_required,
-                    repaired=table_render_repaired,
-                )
-            ):
-                status.skipped_files += 1
-                self._record_event(
-                    status,
-                    SyncFileEvent(path=str(path), status="skipped", message="内容未变化"),
-                )
-                return
-            if (
-                (not imported_doc)
-                and (not force)
-                and task.sync_mode != "upload_only"
-                and self._is_markdown_table_render_state_synced(
-                    repair_required=table_render_repair_required,
-                    repaired=table_render_repaired,
-                )
-                and mtime <= (link.updated_at + 1.0)
-            ):
-                status.skipped_files += 1
-                self._record_event(status, 
-                    SyncFileEvent(path=str(path), status="skipped", message="本地未变更")
-                )
-                return
-        requires_reimport = self._should_reimport_markdown_doc(
-            markdown, has_uploadable_images=has_uploadable_images
-        )
-        if link.cloud_type not in {"docx", "doc"}:
-            status.failed_files += 1
-            self._record_event(status, 
-                SyncFileEvent(
-                    path=str(path),
-                    status="failed",
-                    message=f"云端类型不支持 Markdown 覆盖: {link.cloud_type}",
-                )
-            )
-            return
-        if (not imported_doc) and (not block_states) and update_mode in {"auto", "partial"}:
-            await self._bootstrap_block_state(
-                path=path,
-                cloud_token=link.cloud_token,
-                docx_service=docx_service,
-                status=status,
-            )
-        lock = self._doc_locks.setdefault(link.cloud_token, asyncio.Lock())
-        markdown_tables_rendered = False
-        async with lock:
-            logger.info(
-                "上传文档: task_id={} path={} token={}",
-                task.id,
-                path,
-                link.cloud_token,
-            )
-            if imported_doc:
-                if has_uploadable_images or table_render_repair_required:
-                    logger.info(
-                        "导入创建后检测到需转换器修复的 Markdown 内容，改用块级覆盖: task_id={} path={} token={} has_images={} large_table={}",
-                        task.id,
-                        path,
-                        link.cloud_token,
-                        has_uploadable_images,
-                        has_large_table_over_limit,
-                    )
-                    await docx_service.replace_document_content(
-                        link.cloud_token,
-                        markdown,
-                        base_path=base_path,
-                        update_mode="full",
-                    )
-                    markdown_tables_rendered = table_render_repair_required
-                await self._rebuild_block_state(
-                    task=task,
-                    docx_service=docx_service,
-                    document_id=link.cloud_token,
-                    markdown=markdown,
-                    base_path=base_path,
-                    file_path=path,
-                    user_id_type="open_id",
-                )
-            else:
-                applied = False
-                force_full_replace = (
-                    table_render_repair_required and update_mode == "auto"
-                )
-                if force_full_replace:
-                    logger.info(
-                        "检测到超限表格，跳过局部更新并执行同 token 全量重建: task_id={} path={} token={} update_mode={}",
-                        task.id,
-                        path,
-                        link.cloud_token,
-                        update_mode,
-                    )
-                if update_mode in {"auto", "partial"} and not force_full_replace:
-                    try:
-                        applied = await self._apply_block_update(
-                            task=task,
-                            docx_service=docx_service,
-                            document_id=link.cloud_token,
-                            markdown=markdown,
-                            base_path=base_path,
-                            file_path=path,
-                            status=status,
-                            force=update_mode == "partial",
-                        )
-                    except RuntimeError as exc:
-                        logger.info(
-                            "块级更新失败，准备回退: task_id={} path={} token={} error={}",
-                            task.id,
-                            path,
-                            link.cloud_token,
-                            exc,
-                        )
-                        if update_mode == "partial":
-                            raise
-                if not applied:
-                    if update_mode == "partial":
-                        raise RuntimeError("partial 模式要求块级更新，但未产生可应用差异")
-                    try:
-                        await docx_service.replace_document_content(
-                            link.cloud_token,
-                            markdown,
-                            base_path=base_path,
-                            update_mode="full",
-                        )
-                        markdown_tables_rendered = table_render_repair_required
-                    except Exception:
-                        if not requires_reimport:
-                            raise
-                        logger.warning(
-                            "超限表格同 token 覆盖失败，改用导入重建: task_id={} path={} token={}",
-                            task.id,
-                            path,
-                            link.cloud_token,
-                        )
-                        new_link = await self._reimport_cloud_doc_for_markdown(
-                            task=task,
-                            status=status,
-                            path=path,
-                            old_link=link,
-                            file_uploader=file_uploader,
-                            drive_service=drive_service,
-                            import_task_service=import_task_service,
-                        )
-                        if not new_link:
-                            raise RuntimeError("导入重建云端文档失败")
-                        link = new_link
-                        imported_doc = True
-                    else:
-                        await self._rebuild_block_state(
-                            task=task,
-                            docx_service=docx_service,
-                            document_id=link.cloud_token,
-                            markdown=markdown,
-                            base_path=base_path,
-                            file_path=path,
-                            user_id_type="open_id",
-                        )
-                if imported_doc:
-                    if has_uploadable_images:
-                        logger.info(
-                            "导入创建后检测到本地图片，改用块级覆盖: task_id={} path={} token={}",
-                            task.id,
-                            path,
-                            link.cloud_token,
-                        )
-                        await docx_service.replace_document_content(
-                            link.cloud_token,
-                            markdown,
-                            base_path=base_path,
-                            update_mode="full",
-                        )
-                    await self._rebuild_block_state(
-                        task=task,
-                        docx_service=docx_service,
-                        document_id=link.cloud_token,
-                        markdown=markdown,
-                        base_path=base_path,
-                        file_path=path,
-                        user_id_type="open_id",
-                    )
-        synced_at = time.time()
-        cloud_revision = self._build_cloud_revision(
-            link.cloud_token,
-            synced_at,
-            local_images_uploaded=has_uploadable_images,
-            markdown_tables_rendered=markdown_tables_rendered,
-        )
-        # 使用缓存获取 parent_token（已在 _create_cloud_doc_for_markdown 或更早处解析）
-        upload_parent = await self._resolve_cloud_parent(task, path, drive_service)
-        await self._link_service.upsert_link(
-            local_path=str(path),
-            cloud_token=link.cloud_token,
-            cloud_type=link.cloud_type,
-            task_id=task.id,
-            updated_at=synced_at,
-            cloud_parent_token=upload_parent,
-            local_hash=file_hash,
-            local_size=path.stat().st_size,
-            local_mtime=path.stat().st_mtime,
-            cloud_revision=cloud_revision,
-            cloud_mtime=synced_at,
-            local_resource_signature=resource_signature,
-            resource_sync_revision=cloud_revision,
-        )
-        if self._should_sync_md_cloud_mirror(task):
-            await self._sync_markdown_mirror_copy(
-                task=task,
-                status=status,
-                path=path,
-                file_uploader=file_uploader,
-                drive_service=drive_service,
-            )
-        else:
-            await self._cleanup_md_mirror_copy(
-                task=task,
-                local_path=path,
-                drive_service=drive_service,
-            )
-        status.completed_files += 1
-        self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
-        logger.info("上传完成: task_id={} path={}", task.id, path)
 
     async def _block_markdown_upload_when_cloud_changed(
         self,
@@ -1967,86 +1651,14 @@ class SyncTaskRunner:
         *,
         force: bool = False,
     ) -> None:
-        link = await self._link_service.get_by_local_path(str(path))
-        signature = self._get_local_signature(path)
-        if not signature:
-            status.failed_files += 1
-            self._record_event(
-                status,
-                SyncFileEvent(path=str(path), status="failed", message="读取本地文件失败"),
-            )
-            return
-        file_hash, file_size, file_mtime = signature
-        if link:
-            if (
-                link.local_hash
-                and link.local_hash == file_hash
-                and (link.local_size is None or link.local_size == file_size)
-            ):
-                status.skipped_files += 1
-                self._record_event(
-                    status,
-                    SyncFileEvent(path=str(path), status="skipped", message="内容未变化"),
-                )
-                return
-            if (
-                task.sync_mode != "upload_only"
-                and not force
-                and not link.local_hash
-                and file_mtime <= (link.updated_at + 1.0)
-            ):
-                status.skipped_files += 1
-                self._record_event(
-                    status,
-                    SyncFileEvent(path=str(path), status="skipped", message="本地未变更"),
-                )
-                return
-        if link and link.cloud_type != "file":
-            status.failed_files += 1
-            self._record_event(status, 
-                SyncFileEvent(
-                    path=str(path),
-                    status="failed",
-                    message=f"云端类型不支持文件上传: {link.cloud_type}",
-                )
-            )
-            return
-
-        # 根据本地子目录结构解析正确的云端父文件夹
-        if drive_service:
-            parent_token = await self._resolve_cloud_parent(task, path, drive_service)
-        else:
-            parent_token = task.cloud_folder_token
-
-        logger.info("上传文件: task_id={} path={} parent={}", task.id, path, parent_token)
-        result = await file_uploader.upload_file(
-            file_path=path,
-            parent_node=parent_token,
-            parent_type="explorer",
+        await self._path_upload_service.upload_file(
+            task,
+            status,
+            path,
+            file_uploader,
+            drive_service,
+            force=force,
         )
-        synced_at = time.time()
-        await self._cleanup_replaced_cloud_files(
-            path=path,
-            new_token=result.file_token,
-            parent_token=parent_token,
-            previous_link=link,
-            drive_service=drive_service,
-        )
-        await self._link_service.upsert_link(
-            local_path=str(path),
-            cloud_token=result.file_token,
-            cloud_type="file",
-            task_id=task.id,
-            updated_at=synced_at,
-            cloud_parent_token=parent_token,
-            local_hash=file_hash,
-            local_size=file_size,
-            local_mtime=file_mtime,
-            cloud_revision=self._build_cloud_revision(result.file_token, synced_at),
-            cloud_mtime=synced_at,
-        )
-        status.completed_files += 1
-        self._record_event(status, SyncFileEvent(path=str(path), status="uploaded"))
 
     async def _cleanup_replaced_cloud_files(
         self,
@@ -2057,42 +1669,13 @@ class SyncTaskRunner:
         previous_link: SyncLinkItem | None,
         drive_service: DriveService | None,
     ) -> None:
-        delete_file = getattr(drive_service, "delete_file", None) if drive_service else None
-        if not callable(delete_file):
-            return
-
-        stale_tokens: list[str] = []
-        seen_tokens: set[str] = set()
-
-        def _append_stale(token: str | None) -> None:
-            normalized = (token or "").strip()
-            if not normalized or normalized == new_token or normalized in seen_tokens:
-                return
-            seen_tokens.add(normalized)
-            stale_tokens.append(normalized)
-
-        if previous_link and previous_link.cloud_type == "file":
-            _append_stale(previous_link.cloud_token)
-
-        if drive_service:
-            try:
-                existing = await self._list_files_all(drive_service, parent_token)
-            except Exception:
-                logger.warning(
-                    "列出云端文件失败，跳过同名副本清理: parent={} path={}",
-                    parent_token,
-                    path,
-                )
-            else:
-                for item in existing:
-                    if item.type == "file" and item.name == path.name:
-                        _append_stale(item.token)
-
-        for token in stale_tokens:
-            try:
-                await delete_file(token, "file")
-            except Exception:
-                logger.warning("删除旧云端文件失败，保留最新映射: token={} path={}", token, path)
+        await self._path_upload_service.cleanup_replaced_cloud_files(
+            path=path,
+            new_token=new_token,
+            parent_token=parent_token,
+            previous_link=previous_link,
+            drive_service=drive_service,
+        )
 
     async def _bootstrap_block_state(
         self,

@@ -13,7 +13,6 @@ LarkSync 系统托盘应用 — 主入口
 from __future__ import annotations
 
 import atexit
-import base64
 import sys
 import os
 import re
@@ -28,7 +27,7 @@ import urllib.request
 import urllib.error
 import argparse
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 # 确保项目根目录在 sys.path 中
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -56,6 +55,7 @@ from apps.tray.backend_manager import BackendManager
 from apps.tray.icon_generator import generate_icons, get_icon_path
 from apps.tray.autostart import is_autostart_enabled, toggle_autostart
 from apps.tray import notifier
+from apps.tray import windows_install_helper
 from src.core.paths import update_data_dir, update_logs_dir
 
 
@@ -294,41 +294,48 @@ def _resolve_powershell_executable() -> str:
 
 
 def _hidden_helper_creationflags() -> int:
-    flags = (
-        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return windows_install_helper.hidden_helper_creationflags(subprocess)
+
+
+def _hidden_helper_creationflag_attempts() -> list[int]:
+    return windows_install_helper.hidden_helper_creationflag_attempts(
+        _hidden_helper_creationflags(),
+        getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0),
     )
-    flags |= getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
-    return flags
+
+
+def _is_retryable_hidden_helper_launch_error(exc: OSError) -> bool:
+    return windows_install_helper.is_retryable_hidden_helper_launch_error(exc)
+
+
+def _launch_hidden_helper_process(
+    command: list[str],
+    *,
+    close_fds: bool = True,
+    on_fallback: Callable[[str], None] | None = None,
+) -> tuple[subprocess.Popen[Any], int]:
+    return windows_install_helper.launch_hidden_helper_process(
+        command,
+        subprocess_module=subprocess,
+        creationflag_attempts=_hidden_helper_creationflag_attempts(),
+        close_fds=close_fds,
+        on_fallback=on_fallback,
+        is_retryable_error=_is_retryable_hidden_helper_launch_error,
+    )
 
 
 def _build_windows_powershell_command(script: str) -> list[str]:
-    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
-    return [
+    return windows_install_helper.build_windows_powershell_command(
         _resolve_powershell_executable(),
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-WindowStyle",
-        "Hidden",
-        "-EncodedCommand",
-        encoded,
-    ]
+        script,
+    )
 
 
 def _build_windows_powershell_file_command(script_path: Path) -> list[str]:
-    return [
+    return windows_install_helper.build_windows_powershell_file_command(
         _resolve_powershell_executable(),
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-WindowStyle",
-        "Hidden",
-        "-File",
-        str(script_path),
-    ]
+        script_path,
+    )
 
 
 def _install_script_dir() -> Path:
@@ -336,15 +343,12 @@ def _install_script_dir() -> Path:
 
 
 def _install_script_stem(path: Path, request_id: str) -> str:
-    raw = request_id.strip() or path.stem or f"install-{int(time.time() * 1000)}"
-    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw).strip(".-")
-    return (safe or "install")[:80]
+    return windows_install_helper.install_script_stem(path, request_id)
 
 
 def _write_powershell_script(path: Path, content: str) -> None:
     """使用 Windows PowerShell 5.1 可稳定识别的编码写入脚本。"""
-    encoding = "utf-8-sig" if sys.platform == "win32" else "utf-8"
-    path.write_text(content, encoding=encoding)
+    windows_install_helper.write_powershell_script(path, content, is_windows=sys.platform == "win32")
 
 
 def _build_windows_installer_worker_script(
@@ -356,145 +360,13 @@ def _build_windows_installer_worker_script(
     handoff_path: Path | None = None,
     request_id: str = "",
 ) -> str:
-    installer_escaped = str(path).replace("'", "''")
-    restart_escaped = str(restart_path).replace("'", "''") if restart_path else ""
-    log_escaped = str(log_path).replace("'", "''") if log_path else ""
-    handoff_escaped = str(handoff_path).replace("'", "''") if handoff_path else ""
-    request_escaped = request_id.replace("'", "''")
-    silent_literal = "$true" if silent else "$false"
-    return (
-        f"$installerPath = '{installer_escaped}'; "
-        f"$restartPath = '{restart_escaped}'; "
-        f"$logPath = '{log_escaped}'; "
-        f"$handoffPath = '{handoff_escaped}'; "
-        f"$requestId = '{request_escaped}'; "
-        f"$silentInstall = {silent_literal}; "
-        "$expectedVersion = ''; "
-        "$installerName = [System.IO.Path]::GetFileName($installerPath); "
-        "$versionMatch = [regex]::Match($installerName, 'LarkSync-Setup-(v?\\d+\\.\\d+\\.\\d+(?:-dev\\.\\d+)?)', 'IgnoreCase'); "
-        "if ($versionMatch.Success) { $expectedVersion = $versionMatch.Groups[1].Value; if (-not $expectedVersion.StartsWith('v')) { $expectedVersion = 'v' + $expectedVersion } }; "
-        "function Write-InstallLog([string]$message) { "
-        "if ([string]::IsNullOrWhiteSpace($logPath)) { return }; "
-        "try { "
-        "$parent = Split-Path -Parent $logPath; "
-        "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
-        "$timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'; "
-        "Add-Content -LiteralPath $logPath -Value \"[$timestamp] $message\" -Encoding UTF8 "
-        "} catch {} "
-        "}; "
-        "function Write-Handoff([string]$stage, [string]$message, [int]$exitCode = 0) { "
-        "if ([string]::IsNullOrWhiteSpace($handoffPath)) { return }; "
-        "try { "
-        "$parent = Split-Path -Parent $handoffPath; "
-        "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
-        "$payload = @{ request_id = $requestId; stage = $stage; message = $message; exit_code = $exitCode; timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } | ConvertTo-Json -Compress; "
-        "$utf8NoBom = [System.Text.UTF8Encoding]::new($false); "
-        "[System.IO.File]::WriteAllText($handoffPath, $payload, $utf8NoBom) "
-        "} catch {} "
-        "}; "
-        "function Test-PortOpen([int]$port) { "
-        "try { "
-        "$client = New-Object System.Net.Sockets.TcpClient; "
-        "$async = $client.BeginConnect('127.0.0.1', $port, $null, $null); "
-        "$ok = $async.AsyncWaitHandle.WaitOne(500, $false); "
-        "if ($ok) { $client.EndConnect($async) }; "
-        "$client.Close(); "
-        "return $ok "
-        "} catch { return $false } "
-        "}; "
-        "function Read-InstalledVersion() { "
-        "try { "
-        "if ([string]::IsNullOrWhiteSpace($restartPath)) { return '' }; "
-        "$installDir = Split-Path -Parent $restartPath; "
-        "$versionFile = Join-Path $installDir '_internal\\apps\\backend\\pyproject.toml'; "
-        "if (-not (Test-Path -LiteralPath $versionFile)) { $versionFile = Join-Path $installDir 'apps\\backend\\pyproject.toml' }; "
-        "if (-not (Test-Path -LiteralPath $versionFile)) { return '' }; "
-        "$content = Get-Content -LiteralPath $versionFile -Raw -Encoding UTF8; "
-        "$match = [regex]::Match($content, '(?m)^version\\s*=\\s*\"([^\"]+)\"'); "
-        "if ($match.Success) { return $match.Groups[1].Value.Trim() }; "
-        "return '' "
-        "} catch { return '' } "
-        "}; "
-        "function Test-ExpectedVersionInstalled() { "
-        "$installedVersion = Read-InstalledVersion; "
-        "Write-InstallLog (\"安装后版本复核: expected=\" + $expectedVersion + \" installed=\" + $installedVersion); "
-        "if ([string]::IsNullOrWhiteSpace($expectedVersion)) { return $false }; "
-        "return ($installedVersion -eq $expectedVersion) "
-        "}; "
-        "function Start-RestartTarget([string]$reason) { "
-        "if ([string]::IsNullOrWhiteSpace($restartPath)) { return $true }; "
-        "for ($attempt = 1; $attempt -le 3; $attempt++) { "
-        "try { "
-        "$delay = [Math]::Min(2 + $attempt, 5); "
-        "Start-Sleep -Seconds $delay; "
-        "Write-InstallLog (\"尝试启动 LarkSync: reason=\" + $reason + \" attempt=\" + $attempt + \" path=\" + $restartPath); "
-        "$restartProcess = Start-Process -FilePath $restartPath -PassThru -ErrorAction Stop; "
-        "Write-InstallLog (\"重启进程已启动 pid=\" + $restartProcess.Id + \" attempt=\" + $attempt); "
-        "$confirmed = 0; "
-        "for ($probe = 1; $probe -le 6; $probe++) { "
-        "Start-Sleep -Seconds 1; "
-        "$alive = Get-Process -Id $restartProcess.Id -ErrorAction SilentlyContinue; "
-        "$running = $false; "
-        "if ($alive) { $running = $true }; "
-        "if (-not $running -and (Test-PortOpen 48901)) { $running = $true }; "
-        "if ($running) { "
-        "$confirmed += 1; "
-        "Write-InstallLog (\"重启确认探测通过 pid=\" + $restartProcess.Id + \" probe=\" + $probe + \" confirmed=\" + $confirmed); "
-        "if ($confirmed -ge 2) { return $true } "
-        "} else { "
-        "$confirmed = 0 "
-        "}; "
-        "}; "
-        "Write-InstallLog (\"重启进程过早退出 pid=\" + $restartProcess.Id + \" attempt=\" + $attempt); "
-        "} catch { Write-InstallLog (\"启动 LarkSync 失败 reason=\" + $reason + \" attempt=\" + $attempt + \": \" + $_.Exception.Message) } "
-        "}; "
-        "return $false "
-        "}; "
-        "Write-Handoff 'helper_started' 'helper process started'; "
-        "$argumentList = @(); "
-        "if ($silentInstall) { $argumentList += '/S' }; "
-        "Write-InstallLog (\"启动安装器请求: installer=\" + $installerPath + \" silent=\" + $silentInstall + \" expected=\" + $expectedVersion); "
-        "try { "
-        "$process = Start-Process -FilePath $installerPath -ArgumentList $argumentList -PassThru -ErrorAction Stop; "
-        "} catch { "
-        "$message = $_.Exception.Message; "
-        "Write-Handoff 'launch_failed' $message 0; "
-        "Write-InstallLog (\"启动安装器失败: \" + $message); "
-        "if (-not (Start-RestartTarget 'launch_failed')) { Write-InstallLog (\"安装器未启动，恢复启动未确认: \" + $restartPath) }; "
-        "exit 1 "
-        "}; "
-        "Write-Handoff 'installer_started' ('pid=' + $process.Id) 0; "
-        "Write-InstallLog (\"安装器进程已启动 pid=\" + $process.Id); "
-        "try { "
-        "$process.WaitForExit(); "
-        "$process.Refresh(); "
-        "} catch { "
-        "Write-InstallLog (\"等待安装器进程异常，回退 Wait-Process: \" + $_.Exception.Message); "
-        "Wait-Process -Id $process.Id -ErrorAction SilentlyContinue; "
-        "$process.Refresh() "
-        "}; "
-        "$exitCode = $null; "
-        "try { $exitCode = $process.ExitCode } catch { Write-InstallLog (\"读取安装器退出码失败: \" + $_.Exception.Message) }; "
-        "$exitCodeText = if ($null -eq $exitCode) { '<null>' } else { [string]$exitCode }; "
-        "Write-InstallLog (\"安装器进程已退出 exit_code=\" + $exitCodeText); "
-        "$versionMatched = Test-ExpectedVersionInstalled; "
-        "if ($null -eq $exitCode) { Write-InstallLog (\"安装器退出码为空 exit_code=<null>，将以版本复核结果判断: matched=\" + $versionMatched) }; "
-        "if (($null -ne $exitCode) -and ($exitCode -ne 0) -and $versionMatched) { Write-InstallLog (\"安装器退出码非 0 但目标版本已安装，按成功处理 exit_code=\" + $exitCodeText) }; "
-        "if ((($null -eq $exitCode) -or ($exitCode -ne 0)) -and (-not $versionMatched)) { "
-        "$installedVersion = Read-InstalledVersion; "
-        "$failure = \"exit_code=\" + $exitCodeText + \"; expected=\" + $expectedVersion + \"; installed=\" + $installedVersion; "
-        "Write-Handoff 'install_failed' $failure 1; "
-        "Write-InstallLog (\"安装失败: \" + $failure); "
-        "if (-not (Start-RestartTarget 'install_failed')) { Write-InstallLog (\"安装失败后恢复启动未确认: \" + $restartPath) }; "
-        "exit 1 "
-        "}; "
-        "Write-Handoff 'install_succeeded' ('installer completed; exit_code=' + $exitCodeText) 0; "
-        "if (Start-RestartTarget 'install_succeeded') { "
-        "Write-Handoff 'restart_succeeded' 'restart process confirmed' 0 "
-        "} else { "
-        "Write-Handoff 'restart_failed' 'installed but restart did not stay alive' 0; "
-        "Write-InstallLog '安装成功，但自动重启未确认，请手动启动 LarkSync' "
-        "}; "
+    return windows_install_helper.build_windows_installer_worker_script(
+        path,
+        silent=silent,
+        restart_path=restart_path,
+        log_path=log_path,
+        handoff_path=handoff_path,
+        request_id=request_id,
     )
 
 
@@ -528,11 +400,6 @@ def _build_windows_silent_bootstrap_command(
     request_id: str = "",
     script_dir: Path | None = None,
 ) -> list[str]:
-    installer_escaped = str(path).replace("'", "''")
-    log_escaped = str(log_path).replace("'", "''") if log_path else ""
-    handoff_escaped = str(handoff_path).replace("'", "''") if handoff_path else ""
-    request_escaped = request_id.replace("'", "''")
-    powershell_escaped = _resolve_powershell_executable().replace("'", "''")
     target_dir = script_dir or _install_script_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
     stem = _install_script_stem(path, request_id)
@@ -547,45 +414,13 @@ def _build_windows_silent_bootstrap_command(
     worker_path = target_dir / f"{stem}-worker.ps1"
     bootstrap_path = target_dir / f"{stem}-bootstrap.ps1"
     _write_powershell_script(worker_path, worker_script)
-    worker_escaped = str(worker_path).replace("'", "''")
-    script = (
-        f"$installerPath = '{installer_escaped}'; "
-        f"$logPath = '{log_escaped}'; "
-        f"$handoffPath = '{handoff_escaped}'; "
-        f"$requestId = '{request_escaped}'; "
-        f"$powerShellPath = '{powershell_escaped}'; "
-        f"$workerPath = '{worker_escaped}'; "
-        "function Write-InstallLog([string]$message) { "
-        "if ([string]::IsNullOrWhiteSpace($logPath)) { return }; "
-        "try { "
-        "$parent = Split-Path -Parent $logPath; "
-        "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
-        "$timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'; "
-        "Add-Content -LiteralPath $logPath -Value \"[$timestamp] $message\" -Encoding UTF8 "
-        "} catch {} "
-        "}; "
-        "function Write-Handoff([string]$stage, [string]$message, [int]$exitCode = 0) { "
-        "if ([string]::IsNullOrWhiteSpace($handoffPath)) { return }; "
-        "try { "
-        "$parent = Split-Path -Parent $handoffPath; "
-        "if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }; "
-        "$payload = @{ request_id = $requestId; stage = $stage; message = $message; exit_code = $exitCode; timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() } | ConvertTo-Json -Compress; "
-        "$utf8NoBom = [System.Text.UTF8Encoding]::new($false); "
-        "[System.IO.File]::WriteAllText($handoffPath, $payload, $utf8NoBom) "
-        "} catch {} "
-        "}; "
-        "Write-InstallLog (\"启动静默安装 bootstrap: installer=\" + $installerPath); "
-        "try { "
-        "$workerArgs = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', $workerPath); "
-        "$process = Start-Process -FilePath $powerShellPath -ArgumentList $workerArgs -WindowStyle Hidden -PassThru -ErrorAction Stop; "
-        "} catch { "
-        "$message = $_.Exception.Message; "
-        "Write-Handoff 'launch_failed' $message 0; "
-        "Write-InstallLog (\"启动静默安装 worker 失败: \" + $message); "
-        "exit 1 "
-        "}; "
-        "Write-Handoff 'bootstrap_started' ('worker_pid=' + $process.Id) 0; "
-        "Write-InstallLog (\"静默安装 worker 已启动 pid=\" + $process.Id); "
+    script = windows_install_helper.build_windows_silent_bootstrap_script(
+        path,
+        log_path=log_path,
+        handoff_path=handoff_path,
+        request_id=request_id,
+        powershell_executable=_resolve_powershell_executable(),
+        worker_path=worker_path,
     )
     _write_powershell_script(bootstrap_path, script)
     return _build_windows_powershell_file_command(bootstrap_path)
@@ -975,7 +810,7 @@ class LarkSyncTray:
 
         if sys.platform == "win32":
             if silent:
-                subprocess.Popen(
+                _launch_hidden_helper_process(
                     _build_windows_silent_bootstrap_command(
                         path,
                         restart_path=restart_target,
@@ -983,8 +818,8 @@ class LarkSyncTray:
                         handoff_path=_install_handoff_path(),
                         request_id=request_id,
                     ),
-                    creationflags=_hidden_helper_creationflags(),
                     close_fds=True,
+                    on_fallback=_append_install_launch_log,
                 )
                 handoff = _wait_for_ready_install_handoff(request_id)
                 if not handoff:

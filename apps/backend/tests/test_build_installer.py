@@ -1,3 +1,4 @@
+import importlib.util
 import os
 import sys
 from pathlib import Path
@@ -116,3 +117,33 @@ def test_resolve_entry_script_raises_when_missing(tmp_path: Path) -> None:
         assert "LarkSync.pyw" in str(exc)
     else:
         raise AssertionError("expected FileNotFoundError")
+
+
+def test_pyinstaller_hook_paths_points_to_repo_hook_dir(tmp_path: Path) -> None:
+    paths = bi._pyinstaller_hook_paths(tmp_path)
+
+    assert paths == [str(tmp_path / "scripts" / "pyinstaller_hooks")]
+
+
+def test_custom_pydantic_hook_excludes_v1_namespace() -> None:
+    hook_path = PROJECT_ROOT / "scripts" / "pyinstaller_hooks" / "hook-pydantic.py"
+    spec = importlib.util.spec_from_file_location("larksync_hook_pydantic", hook_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    hiddenimports = getattr(module, "hiddenimports")
+    excludedimports = getattr(module, "excludedimports")
+    assert "pydantic.v1" not in hiddenimports
+    assert all(not name.startswith("pydantic.v1.") for name in hiddenimports)
+    assert excludedimports == ["pydantic.v1"]
+
+
+def test_custom_fastapi_compat_hook_excludes_pydantic_v1() -> None:
+    hook_path = PROJECT_ROOT / "scripts" / "pyinstaller_hooks" / "hook-fastapi._compat.shared.py"
+    spec = importlib.util.spec_from_file_location("larksync_hook_fastapi_compat", hook_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert getattr(module, "excludedimports") == ["pydantic.v1"]

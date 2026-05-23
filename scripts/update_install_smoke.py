@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 import tempfile
 import time
@@ -33,6 +32,13 @@ def _read_handoff_payload(path: Path) -> dict[str, object] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _append_smoke_log(log_path: Path, message: str) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    with log_path.open("a", encoding="utf-8", errors="ignore") as file:
+        file.write(f"[{timestamp}] {message}\n")
 
 
 def _wait_for_ready_handoff(
@@ -86,9 +92,9 @@ def run_update_install_smoke(
         request_id=request_id,
         script_dir=script_dir,
     )
-    process = subprocess.Popen(
+    process, creationflags = tray_app._launch_hidden_helper_process(
         command,
-        creationflags=tray_app._hidden_helper_creationflags(),
+        on_fallback=lambda message: _append_smoke_log(log_path, message),
     )
     handoff = _wait_for_ready_handoff(
         handoff_path,
@@ -104,6 +110,7 @@ def run_update_install_smoke(
         "pid": process.pid,
         "installer_path": str(installer_path),
         "restart_path": str(restart_path) if restart_path else None,
+        "launch_creationflags": creationflags,
         "expected_stage": expected_stage,
         "observed_stage": observed_stage or None,
         "handoff": handoff,

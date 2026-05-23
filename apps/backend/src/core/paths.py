@@ -62,6 +62,8 @@ def update_runtime_root() -> Path:
     env_root = os.getenv("LARKSYNC_UPDATE_ROOT")
     if env_root:
         return Path(env_root).expanduser().resolve()
+    if os.getenv("LARKSYNC_DATA_DIR"):
+        return data_dir()
     if getattr(sys, "frozen", False):
         return _default_app_data_dir()
     return data_dir()

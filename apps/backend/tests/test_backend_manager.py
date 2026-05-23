@@ -23,8 +23,9 @@ class _DummyProcess:
         return None
 
 
-def _setup_manager(monkeypatch, frozen: bool):
+def _setup_manager(monkeypatch, tmp_path: Path, frozen: bool):
     monkeypatch.setattr(sys, "frozen", frozen, raising=False)
+    monkeypatch.setenv("LARKSYNC_DATA_DIR", str(tmp_path / "data"))
     if frozen:
         monkeypatch.setattr(sys, "executable", r"C:\LarkSync.exe", raising=False)
 
@@ -44,15 +45,15 @@ def _setup_manager(monkeypatch, frozen: bool):
     return bm.BackendManager(), captured
 
 
-def test_backend_manager_frozen_uses_backend_flag(monkeypatch):
-    manager, captured = _setup_manager(monkeypatch, frozen=True)
+def test_backend_manager_frozen_uses_backend_flag(monkeypatch, tmp_path: Path):
+    manager, captured = _setup_manager(monkeypatch, tmp_path, frozen=True)
 
     assert manager.start(wait=True)
     assert captured["args"] == [sys.executable, "--backend"]
 
 
-def test_backend_manager_dev_uses_uvicorn_module(monkeypatch):
-    manager, captured = _setup_manager(monkeypatch, frozen=False)
+def test_backend_manager_dev_uses_uvicorn_module(monkeypatch, tmp_path: Path):
+    manager, captured = _setup_manager(monkeypatch, tmp_path, frozen=False)
 
     assert manager.start(wait=True)
     cmd = captured["args"]
@@ -60,8 +61,8 @@ def test_backend_manager_dev_uses_uvicorn_module(monkeypatch):
     assert "src.main:app" in cmd
 
 
-def test_backend_manager_sanitizes_incompatible_pythonpath(monkeypatch):
-    manager, captured = _setup_manager(monkeypatch, frozen=False)
+def test_backend_manager_sanitizes_incompatible_pythonpath(monkeypatch, tmp_path: Path):
+    manager, captured = _setup_manager(monkeypatch, tmp_path, frozen=False)
     monkeypatch.setenv("PYTHONPATH", r"F:\File\Linux\Python312\site-packages;C:\repo\apps\backend")
 
     assert manager.start(wait=True)

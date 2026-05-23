@@ -31,6 +31,7 @@ TRAY_DIR = PROJECT_ROOT / "apps" / "tray"
 OUTPUT_DIR = PROJECT_ROOT / "dist"
 SPEC_FILE = PROJECT_ROOT / "scripts" / "larksync.spec"
 NSIS_DIR = PROJECT_ROOT / "scripts" / "installer" / "nsis"
+PYINSTALLER_HOOKS_DIR = PROJECT_ROOT / "scripts" / "pyinstaller_hooks"
 PYPROJECT_FILE = BACKEND_DIR / "pyproject.toml"
 BRANDING_DIR = PROJECT_ROOT / "assets" / "branding"
 BRAND_ICON = BRANDING_DIR / "LarkSync_Logo_Icon_FullColor.png"
@@ -232,6 +233,11 @@ def _resolve_cmd(cmd: list[str]) -> list[str]:
     return cmd
 
 
+def _pyinstaller_hook_paths(project_root: Path | None = None) -> list[str]:
+    root = project_root or PROJECT_ROOT
+    return [str(root / "scripts" / "pyinstaller_hooks")]
+
+
 def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None) -> None:
     resolved_cmd = _resolve_cmd(cmd)
     runtime_env = _build_subprocess_env(env)
@@ -379,7 +385,7 @@ a = Analysis(
         'pystray',
         'PIL',
     ],
-    hookspath=[],
+    hookspath=[str(project_root / "scripts" / "pyinstaller_hooks")],
     hooksconfig={{}},
     runtime_hooks=[],
     excludes=[],

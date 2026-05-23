@@ -72,6 +72,13 @@ def _sanitize_pythonpath(raw_pythonpath: str | None) -> tuple[str | None, bool]:
     return sanitized, changed or sanitized != raw_pythonpath
 
 
+def _runtime_data_dir() -> Path:
+    env_dir = (os.getenv("LARKSYNC_DATA_DIR") or "").strip()
+    if env_dir:
+        return Path(env_dir).expanduser().resolve()
+    return PROJECT_ROOT / "data"
+
+
 class BackendManager:
     """管理 FastAPI 后端进程的生命周期。"""
 
@@ -155,7 +162,7 @@ class BackendManager:
             logger.info("启动后端服务: {}:{}", BACKEND_HOST, BACKEND_PORT)
 
             # 日志文件目录
-            log_dir = PROJECT_ROOT / "data" / "logs"
+            log_dir = _runtime_data_dir() / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
             self._stderr_path = log_dir / "backend-stderr.log"
 

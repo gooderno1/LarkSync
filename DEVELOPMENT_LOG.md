@@ -1,5 +1,108 @@
 # DEVELOPMENT LOG
 
+## v0.7.17-dev.33 (2026-05-23)
+
+- 目标：
+  - 继续收口工作流 A/F 中遗留的构建噪音问题，确认 Python 3.14 基线下的 PyInstaller 打包不再把未使用的 `pydantic.v1` 兼容层带进分析结果。
+- 结果：
+  - 新增 `scripts/pyinstaller_hooks/hook-pydantic.py` 与 `hook-fastapi._compat.shared.py`，分别在 PyInstaller hook 层排除 `pydantic.v1` 子模块，以及 FastAPI `_compat.shared` 中对 `pydantic.v1` 的静态兼容导入。
+  - `scripts/larksync.spec` 和 `scripts/build_installer.py` 已切换到仓库自定义 `hookspath`，确保正式打包与本地重建 spec 都使用同一套 hooks。
+  - 重新构建后，PyInstaller 日志不再出现 `Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater`；同时 `build/larksync/PYZ-00.toc`、`xref-larksync.html`、`warn-larksync.txt` 中也已确认没有 `pydantic.v1` 命中。
+- 测试：
+  - `python -m pytest tests/test_build_installer.py -q`（工作目录：`apps/backend/`，并将 `TEMP/TMP` 指向仓库内 `.tmp-tests-root`）
+  - `python scripts/build_installer.py --nsis`
+  - `rg -n "pydantic\\.v1" build/larksync/PYZ-00.toc build/larksync/xref-larksync.html build/larksync/warn-larksync.txt`
+- 问题：
+  - 当前规划相关代码和阶段性验收已经进一步收口，但 `.git` 目录 ACL 仍阻止创建 `index.lock`，所以本轮版本依旧无法按要求落本地 Git 提交；如果下一步要推进到正式版收口或发布，仍需先解除该环境阻塞。
+
+## v0.7.17-dev.32 (2026-05-23)
+
+- 目标：
+  - 继续落实工作流 B/F，把 `apps/tray/tray_app.py` 中耦合的 Windows 安装链路 helper 收口出去，在不改变静默安装行为的前提下继续降低托盘主入口复杂度。
+- 结果：
+  - 新增 `apps/tray/windows_install_helper.py`，承载 PowerShell helper 启动参数、PowerShell 命令构造、脚本文件写入编码、安装脚本 stem 生成，以及静默安装 `worker.ps1` / `bootstrap.ps1` 模板文本。
+  - `tray_app.py` 现通过薄包装函数委托这些实现，保留 `_build_windows_installer_worker_script`、`_build_windows_silent_bootstrap_command`、`_launch_hidden_helper_process` 等原有接口与测试入口；主文件从 1247 行降到 1034 行。
+  - 真实 `python scripts/update_install_smoke.py` 继续能在当前受限环境下推进到 `launch_failed`，说明这轮拆分没有破坏前一版刚修好的 helper 启动回退链路。
+- 测试：
+  - `python -m pytest tests/test_tray_update_install.py tests/test_update_install_smoke.py tests/test_system_update_api.py tests/test_main.py tests/test_tray_status.py -q`（工作目录：`apps/backend/`，并将 `TEMP/TMP` 指向仓库内 `.tmp-tests-root`）
+  - `python scripts/update_install_smoke.py`
+- 问题：
+  - 当前代码与回归都已完成，但 `.git` 目录 ACL 仍阻止创建 `index.lock`，所以本轮版本依旧无法按要求落本地 Git 提交；如果下一步要继续严格执行“一版一提交”，仍需要先解除该环境阻塞。
+
+## v0.7.17-dev.31 (2026-05-23)
+
+- 目标：
+  - 收口工作流 F 的最后一个实际阻塞点，修复 Windows 静默安装 smoke 在受限环境下因 helper 进程无法使用 `CREATE_BREAKAWAY_FROM_JOB` 启动而直接失败的问题，并让真实托盘静默安装链路也具备同样的回退能力。
+- 结果：
+  - `apps/tray/tray_app.py` 新增隐藏 helper 启动回退逻辑：优先尝试 `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB`，若遇到 `PermissionError` / `WinError 1314` 等受限环境错误，会自动回退到不带 breakaway 的隐藏进程组，必要时最终回退到 `creationflags=0`。
+  - `scripts/update_install_smoke.py` 现复用同一套 helper 启动回退逻辑，并把实际采用的 `launch_creationflags` 与回退日志写进 smoke 结果，便于区分“helper 启动失败”和“安装器自身失败”。
+  - 新增对应回归测试，覆盖托盘真实静默安装调度的回退顺序，以及 smoke 脚本在首轮 `PermissionError` 后仍能推进到 `launch_failed` 的场景。
+- 测试：
+  - `python -m pytest tests/test_update_install_smoke.py tests/test_tray_update_install.py tests/test_system_update_api.py -q`（工作目录：`apps/backend/`，并将 `TEMP/TMP` 指向仓库内 `.tmp-tests-root`）
+  - `python -m pytest tests/test_main.py tests/test_tray_status.py -q`（工作目录：`apps/backend/`，并将 `TEMP/TMP` 指向仓库内 `.tmp-tests-root`）
+  - `python scripts/update_install_smoke.py`
+- 问题：
+  - 当前代码和回归都已完成，但 `.git` 目录仍存在 ACL 写入限制，当前环境下无法创建 `index.lock`，因此本轮版本仍不能按要求落本地 Git 提交；后续若要继续严格执行“一版一提交”，需先解除该环境阻塞。
+
+## v0.7.17-dev.30 (2026-05-23)
+
+- 目标：
+  - 继续落实工作流 B，拆 `apps/backend/src/services/transcoder.py` 中的内嵌 sheet 预览与 add-ons 渲染逻辑，把表格矩阵处理和附加块文本渲染从主转码器中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/transcoder_sheet_helper.py`，承载内嵌 sheet 预览转码、token 解析、表格矩阵裁剪、单元格富文本格式化，以及 add-ons 的 Mermaid/text 代码块渲染。
+  - `DocxTranscoder` 现通过 `TranscoderSheetHelper` 处理 `sheet_tables` 预取、sheet placeholder 回退和 add-ons 文本块渲染，`transcoder.py` 从 1031 行进一步降到 754 行。
+- 测试：
+  - `python -m pytest tests/test_transcoder.py -q`
+  - `python -m pytest tests/test_docx_service.py tests/test_transcoder.py tests/test_sync_runner.py -q`
+  - 上述 pytest 在当前沙箱下需将 `TEMP/TMP` 指向仓库内 `.tmp-tests-root` 目录，否则 `tmp_path` fixture 会因系统临时目录写权限受限而失败。
+- 问题：
+  - 当前主要剩余的大模块已集中到 `sync_runner.py`（2595 行）、`docx_service.py`（1428 行）和 `tray_app.py`（1199 行）；后续若继续做结构治理，应优先在这三个模块里挑“高风险行为 + 已有回归保护”的区段继续拆。
+
+## v0.7.17-dev.29 (2026-05-23)
+
+- 目标：
+  - 继续落实工作流 B，拆 `apps/backend/src/services/docx_service.py` 中的 Markdown convert 前后处理，把 continuation/placeholder 预处理与文本块修补 helper 从主文档服务中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/docx_markdown_convert_helper.py`，承载列表 continuation 归一化、placeholder pattern 处理、块纯文本重写和 continuation 重新挂接逻辑。
+  - `docx_service.py` 现通过独立 helper 模块复用这些能力，并继续保留 `_normalize_markdown_for_convert`、`_replace_continuation_placeholders` 等原导出名以兼容现有测试；主文件从 1766 行降到 1428 行。
+- 测试：
+  - `python -m pytest tests/test_docx_service.py -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py tests/test_docx_service.py tests/test_main.py -q`
+  - 上述 pytest 在当前沙箱下需将 `TEMP/TMP` 指向仓库内 `.tmp-tests-root` 目录，否则 `tmp_path` fixture 会因系统临时目录写权限受限而失败。
+- 问题：
+  - `.git` 目录仍存在写入限制，当前环境下无法创建 `index.lock`，因此这两轮版本还不能按“一版一提交”落本地 Git；代码与回归已完成，但版本提交仍受环境阻塞。
+
+## v0.7.17-dev.28 (2026-05-23)
+
+- 目标：
+  - 继续落实工作流 B，拆 `apps/backend/src/services/sync_runner.py` 中的 Markdown 上传主编排，把冲突校验、块级状态、同 token 覆盖与导入重建回退从主 runner 中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/sync_markdown_upload_service.py`，承载 `_upload_markdown` 的链接读取、资源签名判断、冲突阻断、块级状态跳过、同 token 覆盖、导入重建回退、镜像同步与最终链接回写。
+  - `SyncTaskRunner` 现通过 `SyncMarkdownUploadService` 执行 `_upload_markdown`，保留原方法作为兼容代理；`sync_runner.py` 进一步从 2707 行降到 2595 行。
+  - 修复了服务拆分后的一个关键回归点：测试会在 runner 构造后替换 `runner._block_service`，因此 `SyncMarkdownUploadService` 改为通过动态 `list_block_states` 回调读取当前 block service，而不是静态持有初始化时的实例。
+- 测试：
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py tests/test_main.py -q`
+  - 上述 pytest 在当前沙箱下需将 `TEMP/TMP` 指向仓库内 `.tmp-tests-root` 目录，否则 `tmp_path` fixture 会因系统临时目录写权限受限而失败。
+- 问题：
+  - 当前沙箱对 `.git` 目录存在 ACL 写入限制，`git add/commit` 会在创建 `.git/index.lock` 时直接被拒绝；代码与测试已经完成，但这轮版本暂时无法在当前环境内落本地 Git 提交。
+
+## v0.7.17-dev.27 (2026-05-23)
+
+- 目标：
+  - 继续落实工作流 B，拆 `apps/backend/src/services/sync_runner.py` 中的单文件上传细节，把上传路径分发、通用文件上传与旧云端文件清理从主 runner 中分离出去。
+- 结果：
+  - 新增 `apps/backend/src/services/sync_path_upload_service.py`，承载 `_upload_path` 的路径分发、重复触发保护、MD 模式跳过判断，以及 `_upload_file` 的签名检查、父目录解析、旧云端同名文件清理和链接更新。
+  - `SyncTaskRunner` 现通过 `SyncPathUploadService` 处理 `_upload_path`、`_upload_file` 与 `_cleanup_replaced_cloud_files`，保留原方法作为兼容代理，Markdown 上传主链路继续留在 runner 中，便于下一轮继续拆深层逻辑。
+  - 新增 `_upload_path` 的 Markdown/普通文件双回调透传回归，验证 runner 创建后再 monkeypatch `_upload_markdown` / `_upload_file` 仍然生效。
+- 测试：
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -k "upload_path_uses_latest_markdown_callback or upload_path_uses_latest_file_callback or upload_path_skips_md_when_mode_is_download_only or upload_file_updates_link_timestamp or upload_file_replaces_previous_cloud_file_and_cleans_same_name_duplicates" -q`
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -q`
+  - `python -m pytest tests/test_sync_runner.py tests/test_sync_runner_upload_new_doc.py tests/test_main.py -q`
+  - 上述 pytest 在当前沙箱下需将 `TEMP/TMP` 指向仓库内 `.tmp-tests` 目录，否则 `tmp_path` fixture 会因系统临时目录写权限受限而失败。
+- 问题：
+  - `sync_runner.py` 已进一步降到 2707 行，但 `_upload_markdown` 仍承担冲突校验、块级状态和导入重建回退等复杂职责；下一轮应优先继续拆 Markdown 上传主链路，而不是继续在 runner 内堆叠分支。
+
 ## v0.7.17-dev.26 (2026-05-23)
 
 - 目标：

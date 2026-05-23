@@ -1131,6 +1131,122 @@ async def test_upload_path_skips_md_when_mode_is_download_only(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
+async def test_upload_path_uses_latest_markdown_callback(tmp_path: Path) -> None:
+    markdown_path = tmp_path / "动态回调.md"
+    markdown_path.write_text("# Local", encoding="utf-8")
+
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService([]),
+        link_service=FakeLinkService(),
+        import_task_service=FakeImportTaskService(),
+    )
+    task = SyncTaskItem(
+        id="task-md-callback",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+    captured: list[tuple[str, bool]] = []
+
+    async def _capture_upload_markdown(
+        task_arg,
+        status_arg,
+        path_arg,
+        docx_service,
+        file_uploader,
+        drive_service,
+        import_task_service,
+        *,
+        force: bool = False,
+    ) -> None:
+        assert task_arg is task
+        assert status_arg is status
+        captured.append((path_arg.name, force))
+
+    runner._upload_markdown = _capture_upload_markdown  # type: ignore[method-assign]
+
+    await runner._upload_path(
+        task,
+        status,
+        markdown_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+        force=True,
+    )
+
+    assert captured == [("动态回调.md", True)]
+
+
+@pytest.mark.asyncio
+async def test_upload_path_uses_latest_file_callback(tmp_path: Path) -> None:
+    file_path = tmp_path / "动态回调.txt"
+    file_path.write_text("payload", encoding="utf-8")
+
+    runner = SyncTaskRunner(
+        docx_service=FakeDocxService(),
+        file_uploader=FakeFileUploader(),
+        drive_service=FakeDriveService([]),
+        link_service=FakeLinkService(),
+        import_task_service=FakeImportTaskService(),
+    )
+    task = SyncTaskItem(
+        id="task-file-callback",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="fld-1",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+    captured: list[tuple[str, bool]] = []
+
+    async def _capture_upload_file(
+        task_arg,
+        status_arg,
+        path_arg,
+        file_uploader,
+        drive_service=None,
+        *,
+        force: bool = False,
+    ) -> None:
+        assert task_arg is task
+        assert status_arg is status
+        captured.append((path_arg.name, force))
+
+    runner._upload_file = _capture_upload_file  # type: ignore[method-assign]
+
+    await runner._upload_path(
+        task,
+        status,
+        file_path,
+        runner._docx_service,
+        runner._file_uploader,
+        runner._drive_service,
+        runner._import_task_service,
+        force=True,
+    )
+
+    assert captured == [("动态回调.txt", True)]
+
+
+@pytest.mark.asyncio
 async def test_upload_markdown_with_file_link_uses_file_upload(tmp_path: Path) -> None:
     markdown_path = tmp_path / "文件模式.md"
     markdown_path.write_text("# Title", encoding="utf-8")

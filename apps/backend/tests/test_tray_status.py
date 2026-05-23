@@ -26,6 +26,8 @@ def tray_client(tmp_path, monkeypatch) -> Generator[TestClient, None, None]:
     """
     monkeypatch.setenv("LARKSYNC_CONFIG", str(tmp_path / "config.json"))
     monkeypatch.setenv("LARKSYNC_DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("LARKSYNC_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("LARKSYNC_UPDATE_ROOT", str(tmp_path / "data"))
 
     # 确保配置单例与 API 模块按新的环境重载，避免复用旧 service/runner 实例。
     ConfigManager.reset()

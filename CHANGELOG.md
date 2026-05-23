@@ -1,5 +1,19 @@
 # CHANGELOG
 
+[2026-05-23] v0.7.17-dev.33 fix(build): 为 PyInstaller 新增仓库级 `hook-pydantic.py` 与 `hook-fastapi._compat.shared.py`，显式排除未使用的 `pydantic.v1` 命名空间及 FastAPI 对其的静态兼容导入，修复 Python 3.14 构建日志持续出现 `Core Pydantic V1 functionality isn't compatible` 告警的问题，并确认 `build/larksync` 产物分析结果不再包含 `pydantic.v1`
+
+[2026-05-23] v0.7.17-dev.32 refactor(tray): 为 `tray_app` 新增 `windows_install_helper.py`，将 Windows 安装脚本构造、PowerShell helper 启动参数和静默安装 bootstrap/worker 模板下沉到独立 helper，并保持更新链路与 smoke 回归稳定
+
+[2026-05-23] v0.7.17-dev.31 fix(auto-update): Windows 静默安装 bootstrap/helper 启动改为 `creationflags` 分级回退，优先尝试 `CREATE_BREAKAWAY_FROM_JOB`，受限环境拒绝时自动回退到普通隐藏进程组；`update_install_smoke.py` 同步记录实际使用的启动参数与回退日志，避免受限环境下 smoke 和真实静默安装一起卡在 helper 启动阶段
+
+[2026-05-23] v0.7.17-dev.30 refactor(backend): 为 `transcoder` 新增 `transcoder_sheet_helper.py`，将内嵌 sheet 预览转码、表格矩阵裁剪和 add-ons 文本块渲染下沉到独立 helper，并保持既有转码回归稳定
+
+[2026-05-23] v0.7.17-dev.29 refactor(backend): 为 `docx_service` 新增 `docx_markdown_convert_helper.py`，将 Markdown continuation/placeholder 预处理与块文本修补 helper 下沉到独立模块，并保持现有 `docx_service` 接口兼容
+
+[2026-05-23] v0.7.17-dev.28 refactor(backend): 为 `sync_runner` 新增 `SyncMarkdownUploadService`，将 Markdown 上传主编排、块级状态判断、同 token 覆盖与导入重建回退逻辑下沉到独立服务，并修复测试场景下 `block_service` 替换后的动态回调绑定
+
+[2026-05-23] v0.7.17-dev.27 refactor(backend): 为 `sync_runner` 新增 `SyncPathUploadService`，将上传路径分发、通用文件上传与旧云端文件清理逻辑下沉到独立服务，并补充 `_upload_path` 回调透传回归
+
 [2026-05-23] v0.7.17-dev.26 refactor(backend): 为 `transcoder` 新增 `docx_parser.py`，将块类型常量、`DocxParser` 与解析 helper 下沉到独立模块，并保持 `transcoder` 原导出兼容
 
 [2026-05-23] v0.7.17-dev.25 refactor(backend): 为 `sync_runner` 新增 `SyncDownloadOrchestrationService`，将下载树扫描、候选筛选、写回循环与运行时服务组装下沉到独立服务，并补充 `_download_docx` 回调透传回归

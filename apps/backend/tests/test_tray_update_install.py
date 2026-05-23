@@ -408,6 +408,47 @@ def test_build_windows_silent_bootstrap_command_uses_script_files(tmp_path: Path
     assert str(log_path).replace("'", "''") in script
 
 
+def test_launch_hidden_helper_process_falls_back_when_breakaway_launch_denied(monkeypatch) -> None:
+    create_new_process_group = 0x200
+    create_no_window = 0x08000000
+    create_breakaway = 0x01000000
+    calls: list[int] = []
+    notices: list[str] = []
+
+    class _DummyProc:
+        pid = 9876
+
+    def _fake_popen(args, **kwargs):
+        creationflags = int(kwargs.get("creationflags", 0))
+        calls.append(creationflags)
+        if creationflags == (create_new_process_group | create_no_window | create_breakaway):
+            raise PermissionError(5, "Access is denied")
+        return _DummyProc()
+
+    monkeypatch.setattr(
+        tray_app.subprocess, "CREATE_NEW_PROCESS_GROUP", create_new_process_group, raising=False
+    )
+    monkeypatch.setattr(tray_app.subprocess, "CREATE_NO_WINDOW", create_no_window, raising=False)
+    monkeypatch.setattr(
+        tray_app.subprocess, "CREATE_BREAKAWAY_FROM_JOB", create_breakaway, raising=False
+    )
+    monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
+
+    process, used_flags = tray_app._launch_hidden_helper_process(
+        ["powershell.exe", "-File", "bootstrap.ps1"],
+        on_fallback=notices.append,
+    )
+
+    assert process.pid == 9876
+    assert calls == [
+        create_new_process_group | create_no_window | create_breakaway,
+        create_new_process_group | create_no_window,
+    ]
+    assert used_flags == create_new_process_group | create_no_window
+    assert len(notices) == 1
+    assert "回退 creationflags=" in notices[0]
+
+
 def test_schedule_installer_launch_on_windows_silent_uses_hidden_bootstrap_process(
     monkeypatch, tmp_path: Path
 ) -> None:

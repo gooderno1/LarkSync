@@ -78,7 +78,7 @@ a = Analysis(
         "plyer",
         "keyring",
     ],
-    hookspath=[],
+    hookspath=[str(project_root / "scripts" / "pyinstaller_hooks")],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
