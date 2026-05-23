@@ -3,11 +3,11 @@
 本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
 
 ## 0. 当前版本（截至 2026-05-24）
-- 最新发布记录：`v0.7.19-dev.5`（见 `CHANGELOG.md` 顶部）
-- 当前主线状态：`v0.7.19-dev.5`（基于 macOS 安装/启动 smoke 新诊断，修复 bundle 漏打 `greenlet` 导致 `sqlalchemy.ext.asyncio` 冷启动直接失败的问题）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.19-dev.5`
-- 前端版本：`apps/frontend/package.json` 中为 `0.7.19-dev.5`
-- 根目录版本：`package.json` 中为 `v0.7.19-dev.5`
+- 最新发布记录：`v0.7.19-dev.6`（见 `CHANGELOG.md` 顶部）
+- 当前主线状态：`v0.7.19-dev.6`（将 `greenlet>=3.0` 升级为后端显式依赖，并保留安装包 hiddenimport 修复，继续收口 Python 3.14 arm64 下的 macOS bundle 启动问题）
+- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.19-dev.6`
+- 前端版本：`apps/frontend/package.json` 中为 `0.7.19-dev.6`
+- 根目录版本：`package.json` 中为 `v0.7.19-dev.6`
 
 ## 1. 环境准备
 - Node.js 18+（用于前端）

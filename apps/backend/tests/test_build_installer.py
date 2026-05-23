@@ -312,3 +312,11 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     assert "'arm64'" in content
     assert "'x86_64'" in content
     assert "\n        ,\n" not in content
+
+
+def test_backend_runtime_metadata_declares_greenlet_dependency() -> None:
+    requirements = (PROJECT_ROOT / "apps" / "backend" / "requirements.txt").read_text(encoding="utf-8")
+    pyproject = (PROJECT_ROOT / "apps" / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert "greenlet>=3.0" in requirements
+    assert '"greenlet>=3.0"' in pyproject

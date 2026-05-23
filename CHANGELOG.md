@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-24] v0.7.19-dev.6 fix(mac-build): 将 `greenlet>=3.0` 升级为后端显式依赖，并保留 PyInstaller hiddenimport 回归；修复 Python 3.14 arm64 环境下 `sqlalchemy` 不再自动安装 `greenlet`，导致 macOS 安装后 bundle 在数据库初始化阶段启动即崩的问题
 [2026-05-24] v0.7.19-dev.5 fix(mac-build): 基于新的安装启动 smoke 诊断结果，修复 PyInstaller 产物漏打 `greenlet` 的问题；现在构建脚本与仓库 spec 都会显式纳入该依赖，避免 bundle 在 `sqlalchemy.ext.asyncio` 的数据库初始化阶段因 `No module named 'greenlet'` 提前退出
 [2026-05-24] v0.7.19-dev.4 fix(ci-mac): 强化 `macos_installer_smoke.py` 的失败诊断，保留安装后 bundle 的 stdout/stderr 与 `larksync.log` 尾部，并将默认健康检查等待时间提升到 60 秒，便于继续定位 GitHub mac runner 上的安装后启动失败
 [2026-05-24] v0.7.19-dev.3 feat(ci-mac): 新增 macOS DMG 安装/启动 smoke，构建后自动挂载镜像、复制 `.app`、启动 bundle 内 `LarkSync --backend` 并执行 `/health` 检查；同时将正式版与日常 smoke 的 mac 打包策略切换为 `x86_64` / `arm64` 双架构产物、让更新服务优先匹配当前机器架构的 DMG，并为 release workflow 增加 `concurrency` 以自动取消同一 PR/分支上的过期 run

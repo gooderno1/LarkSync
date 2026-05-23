@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.19-dev.6 (2026-05-24)
+
+- 目标：
+  - 修复 `v0.7.19-dev.5` 之后 arm64 安装启动 smoke 仍失败的问题，确认是“打包漏收”还是“构建环境根本没装依赖”，并把修复点前移到依赖声明层。
+
+- 结果：
+  - GitHub arm64 job 日志确认构建环境安装 `apps/backend/requirements.txt` 时并没有安装 `greenlet`，即 Python 3.14 arm64 上当前 `sqlalchemy` 发行元数据不会自动把该包带进来。
+  - `apps/backend/requirements.txt` 与 `apps/backend/pyproject.toml` 现都已显式加入 `greenlet>=3.0`，保证本地开发、CI、可编辑安装和打包构建都在同一层面声明该运行时依赖。
+  - 保留 `scripts/build_installer.py` / `scripts/larksync.spec` 对 `greenlet` 的显式 hiddenimport，避免即使依赖已安装，PyInstaller 后续再次因为分析路径变化漏收该模块。
+  - `test_build_installer.py` 新增对后端运行时元数据中 `greenlet>=3.0` 的断言，防止依赖声明再次被回退。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.6` / `0.7.19-dev.6`，README、USAGE、CHANGELOG 已同步补齐本轮依赖层修复记录。
+
+- 测试：
+  - `python -m pytest tests/test_build_installer.py tests/test_macos_installer_smoke.py tests/test_release_workflow.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.19-dev.5 (2026-05-24)
 
 - 目标：
