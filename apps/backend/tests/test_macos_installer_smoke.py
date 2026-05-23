@@ -73,7 +73,7 @@ def test_run_macos_installer_smoke_installs_and_launches_backend(
     monkeypatch.setattr(smoke, "_assert_backend_port_available", lambda: None)
     monkeypatch.setattr(smoke, "_attach_dmg", lambda dmg_path: mount_point)
     monkeypatch.setattr(smoke, "_copy_app_bundle", lambda _mount_point, _target_root: copied_app)
-    monkeypatch.setattr(smoke, "_wait_for_health", lambda timeout_seconds: None)
+    monkeypatch.setattr(smoke, "_wait_for_health", lambda timeout_seconds, **kwargs: None)
     detached: list[Path] = []
     monkeypatch.setattr(smoke, "_detach_dmg", lambda path: detached.append(path))
 
@@ -113,11 +113,14 @@ def test_run_macos_installer_smoke_installs_and_launches_backend(
 
     assert result["mount_point"] == str(mount_point)
     assert result["app_bundle"] == str(copied_app)
+    assert result["stdout_path"].endswith("bundle-stdout.log")
+    assert result["stderr_path"].endswith("bundle-stderr.log")
     assert captured["args"] == [str(copied_exec), "--backend"]
     kwargs = captured["kwargs"]
     assert kwargs["env"]["LARKSYNC_BACKEND_BIND_HOST"] == "127.0.0.1"
     assert "LARKSYNC_DATA_DIR" in kwargs["env"]
     assert kwargs["cwd"] == str(copied_app)
+    assert kwargs["stdin"] == smoke.subprocess.DEVNULL
     assert captured["signal"] == signal.SIGTERM
     assert detached == [mount_point]
 
@@ -147,3 +150,56 @@ def test_assert_backend_port_available_raises_when_port_is_busy(
 
     with pytest.raises(RuntimeError, match="8000 已被占用"):
         smoke._assert_backend_port_available()
+
+
+def test_build_launch_failure_message_includes_log_tails(tmp_path: Path) -> None:
+    stdout_path = tmp_path / "stdout.log"
+    stderr_path = tmp_path / "stderr.log"
+    data_root = tmp_path / "AppData"
+    backend_log = data_root / "logs" / "larksync.log"
+    backend_log.parent.mkdir(parents=True, exist_ok=True)
+    stdout_path.write_text("stdout-line", encoding="utf-8")
+    stderr_path.write_text("stderr-line", encoding="utf-8")
+    backend_log.write_text("backend-line", encoding="utf-8")
+
+    class ExitedProcess:
+        def poll(self):
+            return 3
+
+    message = smoke._build_launch_failure_message(
+        "启动失败",
+        process=ExitedProcess(),
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        data_root=data_root,
+        last_error=ConnectionRefusedError(61, "Connection refused"),
+    )
+
+    assert "启动失败" in message
+    assert "process=exited(3)" in message
+    assert "stdout-line" in message
+    assert "stderr-line" in message
+    assert "backend-line" in message
+    assert "ConnectionRefusedError" in message
+
+
+def test_wait_for_health_reports_early_process_exit(tmp_path: Path) -> None:
+    stdout_path = tmp_path / "stdout.log"
+    stderr_path = tmp_path / "stderr.log"
+    stdout_path.write_text("", encoding="utf-8")
+    stderr_path.write_text("", encoding="utf-8")
+
+    class ExitedProcess:
+        def poll(self):
+            return 9
+
+    with pytest.raises(RuntimeError, match="进程提前退出") as excinfo:
+        smoke._wait_for_health(
+            1.0,
+            process=ExitedProcess(),
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            data_root=tmp_path,
+        )
+
+    assert "process=exited(9)" in str(excinfo.value)

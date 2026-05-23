@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.7.19-dev.4 (2026-05-24)
+
+- 目标：
+  - 针对 GitHub mac runner 上 `Run macOS install-launch smoke` 仍只报 `Connection refused` 的黑盒失败，补齐安装后启动 smoke 的进程诊断信息，并适度放宽等待窗口，尽快拿到可行动的 CI 证据。
+
+- 结果：
+  - `scripts/macos_installer_smoke.py` 现在会把安装后 bundle 的 stdout/stderr 分别落到临时日志文件，并在 bundle 提前退出或健康检查超时时，把退出码、stdout/stderr 尾部和 `AppData/logs/larksync.log` 尾部一起回抛到 CI 日志。
+  - mac 安装启动 smoke 的默认等待时间已从 20 秒提升到 60 秒，降低 GitHub runner 上因为首次冷启动、数据库初始化或后台服务启动稍慢而误报失败的概率。
+  - `test_macos_installer_smoke.py` 已补充失败诊断与提前退出场景回归，确保后续不会再回退到“CI 失败但没有有效上下文”的状态。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.4` / `0.7.19-dev.4`，README、USAGE、CHANGELOG 已同步补齐本轮 mac smoke 诊断增强记录。
+
+- 测试：
+  - `python -m pytest tests/test_macos_installer_smoke.py tests/test_release_workflow.py tests/test_build_installer.py tests/test_update_service.py tests/test_backend_manager.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.19-dev.3 (2026-05-24)
 
 - 目标：

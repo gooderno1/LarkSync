@@ -2,12 +2,12 @@
 
 本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
 
-## 0. 当前版本（截至 2026-02-28）
-- 最新发布记录：`v0.5.45`（见 `CHANGELOG.md` 顶部）
-- 当前主线状态：`v0.5.45`（OpenClaw WSL helper 安全收敛：移除自动安装与自动拉起）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.5.45`
-- 前端版本：`apps/frontend/package.json` 中为 `0.5.45`
-- 根目录版本：`package.json` 中为 `v0.5.45`
+## 0. 当前版本（截至 2026-05-24）
+- 最新发布记录：`v0.7.19-dev.4`（见 `CHANGELOG.md` 顶部）
+- 当前主线状态：`v0.7.19-dev.4`（macOS DMG 安装/启动 smoke 失败诊断增强：保留 bundle stdout/stderr 与 `larksync.log` 尾部，并将默认等待时间提升到 60 秒）
+- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.19-dev.4`
+- 前端版本：`apps/frontend/package.json` 中为 `0.7.19-dev.4`
+- 根目录版本：`package.json` 中为 `v0.7.19-dev.4`
 
 ## 1. 环境准备
 - Node.js 18+（用于前端）
