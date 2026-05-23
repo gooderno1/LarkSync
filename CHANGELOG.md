@@ -1,6 +1,6 @@
 # CHANGELOG
 
-[2026-05-24] v0.7.19-dev.2 fix(ci-mac): 修复 `quality-macos-packaging` 漏装 `pytest` / `pytest-asyncio` 导致 darwin runner 一进入定向回归就报 `No module named pytest` 的问题，并补充 workflow 结构测试确保 mac Python 依赖安装步骤与主 `quality` 任务保持一致
+[2026-05-24] v0.7.19-dev.2 fix(ci-mac): 修复 `quality-macos-packaging` 漏装 `pytest` / `pytest-asyncio` 导致 darwin runner 一进入定向回归就报 `No module named pytest` 的问题；同时将 `PYTHONPATH` 过滤与冻结态更新目录回归测试改成跨平台断言，避免 mac runner 因 Windows 路径/`APPDATA` 假设误报失败，并补充 workflow 结构测试确保 mac Python 依赖安装步骤与主 `quality` 任务保持一致
 [2026-05-24] v0.7.19-dev.1 fix(mac): 补齐 macOS 安装版关键链路，统一 `LarkSync-Setup-*.exe` 与 `LarkSync-*.dmg` 的版本识别；修复 `.app` 安装场景下 LaunchAgent 仍指向仓库脚本、托盘后端日志仍落到应用目录的问题，并补充 DMG 更新请求/自启动/打包态数据目录回归测试
 [2026-05-24] v0.7.19-dev.1 fix(release): GitHub Release 工作流在稳定版 tag push 时默认同时构建并上传 macOS `dmg`，手动 `workflow_dispatch` 时仍保留 `build_macos` 开关；mac 构建补齐 `pip --upgrade` 与前端 `npm ci` 预装步骤
 [2026-05-24] v0.7.19-dev.1 ci(mac): 为 `pull_request` / `push main` 新增 macOS 打包 smoke，持续验证 `.app` 与 `dmg` 产物链路，减少问题拖到正式版 tag 发布时才暴露

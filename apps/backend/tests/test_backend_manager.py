@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -45,6 +46,18 @@ def _setup_manager(monkeypatch, tmp_path: Path, frozen: bool):
     return bm.BackendManager(), captured
 
 
+def _mismatched_site_packages_path() -> str:
+    if sys.platform == "win32":
+        return r"F:\File\Linux\Python312\site-packages"
+    return "/opt/python312/site-packages"
+
+
+def _repo_backend_path() -> str:
+    if sys.platform == "win32":
+        return r"C:\repo\apps\backend"
+    return "/repo/apps/backend"
+
+
 def test_backend_manager_frozen_uses_backend_flag(monkeypatch, tmp_path: Path):
     manager, captured = _setup_manager(monkeypatch, tmp_path, frozen=True)
 
@@ -63,13 +76,16 @@ def test_backend_manager_dev_uses_uvicorn_module(monkeypatch, tmp_path: Path):
 
 def test_backend_manager_sanitizes_incompatible_pythonpath(monkeypatch, tmp_path: Path):
     manager, captured = _setup_manager(monkeypatch, tmp_path, frozen=False)
-    monkeypatch.setenv("PYTHONPATH", r"F:\File\Linux\Python312\site-packages;C:\repo\apps\backend")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join([_mismatched_site_packages_path(), _repo_backend_path()]),
+    )
 
     assert manager.start(wait=True)
 
     env = captured["env"]
     assert env is not None
-    assert env["PYTHONPATH"] == r"C:\repo\apps\backend"
+    assert env["PYTHONPATH"] == _repo_backend_path()
 
 
 def test_runtime_data_dir_uses_external_app_data_when_frozen(

@@ -8,6 +8,7 @@
 - 结果：
   - `quality-macos-packaging` 的 Python 依赖安装步骤现已与主 `quality` 任务对齐，除业务依赖外会额外显式安装 `pytest>=7.4` 与 `pytest-asyncio>=0.23`，修复 GitHub Actions `macos-14` runner 报 `No module named pytest` 后直接跳过 DMG smoke 的问题。
   - 新增 `apps/backend/tests/test_release_workflow.py`，解析 `.github/workflows/release-build.yml` 并断言 mac packaging job 复用与主 `quality` 一致的 pytest bootstrap，避免未来再次出现 Windows 任务能跑、mac 任务漏装测试依赖的回归。
+  - `test_build_installer`、`test_backend_manager` 与 `test_update_service` 中原本写死的 Windows `PYTHONPATH` / `APPDATA` 假设已调整为跨平台断言：darwin runner 现在会使用 POSIX `site-packages` 样例与 `HOME/Library/Application Support/LarkSync` 期望根目录，不再因为测试样例本身带有 Windows 盘符与分隔符而误报失败。
   - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.2` / `0.7.19-dev.2`，CHANGELOG 已补齐本次 CI 修复记录。
 
 - 测试：

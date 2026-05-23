@@ -16,16 +16,24 @@ from scripts import build_installer as bi
 def _mismatched_site_packages_path() -> str:
     current = f"{sys.version_info.major}{sys.version_info.minor}"
     other = "312" if current != "312" else "311"
-    return fr"F:\File\Linux\Python{other}\site-packages"
+    if sys.platform == "win32":
+        return fr"F:\File\Linux\Python{other}\site-packages"
+    return f"/opt/python{other}/site-packages"
+
+
+def _repo_backend_path() -> str:
+    if sys.platform == "win32":
+        return r"C:\repo\apps\backend"
+    return "/repo/apps/backend"
 
 
 def test_sanitize_pythonpath_filters_mismatched_site_packages() -> None:
-    raw = os.pathsep.join([_mismatched_site_packages_path(), r"C:\repo\apps\backend"])
+    raw = os.pathsep.join([_mismatched_site_packages_path(), _repo_backend_path()])
 
     sanitized, changed = bi._sanitize_pythonpath(raw)
 
     assert changed is True
-    assert sanitized == r"C:\repo\apps\backend"
+    assert sanitized == _repo_backend_path()
 
 
 def test_sanitize_pythonpath_returns_none_when_all_entries_filtered() -> None:

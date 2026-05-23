@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -375,11 +376,21 @@ def test_update_service_uses_external_update_dir_when_frozen(
     monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
     monkeypatch.delenv("LARKSYNC_UPDATE_ROOT", raising=False)
     monkeypatch.delenv("LARKSYNC_DATA_DIR", raising=False)
-    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    if sys.platform == "win32":
+        expected_root = tmp_path / "appdata" / "LarkSync"
+        monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    elif sys.platform == "darwin":
+        home_dir = tmp_path / "home"
+        expected_root = home_dir / "Library" / "Application Support" / "LarkSync"
+        monkeypatch.setenv("HOME", str(home_dir))
+    else:
+        xdg_data_home = tmp_path / "xdg-data"
+        expected_root = xdg_data_home / "LarkSync"
+        monkeypatch.setenv("XDG_DATA_HOME", str(xdg_data_home))
     monkeypatch.setattr("src.core.paths.sys.frozen", True, raising=False)
     ConfigManager.reset()
 
     service = UpdateService(config_manager=ConfigManager.get())
 
     assert service._status_path == update_data_dir() / "status.json"  # type: ignore[attr-defined]
-    assert str(service._status_path).startswith(str(tmp_path / "appdata"))  # type: ignore[attr-defined]
+    assert service._status_path == expected_root / "updates" / "status.json"  # type: ignore[attr-defined]
