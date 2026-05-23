@@ -9,6 +9,7 @@
   - 新增 `scripts/macos_installer_smoke.py`，会自动选择指定架构 DMG、挂载镜像、复制 `LarkSync.app` 到临时安装目录，并直接启动 `.app/Contents/MacOS/LarkSync --backend` 轮询 `/health`，形成 macOS 安装 / 启动 smoke。
   - `quality-macos-packaging` 与正式版 `build-macos` workflow 现在都会在 DMG 构建后执行安装 / 启动 smoke，避免发布链路只验证“能打包”，不验证“安装后能否真实启动”。
   - macOS 打包与发布默认策略进一步收口为双架构原生产物：`macos-13 -> x86_64`、`macos-14 -> arm64`；更新服务新增架构感知选择逻辑，会优先选择与当前机器架构匹配的 DMG，在无匹配时再回退到 `universal2` / 通用命名产物。
+  - `release-build.yml` 新增 workflow 级 `concurrency`，会按 PR 编号 / ref 自动取消旧的 in-progress / queued run，减少 macOS runner 被过期提交长期占队导致当前验证结果迟迟出不来的问题。
   - 新增 `test_macos_installer_smoke.py`，并扩展 `test_build_installer.py`、`test_update_service.py`、`test_release_workflow.py` 覆盖 DMG 架构后缀、安装 smoke、workflow matrix 与架构感知更新选择逻辑。
   - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.3` / `0.7.19-dev.3`，README、USAGE、CHANGELOG 已同步补齐本轮 mac 安装 smoke 记录。
 

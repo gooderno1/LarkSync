@@ -40,6 +40,15 @@ def test_quality_macos_packaging_reuses_pytest_bootstrap() -> None:
     assert '"pytest-asyncio>=0.23"' in macos_install
 
 
+def test_release_workflow_cancels_stale_runs_for_same_pr() -> None:
+    workflow = _load_release_workflow()
+
+    concurrency = workflow["concurrency"]
+
+    assert concurrency["cancel-in-progress"] is True
+    assert concurrency["group"] == "release-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+
+
 def test_release_workflow_uses_native_dual_arch_macos_matrix() -> None:
     workflow = _load_release_workflow()
 

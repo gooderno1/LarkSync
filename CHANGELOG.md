@@ -1,6 +1,6 @@
 # CHANGELOG
 
-[2026-05-24] v0.7.19-dev.3 feat(ci-mac): 新增 macOS DMG 安装/启动 smoke，构建后自动挂载镜像、复制 `.app`、启动 bundle 内 `LarkSync --backend` 并执行 `/health` 检查；同时将正式版与日常 smoke 的 mac 打包策略切换为 `x86_64` / `arm64` 双架构产物，并让更新服务优先匹配当前机器架构的 DMG
+[2026-05-24] v0.7.19-dev.3 feat(ci-mac): 新增 macOS DMG 安装/启动 smoke，构建后自动挂载镜像、复制 `.app`、启动 bundle 内 `LarkSync --backend` 并执行 `/health` 检查；同时将正式版与日常 smoke 的 mac 打包策略切换为 `x86_64` / `arm64` 双架构产物、让更新服务优先匹配当前机器架构的 DMG，并为 release workflow 增加 `concurrency` 以自动取消同一 PR/分支上的过期 run
 [2026-05-24] v0.7.19-dev.2 fix(ci-mac): 修复 `quality-macos-packaging` 漏装 `pytest` / `pytest-asyncio` 导致 darwin runner 一进入定向回归就报 `No module named pytest` 的问题；将 `PYTHONPATH` 过滤与冻结态更新目录回归测试改成跨平台断言；同时放弃当前依赖链下不可落地的默认 `universal2` 方案，改为在 `macos-13(x86_64)` / `macos-14(arm64)` 上分别出包并让更新服务优先选择匹配本机架构的 DMG
 [2026-05-24] v0.7.19-dev.1 fix(mac): 补齐 macOS 安装版关键链路，统一 `LarkSync-Setup-*.exe` 与 `LarkSync-*.dmg` 的版本识别；修复 `.app` 安装场景下 LaunchAgent 仍指向仓库脚本、托盘后端日志仍落到应用目录的问题，并补充 DMG 更新请求/自启动/打包态数据目录回归测试
 [2026-05-24] v0.7.19-dev.1 fix(release): GitHub Release 工作流在稳定版 tag push 时默认同时构建并上传 macOS `dmg`，手动 `workflow_dispatch` 时仍保留 `build_macos` 开关；mac 构建补齐 `pip --upgrade` 与前端 `npm ci` 预装步骤
