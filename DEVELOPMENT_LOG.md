@@ -1,5 +1,23 @@
 # DEVELOPMENT LOG
 
+## v0.7.19-dev.1 (2026-05-24)
+
+- 目标：
+  - 收口 macOS 安装版剩余缺口，确保 DMG 更新请求、自启动 LaunchAgent 与打包态托盘日志目录真正适配 `.app` 运行形态，而不是只在 Windows 链路下通过。
+
+- 结果：
+  - `update_service` 与 `tray_app` 现已统一安装包版本识别规则，同时支持 Windows `LarkSync-Setup-*.exe` 和 macOS `LarkSync-*.dmg`，旧版本 DMG 不再绕过“无需再次安装”与“忽略过期安装请求”保护。
+  - `autostart.py` 的 mac 自启动链路改为开发态使用受版本控制的 `apps/tray/launcher.py`，打包态直接启动 `.app` 内可执行文件，并将 `tray-stdout.log` / `tray-stderr.log` 统一写入用户数据目录。
+  - `backend_manager` 在打包态启动后端时，stderr 日志目录改为复用运行时用户数据目录，不再默认写回应用目录/包内目录；托盘更新通知文案也按 macOS 改为“打开安装包后手动重启应用”的真实行为说明。
+  - 补充了 mac 侧自动化回归：覆盖 DMG 版本识别、DMG 旧版本拒绝安装、托盘对 `.dmg` 过期请求的忽略、自启动 LaunchAgent 生成、打包态日志目录，以及 `build_installer._build_dmg()` 的 `.app` 发现与环境变量透传。
+  - GitHub Release 工作流的稳定版 tag 构建已改为默认同时产出 Windows `exe` 与 macOS `dmg`；仅手动 `workflow_dispatch` 重跑时才允许跳过 mac，避免正式版发布时漏掉 mac 安装包。
+  - 额外新增 `pull_request` / `push main` 的 macOS 定向 pytest + 打包 smoke，持续验证 LaunchAgent、更新安装、路径与 `.app` / `dmg` 构建链路，把 mac 发布风险前移到日常 CI。
+  - macOS PyInstaller spec 默认目标架构已收口到 `universal2`，并支持通过 `LARKSYNC_MACOS_TARGET_ARCH` 显式覆盖；日常 mac smoke 扩展到 Intel `macos-13` 与 Apple Silicon `macos-14` runner，更贴近规格里的 `Intel/M-series` 兼容目标。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.1` / `0.7.19-dev.1`，README、CHANGELOG 已同步补齐本轮 mac 修复记录。
+
+- 测试：
+  - `python -m pytest tests/test_update_service.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_backend_manager.py tests/test_tray_autostart.py tests/test_build_installer.py tests/test_security.py tests/test_paths.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.18 release (2026-05-24)
 
 - 目标：

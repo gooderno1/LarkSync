@@ -8,6 +8,12 @@ import sys
 
 block_cipher = None
 
+def _resolve_macos_target_arch():
+    if sys.platform != "darwin":
+        return None
+    env_value = os.getenv("LARKSYNC_MACOS_TARGET_ARCH", "").strip()
+    return env_value or "universal2"
+
 def _resolve_project_root() -> Path:
     env_root = os.getenv("LARKSYNC_PROJECT_ROOT") or os.getenv("LARKSYNC_ROOT")
     if env_root:
@@ -101,6 +107,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    target_arch=_resolve_macos_target_arch(),
     icon=str(win_icon) if sys.platform == "win32" and win_icon.is_file() else None,
 )
 

@@ -40,6 +40,32 @@ BUILD_BASELINE_PYTHON = (3, 14)
 BUILD_BASELINE_PYTHON_LABEL = "Python 3.14.x"
 BUILD_BASELINE_NODE_MAJOR = 25
 BUILD_BASELINE_NODE_LABEL = "Node 25.x"
+PYINSTALLER_HIDDENIMPORTS = [
+    "uvicorn",
+    "uvicorn.logging",
+    "uvicorn.loops",
+    "uvicorn.loops.auto",
+    "uvicorn.protocols",
+    "uvicorn.protocols.http",
+    "uvicorn.protocols.http.auto",
+    "uvicorn.protocols.websockets",
+    "uvicorn.protocols.websockets.auto",
+    "uvicorn.lifespan",
+    "uvicorn.lifespan.on",
+    "fastapi",
+    "pydantic",
+    "sqlalchemy",
+    "sqlalchemy.ext.asyncio",
+    "sqlalchemy.dialects.sqlite",
+    "aiosqlite",
+    "httpx",
+    "loguru",
+    "watchdog",
+    "pystray",
+    "PIL",
+    "plyer",
+    "keyring",
+]
 
 
 def _is_mismatched_site_packages(entry: str) -> bool:
@@ -317,19 +343,28 @@ def _generate_spec() -> None:
     print("  生成 spec 文件...")
     entry_script = _resolve_entry_script(PROJECT_ROOT)
 
-    # 收集前端 dist 文件
-    frontend_datas = f"('{DIST_DIR}', 'apps/frontend/dist')" if DIST_DIR.is_dir() else ""
+    datas_entries: list[tuple[Path, str]] = []
+    if DIST_DIR.is_dir():
+        datas_entries.append((DIST_DIR, "apps/frontend/dist"))
 
-    # 收集托盘图标
     icons_dir = TRAY_DIR / "icons"
-    icons_datas = f"('{icons_dir}', 'apps/tray/icons')" if icons_dir.is_dir() else ""
+    if icons_dir.is_dir():
+        datas_entries.append((icons_dir, "apps/tray/icons"))
 
-    # 收集品牌资源
-    branding_datas = f"('{BRANDING_DIR}', 'assets/branding')" if BRANDING_DIR.is_dir() else ""
+    if BRANDING_DIR.is_dir():
+        datas_entries.append((BRANDING_DIR, "assets/branding"))
 
-    # 收集 backend 版本信息
     backend_pyproject = BACKEND_DIR / "pyproject.toml"
-    pyproject_datas = f"('{backend_pyproject}', 'apps/backend')" if backend_pyproject.is_file() else ""
+    if backend_pyproject.is_file():
+        datas_entries.append((backend_pyproject, "apps/backend"))
+
+    datas_lines = ",\n".join(
+        f"        ('{src.as_posix()}', '{dest}')"
+        for src, dest in datas_entries
+    )
+    hiddenimports_lines = ",\n".join(
+        f"        '{module}'" for module in PYINSTALLER_HIDDENIMPORTS
+    )
 
     spec_content = f"""# -*- mode: python ; coding: utf-8 -*-
 # LarkSync PyInstaller Spec File
@@ -340,6 +375,12 @@ import sys
 from pathlib import Path
 
 block_cipher = None
+
+def _resolve_macos_target_arch():
+    if sys.platform != "darwin":
+        return None
+    env_value = os.getenv('LARKSYNC_MACOS_TARGET_ARCH', '').strip()
+    return env_value or 'universal2'
 
 def _resolve_project_root() -> Path:
     env_root = os.getenv('LARKSYNC_PROJECT_ROOT') or os.getenv('LARKSYNC_ROOT')
@@ -358,32 +399,10 @@ a = Analysis(
     pathex=[project_root, '{BACKEND_DIR.as_posix()}'],
     binaries=[],
     datas=[
-        {frontend_datas},
-        {icons_datas},
-        {branding_datas},
-        {pyproject_datas},
+{datas_lines}
     ],
     hiddenimports=[
-        'uvicorn',
-        'uvicorn.logging',
-        'uvicorn.loops',
-        'uvicorn.loops.auto',
-        'uvicorn.protocols',
-        'uvicorn.protocols.http',
-        'uvicorn.protocols.http.auto',
-        'uvicorn.protocols.websockets',
-        'uvicorn.protocols.websockets.auto',
-        'uvicorn.lifespan',
-        'uvicorn.lifespan.on',
-        'fastapi',
-        'pydantic',
-        'sqlalchemy',
-        'aiosqlite',
-        'httpx',
-        'loguru',
-        'watchdog',
-        'pystray',
-        'PIL',
+{hiddenimports_lines}
     ],
     hookspath=[str(project_root / "scripts" / "pyinstaller_hooks")],
     hooksconfig={{}},
@@ -410,7 +429,7 @@ exe = EXE(
     console=False,  # 无终端窗口
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch=_resolve_macos_target_arch(),
     codesign_identity=None,
     entitlements_file=None,
     icon='{WINDOWS_ICON.as_posix()}' if sys.platform == 'win32' else None,

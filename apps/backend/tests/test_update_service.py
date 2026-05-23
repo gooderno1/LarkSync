@@ -59,6 +59,8 @@ def test_extract_installer_version_from_download_path() -> None:
         == "v0.6.10"
     )
     assert extract_installer_version("LarkSync-Setup-0.6.11-dev.1.exe") == "v0.6.11-dev.1"
+    assert extract_installer_version("/Users/me/Downloads/LarkSync-v0.6.12.dmg") == "v0.6.12"
+    assert extract_installer_version("LarkSync-0.6.13-dev.2.dmg") == "v0.6.13-dev.2"
     assert extract_installer_version("not-larksync.exe") is None
 
 

@@ -1,5 +1,11 @@
 # CHANGELOG
 
+[2026-05-24] v0.7.19-dev.1 fix(mac): 补齐 macOS 安装版关键链路，统一 `LarkSync-Setup-*.exe` 与 `LarkSync-*.dmg` 的版本识别；修复 `.app` 安装场景下 LaunchAgent 仍指向仓库脚本、托盘后端日志仍落到应用目录的问题，并补充 DMG 更新请求/自启动/打包态数据目录回归测试
+[2026-05-24] v0.7.19-dev.1 fix(release): GitHub Release 工作流在稳定版 tag push 时默认同时构建并上传 macOS `dmg`，手动 `workflow_dispatch` 时仍保留 `build_macos` 开关；mac 构建补齐 `pip --upgrade` 与前端 `npm ci` 预装步骤
+[2026-05-24] v0.7.19-dev.1 ci(mac): 为 `pull_request` / `push main` 新增 macOS 打包 smoke，持续验证 `.app` 与 `dmg` 产物链路，减少问题拖到正式版 tag 发布时才暴露
+[2026-05-24] v0.7.19-dev.1 ci(mac): macOS smoke 工作流补充定向后端 pytest，在真实 darwin runner 上覆盖 LaunchAgent、更新安装、路径与打包脚本回归，不再只验证能否产出 DMG
+[2026-05-24] v0.7.19-dev.1 feat(mac-build): macOS PyInstaller spec 默认改为 `universal2` 目标架构（支持环境变量覆盖），并将日常 mac smoke 扩展到 Intel `macos-13` 与 Apple Silicon `macos-14` runner，持续验证 Intel/M 系列兼容链路
+
 [2026-05-24] v0.7.18 release: v0.7.18
 
 [2026-05-24] v0.7.18-dev.1 feat(sync): 新增全局 `ignore_hidden_cache_paths` 配置，默认忽略所有以 `.` 开头的隐藏文件/目录及 `__pycache__`，并在设置页提供独立开关，避免 `.docx_tools`、`.venv`、`.git` 等隐藏缓存目录继续进入双向同步扫描

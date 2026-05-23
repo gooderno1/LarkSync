@@ -315,18 +315,20 @@ npm run release:publish -- "release: v0.5.45"
 当前发布工作流：`.github/workflows/release-build.yml`。
 
 触发条件：
-- 推送 `v*` 标签（如 `v0.5.44`）默认仅构建 Windows 安装包。
+- 推送 `v*` 标签（如 `v0.5.44`）会默认同时构建 Windows 与 macOS 安装包。
+- `pull_request` / `push main` 非 tag 场景会额外执行一轮 macOS 定向 pytest + 打包 smoke，用于提前验证 LaunchAgent / 更新安装 / `.app` + `dmg` 构建链路。
 - 标签不能包含 `-dev`，否则构建任务会被 `if` 条件跳过。
-- macOS 构建默认关闭；如需发布 macOS，请手动触发 `workflow_dispatch` 并将 `build_macos` 勾选为 `true`（同时选择稳定版 tag 作为 ref）。
+- 如需手动重跑某个稳定版 tag 的 macOS 构建，可触发 `workflow_dispatch` 并将 `build_macos` 勾选为 `true`（同时选择稳定版 tag 作为 ref）。
+- macOS 打包默认通过 `LARKSYNC_MACOS_TARGET_ARCH=universal2` 生成通用架构产物；如需临时只构建单一架构，可显式覆盖该环境变量为 `x86_64`、`arm64` 等 PyInstaller 支持值。
 
 产物上传结果：
 - Windows：`dist/LarkSync-Setup-*.exe`
-- macOS（手动开启时）：`dist/LarkSync-*.dmg`
+- macOS：`dist/LarkSync-*.dmg`
 - 构建成功后由 workflow 自动上传到对应 GitHub Release。
 - Release 说明：工作流会自动执行 `python scripts/release_notes.py`，从 `CHANGELOG.md` 提取“当前稳定版到上一稳定版之间”的全部条目（可覆盖多个中间 dev 版本），并写入 Release body。
 
 注意：
-- 手动触发时若未勾选 `build_macos`，macOS job 不会执行（这是默认行为）。
+- 手动触发 `workflow_dispatch` 且未勾选 `build_macos` 时，macOS job 不会执行；但正式版 tag push 不受该开关影响。
 
 ### 10.4 GitHub Release 下载安装包（使用者）
 - 发布页：<https://github.com/gooderno1/LarkSync/releases>

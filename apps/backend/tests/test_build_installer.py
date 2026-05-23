@@ -171,3 +171,101 @@ def test_custom_fastapi_compat_hook_excludes_pydantic_v1() -> None:
     module = _load_hook_module("larksync_hook_fastapi_compat", "hook-fastapi._compat.shared.py")
 
     assert getattr(module, "excludedimports") == ["pydantic.v1"]
+
+
+def test_build_dmg_uses_root_app_bundle_when_present(monkeypatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "repo"
+    dist_dir = project_root / "dist"
+    app_bundle = dist_dir / "LarkSync.app"
+    script_path = project_root / "scripts" / "installer" / "macos" / "create_dmg.sh"
+    app_bundle.mkdir(parents=True, exist_ok=True)
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+
+    monkeypatch.setattr(bi, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(bi, "OUTPUT_DIR", dist_dir)
+    monkeypatch.setattr(bi, "run", lambda cmd, cwd=None, env=None: captured.update({"cmd": cmd, "cwd": cwd, "env": env}))
+    monkeypatch.setattr(bi, "_read_version", lambda: "v9.9.9")
+    monkeypatch.setattr(bi.os, "environ", {"BASE": "1"})
+    captured: dict[str, object] = {}
+
+    bi._build_dmg()
+
+    assert captured["cmd"] == ["bash", str(script_path)]
+    assert captured["cwd"] == project_root
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["APP_VERSION"] == "v9.9.9"
+    assert env["APP_BUNDLE"] == str(app_bundle)
+    assert env["BASE"] == "1"
+
+
+def test_build_dmg_falls_back_to_nested_app_bundle(monkeypatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "repo"
+    dist_dir = project_root / "dist"
+    app_bundle = dist_dir / "LarkSync" / "LarkSync.app"
+    script_path = project_root / "scripts" / "installer" / "macos" / "create_dmg.sh"
+    app_bundle.mkdir(parents=True, exist_ok=True)
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+
+    monkeypatch.setattr(bi, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(bi, "OUTPUT_DIR", dist_dir)
+    monkeypatch.setattr(bi, "run", lambda cmd, cwd=None, env=None: captured.update({"cmd": cmd, "cwd": cwd, "env": env}))
+    monkeypatch.setattr(bi, "_read_version", lambda: "v1.2.3")
+    captured: dict[str, object] = {}
+
+    bi._build_dmg()
+
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["APP_BUNDLE"] == str(app_bundle)
+
+
+def test_build_dmg_exits_when_app_bundle_missing(monkeypatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "repo"
+    dist_dir = project_root / "dist"
+    script_path = project_root / "scripts" / "installer" / "macos" / "create_dmg.sh"
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+
+    monkeypatch.setattr(bi, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(bi, "OUTPUT_DIR", dist_dir)
+
+    with pytest.raises(SystemExit):
+        bi._build_dmg()
+
+
+def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "repo"
+    tracked_launcher = project_root / "apps" / "tray" / "launcher.py"
+    backend_pyproject = project_root / "apps" / "backend" / "pyproject.toml"
+    spec_file = project_root / "scripts" / "larksync.spec"
+    tracked_launcher.parent.mkdir(parents=True, exist_ok=True)
+    backend_pyproject.parent.mkdir(parents=True, exist_ok=True)
+    spec_file.parent.mkdir(parents=True, exist_ok=True)
+    tracked_launcher.write_text("print('ok')\n", encoding="utf-8")
+    backend_pyproject.write_text('version = "v1.0.0"\n', encoding="utf-8")
+
+    monkeypatch.setattr(bi, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(bi, "DIST_DIR", project_root / "apps" / "frontend" / "dist")
+    monkeypatch.setattr(bi, "TRAY_DIR", project_root / "apps" / "tray")
+    monkeypatch.setattr(bi, "BRANDING_DIR", project_root / "assets" / "branding")
+    monkeypatch.setattr(bi, "BACKEND_DIR", project_root / "apps" / "backend")
+    monkeypatch.setattr(bi, "SPEC_FILE", spec_file)
+    monkeypatch.setattr(bi, "WINDOWS_ICON", project_root / "assets" / "branding" / "LarkSync.ico")
+
+    bi._generate_spec()
+
+    content = spec_file.read_text(encoding="utf-8")
+    assert "'plyer'" in content
+    assert "'keyring'" in content
+    assert "'sqlalchemy.ext.asyncio'" in content
+    assert "'sqlalchemy.dialects.sqlite'" in content
+    assert "('"+backend_pyproject.as_posix()+"', 'apps/backend')" in content
+    assert "LARKSYNC_MACOS_TARGET_ARCH" in content
+    assert "universal2" in content
+    assert "\n        ,\n" not in content

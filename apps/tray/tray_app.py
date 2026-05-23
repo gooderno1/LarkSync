@@ -57,6 +57,7 @@ from apps.tray.autostart import is_autostart_enabled, toggle_autostart
 from apps.tray import notifier
 from apps.tray import windows_install_helper
 from src.core.paths import update_data_dir, update_logs_dir
+from src.services.update_service import extract_installer_version as _extract_release_installer_version
 
 
 def _sanitize_runtime_pythonpath() -> None:
@@ -212,11 +213,13 @@ def _read_current_app_version() -> str | None:
 
 
 def _extract_installer_version(installer_path: str) -> str | None:
-    name = Path(installer_path).name
-    match = re.search(r"LarkSync-Setup-(v?\d+\.\d+\.\d+(?:-dev\.\d+)?)", name, re.IGNORECASE)
-    if not match:
-        return None
-    return match.group(1)
+    return _extract_release_installer_version(installer_path)
+
+
+def _install_launch_notice() -> str:
+    if sys.platform == "darwin":
+        return "LarkSync 将退出并打开安装包，请完成安装后手动重新打开应用。"
+    return "LarkSync 将退出并执行更新安装，完成后会自动重新启动。"
 
 
 def _install_request_is_stale(installer_path: str) -> bool:
@@ -785,7 +788,7 @@ class LarkSyncTray:
         _append_install_launch_log(f"已调度安装包启动: {installer_path}")
         self._notify(
             "正在启动更新安装",
-            "LarkSync 将退出并执行更新安装，完成后会自动重新启动。",
+            _install_launch_notice(),
             category="update",
         )
         self.stop()

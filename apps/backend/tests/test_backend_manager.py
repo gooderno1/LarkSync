@@ -70,3 +70,15 @@ def test_backend_manager_sanitizes_incompatible_pythonpath(monkeypatch, tmp_path
     env = captured["env"]
     assert env is not None
     assert env["PYTHONPATH"] == r"C:\repo\apps\backend"
+
+
+def test_runtime_data_dir_uses_external_app_data_when_frozen(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    external_data_dir = tmp_path / "Library" / "Application Support" / "LarkSync"
+    monkeypatch.delenv("LARKSYNC_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(bm, "backend_data_dir", lambda: external_data_dir)
+
+    assert bm._runtime_data_dir() == external_data_dir

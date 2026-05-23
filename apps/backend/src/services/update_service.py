@@ -19,6 +19,10 @@ from src.core.paths import update_data_dir, update_logs_dir
 from src.core.version import get_version
 
 _VERSION_RE = re.compile("^v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-dev\\.(\\d+))?$")
+_INSTALLER_VERSION_RE = re.compile(
+    r"LarkSync(?:-Setup)?-(v?\d+\.\d+\.\d+(?:-dev\.\d+)?)\.(?:exe|dmg)$",
+    re.IGNORECASE,
+)
 
 
 class UpdateAsset(BaseModel):
@@ -77,11 +81,7 @@ def extract_installer_version(path: str | None) -> str | None:
     if not path:
         return None
     name = Path(str(path)).name
-    match = re.search(
-        r"LarkSync-Setup-(v?\d+\.\d+\.\d+(?:-dev\.\d+)?)",
-        name,
-        re.IGNORECASE,
-    )
+    match = _INSTALLER_VERSION_RE.search(name)
     if not match:
         return None
     version = match.group(1)
