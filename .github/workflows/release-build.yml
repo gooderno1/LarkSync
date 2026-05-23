@@ -112,7 +112,8 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r apps/backend/requirements.txt
+          python -m pip install -r apps/backend/requirements.txt
+          python -m pip install "pytest>=7.4" "pytest-asyncio>=0.23"
 
       - name: Install frontend dependencies
         working-directory: apps/frontend

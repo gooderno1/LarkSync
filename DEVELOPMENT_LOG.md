@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.7.19-dev.2 (2026-05-24)
+
+- 目标：
+  - 修复远端 macOS CI 在 `quality-macos-packaging` 阶段误报失败的问题，确保 darwin runner 能真正执行定向回归与 DMG smoke，而不是因为 workflow 缺依赖提前退出。
+
+- 结果：
+  - `quality-macos-packaging` 的 Python 依赖安装步骤现已与主 `quality` 任务对齐，除业务依赖外会额外显式安装 `pytest>=7.4` 与 `pytest-asyncio>=0.23`，修复 GitHub Actions `macos-14` runner 报 `No module named pytest` 后直接跳过 DMG smoke 的问题。
+  - 新增 `apps/backend/tests/test_release_workflow.py`，解析 `.github/workflows/release-build.yml` 并断言 mac packaging job 复用与主 `quality` 一致的 pytest bootstrap，避免未来再次出现 Windows 任务能跑、mac 任务漏装测试依赖的回归。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.2` / `0.7.19-dev.2`，CHANGELOG 已补齐本次 CI 修复记录。
+
+- 测试：
+  - `python -m pytest tests/test_release_workflow.py tests/test_build_installer.py tests/test_update_service.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_backend_manager.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.19-dev.1 (2026-05-24)
 
 - 目标：
