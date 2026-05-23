@@ -318,6 +318,7 @@ npm run release:publish -- "release: v0.5.45"
 触发条件：
 - 推送 `v*` 标签（如 `v0.5.44`）会默认同时构建 Windows 与 macOS 安装包。
 - `pull_request` / `push main` 非 tag 场景会额外执行一轮 macOS 定向 pytest + 打包 smoke，用于提前验证 LaunchAgent / 更新安装 / `.app` + `dmg` 构建链路。
+- macOS smoke 在 DMG 构建后还会自动执行一轮安装/启动检查：挂载 DMG、复制 `.app`、启动 `LarkSync --backend` 并轮询 `/health`，尽量把“能构建但不能启动”的问题前移到 CI。
 - 标签不能包含 `-dev`，否则构建任务会被 `if` 条件跳过。
 - 如需手动重跑某个稳定版 tag 的 macOS 构建，可触发 `workflow_dispatch` 并将 `build_macos` 勾选为 `true`（同时选择稳定版 tag 作为 ref）。
 - macOS 工作流会按 runner 原生架构构建：`macos-13 -> x86_64`、`macos-14 -> arm64`；稳定版 tag 会上传 `LarkSync-<version>-x86_64.dmg` 与 `LarkSync-<version>-arm64.dmg` 两个产物，自动更新会优先匹配当前机器架构。

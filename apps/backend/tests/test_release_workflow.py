@@ -55,6 +55,12 @@ def test_release_workflow_uses_native_dual_arch_macos_matrix() -> None:
         "Build macOS installer smoke",
     )["env"]
     release_build_env = _step(workflow, "build-macos", "Build DMG")["env"]
+    quality_install_smoke = _step(
+        workflow,
+        "quality-macos-packaging",
+        "Run macOS install-launch smoke",
+    )["run"]
+    release_install_smoke = _step(workflow, "build-macos", "Run macOS install-launch smoke")["run"]
 
     assert quality_matrix == expected
     assert release_matrix == expected
@@ -62,3 +68,5 @@ def test_release_workflow_uses_native_dual_arch_macos_matrix() -> None:
     assert quality_smoke_env["LARKSYNC_MACOS_DMG_SUFFIX"] == "${{ matrix.arch }}"
     assert release_build_env["LARKSYNC_MACOS_TARGET_ARCH"] == "${{ matrix.arch }}"
     assert release_build_env["LARKSYNC_MACOS_DMG_SUFFIX"] == "${{ matrix.arch }}"
+    assert quality_install_smoke == "python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}"
+    assert release_install_smoke == "python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}"

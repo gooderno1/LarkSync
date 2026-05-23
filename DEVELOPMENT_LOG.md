@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.19-dev.3 (2026-05-24)
+
+- 目标：
+  - 在已有 mac 构建 smoke 基础上继续补足安装 / 启动级验证，尽量让 CI 直接覆盖“DMG 能挂载、`.app` 能安装、bundle 能启动”这条链路，而不是只停留在产物生成。
+
+- 结果：
+  - 新增 `scripts/macos_installer_smoke.py`，会自动选择指定架构 DMG、挂载镜像、复制 `LarkSync.app` 到临时安装目录，并直接启动 `.app/Contents/MacOS/LarkSync --backend` 轮询 `/health`，形成 macOS 安装 / 启动 smoke。
+  - `quality-macos-packaging` 与正式版 `build-macos` workflow 现在都会在 DMG 构建后执行安装 / 启动 smoke，避免发布链路只验证“能打包”，不验证“安装后能否真实启动”。
+  - macOS 打包与发布默认策略进一步收口为双架构原生产物：`macos-13 -> x86_64`、`macos-14 -> arm64`；更新服务新增架构感知选择逻辑，会优先选择与当前机器架构匹配的 DMG，在无匹配时再回退到 `universal2` / 通用命名产物。
+  - 新增 `test_macos_installer_smoke.py`，并扩展 `test_build_installer.py`、`test_update_service.py`、`test_release_workflow.py` 覆盖 DMG 架构后缀、安装 smoke、workflow matrix 与架构感知更新选择逻辑。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.3` / `0.7.19-dev.3`，README、USAGE、CHANGELOG 已同步补齐本轮 mac 安装 smoke 记录。
+
+- 测试：
+  - `python -m pytest tests/test_macos_installer_smoke.py tests/test_release_workflow.py tests/test_build_installer.py tests/test_update_service.py tests/test_backend_manager.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.19-dev.2 (2026-05-24)
 
 - 目标：

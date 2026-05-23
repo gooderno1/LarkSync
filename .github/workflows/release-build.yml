@@ -134,6 +134,9 @@ jobs:
           LARKSYNC_MACOS_DMG_SUFFIX: ${{ matrix.arch }}
         run: python scripts/build_installer.py --dmg
 
+      - name: Run macOS install-launch smoke
+        run: python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}
+
   build-windows:
     needs: quality
     if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') }}
@@ -286,6 +289,9 @@ jobs:
           LARKSYNC_MACOS_TARGET_ARCH: ${{ matrix.arch }}
           LARKSYNC_MACOS_DMG_SUFFIX: ${{ matrix.arch }}
         run: python scripts/build_installer.py --dmg
+
+      - name: Run macOS install-launch smoke
+        run: python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}
 
       - name: Generate checksum assets
         shell: bash
