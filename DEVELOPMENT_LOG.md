@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.7.19-dev.8 (2026-05-24)
+
+- 目标：
+  - 在 Apple Silicon 安装启动 smoke 已通过的前提下，继续缩小 Intel 验证的外部排队风险，并把 DMG 安装入口本身纳入自动化证据。
+
+- 结果：
+  - `.github/workflows/release-build.yml` 中的 Intel mac runner 已从 `macos-13` 切换到 `macos-15-intel`，继续保留 `arm64` 对应的 `macos-14`，以便更贴近 GitHub 当前可用的 Intel mac 标签并降低长期排队风险。
+  - `scripts/macos_installer_smoke.py` 现在会在挂载 DMG 后显式检查卷内 `Applications` 安装入口是否存在且正确指向 `/Applications`，把“可拖拽安装”的关键入口也纳入 smoke 范围。
+  - `test_macos_installer_smoke.py` 已补充 `Applications` 安装入口存在性与目标路径校验，`test_release_workflow.py` 已同步更新 Intel runner 期望值与双架构 matrix 断言。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.8` / `0.7.19-dev.8`，README、USAGE、CHANGELOG 已同步补齐本轮 Intel runner 与 DMG 安装入口验证记录。
+
+- 测试：
+  - `python -m pytest tests/test_macos_installer_smoke.py tests/test_release_workflow.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.19-dev.7 (2026-05-24)
 
 - 目标：

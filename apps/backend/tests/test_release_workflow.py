@@ -53,7 +53,7 @@ def test_release_workflow_uses_native_dual_arch_macos_matrix() -> None:
     workflow = _load_release_workflow()
 
     expected = [
-        {"os": "macos-13", "arch": "x86_64"},
+        {"os": "macos-15-intel", "arch": "x86_64"},
         {"os": "macos-14", "arch": "arm64"},
     ]
     quality_matrix = workflow["jobs"]["quality-macos-packaging"]["strategy"]["matrix"]["include"]

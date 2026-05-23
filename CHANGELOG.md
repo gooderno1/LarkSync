@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-24] v0.7.19-dev.8 chore(ci-mac): 将 Intel mac 验证 runner 从长期排队的 `macos-13` 切换为 `macos-15-intel`，并把 DMG 卷内 `Applications` 安装入口校验纳入 macOS install-launch smoke，进一步贴近“可拖拽安装”的完成证据
 [2026-05-24] v0.7.19-dev.7 chore(ci-mac): 为日常 macOS smoke 与正式版 `build-macos` matrix 显式关闭 `fail-fast`，保证 `arm64` / `x86_64` 任一架构失败时另一条验证仍会继续执行并保留结果，避免 Intel 验证再次被自动取消
 [2026-05-24] v0.7.19-dev.6 fix(mac-build): 将 `greenlet>=3.0` 升级为后端显式依赖，并保留 PyInstaller hiddenimport 回归；修复 Python 3.14 arm64 环境下 `sqlalchemy` 不再自动安装 `greenlet`，导致 macOS 安装后 bundle 在数据库初始化阶段启动即崩的问题
 [2026-05-24] v0.7.19-dev.5 fix(mac-build): 基于新的安装启动 smoke 诊断结果，修复 PyInstaller 产物漏打 `greenlet` 的问题；现在构建脚本与仓库 spec 都会显式纳入该依赖，避免 bundle 在 `sqlalchemy.ext.asyncio` 的数据库初始化阶段因 `No module named 'greenlet'` 提前退出

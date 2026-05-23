@@ -3,11 +3,11 @@
 本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
 
 ## 0. 当前版本（截至 2026-05-24）
-- 最新发布记录：`v0.7.19-dev.7`（见 `CHANGELOG.md` 顶部）
-- 当前主线状态：`v0.7.19-dev.7`（保留双架构 macOS smoke 结果：关闭 matrix `fail-fast`，避免 `arm64` 或 `x86_64` 先失败时另一条验证被 GitHub 自动取消）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.19-dev.7`
-- 前端版本：`apps/frontend/package.json` 中为 `0.7.19-dev.7`
-- 根目录版本：`package.json` 中为 `v0.7.19-dev.7`
+- 最新发布记录：`v0.7.19-dev.8`（见 `CHANGELOG.md` 顶部）
+- 当前主线状态：`v0.7.19-dev.8`（Intel mac runner 切换到 `macos-15-intel`，并将 DMG 卷内 `Applications` 安装入口纳入 smoke 校验，继续收口“可拖拽安装”证据）
+- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.19-dev.8`
+- 前端版本：`apps/frontend/package.json` 中为 `0.7.19-dev.8`
+- 根目录版本：`package.json` 中为 `v0.7.19-dev.8`
 
 ## 1. 环境准备
 - Node.js 18+（用于前端）
