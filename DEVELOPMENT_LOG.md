@@ -1,5 +1,24 @@
 # DEVELOPMENT LOG
 
+## v0.7.17 release (2026-05-23)
+
+- 目标：
+  - 发布 `v0.7.17` 稳定版，将 `v0.7.17-dev.1` 到 `v0.7.17-dev.33` 的工程化治理、日志中心/前端组件化收口、后端大模块拆分、Windows 静默安装稳定性修复与 PyInstaller 构建基线治理作为正式能力对外发布。
+
+- 结果：
+  - 正式版纳入本轮全部工程化收口：前端质量门、FastAPI `lifespan`、SQLite schema version 迁移注册表、日志中心 DB-first 读取链路，以及 `sync_runner` / `docx_service` / `transcoder` / `tray_app` 的阶段性服务拆分已全部进入稳定版。
+  - Windows 静默安装链路现已覆盖 PowerShell 5.1 BOM 编码兼容、helper `creationflags` 分级回退、真实 `bootstrap/worker` smoke 回归与安装脚本 helper 模块化，正式版更新链路较 `v0.7.16` 继续提升了受限环境下的可恢复性。
+  - PyInstaller 构建基线已固定为 `Python 3.14.x / Node 25.x`，并通过仓库级 `hook-pydantic.py` / `hook-fastapi._compat.shared.py` 排除了未使用的 `pydantic.v1` 命名空间，正式版构建日志不再持续出现兼容层噪音。
+  - 本地正式安装包已生成 `dist/LarkSync-Setup-v0.7.17.exe`，SHA256 为 `e32c397822b1c3b55e90f1c8dce2a26721f2199473ed90fdc00b767b01bfbc60`。
+
+- 测试：
+  - `python -m pytest -q`（工作目录：`apps/backend/`，并将 `TEMP/TMP` 指向仓库内 `.tmp-tests-root`）
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - `python scripts/update_install_smoke.py`
+  - `python scripts/build_installer.py --nsis`
+
 ## v0.7.17-dev.33 (2026-05-23)
 
 - 目标：

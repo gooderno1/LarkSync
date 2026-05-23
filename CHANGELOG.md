@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-23] v0.7.17 release: v0.7.17
+
 [2026-05-23] v0.7.17-dev.33 fix(build): 为 PyInstaller 新增仓库级 `hook-pydantic.py` 与 `hook-fastapi._compat.shared.py`，显式排除未使用的 `pydantic.v1` 命名空间及 FastAPI 对其的静态兼容导入，修复 Python 3.14 构建日志持续出现 `Core Pydantic V1 functionality isn't compatible` 告警的问题，并确认 `build/larksync` 产物分析结果不再包含 `pydantic.v1`
 
 [2026-05-23] v0.7.17-dev.32 refactor(tray): 为 `tray_app` 新增 `windows_install_helper.py`，将 Windows 安装脚本构造、PowerShell helper 启动参数和静默安装 bootstrap/worker 模板下沉到独立 helper，并保持更新链路与 smoke 回归稳定
