@@ -1,5 +1,9 @@
 # CHANGELOG
 
+[2026-05-24] v0.7.18 release: v0.7.18
+
+[2026-05-24] v0.7.18-dev.1 feat(sync): 新增全局 `ignore_hidden_cache_paths` 配置，默认忽略所有以 `.` 开头的隐藏文件/目录及 `__pycache__`，并在设置页提供独立开关，避免 `.docx_tools`、`.venv`、`.git` 等隐藏缓存目录继续进入双向同步扫描
+
 [2026-05-23] v0.7.17 release: v0.7.17
 
 [2026-05-23] v0.7.17-dev.33 fix(build): 为 PyInstaller 新增仓库级 `hook-pydantic.py` 与 `hook-fastapi._compat.shared.py`，显式排除未使用的 `pydantic.v1` 命名空间及 FastAPI 对其的静态兼容导入，修复 Python 3.14 构建日志持续出现 `Core Pydantic V1 functionality isn't compatible` 告警的问题，并确认 `build/larksync` 产物分析结果不再包含 `pydantic.v1`

@@ -206,18 +206,22 @@ async def update_open_download_folder(
 async def _shutdown_after_response(app) -> None:
     logger.info("收到系统关闭请求，准备停止服务")
     runner = getattr(app.state, "sync_runner", None)
-    if runner is not None:
-        try:
-            for task_id in list(runner.list_statuses().keys()):
-                runner.cancel_task(task_id)
-        except Exception as exc:
-            logger.warning("停止同步任务失败: {}", exc)
     scheduler = getattr(app.state, "sync_scheduler", None)
     if scheduler is not None:
         try:
             await scheduler.stop()
         except Exception as exc:
             logger.warning("停止同步调度器失败: {}", exc)
+    if runner is not None:
+        close_runner = getattr(runner, "close", None)
+        try:
+            if callable(close_runner):
+                await close_runner()
+            else:
+                for task_id in list(runner.list_statuses().keys()):
+                    runner.cancel_task(task_id)
+        except Exception as exc:
+            logger.warning("停止同步任务失败: {}", exc)
     try:
         watcher_manager.stop()
     except Exception as exc:

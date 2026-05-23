@@ -40,6 +40,7 @@ export function SettingsPage() {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [syncMode, setSyncMode] = useState("bidirectional");
+  const [ignoreHiddenCachePaths, setIgnoreHiddenCachePaths] = useState(true);
   const [tokenStore, setTokenStore] = useState("keyring");
   const [uploadValue, setUploadValue] = useState("60");
   const [uploadUnit, setUploadUnit] = useState("seconds");
@@ -101,6 +102,9 @@ export function SettingsPage() {
     setTokenUrl(config.auth_token_url || "");
     setClientId(config.auth_client_id || "");
     setSyncMode(config.sync_mode || "bidirectional");
+    if (config.ignore_hidden_cache_paths != null) {
+      setIgnoreHiddenCachePaths(Boolean(config.ignore_hidden_cache_paths));
+    }
     setTokenStore(config.token_store || "keyring");
     if (config.upload_interval_value != null) setUploadValue(String(config.upload_interval_value));
     if (config.upload_interval_unit) setUploadUnit(config.upload_interval_unit);
@@ -224,6 +228,7 @@ export function SettingsPage() {
         auto_update_enabled: autoUpdateEnabled,
         update_check_interval_hours: updateInterval,
         allow_dev_to_stable: allowDevToStable,
+        ignore_hidden_cache_paths: ignoreHiddenCachePaths,
         device_display_name: deviceDisplayName.trim() || null,
       });
       toast("更多设置已保存", "success");
@@ -443,6 +448,8 @@ export function SettingsPage() {
           tasks={tasks}
           showIgnoredDirectorySettings={showIgnoredDirectorySettings}
           toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
+          ignoreHiddenCachePaths={ignoreHiddenCachePaths}
+          setIgnoreHiddenCachePaths={setIgnoreHiddenCachePaths}
           ignoredSubpathsMap={ignoredSubpathsMap}
           ignoredPathDrafts={ignoredPathDrafts}
           setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}

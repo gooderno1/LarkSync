@@ -75,3 +75,25 @@ async def test_record_event_uses_default_task_name_when_task_missing() -> None:
     assert status.conflict_files == 1
     assert event_store.records[0].task_name == "未命名任务"
 
+
+@pytest.mark.asyncio
+async def test_close_flushes_pending_records_without_leaking_background_task() -> None:
+    event_store = _FakeEventStore()
+    run_event_service = _FakeRunEventService()
+    status = SyncTaskStatus(task_id="task-3")
+    pipeline = SyncEventPipeline(
+        event_store=event_store,
+        run_event_service=run_event_service,
+        flush_delay_seconds=999.0,
+        batch_size=10,
+    )
+
+    pipeline.record_event(
+        status,
+        SyncFileEvent(path="D:/Docs/cache/.docx_tools/REQUESTED", status="skipped", timestamp=300.0),
+    )
+    await pipeline.close()
+
+    assert len(event_store.records) == 1
+    assert len(run_event_service.batches) == 1
+    assert pipeline._flush_task is None

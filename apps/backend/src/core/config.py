@@ -54,6 +54,7 @@ def _default_scopes() -> list[str]:
 class AppConfig(BaseModel):
     database_url: str = Field(default_factory=_default_database_url)
     sync_mode: SyncMode = SyncMode.bidirectional
+    ignore_hidden_cache_paths: bool = True
     upload_interval_value: float = 60.0
     upload_interval_unit: SyncIntervalUnit = SyncIntervalUnit.seconds
     upload_daily_time: str = "01:00"
@@ -128,6 +129,12 @@ class ConfigManager:
         env_sync_mode = os.getenv("LARKSYNC_SYNC_MODE")
         if env_sync_mode:
             data["sync_mode"] = env_sync_mode
+
+        env_ignore_hidden_cache = os.getenv("LARKSYNC_IGNORE_HIDDEN_CACHE_PATHS")
+        if env_ignore_hidden_cache:
+            data["ignore_hidden_cache_paths"] = (
+                env_ignore_hidden_cache.strip().lower() in {"1", "true", "yes", "on"}
+            )
 
         env_upload_interval = os.getenv("LARKSYNC_UPLOAD_INTERVAL_SECONDS")
         if env_upload_interval:

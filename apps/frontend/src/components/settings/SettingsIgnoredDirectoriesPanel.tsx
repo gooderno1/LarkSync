@@ -1,10 +1,13 @@
 import { IconFolder } from "../Icons";
+import { cn } from "../../lib/utils";
 import type { SyncTask } from "../../types";
 
 type SettingsIgnoredDirectoriesPanelProps = {
   tasks: SyncTask[];
   showIgnoredDirectorySettings: boolean;
   toggleIgnoredDirectorySettings: () => void;
+  ignoreHiddenCachePaths: boolean;
+  setIgnoreHiddenCachePaths: (value: boolean | ((prev: boolean) => boolean)) => void;
   ignoredSubpathsMap: Record<string, string[]>;
   ignoredPathDrafts: Record<string, string>;
   setIgnoredPathDrafts: (updater: (prev: Record<string, string>) => Record<string, string>) => void;
@@ -20,6 +23,8 @@ export function SettingsIgnoredDirectoriesPanel({
   tasks,
   showIgnoredDirectorySettings,
   toggleIgnoredDirectorySettings,
+  ignoreHiddenCachePaths,
+  setIgnoreHiddenCachePaths,
   ignoredSubpathsMap,
   ignoredPathDrafts,
   setIgnoredPathDrafts,
@@ -50,6 +55,36 @@ export function SettingsIgnoredDirectoriesPanel({
 
       {showIgnoredDirectorySettings ? (
         <div className="mt-3 space-y-3">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+              <div>
+                <p className="text-sm text-zinc-200">默认忽略隐藏/缓存路径</p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  启用后，会默认跳过所有以 `.` 开头的文件或目录，以及 `__pycache__`。关闭后，仅保留任务级忽略目录和系统保留目录规则。
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  className={cn(
+                    "relative h-6 w-11 rounded-full transition",
+                    ignoreHiddenCachePaths ? "bg-[#3370FF]" : "bg-zinc-700",
+                  )}
+                  onClick={() => setIgnoreHiddenCachePaths((prev) => !prev)}
+                  type="button"
+                >
+                  <span
+                    className={cn(
+                      "absolute top-0.5 h-5 w-5 rounded-full bg-white transition",
+                      ignoreHiddenCachePaths ? "left-6" : "left-0.5",
+                    )}
+                  />
+                </button>
+                <span className="text-xs text-zinc-500">
+                  {ignoreHiddenCachePaths ? "默认启用" : "已关闭"}
+                </span>
+              </div>
+            </div>
+          </div>
           {tasks.length === 0 ? (
             <p className="text-xs text-zinc-500">暂无同步任务。</p>
           ) : (

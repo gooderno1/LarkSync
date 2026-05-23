@@ -1,5 +1,37 @@
 # DEVELOPMENT LOG
 
+## v0.7.18 release (2026-05-24)
+
+- 目标：
+  - 发布 `v0.7.18` 稳定版，收口隐藏/缓存路径默认忽略开关，并消除 `SyncEventPipeline` 在测试与应用关闭阶段遗留的 pending task 噪音。
+
+- 结果：
+  - 同步器新增全局 `ignore_hidden_cache_paths` 开关，默认忽略所有以 `.` 开头的文件/目录以及 `__pycache__`，设置页可单独关闭。
+  - `SyncEventPipeline` 改为 `TimerHandle + flush_now/close` 收尾模型；`SyncTaskRunner.close()`、应用 `lifespan` 关闭路径与 `/system/shutdown` 现已显式清空 pending 事件并停止 watcher，避免退出时遗留后台 flush task。
+  - 根包、后端与前端版本号已同步收口到 `v0.7.18` / `0.7.18`，CHANGELOG 已追加正式版记录。
+
+- 测试：
+  - `$env:PYTHONPATH='apps/backend'; .\.venv\Scripts\python.exe -m pytest apps/backend/tests/test_sync_event_pipeline.py apps/backend/tests/test_main.py apps/backend/tests/test_config_api.py apps/backend/tests/test_sync_runner.py apps/backend/tests/test_release.py -q`
+  - `npm --prefix apps/frontend run test -- src/components/settings/SettingsPanels.test.tsx src/pages/SettingsPage.test.tsx`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run build`
+
+## v0.7.18-dev.1 (2026-05-24)
+
+- 目标：
+  - 解决实际安装版持续扫描 `.docx_tools` 等隐藏工具目录导致的同步失败，为同步器补齐“默认忽略隐藏/缓存路径”的全局配置，并保留用户可关闭的设置开关。
+
+- 结果：
+  - `AppConfig` / `/config` 新增 `ignore_hidden_cache_paths`，默认值为 `true`，支持持久化保存和环境变量覆盖。
+  - `sync_runner._should_ignore_path()` 新增隐藏/缓存路径判定：开启时默认跳过所有以 `.` 开头的文件或目录，以及 `__pycache__`，任务级 `ignored_subpaths` 仍继续生效。
+  - 设置页“本地忽略目录”面板新增“默认忽略隐藏/缓存路径”开关，用户可以按需关闭该默认规则，再仅依赖任务级忽略目录。
+  - README、CHANGELOG 与前后端版本号已同步更新到 `v0.7.18-dev.1` / `0.7.18-dev.1`，随后本轮正式收口为 `v0.7.18` / `0.7.18`。
+
+- 测试：
+  - `$env:PYTHONPATH='apps/backend'; .\.venv\Scripts\python.exe -m pytest apps/backend/tests/test_config_api.py apps/backend/tests/test_sync_runner.py -q`
+  - `npm --prefix apps/frontend run test -- src/components/settings/SettingsPanels.test.tsx src/pages/SettingsPage.test.tsx`
+  - `npm --prefix apps/frontend run typecheck`
+
 ## v0.7.17 release (2026-05-23)
 
 - 目标：

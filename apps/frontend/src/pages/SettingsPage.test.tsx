@@ -10,6 +10,7 @@ vi.mock("../hooks/useConfig", () => ({
       auth_token_url: "https://open.feishu.cn/open-apis/authen/v1/access_token",
       auth_client_id: "cli_123",
       sync_mode: "bidirectional",
+      ignore_hidden_cache_paths: true,
       token_store: "keyring",
       upload_interval_value: 60,
       upload_interval_unit: "seconds",

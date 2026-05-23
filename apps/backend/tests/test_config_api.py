@@ -33,6 +33,7 @@ def test_get_config_masks_secret(tmp_path: Path, monkeypatch) -> None:
     payload = response.json()
     assert payload["auth_client_secret"] == ""
     assert payload["auth_client_id"] == "app-id"
+    assert payload["ignore_hidden_cache_paths"] is True
 
 
 def test_update_config_persists(tmp_path: Path, monkeypatch) -> None:
@@ -54,6 +55,7 @@ def test_update_config_persists(tmp_path: Path, monkeypatch) -> None:
             "auth_redirect_uri": "http://localhost:8000/auth/callback",
             "auth_scopes": ["drive:drive"],
             "sync_mode": "upload_only",
+            "ignore_hidden_cache_paths": False,
             "token_store": "keyring",
             "device_display_name": "我的笔记本",
             "delete_policy": "strict",
@@ -64,11 +66,13 @@ def test_update_config_persists(tmp_path: Path, monkeypatch) -> None:
     payload = response.json()
     assert payload["delete_policy"] == "strict"
     assert payload["delete_grace_minutes"] == 0
+    assert payload["ignore_hidden_cache_paths"] is False
 
     persisted = json.loads(config_path.read_text(encoding="utf-8"))
     assert persisted["auth_client_id"] == "new-id"
     assert persisted["auth_client_secret"] == "new-secret"
     assert persisted["sync_mode"] == "upload_only"
+    assert persisted["ignore_hidden_cache_paths"] is False
     assert persisted["device_display_name"] == "我的笔记本"
     assert persisted["delete_policy"] == "strict"
     assert persisted["delete_grace_minutes"] == 0

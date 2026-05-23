@@ -12,6 +12,7 @@ type ConfigData = {
   auth_client_id?: string;
   auth_redirect_uri?: string;
   sync_mode?: string;
+  ignore_hidden_cache_paths?: boolean;
   token_store?: string;
   upload_interval_value?: number;
   upload_interval_unit?: string;

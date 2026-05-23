@@ -23,6 +23,7 @@ class ConfigResponse(BaseModel):
     auth_redirect_uri: str = ""
     auth_scopes: list[str] = Field(default_factory=list)
     sync_mode: SyncMode = SyncMode.bidirectional
+    ignore_hidden_cache_paths: bool = True
     token_store: str = "keyring"
     upload_interval_value: float = 60.0
     upload_interval_unit: SyncIntervalUnit = SyncIntervalUnit.seconds
@@ -52,6 +53,7 @@ class ConfigResponse(BaseModel):
             auth_redirect_uri=config.auth_redirect_uri,
             auth_scopes=list(config.auth_scopes or []),
             sync_mode=config.sync_mode,
+            ignore_hidden_cache_paths=config.ignore_hidden_cache_paths,
             token_store=config.token_store,
             upload_interval_value=config.upload_interval_value,
             upload_interval_unit=config.upload_interval_unit,
@@ -81,6 +83,7 @@ class ConfigUpdateRequest(BaseModel):
     auth_redirect_uri: str | None = None
     auth_scopes: list[str] | None = None
     sync_mode: SyncMode | None = None
+    ignore_hidden_cache_paths: bool | None = None
     token_store: str | None = None
     upload_interval_value: float | None = None
     upload_interval_unit: SyncIntervalUnit | None = None
@@ -127,6 +130,9 @@ async def update_config(payload: ConfigUpdateRequest) -> ConfigResponse:
 
     if payload.sync_mode is not None:
         data["sync_mode"] = payload.sync_mode.value
+
+    if payload.ignore_hidden_cache_paths is not None:
+        data["ignore_hidden_cache_paths"] = bool(payload.ignore_hidden_cache_paths)
 
     if payload.token_store is not None and payload.token_store.strip():
         data["token_store"] = payload.token_store.strip()

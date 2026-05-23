@@ -1816,6 +1816,85 @@ def test_should_ignore_path_skips_task_specific_ignored_subpaths(tmp_path: Path)
     assert runner._should_ignore_path(task, normal_file) is False
 
 
+def test_should_ignore_path_skips_hidden_and_pycache_paths_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    try:
+        runner = SyncTaskRunner(link_service=FakeLinkService())
+        task = SyncTaskItem(
+            id="task-ignore-hidden-default",
+            name="默认隐藏路径忽略测试",
+            local_path=tmp_path.as_posix(),
+            cloud_folder_token="root-token",
+            cloud_folder_name=None,
+            base_path=None,
+            sync_mode="bidirectional",
+            update_mode="auto",
+            enabled=True,
+            created_at=0,
+            updated_at=0,
+        )
+        hidden_dir_file = tmp_path / ".docx_tools" / "cache" / "REQUESTED"
+        hidden_dir_file.parent.mkdir(parents=True)
+        hidden_dir_file.write_text("", encoding="utf-8")
+        hidden_file = tmp_path / "docs" / ".env"
+        hidden_file.parent.mkdir(parents=True)
+        hidden_file.write_text("TOKEN=demo", encoding="utf-8")
+        pycache_file = tmp_path / "pkg" / "__pycache__" / "module.cpython-310.pyc"
+        pycache_file.parent.mkdir(parents=True)
+        pycache_file.write_bytes(b"pyc")
+        normal_file = tmp_path / "docs" / "note.md"
+        normal_file.write_text("# note", encoding="utf-8")
+
+        assert runner._should_ignore_path(task, hidden_dir_file) is True
+        assert runner._should_ignore_path(task, hidden_file) is True
+        assert runner._should_ignore_path(task, pycache_file) is True
+        assert runner._should_ignore_path(task, normal_file) is False
+    finally:
+        ConfigManager.reset()
+
+
+def test_should_ignore_path_allows_hidden_and_pycache_paths_when_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"ignore_hidden_cache_paths": false}', encoding="utf-8")
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    ConfigManager.reset()
+
+    try:
+        runner = SyncTaskRunner(link_service=FakeLinkService())
+        task = SyncTaskItem(
+            id="task-ignore-hidden-disabled",
+            name="隐藏路径忽略关闭测试",
+            local_path=tmp_path.as_posix(),
+            cloud_folder_token="root-token",
+            cloud_folder_name=None,
+            base_path=None,
+            sync_mode="bidirectional",
+            update_mode="auto",
+            enabled=True,
+            created_at=0,
+            updated_at=0,
+        )
+        hidden_dir_file = tmp_path / ".docx_tools" / "cache" / "REQUESTED"
+        hidden_dir_file.parent.mkdir(parents=True)
+        hidden_dir_file.write_text("", encoding="utf-8")
+        pycache_file = tmp_path / "pkg" / "__pycache__" / "module.cpython-310.pyc"
+        pycache_file.parent.mkdir(parents=True)
+        pycache_file.write_bytes(b"pyc")
+
+        assert runner._should_ignore_path(task, hidden_dir_file) is False
+        assert runner._should_ignore_path(task, pycache_file) is False
+    finally:
+        ConfigManager.reset()
+
+
 @pytest.mark.asyncio
 async def test_run_scheduled_upload_waits_until_file_is_quiet(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

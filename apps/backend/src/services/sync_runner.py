@@ -6,6 +6,7 @@ import hashlib
 import re
 import time
 import uuid
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Literal
@@ -113,6 +114,17 @@ def _is_temporary_local_name(name: str) -> bool:
         return True
     if lowered.endswith(_LOCAL_TEMP_FILE_SUFFIXES):
         return True
+    return False
+
+
+def _is_hidden_or_cache_relative_path(relative: Path) -> bool:
+    for part in relative.parts:
+        cleaned = part.strip()
+        if not cleaned or cleaned == ".":
+            continue
+        lowered = cleaned.lower()
+        if cleaned.startswith(".") or lowered == "__pycache__":
+            return True
     return False
 
 
@@ -327,6 +339,23 @@ class SyncTaskRunner:
 
     def stop_watcher(self, task_id: str) -> None:
         self._stop_watcher(task_id)
+
+    async def close(self) -> None:
+        for task in self._tasks.values():
+            if task and not task.done():
+                task.cancel()
+        for task in self._tasks.values():
+            if task and not task.done():
+                with suppress(asyncio.CancelledError):
+                    await task
+        self._tasks.clear()
+        self._running_tasks.clear()
+        self._pending_restarts.clear()
+        self._pending_uploads.clear()
+        for task_id in list(self._watchers.keys()):
+            self._stop_watcher(task_id)
+        await self._event_pipeline.close()
+        self._loop = None
 
     def start_task(self, task: SyncTaskItem) -> SyncTaskStatus:
         self._task_meta[task.id] = task
@@ -1874,6 +1903,11 @@ class SyncTaskRunner:
             or "插图" in relative.parts
             or _LOCAL_TRASH_DIR_NAME.lower() in lowered
             or _CLOUD_MD_MIRROR_FOLDER_NAME.lower() in lowered
+        ):
+            return True
+        if (
+            ConfigManager.get().config.ignore_hidden_cache_paths
+            and _is_hidden_or_cache_relative_path(relative)
         ):
             return True
         relative_parts = tuple(part.lower() for part in relative.parts if part and part != ".")

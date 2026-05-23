@@ -123,6 +123,8 @@ describe("settings panels", () => {
           tasks={[task]}
           showIgnoredDirectorySettings
           toggleIgnoredDirectorySettings={vi.fn()}
+          ignoreHiddenCachePaths
+          setIgnoreHiddenCachePaths={vi.fn()}
           ignoredSubpathsMap={{ "task-1": ["node_modules"] }}
           ignoredPathDrafts={{}}
           setIgnoredPathDrafts={vi.fn()}
@@ -144,6 +146,7 @@ describe("settings panels", () => {
     expect(html).toContain("更多设置");
     expect(html).toContain("自动更新");
     expect(html).toContain("本地忽略目录");
+    expect(html).toContain("默认忽略隐藏/缓存路径");
     expect(html).toContain("维护工具");
   });
 });

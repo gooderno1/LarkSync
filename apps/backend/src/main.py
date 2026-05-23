@@ -111,6 +111,9 @@ def _build_lifespan(
             await log_maintenance_service_instance.stop()
             await sync_scheduler_instance.stop()
             await update_scheduler_instance.stop()
+            close_runner = getattr(app.state.sync_runner, "close", None)
+            if callable(close_runner):
+                await close_runner()
 
     return lifespan
 

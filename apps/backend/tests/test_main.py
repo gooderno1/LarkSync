@@ -6,8 +6,15 @@ import src.main as main
 
 
 class _DummyRunner:
+    def __init__(self, events: list[str] | None = None) -> None:
+        self._events = events
+
     def list_statuses(self) -> dict:
         return {}
+
+    async def close(self) -> None:
+        if self._events is not None:
+            self._events.append("runner:close")
 
 
 class _DummyTaskService:
@@ -57,7 +64,7 @@ def test_create_app_lifespan_starts_and_stops_services() -> None:
         events.append("logging:init")
 
     app = main.create_app(
-        sync_runner_service=_DummyRunner(),
+        sync_runner_service=_DummyRunner(events),
         sync_task_service_instance=_DummyTaskService(),
         conflict_service_instance=_DummyConflictService(),
         sync_scheduler_instance=_DummyAsyncService("sync_scheduler", events),
@@ -82,4 +89,5 @@ def test_create_app_lifespan_starts_and_stops_services() -> None:
         "log_maintenance:stop",
         "sync_scheduler:stop",
         "update_scheduler:stop",
+        "runner:close",
     ]
