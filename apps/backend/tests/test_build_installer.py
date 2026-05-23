@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -125,12 +126,39 @@ def test_pyinstaller_hook_paths_points_to_repo_hook_dir(tmp_path: Path) -> None:
     assert paths == [str(tmp_path / "scripts" / "pyinstaller_hooks")]
 
 
-def test_custom_pydantic_hook_excludes_v1_namespace() -> None:
-    hook_path = PROJECT_ROOT / "scripts" / "pyinstaller_hooks" / "hook-pydantic.py"
-    spec = importlib.util.spec_from_file_location("larksync_hook_pydantic", hook_path)
+def _load_hook_module(module_name: str, hook_filename: str) -> object:
+    hook_path = PROJECT_ROOT / "scripts" / "pyinstaller_hooks" / hook_filename
+    spec = importlib.util.spec_from_file_location(module_name, hook_path)
     assert spec is not None and spec.loader is not None
+
+    fake_hook_module = types.ModuleType("PyInstaller.utils.hooks")
+    fake_hook_module.collect_submodules = lambda package, filter=None: [  # type: ignore[attr-defined]
+        name
+        for name in ("pydantic.main", "pydantic.v1", "pydantic.v1.fields")
+        if filter is None or filter(name)
+    ]
+    monkeypatched_modules = {
+        "PyInstaller": types.ModuleType("PyInstaller"),
+        "PyInstaller.utils": types.ModuleType("PyInstaller.utils"),
+        "PyInstaller.utils.hooks": fake_hook_module,
+    }
+    previous_modules = {name: sys.modules.get(name) for name in monkeypatched_modules}
+    sys.modules.update(monkeypatched_modules)
+
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        for name, previous in previous_modules.items():
+            if previous is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = previous
+    return module
+
+
+def test_custom_pydantic_hook_excludes_v1_namespace() -> None:
+    module = _load_hook_module("larksync_hook_pydantic", "hook-pydantic.py")
 
     hiddenimports = getattr(module, "hiddenimports")
     excludedimports = getattr(module, "excludedimports")
@@ -140,10 +168,6 @@ def test_custom_pydantic_hook_excludes_v1_namespace() -> None:
 
 
 def test_custom_fastapi_compat_hook_excludes_pydantic_v1() -> None:
-    hook_path = PROJECT_ROOT / "scripts" / "pyinstaller_hooks" / "hook-fastapi._compat.shared.py"
-    spec = importlib.util.spec_from_file_location("larksync_hook_fastapi_compat", hook_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = _load_hook_module("larksync_hook_fastapi_compat", "hook-fastapi._compat.shared.py")
 
     assert getattr(module, "excludedimports") == ["pydantic.v1"]
