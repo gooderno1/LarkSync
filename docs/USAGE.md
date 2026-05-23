@@ -283,13 +283,14 @@ python scripts/build_installer.py
 # Windows：额外生成 NSIS 安装包（dist/LarkSync-Setup-<version>.exe）
 python scripts/build_installer.py --nsis
 
-# macOS：额外生成 DMG（dist/LarkSync-<version>.dmg）
+# macOS：额外生成 DMG（本地默认 dist/LarkSync-<version>.dmg）
 python scripts/build_installer.py --dmg
 ```
 
 说明：
 - 脚本默认会先构建前端（`apps/frontend/npm run build`），再执行 PyInstaller。
 - 若前端已提前构建，可加 `--skip-frontend` 跳过前端构建阶段。
+- 如需显式指定 macOS 打包架构，可设置 `LARKSYNC_MACOS_TARGET_ARCH=arm64`、`x86_64` 等 PyInstaller 支持值；如需输出带架构后缀的 DMG 文件名，可同时设置 `LARKSYNC_MACOS_DMG_SUFFIX`。
 - Windows 生成安装包依赖 `makensis`（NSIS）；macOS 生成 DMG 依赖 `create-dmg`。
 - 脚本会自动过滤与当前解释器版本不匹配的 `PYTHONPATH` `site-packages`（例如 `Python312` 与 `Python314` 混用），减少本机环境污染导致的打包失败。
 
@@ -319,7 +320,7 @@ npm run release:publish -- "release: v0.5.45"
 - `pull_request` / `push main` 非 tag 场景会额外执行一轮 macOS 定向 pytest + 打包 smoke，用于提前验证 LaunchAgent / 更新安装 / `.app` + `dmg` 构建链路。
 - 标签不能包含 `-dev`，否则构建任务会被 `if` 条件跳过。
 - 如需手动重跑某个稳定版 tag 的 macOS 构建，可触发 `workflow_dispatch` 并将 `build_macos` 勾选为 `true`（同时选择稳定版 tag 作为 ref）。
-- macOS 打包默认通过 `LARKSYNC_MACOS_TARGET_ARCH=universal2` 生成通用架构产物；如需临时只构建单一架构，可显式覆盖该环境变量为 `x86_64`、`arm64` 等 PyInstaller 支持值。
+- macOS 工作流会按 runner 原生架构构建：`macos-13 -> x86_64`、`macos-14 -> arm64`；稳定版 tag 会上传 `LarkSync-<version>-x86_64.dmg` 与 `LarkSync-<version>-arm64.dmg` 两个产物，自动更新会优先匹配当前机器架构。
 
 产物上传结果：
 - Windows：`dist/LarkSync-Setup-*.exe`

@@ -97,6 +97,15 @@ def test_validate_supported_build_node_rejects_unsupported_version(monkeypatch) 
         bi._validate_supported_build_node("v20.12.0")
 
 
+def test_default_macos_target_arch_uses_runner_machine(monkeypatch) -> None:
+    monkeypatch.setattr(bi.sys, "platform", "darwin")
+
+    assert bi._default_macos_target_arch("arm64") == "arm64"
+    assert bi._default_macos_target_arch("aarch64") == "arm64"
+    assert bi._default_macos_target_arch("x86_64") == "x86_64"
+    assert bi._default_macos_target_arch("AMD64") == "x86_64"
+
+
 def test_resolve_entry_script_prefers_tracked_launcher(tmp_path: Path) -> None:
     tracked = tmp_path / "apps" / "tray" / "launcher.py"
     tracked.parent.mkdir(parents=True, exist_ok=True)
@@ -208,6 +217,29 @@ def test_build_dmg_uses_root_app_bundle_when_present(monkeypatch, tmp_path: Path
     assert env["BASE"] == "1"
 
 
+def test_build_dmg_passes_arch_suffix_when_configured(monkeypatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "repo"
+    dist_dir = project_root / "dist"
+    app_bundle = dist_dir / "LarkSync.app"
+    script_path = project_root / "scripts" / "installer" / "macos" / "create_dmg.sh"
+    app_bundle.mkdir(parents=True, exist_ok=True)
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+
+    monkeypatch.setattr(bi, "PROJECT_ROOT", project_root)
+    monkeypatch.setattr(bi, "OUTPUT_DIR", dist_dir)
+    monkeypatch.setattr(bi, "run", lambda cmd, cwd=None, env=None: captured.update({"cmd": cmd, "cwd": cwd, "env": env}))
+    monkeypatch.setattr(bi, "_read_version", lambda: "v1.2.3")
+    monkeypatch.setenv("LARKSYNC_MACOS_DMG_SUFFIX", "arm64")
+    captured: dict[str, object] = {}
+
+    bi._build_dmg()
+
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["APP_ARCH_SUFFIX"] == "arm64"
+
+
 def test_build_dmg_falls_back_to_nested_app_bundle(monkeypatch, tmp_path: Path) -> None:
     project_root = tmp_path / "repo"
     dist_dir = project_root / "dist"
@@ -275,5 +307,7 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     assert "'sqlalchemy.dialects.sqlite'" in content
     assert "('"+backend_pyproject.as_posix()+"', 'apps/backend')" in content
     assert "LARKSYNC_MACOS_TARGET_ARCH" in content
-    assert "universal2" in content
+    assert "platform.machine()" in content
+    assert "'arm64'" in content
+    assert "'x86_64'" in content
     assert "\n        ,\n" not in content

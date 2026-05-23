@@ -3,6 +3,7 @@
 # 说明：用于生成桌面托盘版可执行文件
 
 import os
+import platform
 from pathlib import Path
 import sys
 
@@ -12,7 +13,14 @@ def _resolve_macos_target_arch():
     if sys.platform != "darwin":
         return None
     env_value = os.getenv("LARKSYNC_MACOS_TARGET_ARCH", "").strip()
-    return env_value or "universal2"
+    if env_value:
+        return env_value
+    machine = platform.machine().strip().lower()
+    if machine in {"arm64", "aarch64"}:
+        return "arm64"
+    if machine in {"x86_64", "amd64", "x64"}:
+        return "x86_64"
+    return machine or None
 
 def _resolve_project_root() -> Path:
     env_root = os.getenv("LARKSYNC_PROJECT_ROOT") or os.getenv("LARKSYNC_ROOT")

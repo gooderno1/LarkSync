@@ -68,6 +68,23 @@ PYINSTALLER_HIDDENIMPORTS = [
 ]
 
 
+def _normalize_macos_target_arch(machine: str | None) -> str | None:
+    if not machine:
+        return None
+    normalized = machine.strip().lower()
+    if normalized in {"arm64", "aarch64"}:
+        return "arm64"
+    if normalized in {"x86_64", "amd64", "x64"}:
+        return "x86_64"
+    return normalized or None
+
+
+def _default_macos_target_arch(machine: str | None = None) -> str | None:
+    if sys.platform != "darwin":
+        return None
+    return _normalize_macos_target_arch(machine or platform.machine())
+
+
 def _is_mismatched_site_packages(entry: str) -> bool:
     normalized = entry.replace("\\", "/").lower()
     version_tags = re.findall(r"python(\d{2,3})", normalized)
@@ -371,6 +388,7 @@ def _generate_spec() -> None:
 # 自动生成，可手动修改
 
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -380,7 +398,14 @@ def _resolve_macos_target_arch():
     if sys.platform != "darwin":
         return None
     env_value = os.getenv('LARKSYNC_MACOS_TARGET_ARCH', '').strip()
-    return env_value or 'universal2'
+    if env_value:
+        return env_value
+    machine = platform.machine().strip().lower()
+    if machine in ('arm64', 'aarch64'):
+        return 'arm64'
+    if machine in ('x86_64', 'amd64', 'x64'):
+        return 'x86_64'
+    return machine or None
 
 def _resolve_project_root() -> Path:
     env_root = os.getenv('LARKSYNC_PROJECT_ROOT') or os.getenv('LARKSYNC_ROOT')
@@ -533,6 +558,9 @@ def _build_dmg() -> None:
     version = _read_version()
     env = os.environ.copy()
     env["APP_VERSION"] = version
+    dmg_suffix = os.getenv("LARKSYNC_MACOS_DMG_SUFFIX", "").strip()
+    if dmg_suffix:
+        env["APP_ARCH_SUFFIX"] = dmg_suffix
     env["APP_BUNDLE"] = str(app_bundle)
     run(["bash", str(create_dmg_script)], cwd=PROJECT_ROOT, env=env)
     print("  ✓ DMG 已生成")

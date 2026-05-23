@@ -87,7 +87,11 @@ jobs:
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     strategy:
       matrix:
-        os: [macos-13, macos-14]
+        include:
+          - os: macos-13
+            arch: x86_64
+          - os: macos-14
+            arch: arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +130,8 @@ jobs:
 
       - name: Build macOS installer smoke
         env:
-          LARKSYNC_MACOS_TARGET_ARCH: universal2
+          LARKSYNC_MACOS_TARGET_ARCH: ${{ matrix.arch }}
+          LARKSYNC_MACOS_DMG_SUFFIX: ${{ matrix.arch }}
         run: python scripts/build_installer.py --dmg
 
   build-windows:
@@ -224,7 +229,14 @@ jobs:
   build-macos:
     needs: quality
     if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') && (github.event_name != 'workflow_dispatch' || inputs.build_macos == true || inputs.build_macos == 'true') }}
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            arch: x86_64
+          - os: macos-14
+            arch: arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -271,7 +283,8 @@ jobs:
       - name: Build DMG
         env:
           LARKSYNC_VERSION: ${{ github.ref_name }}
-          LARKSYNC_MACOS_TARGET_ARCH: universal2
+          LARKSYNC_MACOS_TARGET_ARCH: ${{ matrix.arch }}
+          LARKSYNC_MACOS_DMG_SUFFIX: ${{ matrix.arch }}
         run: python scripts/build_installer.py --dmg
 
       - name: Generate checksum assets
@@ -302,7 +315,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: macos-installer
+          name: macos-installer-${{ matrix.arch }}
           path: |
             dist/LarkSync-*.dmg
             dist/LarkSync-*.dmg.sha256
