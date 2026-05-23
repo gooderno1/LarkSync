@@ -61,6 +61,18 @@ def _detach_dmg(mount_point: Path) -> None:
     subprocess.run(["hdiutil", "detach", str(mount_point), "-quiet"], check=True)
 
 
+def _assert_app_drop_link(mount_point: Path) -> Path:
+    app_drop_link = mount_point / "Applications"
+    if not app_drop_link.exists():
+        raise FileNotFoundError(f"挂载卷内缺少 Applications 安装入口: {app_drop_link}")
+    resolved = Path(os.path.realpath(app_drop_link))
+    if resolved != Path("/Applications"):
+        raise RuntimeError(
+            f"挂载卷内 Applications 安装入口异常: {app_drop_link} -> {resolved}"
+        )
+    return app_drop_link
+
+
 def _copy_app_bundle(mount_point: Path, target_root: Path) -> Path:
     source_app = mount_point / "LarkSync.app"
     if not source_app.is_dir():
@@ -187,6 +199,7 @@ def run_macos_installer_smoke(
     try:
         _assert_backend_port_available()
         mount_point = _attach_dmg(dmg_path)
+        app_drop_link = _assert_app_drop_link(mount_point)
         app_bundle = _copy_app_bundle(mount_point, install_root)
         executable = app_bundle / "Contents" / "MacOS" / "LarkSync"
         if not executable.is_file():
@@ -216,6 +229,7 @@ def run_macos_installer_smoke(
         return {
             "dmg_path": str(dmg_path),
             "mount_point": str(mount_point),
+            "app_drop_link": str(app_drop_link),
             "app_bundle": str(app_bundle),
             "executable": str(executable),
             "data_root": str(data_root),

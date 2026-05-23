@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.7.19-dev.7 (2026-05-24)
+
+- 目标：
+  - 在 arm64 mac smoke 已恢复通过的基础上，减少 GitHub matrix 策略本身对 Intel 验证结果的干扰，避免再次因为某个架构先失败而自动取消另一条验证。
+
+- 结果：
+  - `.github/workflows/release-build.yml` 中 `quality-macos-packaging` 与正式版 `build-macos` 的 matrix 现都显式设置 `fail-fast: false`。
+  - 这样即使 `arm64` 或 `x86_64` 某一条先失败，另一条构建、DMG 生成和安装启动 smoke 仍会继续执行并保留结果，便于完整收集双架构证据，而不是被 GitHub 默认 fail-fast 中断。
+  - `test_release_workflow.py` 已补充对双 mac matrix `fail-fast: false` 的断言，避免后续 CI 配置回退。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.7` / `0.7.19-dev.7`，README、USAGE、CHANGELOG 已同步补齐本轮 CI 策略收口记录。
+
+- 测试：
+  - `python -m pytest tests/test_release_workflow.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.19-dev.6 (2026-05-24)
 
 - 目标：

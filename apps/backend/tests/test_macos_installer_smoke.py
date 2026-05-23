@@ -55,6 +55,39 @@ def test_copy_app_bundle_copies_from_mounted_volume(tmp_path: Path) -> None:
     assert (copied / "Contents" / "MacOS" / "LarkSync").is_file()
 
 
+def test_assert_app_drop_link_requires_system_applications_link(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    mount_point = tmp_path / "Volumes" / "LarkSync"
+    app_drop_link = mount_point / "Applications"
+    mount_point.mkdir(parents=True, exist_ok=True)
+    app_drop_link.mkdir()
+
+    monkeypatch.setattr(smoke.os.path, "realpath", lambda path: "/Applications")
+
+    resolved = smoke._assert_app_drop_link(mount_point)
+
+    assert resolved == app_drop_link
+
+
+def test_assert_app_drop_link_rejects_missing_or_wrong_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    mount_point = tmp_path / "Volumes" / "LarkSync"
+    mount_point.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(FileNotFoundError, match="Applications 安装入口"):
+        smoke._assert_app_drop_link(mount_point)
+
+    (mount_point / "Applications").mkdir()
+    monkeypatch.setattr(smoke.os.path, "realpath", lambda path: "/tmp/not-applications")
+
+    with pytest.raises(RuntimeError, match="安装入口异常"):
+        smoke._assert_app_drop_link(mount_point)
+
+
 def test_run_macos_installer_smoke_installs_and_launches_backend(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -72,6 +105,7 @@ def test_run_macos_installer_smoke_installs_and_launches_backend(
     monkeypatch.setattr(smoke.sys, "platform", "darwin")
     monkeypatch.setattr(smoke, "_assert_backend_port_available", lambda: None)
     monkeypatch.setattr(smoke, "_attach_dmg", lambda dmg_path: mount_point)
+    monkeypatch.setattr(smoke, "_assert_app_drop_link", lambda _mount_point: mount_point / "Applications")
     monkeypatch.setattr(smoke, "_copy_app_bundle", lambda _mount_point, _target_root: copied_app)
     monkeypatch.setattr(smoke, "_wait_for_health", lambda timeout_seconds, **kwargs: None)
     detached: list[Path] = []
@@ -112,6 +146,7 @@ def test_run_macos_installer_smoke_installs_and_launches_backend(
     )
 
     assert result["mount_point"] == str(mount_point)
+    assert result["app_drop_link"] == str(mount_point / "Applications")
     assert result["app_bundle"] == str(copied_app)
     assert result["stdout_path"].endswith("bundle-stdout.log")
     assert result["stderr_path"].endswith("bundle-stderr.log")

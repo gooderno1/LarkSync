@@ -57,7 +57,9 @@ def test_release_workflow_uses_native_dual_arch_macos_matrix() -> None:
         {"os": "macos-14", "arch": "arm64"},
     ]
     quality_matrix = workflow["jobs"]["quality-macos-packaging"]["strategy"]["matrix"]["include"]
+    quality_fail_fast = workflow["jobs"]["quality-macos-packaging"]["strategy"]["fail-fast"]
     release_matrix = workflow["jobs"]["build-macos"]["strategy"]["matrix"]["include"]
+    release_fail_fast = workflow["jobs"]["build-macos"]["strategy"]["fail-fast"]
     quality_smoke_env = _step(
         workflow,
         "quality-macos-packaging",
@@ -73,6 +75,8 @@ def test_release_workflow_uses_native_dual_arch_macos_matrix() -> None:
 
     assert quality_matrix == expected
     assert release_matrix == expected
+    assert quality_fail_fast is False
+    assert release_fail_fast is False
     assert quality_smoke_env["LARKSYNC_MACOS_TARGET_ARCH"] == "${{ matrix.arch }}"
     assert quality_smoke_env["LARKSYNC_MACOS_DMG_SUFFIX"] == "${{ matrix.arch }}"
     assert release_build_env["LARKSYNC_MACOS_TARGET_ARCH"] == "${{ matrix.arch }}"

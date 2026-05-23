@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-24] v0.7.19-dev.7 chore(ci-mac): 为日常 macOS smoke 与正式版 `build-macos` matrix 显式关闭 `fail-fast`，保证 `arm64` / `x86_64` 任一架构失败时另一条验证仍会继续执行并保留结果，避免 Intel 验证再次被自动取消
 [2026-05-24] v0.7.19-dev.6 fix(mac-build): 将 `greenlet>=3.0` 升级为后端显式依赖，并保留 PyInstaller hiddenimport 回归；修复 Python 3.14 arm64 环境下 `sqlalchemy` 不再自动安装 `greenlet`，导致 macOS 安装后 bundle 在数据库初始化阶段启动即崩的问题
 [2026-05-24] v0.7.19-dev.5 fix(mac-build): 基于新的安装启动 smoke 诊断结果，修复 PyInstaller 产物漏打 `greenlet` 的问题；现在构建脚本与仓库 spec 都会显式纳入该依赖，避免 bundle 在 `sqlalchemy.ext.asyncio` 的数据库初始化阶段因 `No module named 'greenlet'` 提前退出
 [2026-05-24] v0.7.19-dev.4 fix(ci-mac): 强化 `macos_installer_smoke.py` 的失败诊断，保留安装后 bundle 的 stdout/stderr 与 `larksync.log` 尾部，并将默认健康检查等待时间提升到 60 秒，便于继续定位 GitHub mac runner 上的安装后启动失败

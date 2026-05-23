@@ -90,6 +90,7 @@ jobs:
     needs: quality
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-13
@@ -237,6 +238,7 @@ jobs:
     needs: quality
     if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') && (github.event_name != 'workflow_dispatch' || inputs.build_macos == true || inputs.build_macos == 'true') }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-13

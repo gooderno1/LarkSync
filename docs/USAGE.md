@@ -3,11 +3,11 @@
 本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
 
 ## 0. 当前版本（截至 2026-05-24）
-- 最新发布记录：`v0.7.19-dev.6`（见 `CHANGELOG.md` 顶部）
-- 当前主线状态：`v0.7.19-dev.6`（将 `greenlet>=3.0` 升级为后端显式依赖，并保留安装包 hiddenimport 修复，继续收口 Python 3.14 arm64 下的 macOS bundle 启动问题）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.19-dev.6`
-- 前端版本：`apps/frontend/package.json` 中为 `0.7.19-dev.6`
-- 根目录版本：`package.json` 中为 `v0.7.19-dev.6`
+- 最新发布记录：`v0.7.19-dev.7`（见 `CHANGELOG.md` 顶部）
+- 当前主线状态：`v0.7.19-dev.7`（保留双架构 macOS smoke 结果：关闭 matrix `fail-fast`，避免 `arm64` 或 `x86_64` 先失败时另一条验证被 GitHub 自动取消）
+- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.19-dev.7`
+- 前端版本：`apps/frontend/package.json` 中为 `0.7.19-dev.7`
+- 根目录版本：`package.json` 中为 `v0.7.19-dev.7`
 
 ## 1. 环境准备
 - Node.js 18+（用于前端）
