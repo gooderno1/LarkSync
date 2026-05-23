@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-24] v0.7.19-dev.5 fix(mac-build): 基于新的安装启动 smoke 诊断结果，修复 PyInstaller 产物漏打 `greenlet` 的问题；现在构建脚本与仓库 spec 都会显式纳入该依赖，避免 bundle 在 `sqlalchemy.ext.asyncio` 的数据库初始化阶段因 `No module named 'greenlet'` 提前退出
 [2026-05-24] v0.7.19-dev.4 fix(ci-mac): 强化 `macos_installer_smoke.py` 的失败诊断，保留安装后 bundle 的 stdout/stderr 与 `larksync.log` 尾部，并将默认健康检查等待时间提升到 60 秒，便于继续定位 GitHub mac runner 上的安装后启动失败
 [2026-05-24] v0.7.19-dev.3 feat(ci-mac): 新增 macOS DMG 安装/启动 smoke，构建后自动挂载镜像、复制 `.app`、启动 bundle 内 `LarkSync --backend` 并执行 `/health` 检查；同时将正式版与日常 smoke 的 mac 打包策略切换为 `x86_64` / `arm64` 双架构产物、让更新服务优先匹配当前机器架构的 DMG，并为 release workflow 增加 `concurrency` 以自动取消同一 PR/分支上的过期 run
 [2026-05-24] v0.7.19-dev.2 fix(ci-mac): 修复 `quality-macos-packaging` 漏装 `pytest` / `pytest-asyncio` 导致 darwin runner 一进入定向回归就报 `No module named pytest` 的问题；将 `PYTHONPATH` 过滤与冻结态更新目录回归测试改成跨平台断言；同时放弃当前依赖链下不可落地的默认 `universal2` 方案，改为在 `macos-13(x86_64)` / `macos-14(arm64)` 上分别出包并让更新服务优先选择匹配本机架构的 DMG

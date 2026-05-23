@@ -305,6 +305,7 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     assert "'keyring'" in content
     assert "'sqlalchemy.ext.asyncio'" in content
     assert "'sqlalchemy.dialects.sqlite'" in content
+    assert "'greenlet'" in content
     assert "('"+backend_pyproject.as_posix()+"', 'apps/backend')" in content
     assert "LARKSYNC_MACOS_TARGET_ARCH" in content
     assert "platform.machine()" in content

@@ -1,5 +1,19 @@
 # DEVELOPMENT LOG
 
+## v0.7.19-dev.5 (2026-05-24)
+
+- 目标：
+  - 根据 `v0.7.19-dev.4` 新增的 mac 安装启动 smoke 诊断，修复 arm64 打包产物真实启动失败的根因，而不是继续在 CI 上盲等或只调超时。
+
+- 结果：
+  - 通过 GitHub arm64 job 日志确认根因是安装后 bundle 在 `src/db/session.py -> sqlalchemy.ext.asyncio` 初始化数据库时崩溃，报 `ValueError: the greenlet library is required ... No module named 'greenlet'`。
+  - `scripts/build_installer.py` 的 `PYINSTALLER_HIDDENIMPORTS` 与仓库内 `scripts/larksync.spec` 现都已显式加入 `greenlet`，避免 mac / Windows 打包产物在运行期缺少该依赖。
+  - `test_build_installer.py` 已补充对生成 spec 中 `greenlet` hiddenimport 的断言，防止后续 spec 生成器与仓库内 spec 再次漂移。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.5` / `0.7.19-dev.5`，README、USAGE、CHANGELOG 已同步补齐本轮 mac 打包修复记录。
+
+- 测试：
+  - `python -m pytest tests/test_build_installer.py tests/test_macos_installer_smoke.py tests/test_release_workflow.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.19-dev.4 (2026-05-24)
 
 - 目标：

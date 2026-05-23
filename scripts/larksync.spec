@@ -83,6 +83,7 @@ a = Analysis(
         "sqlalchemy",
         "sqlalchemy.ext.asyncio",
         "sqlalchemy.dialects.sqlite",
+        "greenlet",
         "aiosqlite",
         "httpx",
         "loguru",
