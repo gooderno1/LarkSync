@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.19 (2026-05-24)
+
+- 目标：
+  - 将已完成并验证通过的 mac 版本开发结果收口为正式版发布。
+
+- 结果：
+  - 当前版本正式提升为 `v0.7.19`。
+  - GitHub Actions 正式验证链路已覆盖 `macos-14 (arm64)` 与 `macos-15-intel (x86_64)`，两条 macOS 安装包构建与 install-launch smoke 均已通过。
+  - DMG 安装包验证已覆盖卷内 `Applications` 安装入口校验、`.app` 复制与 bundle 启动 `/health` 检查。
+  - 后端运行时与打包链路已显式固定 `greenlet` 依赖，避免 macOS bundle 在数据库初始化阶段冷启动崩溃。
+  - README、USAGE、CHANGELOG、版本号与发布元数据已同步切换到正式版。
+
+- 测试：
+  - GitHub Actions run `26343462840`：`quality`、`quality-macos-packaging (macos-14, arm64)`、`quality-macos-packaging (macos-15-intel, x86_64)` 全部通过。
+  - `python -m pip install --dry-run -e apps/backend`
+
 ## v0.7.19-dev.8 (2026-05-24)
 
 - 目标：
