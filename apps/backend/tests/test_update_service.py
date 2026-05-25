@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from src.services.update_service import (
     is_dev_version,
     is_newer_version,
     parse_sha256_digest_field,
+    release_asset_name_for_platform,
     select_asset,
 )
 
@@ -31,18 +33,43 @@ def test_is_newer_version_with_dev() -> None:
     assert is_newer_version("v0.5.0", "v0.5.0") is False
 
 
-def test_select_asset() -> None:
+def test_select_asset(monkeypatch: pytest.MonkeyPatch) -> None:
     assets = [
         {"name": "LarkSync-Setup-v0.5.0.exe", "browser_download_url": "https://x", "size": 123},
-        {"name": "LarkSync-v0.5.0.dmg", "browser_download_url": "https://y", "size": 456},
+        {"name": "LarkSync-v0.5.0-x86_64.dmg", "browser_download_url": "https://intel", "size": 456},
+        {"name": "LarkSync-v0.5.0-arm64.dmg", "browser_download_url": "https://arm", "size": 456},
     ]
+    monkeypatch.setattr("src.services.update_service.platform.machine", lambda: "arm64")
     win_asset = select_asset(assets, "win32")
     mac_asset = select_asset(assets, "darwin")
 
     assert win_asset is not None
     assert win_asset.name.endswith(".exe")
     assert mac_asset is not None
-    assert mac_asset.name.endswith(".dmg")
+    assert mac_asset.name.endswith("-arm64.dmg")
+
+
+def test_select_asset_falls_back_to_universal2_then_generic_for_mac(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("src.services.update_service.platform.machine", lambda: "arm64")
+
+    universal_assets = [
+        {"name": "LarkSync-v0.5.0-universal2.dmg", "browser_download_url": "https://uni", "size": 456},
+        {"name": "LarkSync-v0.5.0-x86_64.dmg", "browser_download_url": "https://intel", "size": 456},
+    ]
+    generic_assets = [
+        {"name": "LarkSync-v0.5.0.dmg", "browser_download_url": "https://generic", "size": 456},
+        {"name": "LarkSync-v0.5.0-x86_64.dmg", "browser_download_url": "https://intel", "size": 456},
+    ]
+
+    universal_asset = select_asset(universal_assets, "darwin")
+    generic_asset = select_asset(generic_assets, "darwin")
+
+    assert universal_asset is not None
+    assert universal_asset.name.endswith("-universal2.dmg")
+    assert generic_asset is not None
+    assert generic_asset.name == "LarkSync-v0.5.0.dmg"
 
 
 def test_parse_sha256_digest_field() -> None:
@@ -59,7 +86,19 @@ def test_extract_installer_version_from_download_path() -> None:
         == "v0.6.10"
     )
     assert extract_installer_version("LarkSync-Setup-0.6.11-dev.1.exe") == "v0.6.11-dev.1"
+    assert extract_installer_version("/Users/me/Downloads/LarkSync-v0.6.12.dmg") == "v0.6.12"
+    assert extract_installer_version("/Users/me/Downloads/LarkSync-v0.6.12-arm64.dmg") == "v0.6.12"
+    assert extract_installer_version("LarkSync-0.6.13-dev.2.dmg") == "v0.6.13-dev.2"
     assert extract_installer_version("not-larksync.exe") is None
+
+
+def test_release_asset_name_for_platform_prefers_macos_arch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("src.services.update_service.platform.machine", lambda: "arm64")
+
+    assert release_asset_name_for_platform("v0.6.12", "darwin") == "LarkSync-v0.6.12-arm64.dmg"
+    assert release_asset_name_for_platform("v0.6.12", "win32") == "LarkSync-Setup-v0.6.12.exe"
 
 
 def test_select_asset_reads_github_digest_field() -> None:
@@ -373,11 +412,21 @@ def test_update_service_uses_external_update_dir_when_frozen(
     monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
     monkeypatch.delenv("LARKSYNC_UPDATE_ROOT", raising=False)
     monkeypatch.delenv("LARKSYNC_DATA_DIR", raising=False)
-    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    if sys.platform == "win32":
+        expected_root = tmp_path / "appdata" / "LarkSync"
+        monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    elif sys.platform == "darwin":
+        home_dir = tmp_path / "home"
+        expected_root = home_dir / "Library" / "Application Support" / "LarkSync"
+        monkeypatch.setenv("HOME", str(home_dir))
+    else:
+        xdg_data_home = tmp_path / "xdg-data"
+        expected_root = xdg_data_home / "LarkSync"
+        monkeypatch.setenv("XDG_DATA_HOME", str(xdg_data_home))
     monkeypatch.setattr("src.core.paths.sys.frozen", True, raising=False)
     ConfigManager.reset()
 
     service = UpdateService(config_manager=ConfigManager.get())
 
     assert service._status_path == update_data_dir() / "status.json"  # type: ignore[attr-defined]
-    assert str(service._status_path).startswith(str(tmp_path / "appdata"))  # type: ignore[attr-defined]
+    assert service._status_path == expected_root / "updates" / "status.json"  # type: ignore[attr-defined]

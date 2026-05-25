@@ -3,10 +3,24 @@
 # 说明：用于生成桌面托盘版可执行文件
 
 import os
+import platform
 from pathlib import Path
 import sys
 
 block_cipher = None
+
+def _resolve_macos_target_arch():
+    if sys.platform != "darwin":
+        return None
+    env_value = os.getenv("LARKSYNC_MACOS_TARGET_ARCH", "").strip()
+    if env_value:
+        return env_value
+    machine = platform.machine().strip().lower()
+    if machine in {"arm64", "aarch64"}:
+        return "arm64"
+    if machine in {"x86_64", "amd64", "x64"}:
+        return "x86_64"
+    return machine or None
 
 def _resolve_project_root() -> Path:
     env_root = os.getenv("LARKSYNC_PROJECT_ROOT") or os.getenv("LARKSYNC_ROOT")
@@ -69,6 +83,7 @@ a = Analysis(
         "sqlalchemy",
         "sqlalchemy.ext.asyncio",
         "sqlalchemy.dialects.sqlite",
+        "greenlet",
         "aiosqlite",
         "httpx",
         "loguru",
@@ -101,6 +116,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    target_arch=_resolve_macos_target_arch(),
     icon=str(win_icon) if sys.platform == "win32" and win_icon.is_file() else None,
 )
 

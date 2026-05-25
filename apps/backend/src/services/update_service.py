@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import platform
 import re
 import sys
 import time
@@ -19,6 +20,10 @@ from src.core.paths import update_data_dir, update_logs_dir
 from src.core.version import get_version
 
 _VERSION_RE = re.compile("^v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-dev\\.(\\d+))?$")
+_INSTALLER_VERSION_RE = re.compile(
+    r"LarkSync(?:-Setup)?-(v?\d+\.\d+\.\d+(?:-dev\.\d+)?)(?:-[A-Za-z0-9_]+)?\.(?:exe|dmg)$",
+    re.IGNORECASE,
+)
 
 
 class UpdateAsset(BaseModel):
@@ -77,11 +82,7 @@ def extract_installer_version(path: str | None) -> str | None:
     if not path:
         return None
     name = Path(str(path)).name
-    match = re.search(
-        r"LarkSync-Setup-(v?\d+\.\d+\.\d+(?:-dev\.\d+)?)",
-        name,
-        re.IGNORECASE,
-    )
+    match = _INSTALLER_VERSION_RE.search(name)
     if not match:
         return None
     version = match.group(1)
@@ -104,15 +105,71 @@ def parse_sha256_digest_field(value: object) -> str | None:
     return None
 
 
-def select_asset(assets: list[dict[str, Any]], platform: str) -> UpdateAsset | None:
+def _normalize_macos_asset_arch(machine: str | None) -> str | None:
+    if not machine:
+        return None
+    normalized = machine.strip().lower()
+    if normalized in {"arm64", "aarch64"}:
+        return "arm64"
+    if normalized in {"x86_64", "amd64", "x64"}:
+        return "x86_64"
+    if normalized == "universal2":
+        return "universal2"
+    return normalized or None
+
+
+def _extract_macos_asset_arch(name: str) -> str | None:
+    lower_name = name.lower()
+    match = re.search(r"-(arm64|x86_64|universal2)\.dmg$", lower_name)
+    if not match:
+        return None
+    return _normalize_macos_asset_arch(match.group(1))
+
+
+def select_asset(assets: list[dict[str, Any]], platform_name: str) -> UpdateAsset | None:
     suffix = None
-    if platform == "win32":
+    if platform_name == "win32":
         suffix = ".exe"
-    elif platform == "darwin":
+    elif platform_name == "darwin":
         suffix = ".dmg"
     if not suffix:
         return None
+    desired_macos_arch = (
+        _normalize_macos_asset_arch(platform.machine())
+        if platform_name == "darwin"
+        else None
+    )
+
+    def _build_asset(asset: dict[str, Any]) -> UpdateAsset:
+        name = str(asset.get("name", ""))
+        return UpdateAsset(
+            name=name,
+            url=str(asset.get("browser_download_url", "")),
+            size=asset.get("size"),
+            sha256=parse_sha256_digest_field(asset.get("digest")),
+        )
+
+    candidates: list[dict[str, Any]] = []
     for asset in assets:
+        name = str(asset.get("name", ""))
+        if not name.lower().endswith(suffix):
+            continue
+        candidates.append(asset)
+
+    if platform_name == "darwin":
+        if desired_macos_arch:
+            for asset in candidates:
+                if _extract_macos_asset_arch(str(asset.get("name", ""))) == desired_macos_arch:
+                    return _build_asset(asset)
+        for asset in candidates:
+            if _extract_macos_asset_arch(str(asset.get("name", ""))) == "universal2":
+                return _build_asset(asset)
+        for asset in candidates:
+            if _extract_macos_asset_arch(str(asset.get("name", ""))) is None:
+                return _build_asset(asset)
+        return None
+
+    for asset in candidates:
         name = str(asset.get("name", ""))
         if name.lower().endswith(suffix):
             return UpdateAsset(
@@ -124,10 +181,13 @@ def select_asset(assets: list[dict[str, Any]], platform: str) -> UpdateAsset | N
     return None
 
 
-def release_asset_name_for_platform(version: str, platform: str) -> str | None:
-    if platform == "win32":
+def release_asset_name_for_platform(version: str, platform_name: str) -> str | None:
+    if platform_name == "win32":
         return f"LarkSync-Setup-{version}.exe"
-    if platform == "darwin":
+    if platform_name == "darwin":
+        arch = _normalize_macos_asset_arch(platform.machine())
+        if arch:
+            return f"LarkSync-{version}-{arch}.dmg"
         return f"LarkSync-{version}.dmg"
     return None
 

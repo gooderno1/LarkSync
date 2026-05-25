@@ -41,7 +41,12 @@ PY
   )"
 fi
 
-DMG_NAME="LarkSync-${APP_VERSION}.dmg"
+APP_ARCH_SUFFIX="${APP_ARCH_SUFFIX:-}"
+if [[ -n "$APP_ARCH_SUFFIX" ]]; then
+  DMG_NAME="LarkSync-${APP_VERSION}-${APP_ARCH_SUFFIX}.dmg"
+else
+  DMG_NAME="LarkSync-${APP_VERSION}.dmg"
+fi
 OUTPUT_PATH="$DIST_DIR/$DMG_NAME"
 
 create-dmg \

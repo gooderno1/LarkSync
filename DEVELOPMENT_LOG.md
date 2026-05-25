@@ -1,5 +1,141 @@
 # DEVELOPMENT LOG
 
+## v0.7.19 (2026-05-24)
+
+- 目标：
+  - 将已完成并验证通过的 mac 版本开发结果收口为正式版发布。
+
+- 结果：
+  - 当前版本正式提升为 `v0.7.19`。
+  - GitHub Actions 正式验证链路已覆盖 `macos-14 (arm64)` 与 `macos-15-intel (x86_64)`，两条 macOS 安装包构建与 install-launch smoke 均已通过。
+  - DMG 安装包验证已覆盖卷内 `Applications` 安装入口校验、`.app` 复制与 bundle 启动 `/health` 检查。
+  - 后端运行时与打包链路已显式固定 `greenlet` 依赖，避免 macOS bundle 在数据库初始化阶段冷启动崩溃。
+  - README、USAGE、CHANGELOG、版本号与发布元数据已同步切换到正式版。
+
+- 测试：
+  - GitHub Actions run `26343462840`：`quality`、`quality-macos-packaging (macos-14, arm64)`、`quality-macos-packaging (macos-15-intel, x86_64)` 全部通过。
+  - `python -m pip install --dry-run -e apps/backend`
+
+## v0.7.19-dev.8 (2026-05-24)
+
+- 目标：
+  - 在 Apple Silicon 安装启动 smoke 已通过的前提下，继续缩小 Intel 验证的外部排队风险，并把 DMG 安装入口本身纳入自动化证据。
+
+- 结果：
+  - `.github/workflows/release-build.yml` 中的 Intel mac runner 已从 `macos-13` 切换到 `macos-15-intel`，继续保留 `arm64` 对应的 `macos-14`，以便更贴近 GitHub 当前可用的 Intel mac 标签并降低长期排队风险。
+  - `scripts/macos_installer_smoke.py` 现在会在挂载 DMG 后显式检查卷内 `Applications` 安装入口是否存在且正确指向 `/Applications`，把“可拖拽安装”的关键入口也纳入 smoke 范围。
+  - `test_macos_installer_smoke.py` 已补充 `Applications` 安装入口存在性与目标路径校验，`test_release_workflow.py` 已同步更新 Intel runner 期望值与双架构 matrix 断言。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.8` / `0.7.19-dev.8`，README、USAGE、CHANGELOG 已同步补齐本轮 Intel runner 与 DMG 安装入口验证记录。
+
+- 测试：
+  - `python -m pytest tests/test_macos_installer_smoke.py tests/test_release_workflow.py -q`（工作目录：`apps/backend/`）
+
+## v0.7.19-dev.7 (2026-05-24)
+
+- 目标：
+  - 在 arm64 mac smoke 已恢复通过的基础上，减少 GitHub matrix 策略本身对 Intel 验证结果的干扰，避免再次因为某个架构先失败而自动取消另一条验证。
+
+- 结果：
+  - `.github/workflows/release-build.yml` 中 `quality-macos-packaging` 与正式版 `build-macos` 的 matrix 现都显式设置 `fail-fast: false`。
+  - 这样即使 `arm64` 或 `x86_64` 某一条先失败，另一条构建、DMG 生成和安装启动 smoke 仍会继续执行并保留结果，便于完整收集双架构证据，而不是被 GitHub 默认 fail-fast 中断。
+  - `test_release_workflow.py` 已补充对双 mac matrix `fail-fast: false` 的断言，避免后续 CI 配置回退。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.7` / `0.7.19-dev.7`，README、USAGE、CHANGELOG 已同步补齐本轮 CI 策略收口记录。
+
+- 测试：
+  - `python -m pytest tests/test_release_workflow.py -q`（工作目录：`apps/backend/`）
+
+## v0.7.19-dev.6 (2026-05-24)
+
+- 目标：
+  - 修复 `v0.7.19-dev.5` 之后 arm64 安装启动 smoke 仍失败的问题，确认是“打包漏收”还是“构建环境根本没装依赖”，并把修复点前移到依赖声明层。
+
+- 结果：
+  - GitHub arm64 job 日志确认构建环境安装 `apps/backend/requirements.txt` 时并没有安装 `greenlet`，即 Python 3.14 arm64 上当前 `sqlalchemy` 发行元数据不会自动把该包带进来。
+  - `apps/backend/requirements.txt` 与 `apps/backend/pyproject.toml` 现都已显式加入 `greenlet>=3.0`，保证本地开发、CI、可编辑安装和打包构建都在同一层面声明该运行时依赖。
+  - 保留 `scripts/build_installer.py` / `scripts/larksync.spec` 对 `greenlet` 的显式 hiddenimport，避免即使依赖已安装，PyInstaller 后续再次因为分析路径变化漏收该模块。
+  - `test_build_installer.py` 新增对后端运行时元数据中 `greenlet>=3.0` 的断言，防止依赖声明再次被回退。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.6` / `0.7.19-dev.6`，README、USAGE、CHANGELOG 已同步补齐本轮依赖层修复记录。
+
+- 测试：
+  - `python -m pytest tests/test_build_installer.py tests/test_macos_installer_smoke.py tests/test_release_workflow.py -q`（工作目录：`apps/backend/`）
+
+## v0.7.19-dev.5 (2026-05-24)
+
+- 目标：
+  - 根据 `v0.7.19-dev.4` 新增的 mac 安装启动 smoke 诊断，修复 arm64 打包产物真实启动失败的根因，而不是继续在 CI 上盲等或只调超时。
+
+- 结果：
+  - 通过 GitHub arm64 job 日志确认根因是安装后 bundle 在 `src/db/session.py -> sqlalchemy.ext.asyncio` 初始化数据库时崩溃，报 `ValueError: the greenlet library is required ... No module named 'greenlet'`。
+  - `scripts/build_installer.py` 的 `PYINSTALLER_HIDDENIMPORTS` 与仓库内 `scripts/larksync.spec` 现都已显式加入 `greenlet`，避免 mac / Windows 打包产物在运行期缺少该依赖。
+  - `test_build_installer.py` 已补充对生成 spec 中 `greenlet` hiddenimport 的断言，防止后续 spec 生成器与仓库内 spec 再次漂移。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.5` / `0.7.19-dev.5`，README、USAGE、CHANGELOG 已同步补齐本轮 mac 打包修复记录。
+
+- 测试：
+  - `python -m pytest tests/test_build_installer.py tests/test_macos_installer_smoke.py tests/test_release_workflow.py -q`（工作目录：`apps/backend/`）
+
+## v0.7.19-dev.4 (2026-05-24)
+
+- 目标：
+  - 针对 GitHub mac runner 上 `Run macOS install-launch smoke` 仍只报 `Connection refused` 的黑盒失败，补齐安装后启动 smoke 的进程诊断信息，并适度放宽等待窗口，尽快拿到可行动的 CI 证据。
+
+- 结果：
+  - `scripts/macos_installer_smoke.py` 现在会把安装后 bundle 的 stdout/stderr 分别落到临时日志文件，并在 bundle 提前退出或健康检查超时时，把退出码、stdout/stderr 尾部和 `AppData/logs/larksync.log` 尾部一起回抛到 CI 日志。
+  - mac 安装启动 smoke 的默认等待时间已从 20 秒提升到 60 秒，降低 GitHub runner 上因为首次冷启动、数据库初始化或后台服务启动稍慢而误报失败的概率。
+  - `test_macos_installer_smoke.py` 已补充失败诊断与提前退出场景回归，确保后续不会再回退到“CI 失败但没有有效上下文”的状态。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.4` / `0.7.19-dev.4`，README、USAGE、CHANGELOG 已同步补齐本轮 mac smoke 诊断增强记录。
+
+- 测试：
+  - `python -m pytest tests/test_macos_installer_smoke.py tests/test_release_workflow.py tests/test_build_installer.py tests/test_update_service.py tests/test_backend_manager.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q`（工作目录：`apps/backend/`）
+
+## v0.7.19-dev.3 (2026-05-24)
+
+- 目标：
+  - 在已有 mac 构建 smoke 基础上继续补足安装 / 启动级验证，尽量让 CI 直接覆盖“DMG 能挂载、`.app` 能安装、bundle 能启动”这条链路，而不是只停留在产物生成。
+
+- 结果：
+  - 新增 `scripts/macos_installer_smoke.py`，会自动选择指定架构 DMG、挂载镜像、复制 `LarkSync.app` 到临时安装目录，并直接启动 `.app/Contents/MacOS/LarkSync --backend` 轮询 `/health`，形成 macOS 安装 / 启动 smoke。
+  - `quality-macos-packaging` 与正式版 `build-macos` workflow 现在都会在 DMG 构建后执行安装 / 启动 smoke，避免发布链路只验证“能打包”，不验证“安装后能否真实启动”。
+  - macOS 打包与发布默认策略进一步收口为双架构原生产物：`macos-13 -> x86_64`、`macos-14 -> arm64`；更新服务新增架构感知选择逻辑，会优先选择与当前机器架构匹配的 DMG，在无匹配时再回退到 `universal2` / 通用命名产物。
+  - `release-build.yml` 新增 workflow 级 `concurrency`，会按 PR 编号 / ref 自动取消旧的 in-progress / queued run，减少 macOS runner 被过期提交长期占队导致当前验证结果迟迟出不来的问题。
+  - 新增 `test_macos_installer_smoke.py`，并扩展 `test_build_installer.py`、`test_update_service.py`、`test_release_workflow.py` 覆盖 DMG 架构后缀、安装 smoke、workflow matrix 与架构感知更新选择逻辑。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.3` / `0.7.19-dev.3`，README、USAGE、CHANGELOG 已同步补齐本轮 mac 安装 smoke 记录。
+
+- 测试：
+  - `python -m pytest tests/test_macos_installer_smoke.py tests/test_release_workflow.py tests/test_build_installer.py tests/test_update_service.py tests/test_backend_manager.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q`（工作目录：`apps/backend/`）
+
+## v0.7.19-dev.2 (2026-05-24)
+
+- 目标：
+  - 修复远端 macOS CI 在 `quality-macos-packaging` 阶段误报失败的问题，确保 darwin runner 能真正执行定向回归与 DMG smoke，而不是因为 workflow 缺依赖提前退出。
+
+- 结果：
+  - `quality-macos-packaging` 的 Python 依赖安装步骤现已与主 `quality` 任务对齐，除业务依赖外会额外显式安装 `pytest>=7.4` 与 `pytest-asyncio>=0.23`，修复 GitHub Actions `macos-14` runner 报 `No module named pytest` 后直接跳过 DMG smoke 的问题。
+  - 新增 `apps/backend/tests/test_release_workflow.py`，解析 `.github/workflows/release-build.yml` 并断言 mac packaging job 复用与主 `quality` 一致的 pytest bootstrap，避免未来再次出现 Windows 任务能跑、mac 任务漏装测试依赖的回归。
+  - `test_build_installer`、`test_backend_manager` 与 `test_update_service` 中原本写死的 Windows `PYTHONPATH` / `APPDATA` 假设已调整为跨平台断言：darwin runner 现在会使用 POSIX `site-packages` 样例与 `HOME/Library/Application Support/LarkSync` 期望根目录，不再因为测试样例本身带有 Windows 盘符与分隔符而误报失败。
+  - 由于 `Pillow` 等扩展在 GitHub mac runner 上安装到的是单架构 wheel，PyInstaller 在 `target_arch=universal2` 下无法通过 `COLLECT` 阶段；为保证 Intel / Apple Silicon 真机均可持续验证，mac 打包默认策略已改为“按 runner 原生架构出包”，Release workflow 会分别生成 `x86_64` 与 `arm64` DMG，更新服务也会优先选择与当前机器架构匹配的安装包，并在无匹配时回退到 `universal2` / 通用命名资产。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.2` / `0.7.19-dev.2`，CHANGELOG 已补齐本次 CI 修复记录。
+
+- 测试：
+  - `python -m pytest tests/test_release_workflow.py tests/test_build_installer.py tests/test_update_service.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_backend_manager.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q`（工作目录：`apps/backend/`）
+
+## v0.7.19-dev.1 (2026-05-24)
+
+- 目标：
+  - 收口 macOS 安装版剩余缺口，确保 DMG 更新请求、自启动 LaunchAgent 与打包态托盘日志目录真正适配 `.app` 运行形态，而不是只在 Windows 链路下通过。
+
+- 结果：
+  - `update_service` 与 `tray_app` 现已统一安装包版本识别规则，同时支持 Windows `LarkSync-Setup-*.exe` 和 macOS `LarkSync-*.dmg`，旧版本 DMG 不再绕过“无需再次安装”与“忽略过期安装请求”保护。
+  - `autostart.py` 的 mac 自启动链路改为开发态使用受版本控制的 `apps/tray/launcher.py`，打包态直接启动 `.app` 内可执行文件，并将 `tray-stdout.log` / `tray-stderr.log` 统一写入用户数据目录。
+  - `backend_manager` 在打包态启动后端时，stderr 日志目录改为复用运行时用户数据目录，不再默认写回应用目录/包内目录；托盘更新通知文案也按 macOS 改为“打开安装包后手动重启应用”的真实行为说明。
+  - 补充了 mac 侧自动化回归：覆盖 DMG 版本识别、DMG 旧版本拒绝安装、托盘对 `.dmg` 过期请求的忽略、自启动 LaunchAgent 生成、打包态日志目录，以及 `build_installer._build_dmg()` 的 `.app` 发现与环境变量透传。
+  - GitHub Release 工作流的稳定版 tag 构建已改为默认同时产出 Windows `exe` 与 macOS `dmg`；仅手动 `workflow_dispatch` 重跑时才允许跳过 mac，避免正式版发布时漏掉 mac 安装包。
+  - 额外新增 `pull_request` / `push main` 的 macOS 定向 pytest + 打包 smoke，持续验证 LaunchAgent、更新安装、路径与 `.app` / `dmg` 构建链路，把 mac 发布风险前移到日常 CI。
+  - macOS PyInstaller spec 默认目标架构已收口到 `universal2`，并支持通过 `LARKSYNC_MACOS_TARGET_ARCH` 显式覆盖；日常 mac smoke 扩展到 Intel `macos-13` 与 Apple Silicon `macos-14` runner，更贴近规格里的 `Intel/M-series` 兼容目标。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.19-dev.1` / `0.7.19-dev.1`，README、CHANGELOG 已同步补齐本轮 mac 修复记录。
+
+- 测试：
+  - `python -m pytest tests/test_update_service.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_backend_manager.py tests/test_tray_autostart.py tests/test_build_installer.py tests/test_security.py tests/test_paths.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.18 release (2026-05-24)
 
 - 目标：

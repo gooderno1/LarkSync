@@ -2,12 +2,12 @@
 
 本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
 
-## 0. 当前版本（截至 2026-02-28）
-- 最新发布记录：`v0.5.45`（见 `CHANGELOG.md` 顶部）
-- 当前主线状态：`v0.5.45`（OpenClaw WSL helper 安全收敛：移除自动安装与自动拉起）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.5.45`
-- 前端版本：`apps/frontend/package.json` 中为 `0.5.45`
-- 根目录版本：`package.json` 中为 `v0.5.45`
+## 0. 当前版本（截至 2026-05-24）
+- 最新发布记录：`v0.7.19`（见 `CHANGELOG.md` 顶部）
+- 当前主线状态：`v0.7.19`（macOS 正式发布：双架构 DMG 构建与安装启动 smoke 已通过，Intel runner 切换到 `macos-15-intel`，DMG 卷内 `Applications` 安装入口已纳入校验）
+- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.19`
+- 前端版本：`apps/frontend/package.json` 中为 `0.7.19`
+- 根目录版本：`package.json` 中为 `v0.7.19`
 
 ## 1. 环境准备
 - Node.js 18+（用于前端）
@@ -283,13 +283,14 @@ python scripts/build_installer.py
 # Windows：额外生成 NSIS 安装包（dist/LarkSync-Setup-<version>.exe）
 python scripts/build_installer.py --nsis
 
-# macOS：额外生成 DMG（dist/LarkSync-<version>.dmg）
+# macOS：额外生成 DMG（本地默认 dist/LarkSync-<version>.dmg）
 python scripts/build_installer.py --dmg
 ```
 
 说明：
 - 脚本默认会先构建前端（`apps/frontend/npm run build`），再执行 PyInstaller。
 - 若前端已提前构建，可加 `--skip-frontend` 跳过前端构建阶段。
+- 如需显式指定 macOS 打包架构，可设置 `LARKSYNC_MACOS_TARGET_ARCH=arm64`、`x86_64` 等 PyInstaller 支持值；如需输出带架构后缀的 DMG 文件名，可同时设置 `LARKSYNC_MACOS_DMG_SUFFIX`。
 - Windows 生成安装包依赖 `makensis`（NSIS）；macOS 生成 DMG 依赖 `create-dmg`。
 - 脚本会自动过滤与当前解释器版本不匹配的 `PYTHONPATH` `site-packages`（例如 `Python312` 与 `Python314` 混用），减少本机环境污染导致的打包失败。
 
@@ -315,18 +316,21 @@ npm run release:publish -- "release: v0.5.45"
 当前发布工作流：`.github/workflows/release-build.yml`。
 
 触发条件：
-- 推送 `v*` 标签（如 `v0.5.44`）默认仅构建 Windows 安装包。
+- 推送 `v*` 标签（如 `v0.5.44`）会默认同时构建 Windows 与 macOS 安装包。
+- `pull_request` / `push main` 非 tag 场景会额外执行一轮 macOS 定向 pytest + 打包 smoke，用于提前验证 LaunchAgent / 更新安装 / `.app` + `dmg` 构建链路。
+- macOS smoke 在 DMG 构建后还会自动执行一轮安装/启动检查：挂载 DMG、复制 `.app`、启动 `LarkSync --backend` 并轮询 `/health`，尽量把“能构建但不能启动”的问题前移到 CI。
 - 标签不能包含 `-dev`，否则构建任务会被 `if` 条件跳过。
-- macOS 构建默认关闭；如需发布 macOS，请手动触发 `workflow_dispatch` 并将 `build_macos` 勾选为 `true`（同时选择稳定版 tag 作为 ref）。
+- 如需手动重跑某个稳定版 tag 的 macOS 构建，可触发 `workflow_dispatch` 并将 `build_macos` 勾选为 `true`（同时选择稳定版 tag 作为 ref）。
+- macOS 工作流会按 runner 原生架构构建：`macos-13 -> x86_64`、`macos-14 -> arm64`；稳定版 tag 会上传 `LarkSync-<version>-x86_64.dmg` 与 `LarkSync-<version>-arm64.dmg` 两个产物，自动更新会优先匹配当前机器架构。
 
 产物上传结果：
 - Windows：`dist/LarkSync-Setup-*.exe`
-- macOS（手动开启时）：`dist/LarkSync-*.dmg`
+- macOS：`dist/LarkSync-*.dmg`
 - 构建成功后由 workflow 自动上传到对应 GitHub Release。
 - Release 说明：工作流会自动执行 `python scripts/release_notes.py`，从 `CHANGELOG.md` 提取“当前稳定版到上一稳定版之间”的全部条目（可覆盖多个中间 dev 版本），并写入 Release body。
 
 注意：
-- 手动触发时若未勾选 `build_macos`，macOS job 不会执行（这是默认行为）。
+- 手动触发 `workflow_dispatch` 且未勾选 `build_macos` 时，macOS job 不会执行；但正式版 tag push 不受该开关影响。
 
 ### 10.4 GitHub Release 下载安装包（使用者）
 - 发布页：<https://github.com/gooderno1/LarkSync/releases>

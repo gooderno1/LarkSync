@@ -140,3 +140,23 @@ def test_system_update_install_rejects_same_or_older_version(
 
     assert response.status_code == 400
     assert "无需再次安装" in response.json()["detail"]
+
+
+def test_system_update_install_rejects_same_or_older_version_for_macos_dmg(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(system_api, "get_version", lambda: "v0.6.11")
+    installer_path = tmp_path / "LarkSync-v0.6.11.dmg"
+    installer_path.write_bytes(b"dmg")
+
+    client = TestClient(app)
+    app.state.update_scheduler = _StubScheduler()
+
+    response = client.post(
+        "/system/update/install",
+        json={"download_path": str(installer_path)},
+    )
+
+    assert response.status_code == 400
+    assert "无需再次安装" in response.json()["detail"]

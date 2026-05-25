@@ -7,13 +7,21 @@ macOS:   在 ~/Library/LaunchAgents/ 创建 .plist
 
 from __future__ import annotations
 
-import sys
 import os
+import subprocess
+import sys
+from html import escape
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_ROOT = _PROJECT_ROOT / "apps" / "backend"
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
 _LAUNCHER_PYW = _PROJECT_ROOT / "LarkSync.pyw"
 _APP_ID = "com.larksync.agent"
+
+from src.core.paths import logs_dir
 
 
 def is_autostart_enabled() -> bool:
@@ -96,8 +104,6 @@ def _win_enable() -> bool:
         pass
 
     # Fallback: 使用 PowerShell 创建快捷方式
-    import subprocess
-
     pythonw = sys.executable.replace("python.exe", "pythonw.exe")
     ps_cmd = f"""
     $ws = New-Object -ComObject WScript.Shell
@@ -127,6 +133,32 @@ def _win_disable() -> bool:
 
 # ---- macOS ----
 
+def _mac_launcher_script() -> Path:
+    launcher = _PROJECT_ROOT / "apps" / "tray" / "launcher.py"
+    if launcher.is_file():
+        return launcher
+    return _PROJECT_ROOT / "apps" / "tray" / "tray_app.py"
+
+
+def _mac_program_arguments() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [str(Path(sys.executable).expanduser().resolve())]
+    return [
+        str(Path(sys.executable).expanduser().resolve()),
+        str(_mac_launcher_script()),
+    ]
+
+
+def _mac_working_directory() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).expanduser().resolve().parent
+    return _PROJECT_ROOT
+
+
+def _plist_string(value: str) -> str:
+    return f"<string>{escape(value, quote=True)}</string>"
+
+
 def _mac_plist_path() -> Path:
     """获取 macOS LaunchAgent plist 路径。"""
     return Path.home() / "Library" / "LaunchAgents" / f"{_APP_ID}.plist"
@@ -136,38 +168,37 @@ def _mac_enable() -> bool:
     """macOS: 创建 LaunchAgent plist。"""
     plist_path = _mac_plist_path()
     plist_path.parent.mkdir(parents=True, exist_ok=True)
-
-    python_exe = sys.executable
-    script = str(_PROJECT_ROOT / "apps" / "tray" / "tray_app.py")
+    log_dir = logs_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    program_args_xml = "\n".join(
+        f"        {_plist_string(arg)}" for arg in _mac_program_arguments()
+    )
 
     plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{_APP_ID}</string>
+    {_plist_string(_APP_ID)}
     <key>ProgramArguments</key>
     <array>
-        <string>{python_exe}</string>
-        <string>{script}</string>
+{program_args_xml}
     </array>
     <key>WorkingDirectory</key>
-    <string>{_PROJECT_ROOT}</string>
+    {_plist_string(str(_mac_working_directory()))}
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <false/>
     <key>StandardOutPath</key>
-    <string>{_PROJECT_ROOT}/data/logs/tray-stdout.log</string>
+    {_plist_string(str(log_dir / "tray-stdout.log"))}
     <key>StandardErrorPath</key>
-    <string>{_PROJECT_ROOT}/data/logs/tray-stderr.log</string>
+    {_plist_string(str(log_dir / "tray-stderr.log"))}
 </dict>
 </plist>
 """
     plist_path.write_text(plist_content, encoding="utf-8")
 
-    # 加载 plist
-    import subprocess
     subprocess.run(["launchctl", "load", str(plist_path)], capture_output=True)
     return True
 
@@ -176,7 +207,6 @@ def _mac_disable() -> bool:
     """macOS: 移除 LaunchAgent。"""
     plist_path = _mac_plist_path()
     if plist_path.is_file():
-        import subprocess
         subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True)
         plist_path.unlink()
     return True

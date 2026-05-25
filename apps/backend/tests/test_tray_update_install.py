@@ -189,6 +189,44 @@ def test_tray_clears_stale_install_request_for_same_version(monkeypatch, tmp_pat
     assert stopped == []
 
 
+def test_tray_clears_stale_install_request_for_same_version_macos_dmg(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    requested_path = tmp_path / "LarkSync-v0.6.7.dmg"
+    requested_path.write_bytes(b"dmg")
+    consumed: list[str] = []
+    stopped: list[bool] = []
+
+    tray = _build_tray()
+
+    monkeypatch.setattr(
+        tray_app,
+        "_load_install_request",
+        lambda: {
+            "request_id": "req-stale-mac",
+            "installer_path": str(requested_path),
+            "created_at": 100.0,
+            "silent": False,
+        },
+    )
+    monkeypatch.setattr(tray_app, "_read_current_app_version", lambda: "v0.6.7")
+    monkeypatch.setattr(tray_app, "_clear_install_request", lambda: consumed.append("request-cleared"))
+    monkeypatch.setattr(tray_app, "_clear_install_handoff", lambda: consumed.append("handoff-cleared"))
+    monkeypatch.setattr(tray_app, "_append_install_launch_log", lambda message: consumed.append(message))
+    monkeypatch.setattr(tray, "_schedule_installer_launch", lambda *args, **kwargs: consumed.append("scheduled"))
+    monkeypatch.setattr(tray, "_notify", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tray, "stop", lambda: stopped.append(True))
+
+    handled = tray._handle_pending_install_request()
+
+    assert handled is False
+    assert "scheduled" not in consumed
+    assert consumed[0].startswith("忽略过期安装请求:")
+    assert consumed[1:] == ["request-cleared", "handoff-cleared"]
+    assert stopped == []
+
+
 def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: Path) -> None:
     installer_path = tmp_path / "中文 路径" / "LarkSync's Setup.exe"
     restart_path = tmp_path / "LarkSync.exe"
@@ -615,3 +653,39 @@ def test_schedule_installer_launch_on_windows_falls_back_when_startfile_fails(
     assert startfile_calls == [str(installer_path.resolve())]
     assert len(popen_calls) == 1
     assert "-EncodedCommand" in popen_calls[0]["args"]
+
+
+def test_install_launch_notice_is_manual_on_macos(monkeypatch) -> None:
+    monkeypatch.setattr(tray_app.sys, "platform", "darwin")
+
+    assert "手动重新打开应用" in tray_app._install_launch_notice()
+
+
+def test_schedule_installer_launch_on_macos_uses_open_command(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    installer_path = tmp_path / "LarkSync-v0.6.9.dmg"
+    installer_path.write_bytes(b"dmg")
+    calls: list[dict[str, object]] = []
+
+    def _fake_popen(args, **kwargs):
+        calls.append({"args": list(args), **kwargs})
+
+        class _DummyProc:
+            pid = 2468
+
+        return _DummyProc()
+
+    monkeypatch.setattr(tray_app.sys, "platform", "darwin")
+    monkeypatch.setattr(tray_app.subprocess, "Popen", _fake_popen)
+
+    tray = _build_tray()
+    tray._schedule_installer_launch(str(installer_path))
+
+    assert calls == [
+        {
+            "args": ["/usr/bin/open", str(installer_path.resolve())],
+            "close_fds": True,
+        }
+    ]

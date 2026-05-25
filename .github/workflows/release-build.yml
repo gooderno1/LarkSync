@@ -12,13 +12,17 @@ on:
   workflow_dispatch:
     inputs:
       build_macos:
-        description: "是否构建并发布 macOS 安装包（默认关闭）"
+        description: "手动触发时是否构建并发布 macOS 安装包"
         required: false
         default: false
         type: boolean
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-build-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   PYTHON_VERSION: "3.14"
@@ -81,6 +85,62 @@ jobs:
       - name: Build frontend
         working-directory: apps/frontend
         run: npm run build
+
+  quality-macos-packaging:
+    needs: quality
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            arch: x86_64
+          - os: macos-14
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r apps/backend/requirements.txt
+          python -m pip install "pytest>=7.4" "pytest-asyncio>=0.23"
+
+      - name: Install frontend dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Run macOS-targeted backend tests
+        working-directory: apps/backend
+        run: |
+          python -m pytest tests/test_build_installer.py tests/test_update_service.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_backend_manager.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q
+
+      - name: Build macOS installer smoke
+        env:
+          LARKSYNC_MACOS_TARGET_ARCH: ${{ matrix.arch }}
+          LARKSYNC_MACOS_DMG_SUFFIX: ${{ matrix.arch }}
+        run: python scripts/build_installer.py --dmg
+
+      - name: Run macOS install-launch smoke
+        run: python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}
 
   build-windows:
     needs: quality
@@ -176,8 +236,16 @@ jobs:
 
   build-macos:
     needs: quality
-    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') && (inputs.build_macos == true || inputs.build_macos == 'true') }}
-    runs-on: macos-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-dev') && (github.event_name != 'workflow_dispatch' || inputs.build_macos == true || inputs.build_macos == 'true') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            arch: x86_64
+          - os: macos-14
+            arch: arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -199,7 +267,13 @@ jobs:
         run: brew install create-dmg
 
       - name: Install Python dependencies
-        run: pip install -r apps/backend/requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/backend/requirements.txt
+
+      - name: Install frontend dependencies
+        working-directory: apps/frontend
+        run: npm ci
 
       - name: Verify version matches tag
         shell: bash
@@ -218,7 +292,12 @@ jobs:
       - name: Build DMG
         env:
           LARKSYNC_VERSION: ${{ github.ref_name }}
+          LARKSYNC_MACOS_TARGET_ARCH: ${{ matrix.arch }}
+          LARKSYNC_MACOS_DMG_SUFFIX: ${{ matrix.arch }}
         run: python scripts/build_installer.py --dmg
+
+      - name: Run macOS install-launch smoke
+        run: python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}
 
       - name: Generate checksum assets
         shell: bash
@@ -248,7 +327,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: macos-installer
+          name: macos-installer-${{ matrix.arch }}
           path: |
             dist/LarkSync-*.dmg
             dist/LarkSync-*.dmg.sha256

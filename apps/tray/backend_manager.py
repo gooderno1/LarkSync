@@ -39,6 +39,11 @@ from apps.tray.config import (
 
 from loguru import logger
 
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
+from src.core.paths import data_dir as backend_data_dir
+
 
 def _sanitize_pythonpath(raw_pythonpath: str | None) -> tuple[str | None, bool]:
     """移除 PYTHONPATH 中与当前解释器版本不匹配的 site-packages。"""
@@ -76,6 +81,8 @@ def _runtime_data_dir() -> Path:
     env_dir = (os.getenv("LARKSYNC_DATA_DIR") or "").strip()
     if env_dir:
         return Path(env_dir).expanduser().resolve()
+    if getattr(sys, "frozen", False):
+        return backend_data_dir()
     return PROJECT_ROOT / "data"
 
 
