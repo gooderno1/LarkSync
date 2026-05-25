@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
+from threading import Lock
+from typing import ClassVar
 from urllib.parse import urlencode
 
 import httpx
@@ -30,6 +33,9 @@ class UserProfile:
 
 
 class AuthService:
+    _refresh_locks: ClassVar[dict[int, asyncio.Lock]] = {}
+    _refresh_locks_guard: ClassVar[Lock] = Lock()
+
     def __init__(
         self,
         config: AppConfig | None = None,
@@ -82,23 +88,9 @@ class AuthService:
         return await self._request_token(payload)
 
     async def refresh(self) -> TokenData:
-        current = self._token_store.get()
-        if not current:
-            raise AuthError("缺少登录凭证，请重新登录")
-        if not current.refresh_token:
-            raise AuthError("refresh_token 不可用，请重新登录")
-        app_id = self._require_config(self._config.auth_client_id, "auth_client_id")
-        app_secret = self._require_config(
-            self._config.auth_client_secret, "auth_client_secret"
-        )
-        # 飞书 v1 OAuth：使用 app_id / app_secret
-        payload = {
-            "grant_type": "refresh_token",
-            "refresh_token": current.refresh_token,
-            "app_id": app_id,
-            "app_secret": app_secret,
-        }
-        return await self._request_token(payload)
+        async with self._get_refresh_lock():
+            current = self._token_store.get()
+            return await self._refresh_unlocked(current)
 
     def get_cached_token(self) -> TokenData | None:
         return self._token_store.get()
@@ -107,9 +99,16 @@ class AuthService:
         token = self._token_store.get()
         if token is None:
             raise AuthError("未登录，请先完成 OAuth 登录")
-        if token.is_expired():
-            token = await self.refresh()
-        return token.access_token
+        if not token.is_expired():
+            return token.access_token
+        async with self._get_refresh_lock():
+            latest = self._token_store.get()
+            if latest is None:
+                raise AuthError("未登录，请先完成 OAuth 登录")
+            if not latest.is_expired():
+                return latest.access_token
+            refreshed = await self._refresh_unlocked(latest)
+            return refreshed.access_token
 
     async def ensure_cached_identity(self) -> TokenData | None:
         """确保缓存凭证里带有身份信息；缺失时通过用户信息接口补齐。"""
@@ -169,6 +168,14 @@ class AuthService:
 
         resolved_open_id = token.open_id or (previous.open_id if previous else None)
         resolved_account_name = previous.account_name if previous else None
+        resolved_refresh_token = token.refresh_token
+        if (
+            not resolved_refresh_token
+            and previous is not None
+            and previous.refresh_token
+        ):
+            resolved_refresh_token = previous.refresh_token
+            logger.warning("Token 响应缺少 refresh_token，继续保留当前 refresh_token")
         if not resolved_open_id or not resolved_account_name:
             profile = await self._fetch_user_profile(token.access_token)
             if not resolved_open_id:
@@ -178,13 +185,42 @@ class AuthService:
 
         stored = TokenData(
             access_token=token.access_token,
-            refresh_token=token.refresh_token,
+            refresh_token=resolved_refresh_token,
             expires_at=expires_at,
             open_id=resolved_open_id,
             account_name=resolved_account_name,
         )
         self._token_store.set(stored)
         return stored
+
+    async def _refresh_unlocked(self, current: TokenData | None) -> TokenData:
+        if not current:
+            raise AuthError("缺少登录凭证，请重新登录")
+        if not current.refresh_token:
+            raise AuthError("refresh_token 不可用，请重新登录")
+        app_id = self._require_config(self._config.auth_client_id, "auth_client_id")
+        app_secret = self._require_config(
+            self._config.auth_client_secret, "auth_client_secret"
+        )
+        # 飞书 v1 OAuth：使用 app_id / app_secret
+        payload = {
+            "grant_type": "refresh_token",
+            "refresh_token": current.refresh_token,
+            "app_id": app_id,
+            "app_secret": app_secret,
+        }
+        return await self._request_token(payload)
+
+    @classmethod
+    def _get_refresh_lock(cls) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        loop_id = id(loop)
+        with cls._refresh_locks_guard:
+            lock = cls._refresh_locks.get(loop_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                cls._refresh_locks[loop_id] = lock
+            return lock
 
     async def _fetch_open_id(self, access_token: str) -> str | None:
         profile = await self._fetch_user_profile(access_token)

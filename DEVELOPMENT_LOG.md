@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v0.7.20-dev.1 (2026-05-25)
+
+- 目标：
+  - 深入排查近期 `refresh token is invalid | refresh token not found (code=20026)` 的真实触发条件，并收口最可能复发的认证续期竞争窗口。
+
+- 结果：
+  - 复核当前项目实际使用的飞书 OAuth 端点后，确认 `https://open.feishu.cn/open-apis/authen/v1/access_token` 在收到无效 refresh token 时会真实返回 `code=20026` 与 `refresh token is invalid | refresh token not found`，不是前端拼接文案。
+  - 通过受控并发实验复现了“同一个过期 access token 被两个协程同时续期，其中一个 refresh 成功并轮换 refresh token，另一个立即收到 `code=20026`”的竞争路径，确认现网风险来自本地 refresh 缺少串行化，而不只是飞书偶发波动。
+  - `AuthService` 现已为 refresh / `get_valid_access_token()` 增加按事件循环共享的续期锁；等待中的协程会在前一个 refresh 完成后复读 token store，若 access token 已被更新则直接复用，不再带着旧 refresh token 再打一遍飞书。
+  - token 响应缺少新 `refresh_token` 时，后端现会保留已有 refresh token 而不是覆盖为空字符串，减少兼容端点 / 临时响应差异导致后续续期链路自毁的风险。
+  - README、CHANGELOG 与版本号已同步更新到 `v0.7.20-dev.1` / `0.7.20-dev.1`，便于后续继续跟踪 auth 稳定性问题。
+
+- 测试：
+  - `python -m pytest tests/test_auth_service.py tests/test_auth_api.py tests/test_security.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.19 (2026-05-24)
 
 - 目标：

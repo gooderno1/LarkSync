@@ -1,3 +1,4 @@
+import asyncio
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -36,6 +37,34 @@ class FakeAsyncClient:
         if self._get_exc:
             raise self._get_exc
         return self._get_response
+
+
+class SequencedRefreshClient:
+    def __init__(self, responses: list[httpx.Response], delay: float = 0.0):
+        self._responses = responses
+        self._delay = delay
+        self.post_calls = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, url: str, json: dict[str, str]):
+        self.post_calls += 1
+        if self._delay:
+            await asyncio.sleep(self._delay)
+        if not self._responses:
+            raise AssertionError("unexpected refresh call")
+        return self._responses.pop(0)
+
+    async def get(self, url: str, headers: dict[str, str] | None = None):
+        return httpx.Response(
+            200,
+            json={"code": 0, "data": {"open_id": "ou-test-user", "name": "测试用户"}},
+            request=httpx.Request("GET", url),
+        )
 
 
 def test_build_authorize_url() -> None:
@@ -251,6 +280,99 @@ async def test_refresh_fails_without_refresh_token() -> None:
 
     with pytest.raises(AuthError, match="refresh_token 不可用"):
         await service.refresh()
+
+
+@pytest.mark.asyncio
+async def test_refresh_preserves_previous_refresh_token_when_response_omits_new_value() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    request = httpx.Request("POST", "https://example.com/oauth/token")
+    response = httpx.Response(
+        200,
+        json={
+            "code": 0,
+            "data": {
+                "access_token": "token-new",
+                "expires_in": 3600,
+                "open_id": "ou-test-user",
+            },
+        },
+        request=request,
+    )
+    store = MemoryTokenStore()
+    store.set(
+        TokenData(
+            access_token="token-old",
+            refresh_token="refresh-old",
+            expires_at=0,
+            open_id="ou-test-user",
+            account_name="测试用户",
+        )
+    )
+    service = AuthService(
+        config=config,
+        token_store=store,
+        http_client=FakeAsyncClient(response=response),
+    )
+
+    token = await service.refresh()
+
+    assert token.access_token == "token-new"
+    assert token.refresh_token == "refresh-old"
+    stored = store.get()
+    assert stored is not None
+    assert stored.refresh_token == "refresh-old"
+
+
+@pytest.mark.asyncio
+async def test_get_valid_access_token_serializes_concurrent_refresh() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://example.com/oauth/authorize",
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    request = httpx.Request("POST", "https://example.com/oauth/token")
+    response = httpx.Response(
+        200,
+        json={
+            "code": 0,
+            "data": {
+                "access_token": "token-new",
+                "refresh_token": "refresh-new",
+                "expires_in": 3600,
+                "open_id": "ou-test-user",
+            },
+        },
+        request=request,
+    )
+    store = MemoryTokenStore()
+    store.set(
+        TokenData(
+            access_token="token-old",
+            refresh_token="refresh-old",
+            expires_at=0,
+            open_id="ou-test-user",
+            account_name="测试用户",
+        )
+    )
+    client = SequencedRefreshClient([response], delay=0.05)
+    service_a = AuthService(config=config, token_store=store, http_client=client)
+    service_b = AuthService(config=config, token_store=store, http_client=client)
+
+    results = await asyncio.gather(
+        service_a.get_valid_access_token(),
+        service_b.get_valid_access_token(),
+    )
+
+    assert results == ["token-new", "token-new"]
+    assert client.post_calls == 1
 
 
 @pytest.mark.asyncio
