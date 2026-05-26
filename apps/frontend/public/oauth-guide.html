@@ -262,7 +262,9 @@ http://localhost:8080/api/auth/callback</code></pre>
       <thead><tr><th>权限标识</th><th>说明</th></tr></thead>
       <tbody>
         <tr><td><code>drive:drive</code></td><td>读写云空间文件</td></tr>
-        <tr><td><code>docs:doc</code></td><td>读写云文档</td></tr>
+        <tr><td><code>docx:document</code></td><td>读写新版云文档</td></tr>
+        <tr><td><code>docx:document:readonly</code></td><td>只读查看新版云文档（若已申请 <code>docx:document</code>，控制台通常会视为已覆盖）</td></tr>
+        <tr><td><code>docx:document.block:convert</code></td><td>允许将 Markdown / HTML 转成文档块，供本地 Markdown 上行使用</td></tr>
         <tr><td><code>drive:drive.metadata:readonly</code></td><td>只读查看云空间元信息</td></tr>
         <tr><td><code>contact:contact.base:readonly</code></td><td>只读获取用户基础信息</td></tr>
       </tbody>
@@ -291,7 +293,7 @@ http://localhost:8080/api/auth/callback</code></pre>
     <h2>6. 常见问题</h2>
 
     <h3>Access denied / 缺少权限</h3>
-    <p>确认飞书控制台中已添加上述权限，且类型为<strong>用户身份权限</strong>。保存权限后需要退出登录，重新点击「连接飞书」进行授权。</p>
+    <p>确认飞书控制台中已添加上述权限，且类型为<strong>用户身份权限</strong>。尤其要检查 <code>docx:document</code> 与 <code>docx:document.block:convert</code>。保存权限后需要退出登录，重新点击「连接飞书」进行授权。</p>
 
     <h3>回调地址不匹配</h3>
     <p>请确保飞书后台填写的 URL 与 LarkSync 设置页显示的 Redirect URI <strong>完全一致</strong>（包含协议、端口、路径）。</p>

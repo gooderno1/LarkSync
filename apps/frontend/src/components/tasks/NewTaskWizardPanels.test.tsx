@@ -89,4 +89,28 @@ describe("new task wizard panels smoke", () => {
     expect(html).toContain("任务摘要");
     expect(html).toContain("增强 MD 上传");
   });
+
+  it("renders updated permission guidance for cloud tree errors", () => {
+    const html = renderToStaticMarkup(
+      <NewTaskCloudStep
+        inputCls={inputCls}
+        tree={null}
+        treeLoading={false}
+        treeError="权限不足"
+        taskCloudToken=""
+        selectedCloud={null}
+        manualCloudInput=""
+        manualCloudName=""
+        manualCloudError={null}
+        onRefreshTree={vi.fn()}
+        onSelectCloudFolder={vi.fn()}
+        onManualCloudInputChange={vi.fn()}
+        onManualCloudNameChange={vi.fn()}
+        onApplyManualCloud={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain("docx:document");
+    expect(html).toContain("docx:document.block:convert");
+  });
 });

@@ -42,13 +42,48 @@ def _default_database_url() -> str:
     return _database_url_from_path(data_dir() / "larksync.db")
 
 
+REQUIRED_AUTH_SCOPES: tuple[str, ...] = (
+    "drive:drive",
+    "docx:document",
+    "docx:document:readonly",
+    "docx:document.block:convert",
+    "drive:drive.metadata:readonly",
+    "contact:contact.base:readonly",
+)
+
+_LEGACY_SCOPE_ALIASES: dict[str, tuple[str, ...]] = {
+    "docs:doc": (
+        "docx:document",
+        "docx:document:readonly",
+        "docx:document.block:convert",
+    )
+}
+
+
+def _normalize_auth_scopes(scopes: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    for raw_scope in scopes or []:
+        scope = raw_scope.strip()
+        if not scope:
+            continue
+        mapped_scopes = _LEGACY_SCOPE_ALIASES.get(scope, (scope,))
+        for mapped_scope in mapped_scopes:
+            if mapped_scope not in seen:
+                normalized.append(mapped_scope)
+                seen.add(mapped_scope)
+
+    for scope in REQUIRED_AUTH_SCOPES:
+        if scope not in seen:
+            normalized.append(scope)
+            seen.add(scope)
+
+    return normalized
+
+
 def _default_scopes() -> list[str]:
-    return [
-        "drive:drive",
-        "docs:doc",
-        "drive:drive.metadata:readonly",
-        "contact:contact.base:readonly",
-    ]
+    return list(REQUIRED_AUTH_SCOPES)
 
 
 class AppConfig(BaseModel):
@@ -105,6 +140,14 @@ class ConfigManager:
         return self._config_path
 
     def save_config(self, data: dict[str, object]) -> AppConfig:
+        if "auth_scopes" in data:
+            data["auth_scopes"] = _normalize_auth_scopes(
+                [
+                    str(scope)
+                    for scope in (data.get("auth_scopes") or [])
+                    if isinstance(scope, str)
+                ]
+            )
         self._config_path.parent.mkdir(parents=True, exist_ok=True)
         self._config_path.write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -179,6 +222,13 @@ class ConfigManager:
             data["auth_scopes"] = [
                 scope.strip() for scope in env_scopes.split(",") if scope.strip()
             ]
+        data["auth_scopes"] = _normalize_auth_scopes(
+            [
+                str(scope)
+                for scope in (data.get("auth_scopes") or [])
+                if isinstance(scope, str)
+            ]
+        )
 
         env_sync_log_retention = os.getenv("LARKSYNC_SYNC_LOG_RETENTION_DAYS")
         if env_sync_log_retention:

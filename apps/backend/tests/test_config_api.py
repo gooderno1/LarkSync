@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from src.core.config import ConfigManager
+from src.core.config import ConfigManager, REQUIRED_AUTH_SCOPES
 from src.main import app
 
 
@@ -67,10 +67,12 @@ def test_update_config_persists(tmp_path: Path, monkeypatch) -> None:
     assert payload["delete_policy"] == "strict"
     assert payload["delete_grace_minutes"] == 0
     assert payload["ignore_hidden_cache_paths"] is False
+    assert payload["auth_scopes"] == list(REQUIRED_AUTH_SCOPES)
 
     persisted = json.loads(config_path.read_text(encoding="utf-8"))
     assert persisted["auth_client_id"] == "new-id"
     assert persisted["auth_client_secret"] == "new-secret"
+    assert persisted["auth_scopes"] == list(REQUIRED_AUTH_SCOPES)
     assert persisted["sync_mode"] == "upload_only"
     assert persisted["ignore_hidden_cache_paths"] is False
     assert persisted["device_display_name"] == "我的笔记本"

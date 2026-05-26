@@ -77,7 +77,13 @@ export default function App() {
             <div className="rounded-xl border border-amber-500/40 bg-amber-500/20 px-5 py-4 text-sm">
               <p className="font-semibold text-amber-300">飞书云文档权限不足</p>
               <p className="mt-1 text-xs leading-relaxed text-zinc-200">
-                当前授权令牌缺少 <code className="rounded border border-amber-500/30 bg-zinc-900 px-1 py-0.5 text-zinc-100">drive:drive</code> 等权限。请在飞书开发者后台确认权限已添加，并前往「版本管理与发布」发布应用，然后点击下方按钮重新授权。
+                当前授权令牌缺少{" "}
+                <code className="rounded border border-amber-500/30 bg-zinc-900 px-1 py-0.5 text-zinc-100">drive:drive</code>
+                、{" "}
+                <code className="rounded border border-amber-500/30 bg-zinc-900 px-1 py-0.5 text-zinc-100">docx:document</code>
+                、{" "}
+                <code className="rounded border border-amber-500/30 bg-zinc-900 px-1 py-0.5 text-zinc-100">docx:document.block:convert</code>{" "}
+                等新版文档权限。请在飞书开发者后台确认权限已添加，并前往「版本管理与发布」发布应用，然后点击下方按钮重新授权。
               </p>
               <a
                 href="/auth/login?redirect=/"

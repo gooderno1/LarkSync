@@ -4,12 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 
+const authState = vi.hoisted(() => ({
+  connected: false,
+  driveOk: false,
+  loading: false,
+}));
+
 vi.mock("./hooks/useAuth", () => ({
-  useAuth: () => ({
-    connected: false,
-    driveOk: false,
-    loading: false,
-  }),
+  useAuth: () => authState,
 }));
 
 vi.mock("./hooks/useConfig", () => ({
@@ -59,8 +61,21 @@ vi.mock("./components/ui/confirm-dialog", () => ({
 
 describe("App smoke", () => {
   it("renders onboarding when OAuth is configured but account is not connected", () => {
+    authState.connected = false;
+    authState.driveOk = false;
+
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain("Onboarding Wizard");
+  });
+
+  it("renders updated scope hint when doc permissions are unavailable", () => {
+    authState.connected = true;
+    authState.driveOk = false;
+
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain("docx:document");
+    expect(html).toContain("docx:document.block:convert");
   });
 });

@@ -2,12 +2,12 @@
 
 本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
 
-## 0. 当前版本（截至 2026-05-24）
-- 最新发布记录：`v0.7.19`（见 `CHANGELOG.md` 顶部）
-- 当前主线状态：`v0.7.19`（macOS 正式发布：双架构 DMG 构建与安装启动 smoke 已通过，Intel runner 切换到 `macos-15-intel`，DMG 卷内 `Applications` 安装入口已纳入校验）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.19`
-- 前端版本：`apps/frontend/package.json` 中为 `0.7.19`
-- 根目录版本：`package.json` 中为 `v0.7.19`
+## 0. 当前版本（截至 2026-05-26）
+- 最新发布记录：`v0.7.20`（见 `CHANGELOG.md` 顶部）
+- 当前主线状态：`v0.7.20`（默认 OAuth 权限与文档指引已切换到新版 Docx scopes，并兼容旧 `docs:doc` 配置自动迁移）
+- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.20`
+- 前端版本：`apps/frontend/package.json` 中为 `0.7.20`
+- 根目录版本：`package.json` 中为 `v0.7.20`
 
 ## 1. 环境准备
 - Node.js 18+（用于前端）
@@ -46,7 +46,9 @@
   "auth_redirect_uri": "http://localhost:8000/auth/callback",
   "auth_scopes": [
     "drive:drive",
-    "docs:doc",
+    "docx:document",
+    "docx:document:readonly",
+    "docx:document.block:convert",
     "drive:drive.metadata:readonly",
     "contact:contact.base:readonly"
   ],
@@ -66,7 +68,7 @@
 
 说明：
 - 回调地址统一为 `http://localhost:8000/auth/callback`。
-- `auth_scopes` 为可选字段，默认值已内置。
+- `auth_scopes` 为可选字段，默认值已内置；旧配置中的 `docs:doc` 会在运行时自动迁移到新版 Docx scopes。
 
 ### 3.3 环境变量（可覆盖）
 - `LARKSYNC_SYNC_MODE`
@@ -199,7 +201,7 @@ python scripts/build.py
 ### 5.4 云端目录树
 - 页面点击"刷新"即可拉取云端目录树。
 - 后端接口：`GET /drive/tree`（可选参数 `folder_token`）。
-> 若提示 Access denied，请在飞书控制台"权限管理"添加用户身份权限（`drive:drive` 或 `drive:drive.metadata:readonly`），并重新授权。
+> 若提示 Access denied，请在飞书控制台"权限管理"添加用户身份权限（至少包含 `drive:drive`、`docx:document`、`docx:document.block:convert`），并重新授权。
 
 ### 5.5 冲突管理（日志中心子模块）
 - 前端日志中心可查看冲突列表并执行"使用本地/云端"。

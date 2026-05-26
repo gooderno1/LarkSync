@@ -1,5 +1,23 @@
 # DEVELOPMENT LOG
 
+## v0.7.20-dev.2 (2026-05-26)
+
+- 目标：
+  - 确认并修复默认授权配置仍停留在旧 `docs:doc`，导致用户按默认指引完成授权后，Docx v1 文档接口仍可能报缺少权限的问题。
+
+- 结果：
+  - 复核当前实现后确认，LarkSync 的文档读写链路已经全面使用 `/open-apis/docx/v1/...`，包括块读取、块写入、图片回填与 `documents/blocks/convert`，原默认权限说明中的 `docs:doc` 已不再匹配实际接口集合。
+  - `ConfigManager` 现已将默认 `auth_scopes` 切换为 `drive:drive`、`docx:document`、`docx:document:readonly`、`docx:document.block:convert`、`drive:drive.metadata:readonly`、`contact:contact.base:readonly`。
+  - 对历史配置加入了运行时兼容迁移：若本地 `config.json` 仍保留旧 `docs:doc`，后端会自动把它展开为新版 Docx scopes，并补齐当前实现所需的最小权限集合。
+  - OAuth 配置指南、前端内嵌 `oauth-guide.html`、README、USAGE、CLI 权限提示与任务创建页错误文案已同步更新，用户在授权失败时会看到新版 Docx 权限名，而不再被旧 `docs:doc` 误导。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.20-dev.2` / `0.7.20-dev.2`。
+
+- 测试：
+  - `python -m pytest tests/test_config.py tests/test_config_api.py tests/test_auth_api.py -q`（工作目录：`apps/backend/`）
+  - `npm run test`（工作目录：`apps/frontend/`）
+  - `npm run build`（工作目录：`apps/frontend/`）
+  - `python scripts/build_installer.py --skip-frontend`（工作目录：仓库根目录；已完成 PyInstaller 构建，未执行用户级安装/启动体验验证）
+
 ## v0.7.20-dev.1 (2026-05-25)
 
 - 目标：

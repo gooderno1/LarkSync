@@ -33,9 +33,13 @@
 
 **常用最小权限建议：**
 - `drive:drive`
-- `docs:doc`
+- `docx:document`
+- `docx:document:readonly`
+- `docx:document.block:convert`
 - `drive:drive.metadata:readonly`
 - `contact:contact.base:readonly`
+
+> 说明：飞书新版文档接口（`/open-apis/docx/v1/...`）不再对应旧的 `docs:doc`。LarkSync 当前文档同步、块读取/写入与 Markdown 转块依赖 `docx:document` / `docx:document.block:convert`。
 
 > 注意：权限必须在飞书控制台配置，LarkSync 设置页不要求手动填写 scopes。
 
@@ -58,7 +62,7 @@
    - 控制台中是否已添加所需权限并通过审核。
 
 ### 常见报错：Access denied / 缺少权限
-若出现“获取根目录失败: Access denied”或提示缺少权限（如 `drive:drive`、`drive:drive.metadata:readonly`），请确认：
+若出现“获取根目录失败: Access denied”或提示缺少权限（如 `drive:drive`、`docx:document`、`docx:document.block:convert`），请确认：
 1) 飞书控制台“权限管理”中已添加上述权限，且是**用户身份权限**。
 2) 保存权限配置后，必须**重新授权**（退出登录后再次点击“连接飞书”）。
 

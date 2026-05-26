@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-26] v0.7.20 release: v0.7.20
+[2026-05-26] v0.7.20-dev.2 fix(auth): 将默认飞书权限与用户指引切换到新版 Docx scopes，新增 `docx:document` / `docx:document:readonly` / `docx:document.block:convert`，并在运行时把历史 `docs:doc` 配置自动迁移为新版权限集合，修复首次授权后仍缺文档读写权限的默认配置问题
 [2026-05-25] v0.7.20-dev.1 fix(auth): 串行化 OAuth refresh 链路并保留缺省 refresh_token 场景下的旧值，修复同一过期凭证被并发刷新时稳定复现 `refresh token is invalid | refresh token not found (code=20026)` 的竞争窗口，同时避免兼容端点未返回新 refresh_token 时把本地 refresh token 清空
 [2026-05-24] v0.7.19 release: v0.7.19
 [2026-05-24] v0.7.19-dev.8 chore(ci-mac): 将 Intel mac 验证 runner 从长期排队的 `macos-13` 切换为 `macos-15-intel`，并把 DMG 卷内 `Applications` 安装入口校验纳入 macOS install-launch smoke，进一步贴近“可拖拽安装”的完成证据

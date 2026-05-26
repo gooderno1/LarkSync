@@ -721,11 +721,11 @@ def do_bootstrap_cache(
             "phase": "needs_drive_permission",
             "completed": False,
             "ready_for_sync": False,
-            "summary": "当前账号已连接，但缺少可用的飞书 Drive 权限，首次配置已暂停。",
+            "summary": "当前账号已连接，但飞书 Drive / Docx 权限配置不完整，首次配置已暂停。",
             "check": check_result,
             "next_step": {
                 "type": "grant_drive_permission",
-                "message": "请检查飞书应用权限范围与当前账号授权状态，确认 Drive 访问权限可用后重试。",
+                "message": "请检查飞书应用权限范围与当前账号授权状态，确认 `drive:drive`、`docx:document`、`docx:document.block:convert` 等权限可用后重试。",
             },
         }
 
@@ -856,7 +856,7 @@ def _workflow_template_catalog() -> dict[str, dict[str, Any]]:
                 {
                     "phase": "needs_drive_permission",
                     "next_step_type": "grant_drive_permission",
-                    "message": "提示检查飞书应用权限范围与用户授权。",
+                    "message": "提示检查飞书应用权限范围与用户授权，重点确认 Drive / Docx / convert 权限。",
                 },
                 {
                     "phase": "configured",

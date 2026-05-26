@@ -177,7 +177,7 @@ python scripts/larksync_cli.py bootstrap-cache \
 `phase` 枚举：
 - `blocked_backend_unreachable`：后端不可达，需先启动 LarkSync
 - `needs_oauth`：需要用户先完成 OAuth
-- `needs_drive_permission`：授权存在，但 Drive 权限不可用
+- `needs_drive_permission`：授权存在，但 Drive / Docx 必要权限不可用
 - `configured`：配置已完成，可继续运行任务或读取本地缓存
 
 `next_step.type` 枚举：
@@ -194,7 +194,7 @@ python scripts/larksync_cli.py bootstrap-cache \
 - 授权完成后重试同一条 `bootstrap-cache` 命令。
 
 当 `phase=needs_drive_permission`：
-- 提示检查飞书应用权限和当前账号授权范围；
+- 提示检查飞书应用权限和当前账号授权范围，重点确认 `drive:drive`、`docx:document`、`docx:document.block:convert`；
 - 不要继续创建或运行任务。
 
 当 `phase=configured`：

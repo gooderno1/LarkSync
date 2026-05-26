@@ -64,7 +64,10 @@ export function NewTaskCloudStep({
                 <p className="font-semibold text-amber-300">权限不足，请按以下步骤操作：</p>
                 <ol className="list-decimal list-inside space-y-1 text-zinc-200">
                   <li>
-                    在飞书开发者后台确认已添加 <code className="bg-zinc-800 px-1 rounded">drive:drive</code>{" "}
+                    在飞书开发者后台确认已添加{" "}
+                    <code className="bg-zinc-800 px-1 rounded">drive:drive</code>、{" "}
+                    <code className="bg-zinc-800 px-1 rounded">docx:document</code>、{" "}
+                    <code className="bg-zinc-800 px-1 rounded">docx:document.block:convert</code>{" "}
                     等权限
                   </li>
                   <li>进入「版本管理与发布」→ 创建版本并发布应用</li>
