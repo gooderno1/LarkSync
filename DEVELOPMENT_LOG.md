@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.21-dev.1 (2026-05-26)
+
+- 目标：
+  - 修复超长飞书文档执行全量 Markdown -> Docx 替换时，根块一级子节点数触及飞书上限后持续报 `too many children in block (1770007)`，并导致后续内容被错误标记为“无效块已跳过”的问题。
+
+- 结果：
+  - 复核安装目录日志后确认，问题根因不是块 payload 非法，而是全量替换路径在根块已有 `20000` 个子节点时仍尝试直接追加新的一级块，导致飞书根块子节点上限被击穿。
+  - `DocxContentWriteService` 现已在根块接近上限或 convert 结果一级块过多时，自动把一级块压缩为透明文本容器块；这些容器本身不输出额外 Markdown 文本，只负责把大量一级块降层到子块，显著降低根块直接承载的子节点数量。
+  - 全量替换路径现已在创建前先计算根块溢出量，只删除最小必要数量的尾部旧块腾位；新内容创建成功后，再删除剩余旧块，避免以往“先全量追加导致立即 1770007”或“为腾位一次删太多旧内容”的极端行为。
+  - 新增独立 `test_docx_content_write_service.py`，覆盖“根块接近上限时自动透明包裹一级块”和“创建前只删除最小尾部旧块腾位”两条关键回归路径；既有 `docx_service`、`transcoder`、`sync_runner` 上传链路回归保持通过。
+  - 根包、后端与前端版本号已同步更新到 `v0.7.21-dev.1` / `0.7.21-dev.1`，README 与 CHANGELOG 已同步补齐本轮大文档写入修复说明。
+
+- 测试：
+  - `python -m pytest tests/test_docx_content_write_service.py tests/test_docx_service.py tests/test_sync_runner_block_update.py tests/test_sync_runner_upload_new_doc.py tests/test_transcoder.py -q`（工作目录：`apps/backend/`）
+  - `python -m pytest tests/test_config.py tests/test_config_api.py tests/test_auth_api.py -q`（工作目录：`apps/backend/`）
+
 ## v0.7.20-dev.2 (2026-05-26)
 
 - 目标：

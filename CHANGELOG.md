@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-26] v0.7.21-dev.1 fix(docx): 修复超长 Docx 全量回写在根块子节点触及飞书上限时持续命中 `too many children in block (1770007)` 并把有效内容误记为“无效块已跳过”的问题；写入链路现会在必要时将一级块压缩为透明容器，并在创建前仅删除最小尾部旧块腾位，降低大文档替换失败概率
 [2026-05-26] v0.7.20 release: v0.7.20
 [2026-05-26] v0.7.20-dev.2 fix(auth): 将默认飞书权限与用户指引切换到新版 Docx scopes，新增 `docx:document` / `docx:document:readonly` / `docx:document.block:convert`，并在运行时把历史 `docs:doc` 配置自动迁移为新版权限集合，修复首次授权后仍缺文档读写权限的默认配置问题
 [2026-05-25] v0.7.20-dev.1 fix(auth): 串行化 OAuth refresh 链路并保留缺省 refresh_token 场景下的旧值，修复同一过期凭证被并发刷新时稳定复现 `refresh token is invalid | refresh token not found (code=20026)` 的竞争窗口，同时避免兼容端点未返回新 refresh_token 时把本地 refresh token 清空
