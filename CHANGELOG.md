@@ -1,6 +1,6 @@
 # CHANGELOG
 
-[2026-05-28] v0.7.22-dev.1 docs(promo): 补齐公开 Beta 试用入口、快速开始、安全与隐私说明、反馈排障指南、FAQ、推广文章草稿、推广就绪检查清单和 GitHub Issue 表单，并同步修正 README/USAGE/版本号，降低推广前首次安装、授权和 `download_only` 首次同步的说明门槛
+[2026-05-28] v0.7.22-dev.1 docs(promo): 补齐公开 Beta 试用入口、快速开始、安全与隐私说明、反馈排障指南、FAQ、推广文章草稿、OpenClaw/AI Agent 本地缓存教程、推广素材清单、推广就绪检查清单和 GitHub Issue 表单，并同步修正 README/USAGE/版本号，降低推广前首次安装、授权和 `download_only` 首次同步的说明门槛
 
 [2026-05-26] v0.7.21 release: v0.7.21
 [2026-05-26] v0.7.21-dev.1 fix(docx): 修复超长 Docx 全量回写在根块子节点触及飞书上限时持续命中 `too many children in block (1770007)` 并把有效内容误记为“无效块已跳过”的问题；写入链路现会在必要时将一级块压缩为透明容器，并在创建前仅删除最小尾部旧块腾位，降低大文档替换失败概率
