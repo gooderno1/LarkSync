@@ -10,12 +10,13 @@
   - 修正 README / USAGE / package / pyproject / lockfile 中的版本展示，统一进入 `v0.7.22-dev.1` 开发态，并保留 `v0.7.21` 作为最近稳定版。
   - 复核 GitHub Release 后发现 `v0.7.21` 只有 tag、没有 Release 和安装包资产；已手动触发 `v0.7.21` 的 Release Build，并确认 Windows 安装包、macOS `arm64` / `x86_64` DMG 与对应 `.sha256` 已上传，`/releases/latest` 现指向 `v0.7.21`。
   - 新增公开 Beta 推广素材：OAuth 配置页、连接飞书页、仪表盘、`download_only` 任务向导、任务卡片、日志中心、本地 Markdown 输出、GitHub Release 下载入口等截图，以及 `quick-start-flow.gif` 快速开始动图；截图使用临时 mock API 和演示数据，避免泄露真实同步任务、路径或 token。
-  - 继续补齐托盘菜单演示图、冲突管理页面截图、OAuth 连接流程 GIF 和 Windows 下载启动入口 GIF；冲突页面通过临时 mock API 构造公开演示数据，托盘菜单基于当前 `tray_app.py` 菜单项生成演示图，避免暴露用户桌面隐私。
+  - 继续补齐冲突管理页面截图和 OAuth 连接流程 GIF；冲突页面通过临时 mock API 构造公开演示数据，避免泄露真实同步任务、路径或 token。
+  - 按“只使用真实截图”的素材标准，已撤下非真实托盘菜单示意图和包含该示意图的 Windows 下载启动 GIF；托盘菜单与 Windows 安装启动素材重新标记为待补真实截图 / 真实录屏。
   - `docs/QUICK_START.md`、`docs/PROMOTION_ARTICLE_DRAFT.md`、`docs/PROMOTION_ASSETS_CHECKLIST.md` 与 `assets/promotion/README.md` 已补充素材引用和完成状态；真实 Windows 安装器交互录屏仍需在明确授权实际运行安装包后再补。
 - 测试：
   - `python scripts/sync_feishu_docs.py`（已完成，终端中文输出存在编码乱码但脚本成功刷新 manifest）
-  - 通过本地临时 mock API + Vite 前端 + Browser 截图验证 `conflict-management.png` 与 `tray-menu.png` 均为 1280 × 720。
-  - 使用 Pillow 生成并校验 `oauth-connect-flow.gif`、`windows-download-startup.gif` 均为 960 × 540，文件大小低于 300KB。
+  - 通过本地临时 mock API + Vite 前端 + Browser 截图验证 `conflict-management.png` 为 1280 × 720。
+  - 使用 Pillow 生成并校验 `oauth-connect-flow.gif` 为 960 × 540，文件大小低于 300KB。
 - 问题：
   - 公开 GitHub Release 页面仍需在推广前人工确认 Latest 是否指向最新稳定版，并确认 Windows/macOS 安装包与 sha256 完整。
 

@@ -25,10 +25,6 @@ OAuth 配置到连接成功动图：![OAuth 连接流程](../assets/promotion/oa
 3. macOS 下载与你机器架构匹配的 `LarkSync-*.dmg`。
 4. 安装后启动 LarkSync，系统托盘会出现 LarkSync 图标。
 
-Windows 下载与启动入口演示：![Windows 下载与启动](../assets/promotion/windows-download-startup.gif)
-
-托盘右键菜单入口：![托盘菜单](../assets/promotion/tray-menu.png)
-
 如果你从源码运行，请参考 [使用教程](USAGE.md) 中的本地开发流程。
 
 ## 2. 准备飞书 OAuth
