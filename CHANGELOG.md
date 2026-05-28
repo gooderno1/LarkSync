@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-28] v0.7.22-dev.1 docs(promo): 新增公开 Beta 推广截图与快速开始 GIF，覆盖 OAuth 配置、连接状态、`download_only` 任务创建、任务卡片、日志中心、本地 Markdown 输出和 GitHub Release 下载入口，并把素材引用补入快速开始、推广文章草稿和素材清单
+
 [2026-05-28] v0.7.22-dev.1 docs(promo): 补齐公开 Beta 试用入口、快速开始、安全与隐私说明、反馈排障指南、FAQ、推广文章草稿、OpenClaw/AI Agent 本地缓存教程、推广素材清单、推广就绪检查清单和 GitHub Issue 表单，并同步修正 README/USAGE/版本号，降低推广前首次安装、授权和 `download_only` 首次同步的说明门槛
 
 [2026-05-26] v0.7.21 release: v0.7.21

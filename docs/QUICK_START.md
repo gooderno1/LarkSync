@@ -4,6 +4,18 @@
 
 本文面向第一次试用 LarkSync 的用户。推荐先用小型测试目录和 `download_only` 模式完成一次闭环，再决定是否启用双向同步。
 
+## 截图版流程
+
+![OAuth 配置页](../assets/promotion/quick-start-oauth.png)
+
+![创建仅下载任务](../assets/promotion/create-download-task.png)
+
+![首次同步成功](../assets/promotion/log-center-success.png)
+
+![本地 Markdown 输出](../assets/promotion/local-markdown-output.png)
+
+完整动图：![快速开始流程](../assets/promotion/quick-start-flow.gif)
+
 ## 1. 下载安装包
 
 1. 打开发布页：<https://github.com/gooderno1/LarkSync/releases>

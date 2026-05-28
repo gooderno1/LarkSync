@@ -9,6 +9,8 @@
   - 新增 GitHub Issue Form：bug report、feature request 和联系链接，收集安装、OAuth、同步模式、数据风险、日志摘要等关键信息。
   - 修正 README / USAGE / package / pyproject / lockfile 中的版本展示，统一进入 `v0.7.22-dev.1` 开发态，并保留 `v0.7.21` 作为最近稳定版。
   - 复核 GitHub Release 后发现 `v0.7.21` 只有 tag、没有 Release 和安装包资产；已手动触发 `v0.7.21` 的 Release Build，并确认 Windows 安装包、macOS `arm64` / `x86_64` DMG 与对应 `.sha256` 已上传，`/releases/latest` 现指向 `v0.7.21`。
+  - 新增公开 Beta 推广素材：OAuth 配置页、连接飞书页、仪表盘、`download_only` 任务向导、任务卡片、日志中心、本地 Markdown 输出、GitHub Release 下载入口等截图，以及 `quick-start-flow.gif` 快速开始动图；截图使用临时 mock API 和演示数据，避免泄露真实同步任务、路径或 token。
+  - `docs/QUICK_START.md`、`docs/PROMOTION_ARTICLE_DRAFT.md` 与 `docs/PROMOTION_ASSETS_CHECKLIST.md` 已补充素材引用和完成状态，后续还需补托盘菜单、冲突管理和真实 Windows 安装录屏。
 - 测试：
   - `python scripts/sync_feishu_docs.py`（已完成，终端中文输出存在编码乱码但脚本成功刷新 manifest）
 - 问题：
