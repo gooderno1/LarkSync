@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest a capability, workflow, integration, or documentation improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Sync behavior
+        - Markdown / Docx conversion
+        - OAuth / onboarding
+        - Desktop tray / installer
+        - Diagnostics / logs
+        - OpenClaw / CLI
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What are you trying to accomplish, and where does LarkSync currently fall short?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you expect.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include OS, sync mode, folder scale, or related tools such as Obsidian, VS Code, NAS, OpenClaw, or other AI agents.
