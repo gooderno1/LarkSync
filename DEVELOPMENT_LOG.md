@@ -8,7 +8,7 @@
   - 新增 `docs/QUICK_START.md`、`docs/SECURITY_AND_PRIVACY.md`、`docs/FEEDBACK.md`、`docs/FAQ.md`、`docs/PROMOTION_ARTICLE_DRAFT.md`、`docs/OPENCLAW_LOCAL_CACHE_GUIDE.md`、`docs/PROMOTION_ASSETS_CHECKLIST.md`、`docs/PROMOTION_READINESS.md`，分别覆盖首次安装授权、token/日志脱敏、问题反馈模板、常见问题、首篇中文推广草稿、OpenClaw/AI Agent 本地缓存教程、素材准备清单和推广前验收清单。
   - 新增 GitHub Issue Form：bug report、feature request 和联系链接，收集安装、OAuth、同步模式、数据风险、日志摘要等关键信息。
   - 修正 README / USAGE / package / pyproject / lockfile 中的版本展示，统一进入 `v0.7.22-dev.1` 开发态，并保留 `v0.7.21` 作为最近稳定版。
-  - 复核 GitHub Release 后发现 `v0.7.21` 只有 tag、没有 Release 和安装包资产；已手动触发 `v0.7.21` 的 Release Build，等待 CI 生成 Windows/macOS 安装包与 sha256 后复核。
+  - 复核 GitHub Release 后发现 `v0.7.21` 只有 tag、没有 Release 和安装包资产；已手动触发 `v0.7.21` 的 Release Build，并确认 Windows 安装包、macOS `arm64` / `x86_64` DMG 与对应 `.sha256` 已上传，`/releases/latest` 现指向 `v0.7.21`。
 - 测试：
   - `python scripts/sync_feishu_docs.py`（已完成，终端中文输出存在编码乱码但脚本成功刷新 manifest）
 - 问题：

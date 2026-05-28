@@ -13,18 +13,19 @@
 
 ## 2. Release 检查
 
-- [ ] GitHub Release Latest 指向最新稳定版。
-- [ ] Windows 安装包可下载。
-- [ ] macOS Intel DMG 可下载。
-- [ ] macOS Apple Silicon DMG 可下载。
-- [ ] 所有安装包都有 sha256 校验。
-- [ ] Release Notes 包含升级重点、详细变更和已知边界。
+- [x] GitHub Release Latest 指向最新稳定版。
+- [x] Windows 安装包可下载。
+- [x] macOS Intel DMG 可下载。
+- [x] macOS Apple Silicon DMG 可下载。
+- [x] 所有安装包都有 sha256 校验。
+- [x] Release Notes 包含升级重点、详细变更和已知边界。
 - [ ] 从上一稳定版自动更新到当前稳定版可用。
 
 当前检查记录：
 
 - 2026-05-28：`/releases/latest` 仍指向 `v0.7.20`，且 `v0.7.21` 存在 tag 但没有 GitHub Release。
 - 2026-05-28：已手动触发 `v0.7.21` Release Build（workflow run: <https://github.com/gooderno1/LarkSync/actions/runs/26554939964>），等待生成 Windows/macOS 安装包与 sha256 后复核。
+- 2026-05-28：`v0.7.21` Release Build 已全部通过；`/releases/latest` 现指向 `v0.7.21`，并已上传 Windows 安装包、macOS `arm64` / `x86_64` DMG 及对应 `.sha256`。
 
 ## 3. 用户首次试用检查
 
