@@ -1,15 +1,19 @@
 # 推广素材清单
 
-更新时间：2026-05-28 14:42:00 +08:00
+更新时间：2026-05-28 15:22:00 +08:00
 
 本文用于准备公开 Beta 推广所需截图、GIF 和短视频素材。素材完成后可放入 `assets/promotion/`，并在 README、推广文章或 Release Notes 中引用。
 
-## 1. 必备截图
+## 1. 核心推广截图
 
 - [x] GitHub Release 下载入口：`assets/promotion/github-release-download.png`
-- [ ] LarkSync 托盘图标与菜单：只使用真实 Windows 托盘截图，暂不展示示意图。
 - [x] 首次 OAuth 配置页：`assets/promotion/quick-start-oauth.png`
+- [x] 飞书开放平台创建企业自建应用入口：`assets/promotion/oauth-feishu-create-app.png`
+- [x] 飞书开放平台应用凭证页：`assets/promotion/oauth-feishu-app-credentials.png`
+- [x] 飞书开放平台重定向 URL 配置页：`assets/promotion/oauth-feishu-redirect-uri.png`
+- [x] 飞书开放平台权限管理页：`assets/promotion/oauth-feishu-permissions.png`
 - [x] 飞书 OAuth 授权成功后的连接状态：`assets/promotion/connect-feishu.png`、`assets/promotion/dashboard-connected.png`
+- [x] 同步状态总览与最近运行结果：`assets/promotion/log-center-success.png`
 - [x] 新建同步任务向导：`assets/promotion/create-download-task.png`
 - [x] `download_only` 任务卡片：`assets/promotion/task-card-download-only.png`
 - [x] 首次同步成功后的日志中心：`assets/promotion/log-center-success.png`
@@ -17,10 +21,9 @@
 - [x] 设置页中的自动更新面板：`assets/promotion/settings-oauth-update.png`
 - [x] 本地 Markdown 输出目录：`assets/promotion/local-markdown-output.png`
 
-## 2. 必备 GIF / 短视频
+## 2. 核心 GIF / 短视频
 
 - [x] 安装包下载入口：`assets/promotion/github-release-download.png`。
-- [ ] 安装包启动与托盘入口：只使用真实 Windows 安装 / 启动录屏，暂不展示示意图。
 - [x] OAuth 配置与连接飞书：`assets/promotion/oauth-connect-flow.gif`
 - [x] 创建 `download_only` 任务并完成首次同步：`assets/promotion/quick-start-flow.gif`
 - [x] 打开本地同步目录，查看生成的 Markdown 和图片资源：`assets/promotion/local-markdown-output.png`
@@ -80,7 +83,7 @@ assets/promotion/quick-start-flow.gif
 
 ## 7. 本轮素材说明
 
-本轮素材使用本地临时 mock API 生成，示例任务、路径、账号均为公开演示数据：
+前端产品截图使用本地临时 mock API 生成，示例任务、路径、账号均为公开演示数据：
 
 - 账号：`Demo User`
 - 设备：`Demo PC`
@@ -93,8 +96,9 @@ assets/promotion/quick-start-flow.gif
 
 - `conflict-management.png`：通过临时 mock API 构造 `产品周报.md` 的模拟冲突，token、路径和内容均为演示数据。
 - `oauth-connect-flow.gif`：串联 OAuth 配置、连接飞书和已连接仪表盘。
+- `oauth-feishu-create-app.png`、`oauth-feishu-app-credentials.png`、`oauth-feishu-redirect-uri.png`、`oauth-feishu-permissions.png`：来自真实飞书开放平台控制台，已脱敏 App identity、App ID、企业信息、头像等敏感信息，用于 OAuth 截图级教程。
 
 后续可选补充：
 
-- 真实 Windows 安装器交互录屏：需要明确授权实际运行安装包后再补充。
-- 真实系统托盘菜单实机截图：只使用实际 Windows 托盘截图，确认不会暴露桌面、任务栏或个人环境信息后再补。
+- 真实 Windows 安装器交互录屏：不作为当前推广必需素材，后续如要做“安装体验”短视频再补。
+- 真实系统托盘菜单实机截图：不作为当前推广必需素材，后续只在能确保不暴露桌面、任务栏或个人环境信息时补。

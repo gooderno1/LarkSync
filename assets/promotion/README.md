@@ -1,8 +1,8 @@
 # LarkSync Promotion Assets
 
-更新时间：2026-05-28 14:42:00 +08:00
+更新时间：2026-05-28 15:22:00 +08:00
 
-本目录保存公开 Beta 推广素材。当前截图由本地临时 mock API 生成，示例账号、路径、任务名和 token 均为演示数据。
+本目录保存公开 Beta 推广素材。前端产品截图由本地临时 mock API 生成，示例账号、路径、任务名和 token 均为演示数据。飞书开放平台截图来自真实控制台页面，已脱敏应用名称、企业信息、App ID、头像等敏感信息。
 
 ## 文件清单
 
@@ -10,6 +10,10 @@
 | --- | --- |
 | `github-release-download.png` | GitHub Release 下载入口 |
 | `quick-start-oauth.png` | 首次 OAuth 配置页 |
+| `oauth-feishu-create-app.png` | 飞书开放平台创建企业自建应用入口 |
+| `oauth-feishu-app-credentials.png` | 飞书开放平台应用凭证页 |
+| `oauth-feishu-redirect-uri.png` | 飞书开放平台重定向 URL 配置页 |
+| `oauth-feishu-permissions.png` | 飞书开放平台权限管理页 |
 | `oauth-connect-flow.gif` | OAuth 配置到连接成功流程动图 |
 | `connect-feishu.png` | 飞书连接页 |
 | `dashboard-connected.png` | 已连接后的仪表盘 |
@@ -23,5 +27,5 @@
 
 ## 待补
 
-- 真实 Windows 安装器交互录屏：需要明确授权实际运行安装包后再补。
-- 真实系统托盘菜单实机截图：只使用实际 Windows 托盘截图，确认不会暴露桌面、任务栏或个人环境信息后再补。
+- 真实 Windows 安装器交互录屏：不作为当前推广必需素材，后续如要做“安装体验”短视频再补。
+- 真实系统托盘菜单实机截图：不作为当前推广必需素材，后续只在能确保不暴露桌面、任务栏或个人环境信息时补。

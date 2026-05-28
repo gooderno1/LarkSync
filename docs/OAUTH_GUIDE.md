@@ -1,6 +1,6 @@
 # OAuth 配置指南（飞书）
 
-本指南用于帮助你在网页端完成飞书 OAuth 配置，所有说明以飞书官方文档为准。
+本指南用于帮助你在网页端完成飞书 OAuth 配置，所有说明以飞书官方文档为准。文中的控制台截图来自真实飞书开放平台页面，已对应用名称、企业信息、App ID、头像等敏感信息做脱敏处理。
 
 ## 1. 先决条件
 - 你有飞书账号，且能进入飞书开放平台控制台（企业管理员或应用创建者权限）。
@@ -13,9 +13,13 @@
 2) 选择创建应用并选择“企业自建应用”。
 3) 填写应用名称与描述并完成创建。
 
+![飞书开放平台创建企业自建应用入口](../assets/promotion/oauth-feishu-create-app.png)
+
 ### 2.2 获取 App ID / App Secret
 1) 打开应用详情页。
 2) 在“应用凭证”页面复制 App ID 与 App Secret。
+
+![飞书开放平台应用凭证页](../assets/promotion/oauth-feishu-app-credentials.png)
 
 ### 2.3 配置 OAuth 回调地址
 1) 打开“安全设置 / OAuth 回调”。
@@ -24,12 +28,16 @@
    - 自定义端口：`http://localhost:9000/auth/callback`（若修改了后端端口）
 3) 保存设置。
 
+![飞书开放平台安全设置中的重定向 URL](../assets/promotion/oauth-feishu-redirect-uri.png)
+
 > **重要**：回调地址**不含** `/api` 前缀，端口默认 8000。协议、域名、端口、路径必须**完全匹配**，否则授权会失败。
 
 ### 2.4 配置权限 Scopes（在飞书控制台配置）
 1) 打开“权限管理”。
 2) 添加需要的权限（建议遵循最小权限原则）。
 3) 如平台需要审核，等待审核通过后再授权。
+
+![飞书开放平台权限管理页](../assets/promotion/oauth-feishu-permissions.png)
 
 **常用最小权限建议：**
 - `drive:drive`
