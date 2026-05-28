@@ -5,9 +5,10 @@
 - 目标：启动推广前完善工作，先把陌生用户首次试用所需的公开入口、权限/安全说明和反馈闭环补齐。
 - 结果：
   - README 首屏新增公开 Beta 试用路径、推荐 `download_only` 起步、已知边界和关键文档入口，避免用户先被完整工程变更列表淹没。
-  - 新增 `docs/QUICK_START.md`、`docs/SECURITY_AND_PRIVACY.md`、`docs/FEEDBACK.md`、`docs/PROMOTION_READINESS.md`，分别覆盖首次安装授权、token/日志脱敏、问题反馈模板和推广前验收清单。
+  - 新增 `docs/QUICK_START.md`、`docs/SECURITY_AND_PRIVACY.md`、`docs/FEEDBACK.md`、`docs/FAQ.md`、`docs/PROMOTION_ARTICLE_DRAFT.md`、`docs/PROMOTION_READINESS.md`，分别覆盖首次安装授权、token/日志脱敏、问题反馈模板、常见问题、首篇中文推广草稿和推广前验收清单。
   - 新增 GitHub Issue Form：bug report、feature request 和联系链接，收集安装、OAuth、同步模式、数据风险、日志摘要等关键信息。
   - 修正 README / USAGE / package / pyproject / lockfile 中的版本展示，统一进入 `v0.7.22-dev.1` 开发态，并保留 `v0.7.21` 作为最近稳定版。
+  - 复核 GitHub Release 后发现 `v0.7.21` 只有 tag、没有 Release 和安装包资产；已手动触发 `v0.7.21` 的 Release Build，等待 CI 生成 Windows/macOS 安装包与 sha256 后复核。
 - 测试：
   - `python scripts/sync_feishu_docs.py`（已完成，终端中文输出存在编码乱码但脚本成功刷新 manifest）
 - 问题：

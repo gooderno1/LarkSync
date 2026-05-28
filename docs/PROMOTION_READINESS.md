@@ -21,6 +21,11 @@
 - [ ] Release Notes 包含升级重点、详细变更和已知边界。
 - [ ] 从上一稳定版自动更新到当前稳定版可用。
 
+当前检查记录：
+
+- 2026-05-28：`/releases/latest` 仍指向 `v0.7.20`，且 `v0.7.21` 存在 tag 但没有 GitHub Release。
+- 2026-05-28：已手动触发 `v0.7.21` Release Build（workflow run: <https://github.com/gooderno1/LarkSync/actions/runs/26554939964>），等待生成 Windows/macOS 安装包与 sha256 后复核。
+
 ## 3. 用户首次试用检查
 
 - [ ] README 首屏能直接找到下载入口。
@@ -58,9 +63,9 @@
 - [ ] 授权流程截图或 GIF。
 - [ ] 创建任务截图或 GIF。
 - [ ] 日志中心截图。
-- [ ] 一篇中文推广文章草稿。
+- [x] 一篇中文推广文章草稿。
 - [ ] OpenClaw / AI Agent 场景教程。
-- [ ] 常见问题 FAQ。
+- [x] 常见问题 FAQ。
 
 ## 7. 暂不扩大推广的阻塞项
 
