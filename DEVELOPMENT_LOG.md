@@ -1,5 +1,23 @@
 # DEVELOPMENT LOG
 
+## v0.7.22 (2026-05-29)
+
+- 目标：
+  - 将 `v0.7.22-dev.1` 到 `v0.7.22-dev.2` 的公开试用准备与 Windows 开机自启动修复收口为正式稳定版，并触发 GitHub Release 构建与安装包发布。
+
+- 结果：
+  - 当前版本正式提升为 `v0.7.22`。
+  - 本次稳定版纳入两类用户可见结果：一是公开 Beta 试用与文档入口收敛，首次安装、OAuth 配置、`download_only` 试用路径、安全边界和反馈通道已补齐；二是修复 Windows 开机自启动失效问题，开发态/安装版快捷方式入口已分别对齐到 `apps/tray/launcher.py` 与 `LarkSync.exe`，并支持自动修复历史残留的旧快捷方式。
+  - 仓库内版本展示已统一切到稳定版：根包、后端、前端、前端 lockfile、README、CHANGELOG 与本开发日志都已同步到 `v0.7.22`。
+  - 正式版 Release 仍沿用 tag 驱动的 GitHub Actions 发布链路：Windows 产物会生成 NSIS 安装包与 `.sha256`，macOS 产物会生成 `x86_64` / `arm64` 双架构 DMG 与 `.sha256`，Release 说明由 `scripts/release_notes.py` 基于 `CHANGELOG.md` 与 `DEVELOPMENT_LOG.md` 自动生成。
+
+- 测试：
+  - `python -m pytest tests/test_tray_autostart.py tests/test_build_installer.py -q`（工作目录：`apps/backend/`）
+  - `python scripts/build_installer.py --skip-frontend`（工作目录：仓库根目录；确认本地 PyInstaller 打包仍可通过）
+
+- 问题：
+  - 稳定版安装包与 GitHub Release 资产仍依赖 tag push 后的 GitHub Actions 异步完成；若远端 runner 排队或失败，需要继续跟进对应 workflow run。
+
 ## v0.7.22-dev.2 (2026-05-29)
 
 - 目标：
