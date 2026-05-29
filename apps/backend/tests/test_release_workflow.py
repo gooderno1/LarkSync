@@ -25,6 +25,33 @@ def _step(workflow: dict, job_name: str, step_name: str) -> dict:
     raise AssertionError(f"missing step {job_name}.{step_name}")
 
 
+def test_release_workflow_uses_current_action_major_versions() -> None:
+    workflow = _load_release_workflow()
+
+    expected_versions = {
+        "actions/checkout": "v6",
+        "actions/setup-python": "v6",
+        "actions/setup-node": "v6",
+        "actions/upload-artifact": "v7",
+        "softprops/action-gh-release": "v3",
+    }
+    seen_versions: dict[str, set[str]] = {}
+
+    for job in workflow["jobs"].values():
+        for step in job.get("steps", []):
+            uses = step.get("uses")
+            if not uses:
+                continue
+            action, version = uses.split("@", maxsplit=1)
+            if action in expected_versions:
+                seen_versions.setdefault(action, set()).add(version)
+
+    assert seen_versions == {
+        action: {version}
+        for action, version in expected_versions.items()
+    }
+
+
 def test_quality_macos_packaging_reuses_pytest_bootstrap() -> None:
     workflow = _load_release_workflow()
 

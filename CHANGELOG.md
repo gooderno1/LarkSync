@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-29] v0.7.23-dev.1 fix(ci): 升级 `release-build.yml` 中的 `actions/checkout`、`actions/setup-python`、`actions/setup-node`、`actions/upload-artifact` 与 `softprops/action-gh-release` 到当前主版本，消除 Node 20 退役告警并收紧正式版发布链路的后续维护风险
+
 [2026-05-29] v0.7.22 release: v0.7.22
 [2026-05-29] v0.7.22-dev.2 fix(tray): 修复 Windows 开机自启动失效问题；开发态快捷方式现优先指向受版本控制的 `apps/tray/launcher.py`，打包态直接指向当前 `LarkSync.exe`，`toggle_autostart()` 会按真实结果返回状态，托盘启动时还会自动修复旧的失效快捷方式
 

@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.23-dev.1 (2026-05-29)
+
+- 目标：
+  - 升级 GitHub Release workflow 依赖的第三方 actions，清理发布流水线里的 Node 20 退役告警，并让仓库从 `v0.7.22` 稳定版切回下一开发版状态。
+
+- 结果：
+  - `.github/workflows/release-build.yml` 中的 `actions/checkout`、`actions/setup-python`、`actions/setup-node`、`actions/upload-artifact` 与 `softprops/action-gh-release` 已分别提升到 `v6`、`v6`、`v6`、`v7` 与 `v3`，Windows 与 macOS 质量检查、制品上传、Release 发布步骤现在统一使用当前主版本锚点。
+  - 后端新增 workflow 配置回归测试，直接断言上述 action 的主版本；后续若有人把 workflow 回退到旧版本，CI 会先在仓库测试层失败，而不是等 GitHub Actions 页面再次出现退役告警。
+  - 仓库版本号已切入下一开发版：根包、后端、前端、前端 lockfile、README、CHANGELOG 与本开发日志统一提升到 `v0.7.23-dev.1` / `0.7.23-dev.1`，最新稳定版继续保留为 `v0.7.22`。
+
+- 测试：
+  - `python -m pytest tests/test_release_workflow.py -q`（工作目录：`apps/backend/`）
+
+- 问题：
+  - 本轮只做了 workflow 配置级回归，没有在 GitHub 远端实际触发一次 `release-build.yml`；如需完全闭环，还需要后续通过 PR / tag run 再验证一次真实 runner 行为。
+
 ## v0.7.22 (2026-05-29)
 
 - 目标：
