@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Quick start
+    url: https://github.com/gooderno1/LarkSync/blob/main/docs/QUICK_START.md
+    about: Install, configure OAuth, and create the first download_only task.
+  - name: OAuth guide
+    url: https://github.com/gooderno1/LarkSync/blob/main/docs/OAUTH_GUIDE.md
+    about: Configure Feishu App ID, App Secret, redirect URI, and scopes.
+  - name: Feedback guide
+    url: https://github.com/gooderno1/LarkSync/blob/main/docs/FEEDBACK.md
+    about: Learn what logs and environment details are useful for debugging.

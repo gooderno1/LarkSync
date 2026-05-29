@@ -1,0 +1,114 @@
+name: Bug report
+description: Report an installation, OAuth, sync, conversion, or update problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a LarkSync issue. If this may involve deletion, overwrite, or data loss, pause the sync task first and keep your local directory, `.larksync_trash/`, database, and logs.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Problem area
+      options:
+        - Installation / startup
+        - OAuth / permission
+        - First download_only sync
+        - Bidirectional sync
+        - Markdown / Docx conversion
+        - Conflict resolution
+        - Delete policy
+        - Auto update
+        - OpenClaw / CLI
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: LarkSync version
+      description: Example: v0.7.21
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS Intel
+        - macOS Apple Silicon
+        - Linux / WSL
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Installation method
+      options:
+        - Windows installer
+        - macOS DMG
+        - Source checkout / npm run dev
+        - CLI / OpenClaw helper
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: sync_mode
+    attributes:
+      label: Sync mode
+      options:
+        - download_only
+        - bidirectional
+        - upload_only
+        - Not applicable
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Please list the exact steps that trigger the problem.
+      placeholder: |
+        1. Installed ...
+        2. Configured OAuth ...
+        3. Created task ...
+        4. Clicked ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: scale
+    attributes:
+      label: Folder and document scale
+      description: Approximate file count, online document count, large files, images, sheets, or tables.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or error details
+      description: Remove App Secret, access tokens, refresh tokens, file tokens, document tokens, share links, company names, and sensitive local paths. Keep error codes, HTTP status, and request id when possible.
+      render: text
+  - type: checkboxes
+    id: data_risk
+    attributes:
+      label: Data-risk check
+      options:
+        - label: This may involve deletion, overwrite, or data loss.
+        - label: I have paused the affected sync task.
+        - label: I can provide sanitized logs or a docx blocks JSON sample if needed.

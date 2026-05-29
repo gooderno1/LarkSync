@@ -1,5 +1,29 @@
 # DEVELOPMENT LOG
 
+## v0.7.22-dev.1 (2026-05-28)
+
+- 目标：启动推广前完善工作，先把陌生用户首次试用所需的公开入口、权限/安全说明和反馈闭环补齐。
+- 结果：
+  - README 首屏新增公开 Beta 试用路径、推荐 `download_only` 起步、已知边界和关键文档入口，避免用户先被完整工程变更列表淹没。
+  - 新增 `docs/QUICK_START.md`、`docs/SECURITY_AND_PRIVACY.md`、`docs/FEEDBACK.md`、`docs/FAQ.md`、`docs/PROMOTION_ARTICLE_DRAFT.md`、`docs/OPENCLAW_LOCAL_CACHE_GUIDE.md`、`docs/PROMOTION_ASSETS_CHECKLIST.md`、`docs/PROMOTION_READINESS.md`，分别覆盖首次安装授权、token/日志脱敏、问题反馈模板、常见问题、首篇中文推广草稿、OpenClaw/AI Agent 本地缓存教程、素材准备清单和推广前验收清单。
+  - 新增 GitHub Issue Form：bug report、feature request 和联系链接，收集安装、OAuth、同步模式、数据风险、日志摘要等关键信息。
+  - 修正 README / USAGE / package / pyproject / lockfile 中的版本展示，统一进入 `v0.7.22-dev.1` 开发态，并保留 `v0.7.21` 作为最近稳定版。
+  - 复核 GitHub Release 后发现 `v0.7.21` 只有 tag、没有 Release 和安装包资产；已手动触发 `v0.7.21` 的 Release Build，并确认 Windows 安装包、macOS `arm64` / `x86_64` DMG 与对应 `.sha256` 已上传，`/releases/latest` 现指向 `v0.7.21`。
+  - 新增公开 Beta 推广素材：OAuth 配置页、连接飞书页、仪表盘、`download_only` 任务向导、任务卡片、日志中心、本地 Markdown 输出、GitHub Release 下载入口等截图，以及 `quick-start-flow.gif` 快速开始动图；截图使用临时 mock API 和演示数据，避免泄露真实同步任务、路径或 token。
+  - 继续补齐冲突管理页面截图和 OAuth 连接流程 GIF；冲突页面通过临时 mock API 构造公开演示数据，避免泄露真实同步任务、路径或 token。
+  - 按“只使用真实截图”的素材标准，已撤下非真实托盘菜单示意图和包含该示意图的 Windows 下载启动 GIF；托盘菜单与 Windows 安装启动素材重新标记为待补真实截图 / 真实录屏。
+  - `docs/QUICK_START.md`、`docs/PROMOTION_ARTICLE_DRAFT.md`、`docs/PROMOTION_ASSETS_CHECKLIST.md` 与 `assets/promotion/README.md` 已补充素材引用和完成状态；真实 Windows 安装器交互录屏不作为当前推广必需素材，后续如要单独宣传安装体验再补。
+  - README 首屏参考高星开源项目常见结构重新收敛为一句话定位、下载/快速开始入口、适合人群、3 分钟试用路径、同步状态预览、核心能力和当前边界；长篇工程化功能列表改为折叠展示，减少陌生用户首次阅读负担。
+  - 新增飞书开放平台 OAuth 配置真实脱敏截图：创建企业自建应用入口、应用凭证页、重定向 URL 配置页、权限管理页，并补入 `docs/OAUTH_GUIDE.md` 形成截图级教程。
+  - `docs/PROMOTION_READINESS.md` 已同步用户首次试用、OAuth 指南和核心推广素材状态；托盘菜单与安装器交互截图明确降为非必需可选素材，后续只使用真实截图 / 录屏。
+- 测试：
+  - `python scripts/sync_feishu_docs.py`（已完成，终端中文输出存在编码乱码但脚本成功刷新 manifest）
+  - 通过本地临时 mock API + Vite 前端 + Browser 截图验证 `conflict-management.png` 为 1280 × 720。
+  - 使用 Pillow 生成并校验 `oauth-connect-flow.gif` 为 960 × 540，文件大小低于 300KB。
+  - 人工复核 OAuth 真实脱敏截图为 1280 × 720，且已遮盖 App identity、App ID、企业信息、头像等敏感信息。
+- 问题：
+  - 公开 GitHub Release 页面仍需在推广前人工确认 Latest 是否指向最新稳定版，并确认 Windows/macOS 安装包与 sha256 完整。
+
 ## v0.7.21-dev.1 (2026-05-26)
 
 - 目标：
