@@ -1,5 +1,26 @@
 # DEVELOPMENT LOG
 
+## v0.7.22-dev.2 (2026-05-29)
+
+- 目标：
+  - 修复 Windows 托盘版“开机自启动菜单显示已启用，但重启后实际没有拉起”的问题，并确认开发态与安装版入口都指向当前有效启动器。
+
+- 结果：
+  - 复核 `apps/tray/autostart.py` 后确认根因有两处：Windows 快捷方式始终硬编码根目录 `LarkSync.pyw`，没有跟随当前受版本控制的 `apps/tray/launcher.py` / 打包后的 `LarkSync.exe`；同时 `toggle_autostart()` 在启用失败时仍无条件返回 `True`，会把失败状态误报成“已启用”。
+  - Windows 自启动入口现已按运行形态分流：开发态优先解析仓库内 `apps/tray/launcher.py`（保留 `LarkSync.pyw` 作为兼容回退），打包态直接使用当前 `sys.executable`，工作目录也随之切换为仓库根目录或安装目录，避免安装版继续引用仓库脚本。
+  - 新增 Windows 快捷方式规范化与校验逻辑：托盘菜单判断自启动状态时不再只看 `.lnk` 是否存在，而是优先比对快捷方式是否仍指向当前期望入口；托盘手动启动时若发现历史 `.lnk` 仍指向旧入口，会自动重写修复，降低老用户升级后的残留配置风险。
+  - `toggle_autostart()` 已改为返回真实启停结果，避免底层创建失败时仍把 UI 和通知文案显示为“已启用”。
+  - 补充 `test_tray_autostart.py` 的 Windows 回归：覆盖开发态快捷方式指向 `launcher.py`、打包态快捷方式指向 `LarkSync.exe`、启用失败时 `toggle_autostart()` 返回 `False`。
+  - 根包、后端、前端版本号已统一提升到 `v0.7.22-dev.2` / `0.7.22-dev.2`，README 与 CHANGELOG 已同步补齐本轮修复说明。
+
+- 测试：
+  - `python scripts/sync_feishu_docs.py`（工作目录：仓库根目录；成功刷新 `docs/feishu/_manifest.json`，终端中文输出仍有编码乱码）
+  - `python -m pytest tests/test_tray_autostart.py tests/test_build_installer.py -q`（工作目录：`apps/backend/`）
+  - `python scripts/build_installer.py --skip-frontend`（工作目录：仓库根目录；PyInstaller 打包通过，产出 `dist/LarkSync/LarkSync.exe`）
+
+- 问题：
+  - 本轮未执行真实用户级“安装包安装 -> 勾选开机自启动 -> 重启系统”体验验证，仍需在安装版环境做一次人工回归，确认旧快捷方式自动修复与开机拉起行为在真实桌面会话中一致。
+
 ## v0.7.22-dev.1 (2026-05-28)
 
 - 目标：启动推广前完善工作，先把陌生用户首次试用所需的公开入口、权限/安全说明和反馈闭环补齐。

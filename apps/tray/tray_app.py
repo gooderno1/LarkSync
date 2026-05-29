@@ -53,7 +53,7 @@ from apps.tray.config import (
 )
 from apps.tray.backend_manager import BackendManager
 from apps.tray.icon_generator import generate_icons, get_icon_path
-from apps.tray.autostart import is_autostart_enabled, toggle_autostart
+from apps.tray.autostart import is_autostart_enabled, repair_autostart_if_needed, toggle_autostart
 from apps.tray import notifier
 from apps.tray import windows_install_helper
 from src.core.paths import update_data_dir, update_logs_dir
@@ -502,6 +502,11 @@ class LarkSyncTray:
             sys.exit(1)
 
         self._running = True
+
+        try:
+            repair_autostart_if_needed()
+        except Exception:
+            pass
 
         # 注册 atexit 确保无论如何退出都清理子进程
         atexit.register(self._cleanup_all)

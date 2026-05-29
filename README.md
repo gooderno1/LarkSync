@@ -5,7 +5,7 @@
 </p>
 
 本地优先的飞书文档同步工具：把飞书云文档稳定同步到本地 Markdown / 文件系统，同时保留继续在飞书协作的工作方式。
-当前开发版本：`v0.7.22-dev.1`；最新稳定版：`v0.7.21`（2026-05-26）。核心运行形态为托盘常驻 + Web 管理面板。
+当前开发版本：`v0.7.22-dev.2`；最新稳定版：`v0.7.21`（2026-05-26）。核心运行形态为托盘常驻 + Web 管理面板。
 
 ## 快速入口
 
@@ -95,6 +95,7 @@
 - `transcoder` 中的块类型常量、`DocxParser` 与解析辅助逻辑已下沉到独立 `docx_parser.py`，`transcoder.py` 继续兼容导出原入口，转码编排与块解析职责正式分层。
 - `transcoder` 的内嵌 sheet 预览转码、表格矩阵裁剪和 add-ons 文本块渲染已下沉到独立 `transcoder_sheet_helper.py`，表格/附加块渲染开始从主转码器中剥离。
 - `tray_app` 的 Windows 安装脚本构造、PowerShell helper 启动参数与静默安装 bootstrap/worker 文本模板已下沉到独立 `windows_install_helper.py`，托盘主入口继续保留兼容函数名，但安装链路开始从主托盘文件中剥离。
+- Windows 开机自启动现已区分开发态与打包态入口：开发态快捷方式优先指向受版本控制的 `apps/tray/launcher.py`，安装版直接指向当前 `LarkSync.exe`，托盘启动时还会自动修复旧的失效快捷方式，避免菜单显示“已启用”但实际开机不拉起。
 - macOS 安装版链路已补齐：更新包版本识别同时支持 `LarkSync-Setup-*.exe` 与 `LarkSync-*.dmg`，LaunchAgent 会在开发态使用受版本控制的 `launcher.py`、在打包态直接启动 `.app` 内可执行文件，托盘后端日志统一落到用户数据目录，避免安装到 `/Applications` 后继续回写应用目录。
 - GitHub Release 正式版 tag 现会默认同时构建 Windows `exe` 与 macOS `dmg`，减少发布时漏传 mac 安装包的风险；仅手动重跑工作流时才允许按需跳过 mac 构建。
 - GitHub Actions 现额外在 PR / `main` 非 tag 场景执行 macOS 定向后端回归 + 打包 smoke，尽量把 `.app` / `dmg` 与 LaunchAgent / 更新链路问题提前暴露，而不是等到正式发布时才首次发现。
