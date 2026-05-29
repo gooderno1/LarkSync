@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.24-dev.1 (2026-05-29)
+
+- 目标：
+  - 修复 `main` 上非 tag `Release Build` 中的 `quality-macos-packaging` 红灯，避免 macOS runner 运行 Windows 自启动回归时因路径拼接语义差异误报失败。
+
+- 结果：
+  - `apps/tray/autostart.py` 的 Windows Startup 快捷方式路径已从单段反斜杠字符串改为逐级目录拼接，避免在非 Windows 主机上模拟 `sys.platform == "win32"` 时把 `Microsoft\Windows\...` 当成一个普通目录名。
+  - 本次修复不改变真实 Windows 上自启动 `.lnk` 的目标、参数或工作目录，只消除了单元测试与跨平台 CI 环境中的路径语义漂移。
+  - 仓库版本已切入下一开发版：根包、后端、前端、前端 lockfile、README、CHANGELOG 与本开发日志统一提升到 `v0.7.24-dev.1` / `0.7.24-dev.1`，最新稳定版继续保留为 `v0.7.23`。
+
+- 测试：
+  - `python -m pytest tests/test_tray_autostart.py tests/test_build_installer.py -q`（工作目录：`apps/backend/`）
+
+- 问题：
+  - 本轮只做了本地 Windows 回归；要完全验证 `quality-macos-packaging` 已转绿，还需要下一次远端 `main` workflow 重新运行。
+
 ## v0.7.23 (2026-05-29)
 
 - 目标：

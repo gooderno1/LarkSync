@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-29] v0.7.24-dev.1 fix(ci): 修正 Windows 开机自启动 Startup 路径的目录拼接方式，避免 macOS runner 上模拟 `win32` 分支时把反斜杠当普通字符，导致 `test_tray_autostart.py` 中的 Windows 自启动回归在 `quality-macos-packaging` 误报失败
+
 [2026-05-29] v0.7.23 release: v0.7.23
 [2026-05-29] v0.7.23-dev.1 fix(ci): 升级 `release-build.yml` 中的 `actions/checkout`、`actions/setup-python`、`actions/setup-node`、`actions/upload-artifact` 与 `softprops/action-gh-release` 到当前主版本，消除 Node 20 退役告警并收紧正式版发布链路的后续维护风险
 

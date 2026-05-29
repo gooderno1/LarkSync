@@ -85,8 +85,13 @@ def repair_autostart_if_needed() -> bool:
 
 def _win_shortcut_path() -> Path:
     """获取 Windows Startup 文件夹中的快捷方式路径。"""
-    startup = Path(os.environ.get("APPDATA", "")) / (
-        r"Microsoft\Windows\Start Menu\Programs\Startup"
+    startup = (
+        Path(os.environ.get("APPDATA", ""))
+        / "Microsoft"
+        / "Windows"
+        / "Start Menu"
+        / "Programs"
+        / "Startup"
     )
     return startup / "LarkSync.lnk"
 
