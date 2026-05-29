@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-05-29] v0.7.23 release: v0.7.23
 [2026-05-29] v0.7.23-dev.1 fix(ci): 升级 `release-build.yml` 中的 `actions/checkout`、`actions/setup-python`、`actions/setup-node`、`actions/upload-artifact` 与 `softprops/action-gh-release` 到当前主版本，消除 Node 20 退役告警并收紧正式版发布链路的后续维护风险
 
 [2026-05-29] v0.7.22 release: v0.7.22

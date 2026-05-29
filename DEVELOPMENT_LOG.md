@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.7.23 (2026-05-29)
+
+- 目标：
+  - 将 `v0.7.23-dev.1` 的 CI workflow action 升级收口为正式稳定版，并发布新的 GitHub Release。
+
+- 结果：
+  - 正式版纳入 `release-build.yml` 的 action 升级：`actions/checkout`、`actions/setup-python`、`actions/setup-node`、`actions/upload-artifact` 与 `softprops/action-gh-release` 已统一切到当前主版本锚点，消除了发布流水线中的 Node 20 退役告警来源。
+  - 后端 workflow 回归测试已覆盖上述 action 主版本，后续若配置回退到旧 action，仓库测试会先失败，不再等到 GitHub Actions 页面告警才发现。
+  - 仓库版本展示已统一提升到稳定版：根包、后端、前端、前端 lockfile、README、CHANGELOG 与本开发日志现统一对齐到 `v0.7.23` / `0.7.23`，并继续沿用 tag 驱动的 Release 构建与出包流程。
+
+- 测试：
+  - `python -m pytest tests/test_release.py tests/test_release_workflow.py tests/test_build_installer.py -q`（工作目录：`apps/backend/`）
+
+- 问题：
+  - 稳定版 Release 资产仍依赖 tag push 后的 GitHub Actions 异步完成；如 runner 侧构建失败或排队，需要继续跟进对应 workflow run。
+
 ## v0.7.23-dev.1 (2026-05-29)
 
 - 目标：
