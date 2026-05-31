@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.7.24 (2026-05-31)
+
+- 目标：
+  - 将 `v0.7.24-dev.1` 到 `v0.7.24-dev.2` 的修复收口为正式稳定版，发布包含 Windows 自启动路径修正与 Docx 全量替换回滚修复的新安装包版本。
+
+- 结果：
+  - 当前版本正式提升为 `v0.7.24`。
+  - 本次稳定版纳入两类核心修复：一是 Windows 自启动 Startup 路径拼接在跨平台环境下的兼容问题，避免 CI 在 macOS runner 上模拟 `win32` 时把反斜杠当普通字符；二是 Docx 全量替换在根块接近飞书子节点上限时的透明容器与失败回滚问题，避免空 `text.elements` 持续触发 `invalid param`，并阻止失败写入把云端文档反复追加膨胀。
+  - 仓库版本展示已统一切到稳定版：根包、后端、前端、锁文件、README、CHANGELOG 与本开发日志都已同步更新到 `v0.7.24` / `0.7.24`，最新稳定版标识同步对齐。
+  - 正式版 Release 继续沿用 tag 驱动的 GitHub Actions 发布链路：tag push 后会在远端执行 Windows 质量门、正式安装包构建、release notes 生成与 Release 资产上传。
+
+- 测试：
+  - `python -m pytest tests/test_docx_content_write_service.py tests/test_release.py tests/test_release_notes.py -q`（工作目录：`apps/backend/`）
+
+- 问题：
+  - 本轮未在本地执行完整 `build_installer.py` 用户级安装体验验证，正式安装包仍依赖 tag push 后的 GitHub Actions 构建与 smoke 结果确认。
+
 ## v0.7.24-dev.2 (2026-05-31)
 
 - 目标：

@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-05-31] v0.7.24 release: v0.7.24
+
 [2026-05-31] v0.7.24-dev.2 fix(docx): 修复 Docx 全量替换在根块接近飞书子节点上限时仍提前生成空文本透明容器、并在创建失败后遗留部分新顶层块的问题；写入链路现改为在删尾腾位后再决定是否包裹一级块，透明容器使用合法零宽字符段落，且失败时会回滚本轮已插入顶层块，避免云端文档越写越大后持续命中 `invalid param`
 
 [2026-05-29] v0.7.24-dev.1 fix(ci): 修正 Windows 开机自启动 Startup 路径的目录拼接方式，避免 macOS runner 上模拟 `win32` 分支时把反斜杠当普通字符，导致 `test_tray_autostart.py` 中的 Windows 自启动回归在 `quality-macos-packaging` 误报失败
