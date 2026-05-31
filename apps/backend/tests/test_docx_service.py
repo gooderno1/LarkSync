@@ -235,6 +235,13 @@ async def test_insert_markdown_block_creates_children_at_index() -> None:
         {
             "code": 0,
             "data": {
+                "items": [{"block_id": "root", "block_type": 1, "children": []}],
+                "has_more": False,
+            },
+        },
+        {
+            "code": 0,
+            "data": {
                 "children": [{"block_id": "n1"}],
                 "document_revision_id": 2,
                 "client_token": "t2",
@@ -255,7 +262,11 @@ async def test_insert_markdown_block_creates_children_at_index() -> None:
     assert created == 1
     assert client.requests[0][0] == "POST"
     assert client.requests[0][1].endswith("/open-apis/docx/v1/documents/blocks/convert")
-    create_call = client.requests[1]
+    assert client.requests[1][0] == "GET"
+    assert client.requests[1][1].endswith(
+        "/open-apis/docx/v1/documents/doc-insert/blocks"
+    )
+    create_call = client.requests[2]
     assert create_call[0] == "POST"
     assert create_call[1].endswith(
         "/open-apis/docx/v1/documents/doc-insert/blocks/root/children"

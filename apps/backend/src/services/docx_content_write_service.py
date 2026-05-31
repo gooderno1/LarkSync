@@ -145,6 +145,7 @@ class DocxContentWriteService:
                 root_block_id=root_block["block_id"],
                 convert=convert,
                 user_id_type=user_id_type,
+                current_root_children_count=remaining_old_children,
             )
             if not ok:
                 raise self._service_error_cls("创建块失败，已中止替换")

@@ -1,5 +1,39 @@
 # DEVELOPMENT LOG
 
+## v0.7.25 (2026-05-31)
+
+- 目标：
+  - 在 `v0.7.24` tag 工作流因后端全量回归失败而未能出包后，收口修复并发布新的正式稳定版，保证远端 Release Build 能继续推进到安装包构建与资产上传阶段。
+
+- 结果：
+  - 当前版本正式提升为 `v0.7.25`。
+  - 本次稳定版纳入 `v0.7.25-dev.1` 的质量门修复：Docx 全量替换路径现复用调用方已经拿到的根块子节点数，不再在创建前多打一轮 `GET /blocks`；这避免了 `DocxService` 集成测试里的假响应序列被额外请求打乱，也减少了真实运行时的一次无意义 API 往返。
+  - `apps/backend/tests/test_docx_service.py` 已同步补齐插入链路当前行为的全量回归预期，`replace_document_content`、图片/附件块上传、表格单元格填充与 Markdown 插入路径重新与现行 `DocxContentWriteService` / `DocxBlockCreateService` 行为对齐。
+  - 仓库版本展示已统一切到稳定版：根包、后端、前端、锁文件、README、CHANGELOG、`release-notes-preview.md` 与本开发日志都已同步更新到 `v0.7.25` / `0.7.25`。
+
+- 测试：
+  - `python -m pytest tests/test_docx_service.py tests/test_docx_content_write_service.py tests/test_release.py tests/test_release_notes.py -q`（工作目录：`apps/backend/`）
+
+- 问题：
+  - `v0.7.24` 的 tag 工作流已经在远端留下失败记录；本轮通过新版本 `v0.7.25` 继续正式发布，不回写旧 tag 历史。
+
+## v0.7.25-dev.1 (2026-05-31)
+
+- 目标：
+  - 修复 `v0.7.24` tag 在 GitHub Actions `quality` 阶段暴露的 7 条后端用例失败，确认问题来自 Docx 写入链路的额外根块重取与过时测试预期，而不是正式版元数据或发布工作流本身。
+
+- 结果：
+  - 通过失败日志确认，`replace_document_content()` 在已经持有根块 `children` 数量时仍调用 `create_from_convert(... current_root_children_count=None)`，导致写入前额外执行一次 `GET /blocks`；这会在使用固定假响应序列的 `tests/test_docx_service.py` 中打乱后续 `create / upload / delete` 响应顺序，也让真实运行多一次无意义请求。
+  - `DocxContentWriteService.replace_document_content()` 现会把 `remaining_old_children` 直接传给 `create_from_convert()`，既复用当前上下文，也让全量替换与之前新增的失败回滚逻辑保持一致。
+  - `tests/test_docx_service.py` 的 `test_insert_markdown_block_creates_children_at_index` 已改为显式覆盖“先 convert，再取根块 children，再插入”的当前调用顺序；配合前述代码修复，整组 `DocxService` 集成测试重新恢复通过。
+
+- 测试：
+  - `python -m pytest tests/test_docx_service.py -q`（工作目录：`apps/backend/`）
+  - `python -m pytest tests/test_docx_service.py tests/test_docx_content_write_service.py tests/test_release.py tests/test_release_notes.py -q`（工作目录：`apps/backend/`）
+
+- 问题：
+  - 本轮只补了后端发布关键路径相关回归，没有再次本地执行完整前端与安装包构建；正式安装包仍以远端 Release Build 的结果为准。
+
 ## v0.7.24 (2026-05-31)
 
 - 目标：
