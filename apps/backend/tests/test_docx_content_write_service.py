@@ -18,6 +18,8 @@ def _make_service(
     current_blocks: list[dict],
     convert_result: ConvertResult,
     operation_log: list[tuple[str, dict]],
+    create_impl=None,
+    delete_impl=None,
 ) -> DocxContentWriteService:
     async def _list_blocks(*args, **kwargs):
         return current_blocks
@@ -34,11 +36,39 @@ def _make_service(
     async def _apply_partial_update(*args, **kwargs):
         return False
 
+    def _root_children() -> list[str]:
+        if not current_blocks:
+            return []
+        return list(current_blocks[0].get("children") or [])
+
     async def _create_children_recursive(*args, **kwargs):
         operation_log.append(("create", kwargs))
+        if create_impl is not None:
+            await create_impl(*args, **kwargs)
+            return
+        if not current_blocks:
+            return
+        root_children = _root_children()
+        child_ids = list(kwargs.get("child_ids") or [])
+        insert_index = kwargs.get("insert_index", -1)
+        if insert_index is None or insert_index < 0 or insert_index > len(root_children):
+            root_children.extend(child_ids)
+        else:
+            root_children[insert_index:insert_index] = child_ids
+        current_blocks[0]["children"] = root_children
 
     async def _delete_children(*args, **kwargs):
         operation_log.append(("delete", kwargs))
+        if delete_impl is not None:
+            await delete_impl(*args, **kwargs)
+            return
+        if not current_blocks:
+            return
+        root_children = _root_children()
+        start_index = kwargs["start_index"]
+        end_index = kwargs["end_index"]
+        del root_children[start_index:end_index]
+        current_blocks[0]["children"] = root_children
 
     return DocxContentWriteService(
         list_blocks=_list_blocks,
@@ -93,7 +123,9 @@ async def test_create_from_convert_wraps_first_level_blocks_when_root_near_limit
     block_map = create_kwargs["block_map"]
     children_map = create_kwargs["children_map"]
     assert block_map[wrapper_id]["block_type"] == 2
-    assert block_map[wrapper_id]["text"]["elements"] == []
+    assert block_map[wrapper_id]["text"]["elements"][0]["text_run"]["content"] == (
+        content_write_module.ROOT_WRAPPER_TEXT
+    )
     assert children_map[wrapper_id] == ["b1", "b2"]
     assert block_map["b1"]["parent_id"] == wrapper_id
     assert block_map["b2"]["parent_id"] == wrapper_id
@@ -133,17 +165,62 @@ async def test_replace_document_content_deletes_minimal_tail_before_create_when_
     assert first_delete == {
         "document_id": "doc-overflow",
         "block_id": "root",
-        "start_index": 5,
+        "start_index": 4,
         "end_index": 6,
     }
 
     create_kwargs = operations[1][1]
-    assert len(create_kwargs["child_ids"]) == 1
+    assert create_kwargs["child_ids"] == ["b1", "b2"]
 
     second_delete = operations[2][1]
     assert second_delete == {
         "document_id": "doc-overflow",
         "block_id": "root",
         "start_index": 0,
-        "end_index": 5,
+        "end_index": 4,
     }
+
+
+@pytest.mark.asyncio
+async def test_create_from_convert_rolls_back_inserted_root_children_on_failure() -> None:
+    operations: list[tuple[str, dict]] = []
+    current_blocks = [{"block_id": "root", "block_type": 1, "children": ["c1", "c2"]}]
+    convert = ConvertResult(
+        first_level_block_ids=["b1", "b2"],
+        blocks=[
+            {"block_id": "b1", "block_type": 2, "text": {"elements": []}},
+            {"block_id": "b2", "block_type": 2, "text": {"elements": []}},
+        ],
+    )
+
+    async def _create_impl(*args, **kwargs):
+        current_blocks[0]["children"] = [
+            *current_blocks[0]["children"],
+            *list(kwargs.get("child_ids") or []),
+        ]
+        kwargs["error_flag"]["error"] = True
+
+    service = _make_service(
+        current_blocks=current_blocks,
+        convert_result=convert,
+        operation_log=operations,
+        create_impl=_create_impl,
+    )
+
+    ok = await service.create_from_convert(
+        document_id="doc-rollback",
+        root_block_id="root",
+        convert=convert,
+        user_id_type="open_id",
+        current_root_children_count=2,
+    )
+
+    assert ok is False
+    assert [name for name, _ in operations] == ["create", "delete"]
+    assert operations[1][1] == {
+        "document_id": "doc-rollback",
+        "block_id": "root",
+        "start_index": 2,
+        "end_index": 4,
+    }
+    assert current_blocks[0]["children"] == ["c1", "c2"]

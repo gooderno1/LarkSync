@@ -18,6 +18,24 @@ ExtractChildrenIdsFn = Callable[[dict[str, Any]], list[str]]
 
 MAX_CHILDREN_PER_BLOCK = 20000
 ROOT_WRAPPER_CHILD_BATCH_SIZE = MAX_CHILDREN_PER_BLOCK
+ROOT_WRAPPER_TEXT = "\u200b"
+
+
+def _build_wrapper_text_elements() -> list[dict[str, Any]]:
+    return [
+        {
+            "text_run": {
+                "content": ROOT_WRAPPER_TEXT,
+                "text_element_style": {
+                    "bold": False,
+                    "inline_code": False,
+                    "italic": False,
+                    "strikethrough": False,
+                    "underline": False,
+                },
+            }
+        }
+    ]
 
 
 class DocxContentWriteService:
@@ -76,10 +94,6 @@ class DocxContentWriteService:
             base_path=base_path,
         )
         convert = self._normalize_convert(convert)
-        convert = self._prepare_convert_for_root_limit(
-            convert,
-            current_root_children_count=len(children),
-        )
         logger.info(
             "转换结果: document_id={} blocks={} first_level={} types={}",
             document_id,
@@ -166,8 +180,14 @@ class DocxContentWriteService:
         convert: Any,
         user_id_type: str,
         insert_index: int = -1,
-        current_root_children_count: int = 0,
+        current_root_children_count: int | None = None,
     ) -> bool:
+        if current_root_children_count is None:
+            current_root_children_count = await self._resolve_root_children_count(
+                document_id=document_id,
+                root_block_id=root_block_id,
+                user_id_type=user_id_type,
+            )
         convert = self._prepare_convert_for_root_limit(
             convert,
             current_root_children_count=current_root_children_count,
@@ -190,7 +210,16 @@ class DocxContentWriteService:
             file_paths=convert.file_paths,
             error_flag=error_flag,
         )
-        return not error_flag["error"]
+        if error_flag["error"]:
+            await self._rollback_failed_root_insert(
+                document_id=document_id,
+                root_block_id=root_block_id,
+                user_id_type=user_id_type,
+                current_root_children_count=current_root_children_count,
+                insert_index=insert_index,
+            )
+            return False
+        return True
 
     async def insert_markdown_block(
         self,
@@ -255,7 +284,8 @@ class DocxContentWriteService:
                     "block_id": wrapper_id,
                     "block_type": 2,
                     "children": list(chunk),
-                    "text": {"elements": []},
+                    # Feishu rejects empty text elements for wrapper paragraphs.
+                    "text": {"elements": _build_wrapper_text_elements()},
                 }
             )
             for child_id in chunk:
@@ -272,6 +302,70 @@ class DocxContentWriteService:
         convert.first_level_block_ids = wrapper_ids
         convert.blocks = [*convert.blocks, *wrapper_blocks]
         return convert
+
+    async def _resolve_root_children_count(
+        self,
+        *,
+        document_id: str,
+        root_block_id: str,
+        user_id_type: str,
+    ) -> int:
+        items = await self._list_blocks(document_id, user_id_type=user_id_type)
+        for item in items:
+            if item.get("block_id") == root_block_id:
+                return len(list(item.get("children") or []))
+        return 0
+
+    async def _rollback_failed_root_insert(
+        self,
+        *,
+        document_id: str,
+        root_block_id: str,
+        user_id_type: str,
+        current_root_children_count: int,
+        insert_index: int,
+    ) -> None:
+        try:
+            items = await self._list_blocks(document_id, user_id_type=user_id_type)
+            current_root = None
+            for item in items:
+                if item.get("block_id") == root_block_id:
+                    current_root = item
+                    break
+            if current_root is None:
+                return
+            current_children = list(current_root.get("children") or [])
+            inserted_count = len(current_children) - current_root_children_count
+            if inserted_count <= 0:
+                return
+            start_index = (
+                current_root_children_count
+                if insert_index < 0
+                else min(insert_index, len(current_children))
+            )
+            end_index = min(start_index + inserted_count, len(current_children))
+            if end_index <= start_index:
+                return
+            logger.warning(
+                "创建块失败，回滚已插入的顶层块: document_id={} start_index={} end_index={} inserted_count={}",
+                document_id,
+                start_index,
+                end_index,
+                inserted_count,
+            )
+            await self._delete_children(
+                document_id=document_id,
+                block_id=root_block_id,
+                start_index=start_index,
+                end_index=end_index,
+            )
+        except Exception as exc:
+            logger.error(
+                "创建块失败后的顶层回滚也失败: document_id={} root_block_id={} error={}",
+                document_id,
+                root_block_id,
+                exc,
+            )
 
 
 __all__ = ["DocxContentWriteService"]
