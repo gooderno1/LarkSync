@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.7.26 (2026-06-11)
+
+- 目标：
+  - 将 `v0.7.26-dev.1` 的 Markdown 图片上行修复收口为正式稳定版，发布包含用户反馈 400 问题修复的新安装包版本。
+
+- 结果：
+  - 当前版本正式提升为 `v0.7.26`。
+  - 本次稳定版纳入 `v0.7.26-dev.1` 的 Docx/Markdown 上行修复：本地图片和附件链接解析改为括号感知扫描，避免文件名包含括号时把图片路径截断，进而让残缺 Markdown 进入飞书 `blocks/convert` 并触发 400。
+  - README、CHANGELOG、根包/前端/后端版本、锁文件、`release-notes-preview.md` 与本开发日志同步对齐到 `v0.7.26` / `0.7.26`。
+  - 正式版 Release 继续沿用 tag 驱动的 GitHub Actions 发布链路：推送 `v0.7.26` tag 后会在远端执行 Windows/macOS 质量门、安装包构建、release notes 生成与 Release 资产上传。
+
+- 测试：
+  - 沿用 `v0.7.26-dev.1` 的完整后端 pytest、前端 lint/build、Windows PyInstaller/NSIS 打包与静默安装 helper smoke 验证。
+
+- 问题：
+  - 真实 GitHub Release 安装包仍以 tag 推送后的远端 workflow 结果为准。
+
 ## v0.7.26-dev.1 (2026-06-11)
 
 - 目标：
