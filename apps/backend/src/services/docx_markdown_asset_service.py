@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import re
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 from urllib.parse import unquote, urlsplit
 
 from loguru import logger
@@ -29,13 +30,17 @@ StripPlaceholdersFromBlock = Callable[[dict[str, Any], re.Pattern[str]], bool]
 SetBlockPlainText = Callable[[dict[str, Any], str], None]
 HasTextElements = Callable[[dict[str, Any]], bool]
 
-_IMAGE_PATTERN = re.compile(r"!\[[^\]]*]\(([^)]+)\)")
 _HTML_IMAGE_PATTERN = re.compile(r"<img\b[^>]*>", re.IGNORECASE | re.DOTALL)
 _HTML_IMAGE_SRC_PATTERN = re.compile(
     r"""\bsrc\s*=\s*(?P<quote>["'])(?P<src>.*?)(?P=quote)""",
     re.IGNORECASE | re.DOTALL,
 )
-_LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]*]\(([^)]+)\)")
+
+
+@dataclass(frozen=True)
+class MarkdownInlineResource:
+    raw: str
+    ref: str
 
 
 class DocxMarkdownAssetService:
@@ -78,19 +83,19 @@ class DocxMarkdownAssetService:
         processed = markdown
         placeholders: dict[str, str] = {}
         image_paths: dict[str, Path] = {}
-        for match in _IMAGE_PATTERN.finditer(markdown):
-            raw = match.group(0)
-            ref = self._normalize_image_ref(match.group(1))
+        for item in _iter_markdown_inline_resources(markdown, image=True):
+            raw = item.raw
+            ref = self._normalize_image_ref(item.ref)
             if self._is_remote_image(ref):
                 continue
             image_path = self.resolve_markdown_image_path(ref, base_path)
             if not image_path.exists() or not image_path.is_file():
-                processed = processed.replace(raw, f"[图片缺失: {ref}]")
+                processed = processed.replace(raw, f"[图片缺失: {ref}]", 1)
                 continue
             placeholder = f"[[LARKSYNC_IMAGE:{self._hash_text(str(image_path))}]]"
             placeholders[placeholder] = ref
             image_paths[placeholder] = image_path
-            processed = processed.replace(raw, placeholder)
+            processed = processed.replace(raw, placeholder, 1)
 
         for match in _HTML_IMAGE_PATTERN.finditer(markdown):
             raw = match.group(0)
@@ -123,9 +128,9 @@ class DocxMarkdownAssetService:
         processed = markdown
         placeholders: dict[str, str] = {}
         file_paths: dict[str, Path] = {}
-        for match in _LINK_PATTERN.finditer(markdown):
-            raw = match.group(0)
-            ref = self._normalize_image_ref(match.group(1))
+        for item in _iter_markdown_inline_resources(markdown, image=False):
+            raw = item.raw
+            ref = self._normalize_image_ref(item.ref)
             if self._is_remote_link(ref):
                 continue
             file_path = self.resolve_image_path(ref, base_path)
@@ -138,7 +143,7 @@ class DocxMarkdownAssetService:
             placeholder = f"[[LARKSYNC_FILE:{self._hash_text(str(file_path))}]]"
             placeholders[placeholder] = ref
             file_paths[placeholder] = file_path
-            processed = processed.replace(raw, placeholder)
+            processed = processed.replace(raw, placeholder, 1)
         return processed, placeholders, file_paths
 
     def resolve_html_image_path(
@@ -383,6 +388,112 @@ class DocxMarkdownAssetService:
                 base = base.parent
             path = base / path
         return path.expanduser()
+
+
+def _iter_markdown_inline_resources(
+    markdown: str,
+    *,
+    image: bool,
+) -> Iterator[MarkdownInlineResource]:
+    cursor = 0
+    marker = "![" if image else "["
+    while cursor < len(markdown):
+        start = markdown.find(marker, cursor)
+        if start < 0:
+            break
+        if _is_escaped(markdown, start):
+            cursor = start + len(marker)
+            continue
+        if not image and start > 0 and markdown[start - 1] == "!":
+            cursor = start + 1
+            continue
+
+        label_open = start + 1 if image else start
+        label_close = _find_closing_label(markdown, label_open)
+        if label_close < 0:
+            cursor = start + len(marker)
+            continue
+
+        open_paren = label_close + 1
+        if open_paren >= len(markdown) or markdown[open_paren] != "(":
+            cursor = label_close + 1
+            continue
+
+        close_paren = _find_closing_paren(markdown, open_paren)
+        if close_paren < 0:
+            cursor = open_paren + 1
+            continue
+
+        yield MarkdownInlineResource(
+            raw=markdown[start : close_paren + 1],
+            ref=markdown[open_paren + 1 : close_paren],
+        )
+        cursor = close_paren + 1
+
+
+def _find_closing_label(markdown: str, open_bracket: int) -> int:
+    depth = 1
+    cursor = open_bracket + 1
+    while cursor < len(markdown):
+        char = markdown[cursor]
+        if _is_escaped(markdown, cursor):
+            cursor += 1
+            continue
+        if char == "[":
+            depth += 1
+        elif char == "]":
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    return -1
+
+
+def _find_closing_paren(markdown: str, open_paren: int) -> int:
+    depth = 0
+    cursor = open_paren + 1
+    quote: str | None = None
+    in_angle = False
+    while cursor < len(markdown):
+        char = markdown[cursor]
+        if _is_escaped(markdown, cursor):
+            cursor += 1
+            continue
+        if quote is not None:
+            if char == quote:
+                quote = None
+            cursor += 1
+            continue
+        if in_angle:
+            if char == ">":
+                in_angle = False
+            cursor += 1
+            continue
+        if char == "<":
+            in_angle = True
+            cursor += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            cursor += 1
+            continue
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            if depth == 0:
+                return cursor
+            depth -= 1
+        cursor += 1
+    return -1
+
+
+def _is_escaped(text: str, index: int) -> bool:
+    slash_count = 0
+    cursor = index - 1
+    while cursor >= 0 and text[cursor] == "\\":
+        slash_count += 1
+        cursor -= 1
+    return slash_count % 2 == 1
 
 
 __all__ = ["DocxMarkdownAssetService"]

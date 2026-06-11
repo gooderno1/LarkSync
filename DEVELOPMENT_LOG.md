@@ -1,5 +1,30 @@
 # DEVELOPMENT LOG
 
+## v0.7.26-dev.1 (2026-06-11)
+
+- 目标：
+  - 修复用户反馈的本地 Markdown 图片未同步上云，并在 `docx/v1/documents/blocks/convert` 返回 400 的问题。
+
+- 结果：
+  - 复现确认旧的 Markdown 图片正则只截取到第一个右括号，遇到 `assets/diagram (1).png` 这类文件名时会把路径截成 `assets/diagram (1`，再把残留 `.png)` 继续送入飞书 `blocks/convert`，导致图片无法被替换成占位符并可能触发 400。
+  - `DocxMarkdownAssetService` 已将本地图片和附件链接扫描改为括号感知解析，支持转义、嵌套标签、尖括号目标、标题和文件名中的成对括号；占位替换改为逐个替换，减少重复链接场景下的误替换风险。
+  - Markdown 列表缩进图片的规范化正则同步放宽到最后一个右括号，避免带括号图片路径在列表上下文中漏掉列表子项转换。
+  - `apps/backend/tests/test_docx_service.py` 新增带括号本地图片路径回归测试，确保 convert 前图片语法已被替换为 `LARKSYNC_IMAGE` 占位符。
+
+- 测试：
+  - `python -m pytest -q`（工作目录：`apps/backend/`）
+  - `python -m pytest tests/test_docx_service.py -q`（工作目录：`apps/backend/`）
+  - `python -m pytest tests/test_sync_runner_upload_new_doc.py -q`（工作目录：`apps/backend/`）
+  - `npm run lint --prefix apps/frontend`
+  - `npm run build --prefix apps/frontend`
+  - `python scripts/build_installer.py`
+  - `python scripts/build_installer.py --nsis`
+  - `python scripts/update_install_smoke.py`
+
+- 问题：
+  - 本轮未拿到用户现场的飞书 400 响应体；修复基于本地可复现的 Markdown 解析截断问题，未改动飞书 API 字段。
+  - NSIS 安装脚本需要管理员权限并会写入 `Program Files` 与注册表，本轮未直接执行真实安装；已用仓库的非破坏性 Windows 静默安装 smoke 验证 bootstrap/worker/handoff 链路。
+
 ## v0.7.25 (2026-05-31)
 
 - 目标：

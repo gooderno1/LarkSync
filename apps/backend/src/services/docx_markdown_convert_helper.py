@@ -14,7 +14,7 @@ _LIST_PREFIX_PATTERN = re.compile(
 )
 _LIST_LINE_PATTERN = re.compile(r"^(?:>\s*)*(?:\t+| +)?(?:[-*+]\s+|\d+[.)]\s+).+")
 _INDENTED_IMAGE_LINE_PATTERN = re.compile(
-    r"^(?P<quote>(?:>\s*)*)(?P<indent>[ \t]+)(?P<image>!\[[^\]]*]\([^)]+\))\s*$"
+    r"^(?P<quote>(?:>\s*)*)(?P<indent>[ \t]+)(?P<image>!\[[^\]]*]\(.+\))\s*$"
 )
 _INDENTED_TEXT_LINE_PATTERN = re.compile(
     r"^(?P<quote>(?:>\s*)*)(?P<indent>[ \t]+)(?P<body>\S.*)$"
