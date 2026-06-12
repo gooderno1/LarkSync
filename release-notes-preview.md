@@ -1,23 +1,24 @@
-# LarkSync v0.7.26
+# LarkSync v0.7.27
 
-- 发布日期：2026-06-11
-- 变更区间：v0.7.25 -> v0.7.26
+- 发布日期：2026-06-12
+- 变更区间：v0.7.26 -> v0.7.27
 
 ## 本次更新明细
 
 ### 升级重点
-- `v0.7.26-dev.1`：复现确认旧的 Markdown 图片正则只截取到第一个右括号，遇到 `assets/diagram (1).png` 这类文件名时会把路径截成 `assets/diagram (1`，再把残留 `.png)` 继续送入飞书 `blocks/convert`，导致图片无法被替换成占位符并可能触发 400。
+- `v0.7.27-dev.1`：已定位并修复一个会中止整篇 Docx 替换的 Markdown 上行问题：当 fenced code 中只包含 `![...]()` / `[...](...)` 这类资源语法示例时，旧链路会把示例误当成真实本地资源上传，再在回填阶段把代码块清空，最终触发飞书 `invalid param` 并报出“创建块失败，已中止替换”。
 
 ### 详细变更
 
-#### v0.7.26-dev.1
-- 复现确认旧的 Markdown 图片正则只截取到第一个右括号，遇到 `assets/diagram (1).png` 这类文件名时会把路径截成 `assets/diagram (1`，再把残留 `.png)` 继续送入飞书 `blocks/convert`，导致图片无法被替换成占位符并可能触发 400。
-- `DocxMarkdownAssetService` 已将本地图片和附件链接扫描改为括号感知解析，支持转义、嵌套标签、尖括号目标、标题和文件名中的成对括号；占位替换改为逐个替换，减少重复链接场景下的误替换风险。
-- Markdown 列表缩进图片的规范化正则同步放宽到最后一个右括号，避免带括号图片路径在列表上下文中漏掉列表子项转换。
-- `apps/backend/tests/test_docx_service.py` 新增带括号本地图片路径回归测试，确保 convert 前图片语法已被替换为 `LARKSYNC_IMAGE` 占位符。
+#### v0.7.27-dev.1
+- 已定位并修复一个会中止整篇 Docx 替换的 Markdown 上行问题：当 fenced code 中只包含 `![...]()` / `[...](...)` 这类资源语法示例时，旧链路会把示例误当成真实本地资源上传，再在回填阶段把代码块清空，最终触发飞书 `invalid param` 并报出“创建块失败，已中止替换”。
+- 进一步确认失败根因是飞书代码块 payload 被构造成空 `elements`；受影响的场景不只限于这次复现文档，任何把 code block 清空的边角链路都可能触发同类整篇替换失败。
+- 在 `DocxMarkdownAssetService` 中补充 fenced code 跳过逻辑：图片/附件占位扫描不再进入代码块，避免代码示例里的本地资源语法被误上传为真实飞书图片或附件。
+- 同时在 `DocxService._sanitize_block()` 中新增空代码块兜底：若 `code.elements` 为空，会自动补一个零宽占位文本元素后再发往飞书，避免历史链路或其他边角场景再次因为空 code block 被飞书判定为非法参数并中止整篇文档替换。
+- 同步补充回归测试，覆盖“fenced code 中的图片示例不会被替换成占位资源”“空 fenced code 保持原样进入 convert 前规范化”和“空 code block 在创建前被补为合法 payload”三类场景，防止后续再次回归。
 
 ## 安装包校验
 
 | asset | sha256 |
 | --- | --- |
-| LarkSync-Setup-v0.7.26.exe | `dc10448cc713ab7f8382fb0aa36d1d65a8eebe3ecb831a609083b94fd307aa4e` |
+| LarkSync-Setup-v0.7.27.exe | `fc7cc7905bba6b90b4e886b36fb9ec6500d74af6b714e7a6033a0c0513dab68f` |

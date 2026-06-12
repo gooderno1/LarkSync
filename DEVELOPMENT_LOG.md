@@ -1,5 +1,24 @@
 # DEVELOPMENT LOG
 
+## v0.7.27 (2026-06-12)
+
+- 目标：
+  - 将 `v0.7.27-dev.1` 的 Docx Markdown 上行修复收口为正式稳定版，发布包含“fenced code 资源示例误上传”和“空代码块触发飞书 invalid param”修复的新安装包版本。
+
+- 结果：
+  - 当前版本正式提升为 `v0.7.27`。
+  - 本次稳定版纳入 `v0.7.27-dev.1` 的 Markdown 上行修复：代码块中的 `![...]()` / `[...](...)` 示例不再被当成真实本地资源替换上传，避免代码示例在 convert/create 链路中被剥离后把 `block_type=14` 代码块清空。
+  - `DocxService` 额外补齐了空 code block 的零宽占位兜底，即使历史链路或其他边角场景仍构造出 `code.elements=[]`，发往飞书前也会被修补成合法 payload，不再因 `1770001 invalid param` 让整篇文档替换中止。
+  - README、CHANGELOG、根包/前端/后端版本、锁文件、`release-notes-preview.md` 与本开发日志同步对齐到 `v0.7.27` / `0.7.27`。
+  - 正式版 Release 继续沿用 tag 驱动的 GitHub Actions 发布链路：推送 `v0.7.27` tag 后会在远端执行 Windows/macOS 质量门、安装包构建、release notes 生成与 Release 资产上传。
+
+- 测试：
+  - `python -m pytest tests/test_docx_service.py tests/test_docx_content_write_service.py`（工作目录：`apps/backend/`）
+  - 后续正式发布前补跑完整后端 pytest、前端 lint/test/build 与 Windows NSIS 构建验收
+
+- 问题：
+  - 真实 GitHub Release 安装包仍以 tag 推送后的远端 workflow 结果为准；本地打包验收通过后仍需等待远端 Release Build 完成资产上传。
+
 ## v0.7.26 (2026-06-11)
 
 - 目标：
@@ -5228,8 +5247,8 @@
 
 - 结果：
   
-  - 通过安装版日志 `D:\Programs\LarkSync\_internal\data\logs\larksync.log` 与 `sync-events.jsonl` 定位到失败文档对应的飞书 token 为 `B9SfdcV3Ro929dxhPExcw5XRnDb`，两次失败都发生在根块追加 `size=2 types={2: 1, 14: 1}` 后。
-  - 进一步从同一日志确认，飞书返回的实际错误为 `code=1770001 invalid param`，拆分到单块后仍失败的块是 `block_type=14`，payload 为 `{\"block_type\": 14, \"code\": {\"elements\": [], \"style\": {\"wrap\": false}}}`；对应本地 Markdown 第 68-70 行是一个仅包含图片 Markdown 示例的 fenced code，上传链路先把其中的 `![...]()` 误替换成资源占位，再在回填阶段剥离占位，最终把 code block 清空。
+  - 已定位并修复一个会中止整篇 Docx 替换的 Markdown 上行问题：当 fenced code 中只包含 `![...]()` / `[...](...)` 这类资源语法示例时，旧链路会把示例误当成真实本地资源上传，再在回填阶段把代码块清空，最终触发飞书 `invalid param` 并报出“创建块失败，已中止替换”。
+  - 进一步确认失败根因是飞书代码块 payload 被构造成空 `elements`；受影响的场景不只限于这次复现文档，任何把 code block 清空的边角链路都可能触发同类整篇替换失败。
   - 在 `DocxMarkdownAssetService` 中补充 fenced code 跳过逻辑：图片/附件占位扫描不再进入代码块，避免代码示例里的本地资源语法被误上传为真实飞书图片或附件。
   - 同时在 `DocxService._sanitize_block()` 中新增空代码块兜底：若 `code.elements` 为空，会自动补一个零宽占位文本元素后再发往飞书，避免历史链路或其他边角场景再次因为空 code block 被飞书判定为非法参数并中止整篇文档替换。
   - 同步补充回归测试，覆盖“fenced code 中的图片示例不会被替换成占位资源”“空 fenced code 保持原样进入 convert 前规范化”和“空 code block 在创建前被补为合法 payload”三类场景，防止后续再次回归。
