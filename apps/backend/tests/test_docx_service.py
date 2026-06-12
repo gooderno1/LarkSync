@@ -7,6 +7,7 @@ from src.services.docx_service import (
     DocxService,
     TABLE_BLOCK_CREATE_MAX_ROWS,
     _TABLE_MAX_TOTAL_WIDTH,
+    _EMPTY_CODE_BLOCK_PLACEHOLDER,
     _TABLE_PREFERRED_TOTAL_WIDTH,
     _build_create_chunks,
     _get_image_display_size,
@@ -17,7 +18,12 @@ from src.services.docx_service import (
     _replace_continuation_placeholders,
     _split_large_markdown_tables_for_convert,
 )
-from src.services.transcoder import BLOCK_TYPE_IMAGE, BLOCK_TYPE_TABLE, DocxParser
+from src.services.transcoder import (
+    BLOCK_TYPE_CODE,
+    BLOCK_TYPE_IMAGE,
+    BLOCK_TYPE_TABLE,
+    DocxParser,
+)
 from src.services.media_uploader import MediaUploadError
 
 
@@ -635,6 +641,31 @@ def test_normalize_markdown_for_convert_keeps_fenced_code() -> None:
     normalized = _normalize_markdown_for_convert(markdown)
 
     assert normalized == markdown
+
+
+def test_normalize_markdown_for_convert_keeps_empty_fenced_code() -> None:
+    markdown = "```\n```\n"
+    normalized = _normalize_markdown_for_convert(markdown)
+
+    assert normalized == markdown
+
+
+def test_sanitize_block_patches_empty_code_elements() -> None:
+    block = {
+        "block_id": "code-1",
+        "parent_id": "root",
+        "children": [],
+        "block_type": BLOCK_TYPE_CODE,
+        "code": {"elements": [], "style": {"wrap": False}},
+    }
+
+    cleaned = DocxService._sanitize_block(block)
+
+    assert cleaned["block_type"] == BLOCK_TYPE_CODE
+    assert cleaned["code"]["style"] == {"wrap": False}
+    assert cleaned["code"]["elements"][0]["text_run"]["content"] == (
+        _EMPTY_CODE_BLOCK_PLACEHOLDER
+    )
 
 
 def test_normalize_markdown_for_convert_rewrites_indented_image_in_list() -> None:

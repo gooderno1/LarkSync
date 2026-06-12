@@ -5219,3 +5219,24 @@
 - 问题：
   
   - GitHub Release 默认仍自动发布 Windows 安装包；如需同时提供 macOS 安装包，仍需后续手动触发对应工作流。
+
+## v0.7.27-dev.1 (2026-06-12)
+
+- 目标：
+  
+  - 排查并修复安装版在同步 `软件设计说明书-V1.4-插图规划说明.md` 时反复出现的“创建块失败，已中止替换”，明确是否为文档内容触发的飞书块创建参数错误。
+
+- 结果：
+  
+  - 通过安装版日志 `D:\Programs\LarkSync\_internal\data\logs\larksync.log` 与 `sync-events.jsonl` 定位到失败文档对应的飞书 token 为 `B9SfdcV3Ro929dxhPExcw5XRnDb`，两次失败都发生在根块追加 `size=2 types={2: 1, 14: 1}` 后。
+  - 进一步从同一日志确认，飞书返回的实际错误为 `code=1770001 invalid param`，拆分到单块后仍失败的块是 `block_type=14`，payload 为 `{\"block_type\": 14, \"code\": {\"elements\": [], \"style\": {\"wrap\": false}}}`；对应本地 Markdown 第 68-70 行存在空 fenced code block。
+  - 在 `DocxService._sanitize_block()` 中新增空代码块兜底：若 `code.elements` 为空，会自动补一个零宽占位文本元素后再发往飞书，避免空 code block 被飞书判定为非法参数并中止整篇文档替换。
+  - 同步补充回归测试，覆盖“空 fenced code 保持原样进入 convert 前规范化”和“空 code block 在创建前被补为合法 payload”两类场景，防止后续再次回归。
+
+- 测试：
+  
+  - `python -m pytest tests/test_docx_service.py tests/test_docx_content_write_service.py`（工作目录：`apps/backend/`）
+
+- 问题：
+  
+  - 当前修复针对的是飞书 `block_type=14` 空 `elements` 这一类明确非法 payload；若后续仍出现 `1770001 invalid param`，应继续优先查看 `无效块已跳过` 日志中的 `block_type` 与 payload，而不是只看上层的“创建块失败”汇总文案。

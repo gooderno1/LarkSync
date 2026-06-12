@@ -208,6 +208,7 @@
 [2026-04-30] v0.6.6-dev.2 feat(log-center): 日志中心任务诊断页按“左任务 / 右上运行记录 / 右下运行详情”重排，保留全局侧边栏与顶部页头；运行详情改为紧凑摘要条 + Tab，事件筛选仅在事件 Tab 下显示，并同步压缩侧边栏和任务卡信息密度，缓解页面拥挤与切换抖动
 [2026-04-30] v0.6.6-dev.1 fix(sync-baseline): `sync_links` 新增 Markdown 本地资源基线字段，下载 doc/docx 成功后记录本地资源签名与对应云端 revision；上传阶段改为按“正文 hash + 本地资源签名 + 资源基线 revision”联合判断是否真的发生了本地变更，避免云端下载后的同轮反向上传覆盖飞书
 [2026-04-30] v0.6.5 release: v0.6.5
+[2026-06-12] v0.7.27-dev.1 fix(docx-upload): 空代码块上行自动补零宽占位，修复飞书 invalid param 导致的整篇替换失败
 [2026-04-30] v0.6.5-dev.3 feat(log-center): 新增 sync_runs 运行摘要表，按运行持久化同步结果并驱动日志中心
 [2026-04-30] v0.6.5-dev.2 feat(log-center): 日志中心按运行 ID 展示同步历史，任务概览仅反映最近一次运行
 [2026-04-30] v0.6.5-dev.1 fix(auto-update): Windows 静默更新 helper 去掉 DETACHED_PROCESS，改用隐藏窗口进程组启动，修复安装接管回执超时导致的静默更新失败

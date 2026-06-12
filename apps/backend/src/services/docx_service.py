@@ -37,6 +37,7 @@ from src.services.file_uploader import FileUploader
 from src.services.media_uploader import MediaUploader
 from src.services.transcoder import (
     DocxParser,
+    BLOCK_TYPE_CODE,
     BLOCK_TYPE_IMAGE,
     BLOCK_TYPE_TABLE,
     BLOCK_TYPE_FILE,
@@ -82,6 +83,7 @@ _TABLE_COLUMN_MAX_WIDTH = 600
 _TABLE_SINGLE_COLUMN_WIDTH = 600
 _TABLE_MAX_TOTAL_WIDTH = 1080
 _TABLE_PREFERRED_TOTAL_WIDTH = 732
+_EMPTY_CODE_BLOCK_PLACEHOLDER = "\u200b"
 _FIGURE_START_PATTERN = re.compile(
     r"<!--\s*FIGURE:(?P<id>[\w.-]+):START\s*-->",
     re.IGNORECASE,
@@ -91,6 +93,23 @@ _FIGURE_END_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]*]\(([^)]+)\)")
+
+
+def _build_placeholder_text_elements() -> list[dict[str, Any]]:
+    return [
+        {
+            "text_run": {
+                "content": _EMPTY_CODE_BLOCK_PLACEHOLDER,
+                "text_element_style": {
+                    "bold": False,
+                    "inline_code": False,
+                    "italic": False,
+                    "strikethrough": False,
+                    "underline": False,
+                },
+            }
+        }
+    ]
 
 
 class DocxService:
@@ -532,6 +551,14 @@ class DocxService:
         cleaned.pop("block_id", None)
         cleaned.pop("parent_id", None)
         cleaned.pop("children", None)
+        if cleaned.get("block_type") == BLOCK_TYPE_CODE:
+            code = cleaned.get("code")
+            if isinstance(code, dict):
+                code = dict(code)
+                elements = code.get("elements")
+                if not isinstance(elements, list) or not elements:
+                    code["elements"] = _build_placeholder_text_elements()
+                cleaned["code"] = code
         if cleaned.get("block_type") == BLOCK_TYPE_TABLE:
             table = cleaned.get("table")
             if isinstance(table, dict):
