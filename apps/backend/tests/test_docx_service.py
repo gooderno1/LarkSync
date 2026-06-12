@@ -123,6 +123,28 @@ def test_build_image_placeholders_falls_back_to_local_figure_asset(tmp_path) -> 
     assert next(iter(image_paths.values())) == image_path
 
 
+def test_build_image_placeholders_ignores_fenced_code_examples(tmp_path) -> None:
+    figures_dir = tmp_path / "figures" / "V1.4-GPT-image-2"
+    figures_dir.mkdir(parents=True)
+    image_path = figures_dir / "fig-5-13.png"
+    image_path.write_bytes(b"img")
+    service = DocxService(client=FakeClient([]))
+
+    markdown = (
+        "正文插图建议使用相对路径：\n\n"
+        "```\n"
+        "![图 5-13](figures/V1.4-GPT-image-2/fig-5-13.png)\n"
+        "```\n"
+    )
+    processed, placeholders, image_paths = service._build_image_placeholders(
+        markdown, tmp_path
+    )
+
+    assert processed == markdown
+    assert placeholders == {}
+    assert image_paths == {}
+
+
 @pytest.mark.asyncio
 async def test_replace_document_content_clears_and_creates() -> None:
     responses = [

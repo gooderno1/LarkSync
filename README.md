@@ -60,7 +60,7 @@
 - 飞书 Docx 与本地 Markdown 双向同步。
 - 超长 Docx 全量回写在根块子节点接近飞书上限时，会自动将过多一级块压缩为透明容器，并在必要时先最小化删除尾部旧块腾位，避免 `too many children in block (1770007)` 导致整段内容被误跳过。
 - Docx 全量替换在根块已接近上限时，透明容器块现会写入合法的零宽字符段落；若创建过程中途失败，也会回滚本轮刚插入的顶层块，避免一次失败把云端文档越写越大并持续触发 `invalid param`。
-- Markdown 上行遇到空 fenced code block 时，会在发往飞书前自动补一个合法的零宽占位代码元素，避免飞书对 `block_type=14` 空 `elements` 返回 `1770001 invalid param`，导致整篇文档回写中断。
+- Markdown 上行现在会跳过 fenced code 中的图片/附件示例，不再把代码示例里的 `![...]()` 误当成真实资源上传；若历史链路仍产出空 code block，也会在发往飞书前自动补零宽占位，避免 `block_type=14` 空 `elements` 触发 `1770001 invalid param`。
 - 默认 OAuth 权限说明与本地配置已切换到新版 Docx scopes：新环境会直接要求 `docx:document` / `docx:document.block:convert`，历史 `docs:doc` 配置会在运行时自动迁移，减少首次授权后仍缺文档权限的问题。
 - OAuth 自动续期链路已串行化 refresh；若飞书 token 响应未返回新的 `refresh_token`，会保留当前已存值，降低并发续期触发 `code=20026` 或误清空本地 refresh token 的风险。
 - 云端文件下载写回本地时，若目标文件被 WPS/Office 等进程占用，会短暂重试，并在日志里明确提示“目标文件正被其他程序占用，请关闭后重试”。

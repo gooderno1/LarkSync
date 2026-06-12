@@ -5229,9 +5229,10 @@
 - 结果：
   
   - 通过安装版日志 `D:\Programs\LarkSync\_internal\data\logs\larksync.log` 与 `sync-events.jsonl` 定位到失败文档对应的飞书 token 为 `B9SfdcV3Ro929dxhPExcw5XRnDb`，两次失败都发生在根块追加 `size=2 types={2: 1, 14: 1}` 后。
-  - 进一步从同一日志确认，飞书返回的实际错误为 `code=1770001 invalid param`，拆分到单块后仍失败的块是 `block_type=14`，payload 为 `{\"block_type\": 14, \"code\": {\"elements\": [], \"style\": {\"wrap\": false}}}`；对应本地 Markdown 第 68-70 行存在空 fenced code block。
-  - 在 `DocxService._sanitize_block()` 中新增空代码块兜底：若 `code.elements` 为空，会自动补一个零宽占位文本元素后再发往飞书，避免空 code block 被飞书判定为非法参数并中止整篇文档替换。
-  - 同步补充回归测试，覆盖“空 fenced code 保持原样进入 convert 前规范化”和“空 code block 在创建前被补为合法 payload”两类场景，防止后续再次回归。
+  - 进一步从同一日志确认，飞书返回的实际错误为 `code=1770001 invalid param`，拆分到单块后仍失败的块是 `block_type=14`，payload 为 `{\"block_type\": 14, \"code\": {\"elements\": [], \"style\": {\"wrap\": false}}}`；对应本地 Markdown 第 68-70 行是一个仅包含图片 Markdown 示例的 fenced code，上传链路先把其中的 `![...]()` 误替换成资源占位，再在回填阶段剥离占位，最终把 code block 清空。
+  - 在 `DocxMarkdownAssetService` 中补充 fenced code 跳过逻辑：图片/附件占位扫描不再进入代码块，避免代码示例里的本地资源语法被误上传为真实飞书图片或附件。
+  - 同时在 `DocxService._sanitize_block()` 中新增空代码块兜底：若 `code.elements` 为空，会自动补一个零宽占位文本元素后再发往飞书，避免历史链路或其他边角场景再次因为空 code block 被飞书判定为非法参数并中止整篇文档替换。
+  - 同步补充回归测试，覆盖“fenced code 中的图片示例不会被替换成占位资源”“空 fenced code 保持原样进入 convert 前规范化”和“空 code block 在创建前被补为合法 payload”三类场景，防止后续再次回归。
 
 - 测试：
   

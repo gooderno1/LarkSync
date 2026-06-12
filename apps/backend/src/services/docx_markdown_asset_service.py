@@ -395,12 +395,17 @@ def _iter_markdown_inline_resources(
     *,
     image: bool,
 ) -> Iterator[MarkdownInlineResource]:
+    fenced_ranges = _collect_fenced_code_ranges(markdown)
     cursor = 0
     marker = "![" if image else "["
     while cursor < len(markdown):
         start = markdown.find(marker, cursor)
         if start < 0:
             break
+        fenced_end = _range_end_containing(start, fenced_ranges)
+        if fenced_end is not None:
+            cursor = fenced_end
+            continue
         if _is_escaped(markdown, start):
             cursor = start + len(marker)
             continue
@@ -429,6 +434,38 @@ def _iter_markdown_inline_resources(
             ref=markdown[open_paren + 1 : close_paren],
         )
         cursor = close_paren + 1
+
+
+def _collect_fenced_code_ranges(markdown: str) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    offset = 0
+    fence_marker: str | None = None
+    fence_start = 0
+    for line in markdown.splitlines(keepends=True):
+        stripped = line.lstrip(" ")
+        marker = None
+        if stripped.startswith("```"):
+            marker = "```"
+        elif stripped.startswith("~~~"):
+            marker = "~~~"
+        if marker is not None:
+            if fence_marker is None:
+                fence_marker = marker
+                fence_start = offset
+            elif marker == fence_marker:
+                ranges.append((fence_start, offset + len(line)))
+                fence_marker = None
+        offset += len(line)
+    if fence_marker is not None:
+        ranges.append((fence_start, len(markdown)))
+    return ranges
+
+
+def _range_end_containing(index: int, ranges: list[tuple[int, int]]) -> int | None:
+    for start, end in ranges:
+        if start <= index < end:
+            return end
+    return None
 
 
 def _find_closing_label(markdown: str, open_bracket: int) -> int:
