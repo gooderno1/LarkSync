@@ -78,4 +78,15 @@ describe("App smoke", () => {
     expect(html).toContain("docx:document");
     expect(html).toContain("docx:document.block:convert");
   });
+
+  it("bounds dashboard header and content to the sidebar height", () => {
+    authState.connected = true;
+    authState.driveOk = true;
+
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain("Header");
+    expect(html).toContain("Dashboard Page");
+    expect(html).toContain("lg:h-[calc(100vh-2.5rem)]");
+  });
 });

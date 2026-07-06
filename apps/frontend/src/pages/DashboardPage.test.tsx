@@ -131,9 +131,11 @@ describe("DashboardPage smoke", () => {
 
     expect(html).toContain("任务概览");
     expect(html).toContain("需要关注");
-    expect(html).toContain("min-[1760px]:h-[calc(100vh-2.5rem)]");
+    expect(html).toContain("min-[1760px]:flex-1");
+    expect(html).toContain("min-[1760px]:overflow-hidden");
     expect(html).toContain("min-[1760px]:items-stretch");
     expect(html).toContain("min-[1760px]:h-full");
+    expect(html).not.toContain("min-[1760px]:h-[calc(100vh-2.5rem)]");
     expect(html).not.toContain("max-h-[560px]");
     expect(html).not.toContain("max-h-[390px]");
   });

@@ -1,5 +1,31 @@
 # DEVELOPMENT LOG
 
+## v0.7.28-dev.7 (2026-07-06)
+
+- 目标：
+  - 修正 `v0.7.28-dev.6` 后仪表盘整体高度又偏长的问题。
+  - 让仪表盘整体高度与左侧边栏一致，而不是让 `DashboardPage` 在 Header 下面再占一整屏高度。
+
+- 结果：
+  - `App` 在仪表盘页签下新增一层 `lg:h-[calc(100vh-2.5rem)]` 的容器，统一包住 `Header` 和 `DashboardPage`，高度与左侧边栏一致。
+  - `DashboardPage` 移除自身的 `min-[1760px]:h-[calc(100vh-2.5rem)]`，改为在仪表盘容器内 `flex-1` 占用 Header 下方剩余高度。
+  - `DashboardPage` 宽屏下增加 `overflow-hidden`，下方“任务概览”和“需要关注”继续各自内部滚动，避免页面整体被撑长。
+  - `App.test.tsx` 新增断言：仪表盘 Header 和 Dashboard 被同一个侧边栏等高容器约束；`DashboardPage.test.tsx` 断言页面自身不再带整屏高度。
+  - README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.7` / `0.7.28-dev.7`。
+
+- 测试：
+  - `npm --prefix apps/frontend run test -- App.test.tsx DashboardPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - 浏览器检查 `http://127.0.0.1:3666`（`2048x900`）：侧边栏和仪表盘外壳实际高度均为 `860px`，Header 为 `126px`，Dashboard 剩余高度为 `710px`；“任务概览”和“需要关注”面板实际高度均为 `572px`，页面 `bodyScrollHeight` 等于视口高度 `900`。
+  - `python scripts/build_installer.py`
+
+- 问题：
+  - 本轮为前端高度约束修正，未改变仪表盘数据口径、任务排序、关注事件筛选或后端接口。
+  - 本轮未执行后端 pytest。
+  - `python scripts/build_installer.py` 已生成 `dist/LarkSync/LarkSync.exe`；未传 `--nsis`，脚本按设计跳过 Windows 安装器生成，未做用户级安装启动体验。
+
 ## v0.7.28-dev.6 (2026-07-06)
 
 - 目标：

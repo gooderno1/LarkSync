@@ -252,7 +252,7 @@ export function DashboardPage({ onNavigate }: Props) {
   };
 
   return (
-    <section className="animate-fade-up space-y-5 min-[1760px]:flex min-[1760px]:h-[calc(100vh-2.5rem)] min-[1760px]:min-h-0 min-[1760px]:flex-col min-[1760px]:gap-5 min-[1760px]:space-y-0">
+    <section className="animate-fade-up space-y-5 min-[1760px]:flex min-[1760px]:min-h-0 min-[1760px]:flex-1 min-[1760px]:flex-col min-[1760px]:gap-5 min-[1760px]:overflow-hidden min-[1760px]:space-y-0">
       {/* 防御性提示：正常流程不应到达此处（App.tsx 已门控未连接状态） */}
       {!connected ? (
         <div className="rounded-2xl border border-rose-500/30 bg-rose-950/25 p-4 text-center text-sm text-rose-200">

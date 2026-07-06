@@ -95,10 +95,10 @@ export default function App() {
           )}
           {/* 仅仪表盘渲染完整 Header banner */}
           {activeTab === "dashboard" ? (
-            <>
+            <div className="flex min-h-0 flex-col gap-6 lg:h-[calc(100vh-2.5rem)]">
               <Header />
               <DashboardPage onNavigate={setActiveTab} />
-            </>
+            </div>
           ) : null}
           {activeTab === "tasks" ? <TasksPage /> : null}
           {activeTab === "logcenter" ? <LogCenterPage /> : null}
