@@ -62,3 +62,12 @@ def test_client_host_env_override(monkeypatch):
     assert cfg.BACKEND_HOST == "0.0.0.0"
     assert cfg.BACKEND_CLIENT_HOST == "192.168.50.9"
     assert cfg.BACKEND_URL == "http://192.168.50.9:8000"
+
+
+def test_production_urls_ignore_running_vite_port(monkeypatch):
+    cfg = _reload_tray_config(monkeypatch, platform="win32")
+    monkeypatch.setattr(cfg, "_is_port_active", lambda port: True)
+
+    assert cfg.get_dashboard_url() == "http://127.0.0.1:8000/"
+    assert cfg.get_settings_url() == "http://127.0.0.1:8000/#settings"
+    assert cfg.get_logs_url() == "http://127.0.0.1:8000/#logcenter"

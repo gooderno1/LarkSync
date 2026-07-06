@@ -5,7 +5,7 @@
 </p>
 
 本地优先的飞书文档同步工具：把飞书云文档稳定同步到本地 Markdown / 文件系统，同时保留继续在飞书协作的工作方式。
-当前版本：`v0.7.28`（2026-07-06）；最新稳定版：`v0.7.28`。核心运行形态为托盘常驻 + Web 管理面板。
+当前版本：`v0.7.29`（2026-07-06）；最新稳定版：`v0.7.29`。核心运行形态为托盘常驻 + Web 管理面板。
 
 ## 快速入口
 
@@ -110,6 +110,7 @@
 - Windows 开机自启动现已区分开发态与打包态入口：开发态快捷方式优先指向受版本控制的 `apps/tray/launcher.py`，安装版直接指向当前 `LarkSync.exe`，托盘启动时还会自动修复旧的失效快捷方式，避免菜单显示“已启用”但实际开机不拉起。
 - macOS 安装版链路已补齐：更新包版本识别同时支持 `LarkSync-Setup-*.exe` 与 `LarkSync-*.dmg`，LaunchAgent 会在开发态使用受版本控制的 `launcher.py`、在打包态直接启动 `.app` 内可执行文件，托盘后端日志统一落到用户数据目录，避免安装到 `/Applications` 后继续回写应用目录。
 - GitHub Release 正式版 tag 现会默认同时构建 Windows `exe` 与 macOS `dmg`，减少发布时漏传 mac 安装包的风险；仅手动重跑工作流时才允许按需跳过 mac 构建。
+- 安装版托盘管理面板固定打开后端 `8000` 提供的生产静态页面；`3666` 仅保留给显式 `--dev` 的 Vite 热重载开发模式，避免本机仍有开发服务运行时新安装版误打开测试页面。
 - GitHub Actions 现额外在 PR / `main` 非 tag 场景执行 macOS 定向后端回归 + 打包 smoke，尽量把 `.app` / `dmg` 与 LaunchAgent / 更新链路问题提前暴露，而不是等到正式发布时才首次发现。
 - macOS CI 现已进一步补齐安装/启动级 smoke：构建出 DMG 后会自动挂载镜像、显式校验卷内 `Applications` 安装入口、复制 `.app` 到临时安装目录，并直接启动 bundle 内 `LarkSync --backend` 做 `/health` 检查；若启动超时或提前退出，会回抛 bundle stdout/stderr 与 `larksync.log` 尾部，并将默认等待时间提高到 60 秒，避免 GitHub runner 上再次出现“只知道 Connection refused、不知道为什么没起来”的黑盒失败。
 - 后端运行时现在将 `greenlet` 作为显式依赖声明，安装包构建也会显式打入该模块，避免 Python 3.14 arm64 等环境里 `sqlalchemy.ext.asyncio` 初始化数据库时因上游不再自动携带 `greenlet` 而直接崩溃，导致安装后启动 smoke 卡在 `/health` 之前。

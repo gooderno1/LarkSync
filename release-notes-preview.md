@@ -1,79 +1,17 @@
-# LarkSync v0.7.28
+# LarkSync v0.7.29
 
 - 发布日期：2026-07-06
-- 变更区间：v0.7.27 -> v0.7.28
+- 变更区间：v0.7.28 -> v0.7.29
 
 ## 本次更新明细
 
 ### 升级重点
-- `v0.7.28-dev.7`：`App` 在仪表盘页签下新增一层 `lg:h-[calc(100vh-2.5rem)]` 的容器，统一包住 `Header` 和 `DashboardPage`，高度与左侧边栏一致。
-- `v0.7.28-dev.6`：`DashboardPage` 在 `1760px+` 宽屏下改为 `flex min-h-0 + h-[calc(100vh-2.5rem)]` 工作台布局；统计卡保持顶部固定，下方双栏区域吃掉剩余高度。
-- `v0.7.28-dev.5`：日志中心在 `events` 页签下使用与任务诊断一致的 `flex min-h-0 + lg:h-[calc(100vh-2.5rem)]` 工作台高度。
-- `v0.7.28-dev.4`：`EventManagementPanel` 改为三段布局：顶部任务选择条、左侧“运行进程”列表、右侧“具体问题”详情。
-- `v0.7.28-dev.3`：新增 `apps/frontend/src/lib/eventManagement.ts`，将同步事件分类为可解释的问题：`mirror_folder_forbidden`、`docx_block_write_forbidden`、`delete_target_missing`、冲突、待删除、取消和普通同步记录。
-- `v0.7.28-dev.2`：事件管理只保留一个主工作区，不再渲染单独的“事件管理”横条。
-- `v0.7.28-dev.1`：日志中心第三页签从“冲突管理”改为“事件管理”，数据源为 `/sync/logs/sync?statuses=delete_pending&statuses=delete_failed&statuses=failed&statuses=conflict&statuses=cancelled`，默认展示最近 100 条关注事件。
+- `v0.7.29-dev.1`：安装版打开管理面板、设置、日志中心时都会走 `http://127.0.0.1:8000`。
 
 ### 详细变更
 
-#### v0.7.28-dev.7
-- `App` 在仪表盘页签下新增一层 `lg:h-[calc(100vh-2.5rem)]` 的容器，统一包住 `Header` 和 `DashboardPage`，高度与左侧边栏一致。
-- `DashboardPage` 移除自身的 `min-[1760px]:h-[calc(100vh-2.5rem)]`，改为在仪表盘容器内 `flex-1` 占用 Header 下方剩余高度。
-- `DashboardPage` 宽屏下增加 `overflow-hidden`，下方“任务概览”和“需要关注”继续各自内部滚动，避免页面整体被撑长。
-- `App.test.tsx` 新增断言：仪表盘 Header 和 Dashboard 被同一个侧边栏等高容器约束；`DashboardPage.test.tsx` 断言页面自身不再带整屏高度。
-- README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.7` / `0.7.28-dev.7`。
-
-#### v0.7.28-dev.6
-- `DashboardPage` 在 `1760px+` 宽屏下改为 `flex min-h-0 + h-[calc(100vh-2.5rem)]` 工作台布局；统计卡保持顶部固定，下方双栏区域吃掉剩余高度。
-- 双栏区域在宽屏下改为 `items-stretch`，`任务概览` 和 `需要关注` 都使用 `flex min-h-0 flex-col + h-full`，共享同一行高度。
-- `任务概览` 面板移除 `max-h-[560px]`；`需要关注` 列表移除 `max-h-[390px]`，改为 `flex-1 overflow-y-auto` 内部滚动。
-- 中等宽度仍保持自然纵向布局，不强行把单列仪表盘压成固定高度。
-- 新增 `DashboardPage.test.tsx` smoke test，断言宽屏工作台类名存在，且旧的 `max-h-[560px]` / `max-h-[390px]` 不再出现。
-- README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.6` / `0.7.28-dev.6`。
-
-#### v0.7.28-dev.5
-- 日志中心在 `events` 页签下使用与任务诊断一致的 `flex min-h-0 + lg:h-[calc(100vh-2.5rem)]` 工作台高度。
-- `EventManagementPanel` 主工作区改为 `flex min-h-0 flex-1`，下方左右网格继承剩余高度；左侧进程列表和右侧问题详情继续使用 `overflow-y-auto`，不再把整页向下撑开。
-- 运行进程卡片从只显示事件条数改为显示 `问题类型数 / 事件数`；问题类型超过 3 类时显示额外数量胶囊。
-- 同一 `runId` 下的事件仍会先按运行进程聚合，再按具体问题类型拆分；右侧可以同时展示多类问题详情。
-- README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.5` / `0.7.28-dev.5`。
-
-#### v0.7.28-dev.4
-- `EventManagementPanel` 改为三段布局：顶部任务选择条、左侧“运行进程”列表、右侧“具体问题”详情。
-- 顶部任务选择器展示当前任务的问题摘要和最近事件时间；选择任务后会重置左侧进程选择。
-- 左侧运行进程按 `runId` 聚合事件，展示每次运行的最近时间、事件数量和问题组成；无 `runId` 的历史事件会归到“无运行 ID”。
-- 右侧具体问题按问题类型聚合当前运行中的事件，继续展示原因、建议动作和原始事件。
-- 日志体积提醒从 `border-amber + text-amber` 改为中性边框、中性背景和中性文字，浅色主题下不再出现黄色底色 + 黄色文字。
-- 任务卡片“待处理说明”和仪表盘“待处理来源”改为中性说明文字；仪表盘未连接防御提示改为红色错误提示，不再使用黄底黄字。
-- README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.4` / `0.7.28-dev.4`。
-
-#### v0.7.28-dev.3
-- 新增 `apps/frontend/src/lib/eventManagement.ts`，将同步事件分类为可解释的问题：`mirror_folder_forbidden`、`docx_block_write_forbidden`、`delete_target_missing`、冲突、待删除、取消和普通同步记录。
-- 事件管理面板改为左侧队列 + 右侧详情：左侧可切换“按问题 / 按任务”，右侧展示问题摘要、原因、建议动作、影响任务和原始事件。
-- 默认查询仍只拉取 `failed / delete_failed / conflict / delete_pending / cancelled` 等需关注状态；点击“显示全部事件”后才读取最近 100 条完整同步事件。
-- 选中态统一改为 `border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]`，移除浅色白底按钮；主工作台继续使用 `bg-zinc-900/60`，内部面板使用 `bg-zinc-950/35~40`。
-- 浅色主题补齐 `bg-zinc-950/35`、`bg-zinc-950/45` 和 `bg-zinc-950/60` 覆盖规则；事件管理内部面板在浅色主题下实际计算背景为 `rgb(244,244,245)`，不再把透明深色直接盖在白底上。
-- 当前用户新建任务中的 `_LarkSync_MD_Mirror forbidden` 会显示为“权限禁止：云端镜像目录创建失败”；`创建块失败 / 1770032 / forBidden` 会显示为“权限禁止：云文档内容写入失败”；删除 `not found` 会显示为“删除状态已失效：云端目标不存在”。
-- README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.3` / `0.7.28-dev.3`。
-
-#### v0.7.28-dev.2
-- 事件管理只保留一个主工作区，不再渲染单独的“事件管理”横条。
-- 事件管理新增 `按问题 / 按任务` 切换：按问题分组展示 `同步失败 / 删除失败 / 冲突 / 待删除 / 已取消`；按任务分组展示每个任务下的事件组成和最近事件。
-- 事件管理配色改为中性卡片背景，失败、冲突、待删除等状态只通过状态胶囊和小面积文字提示表达。
-- 冲突处理面板只在存在冲突、冲突处理队列或加载错误时展示；没有冲突时不再额外占用一整块空态区域。
-- 仪表盘任务概览默认减少最近任务展示数量，并设置最大高度和内部滚动，避免任务列表把页面拉长。
-- 仪表盘主内容网格改为 `items-start`，右侧“需要关注”不再被左侧任务概览拉伸出底部留白。
-- 仪表盘任务卡路径改为摘要路径展示，并在存在待删、删失败、失败或冲突时显示“待处理来源”。
-- 任务管理页任务卡的“待处理”改为 `队列 / 待删 / 删失败 / 失败 / 冲突` 组成摘要，并补充每类含义：队列是等待上传/创建/重导入，待删是安全删除宽限队列，冲突需要到事件管理选择版本。
-- README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.2` / `0.7.28-dev.2`。
-
-#### v0.7.28-dev.1
-- 日志中心第三页签从“冲突管理”改为“事件管理”，数据源为 `/sync/logs/sync?statuses=delete_pending&statuses=delete_failed&statuses=failed&statuses=conflict&statuses=cancelled`，默认展示最近 100 条关注事件。
-- 事件管理摘要区按 `待删除 / 失败 / 冲突 / 取消` 分组计数；`delete_pending` 的解释固定为“安全删除宽限队列，到期后自动执行”，不再暗示用户必须手动处理。
-- 冲突处理仍保留在事件管理下方；只有未解决冲突需要用户选择“使用本地”或“使用云端”，已解决冲突继续作为记录展示。
-- 任务诊断默认只显示满足任一条件的任务：正在运行、`problem_count > 0`、上传数/下载数/删除数/待删除数/删除失败数/失败数/冲突数大于 0、最近结果为失败/取消、存在 `last_error`、当前文件状态属于实际动作状态。
-- 任务诊断会隐藏全 0 无动作任务，并在任务选择区显示隐藏数量；用户可点击“显示全部任务”恢复查看全部任务。
-- 仪表盘将 `delete_pending` 与 `queued / creating / created / reimporting` 分开统计；“待处理事件”卡显示待删除数量和同步队列数量，“同步健康”卡会分别显示“待删除”或“有队列”。
-- 仪表盘关注事件的状态颜色改为：失败/删除失败/取消为危险色，冲突/待删除为警告色，同步队列为信息色，成功类为成功色。
-- 仪表盘主内容两列布局改为 `min-[1760px]` 后启用；任务路径、云端 token、事件路径和消息支持换行，减少长路径撑开卡片。
-- README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.1` / `0.7.28-dev.1`。
+#### v0.7.29-dev.1
+- 安装版打开管理面板、设置、日志中心时都会走 `http://127.0.0.1:8000`。
+- `npm run dev` / `python apps/tray/tray_app.py --dev` 仍会使用 `http://localhost:3666`。
+- 验证：
+- `python -m pytest tests/test_tray_config.py`（工作目录：`apps/backend`，结果：5 passed）

@@ -1,5 +1,49 @@
 # DEVELOPMENT LOG
 
+## v0.7.29 (2026-07-06)
+
+- 目标：
+  - 将 `v0.7.29-dev.1` 的安装版入口修复收口为正式补丁版。
+  - 发布新的安装包，替换 `v0.7.28` 中安装版可能误打开 `3666` 开发页面的问题。
+
+- 结果：
+  - 当前版本正式提升为 `v0.7.29`。
+  - 安装版托盘管理面板、设置和日志中心固定打开 `8000` 上的生产静态前端。
+  - `3666` 仍仅用于 `--dev` / `npm run dev` 的开发热重载入口。
+  - README、CHANGELOG、根包/前端/后端版本和锁文件同步对齐到 `v0.7.29` / `0.7.29`。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `python -m pytest tests/test_tray_config.py tests/test_tray_lock.py`（工作目录：`apps/backend`，结果：7 passed）
+  - `python -m pytest`（工作目录：`apps/backend`，结果：513 passed）
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - `python -m pip install -e apps/backend --dry-run`
+
+## v0.7.29-dev.1 (2026-07-06)
+
+- 目标：
+  - 修复安装版启动后仍打开 `http://localhost:3666` 的问题。
+  - 明确区分开发入口与安装版入口：`3666` 只属于显式 `--dev` 的 Vite 热重载服务，安装版应打开 `8000` 上由 FastAPI 提供的生产静态页面。
+
+- 原因：
+  - `apps/tray/config.py` 的 `_detect_frontend_url()` 会优先探测本机 `3666` 端口。
+  - 如果用户机器上仍有 Vite 开发服务运行，新安装的托盘版会把该端口误判为当前前端入口。
+  - 该行为会让安装版打开测试页面，而不是安装包内置的生产前端。
+
+- 实现：
+  - `apps/tray/config.py` 的生产 URL 检测改为始终返回 `BACKEND_URL`。
+  - `apps/tray/tray_app.py` 现有 `--dev` 分支继续显式使用 `VITE_DEV_URL`，开发体验不变。
+  - 新增托盘配置回归测试：即使 `_is_port_active(3666)` 返回 true，`get_dashboard_url()`、`get_settings_url()` 和 `get_logs_url()` 也必须返回 `8000` 地址。
+
+- 结果：
+  - 安装版打开管理面板、设置、日志中心时都会走 `http://127.0.0.1:8000`。
+  - `npm run dev` / `python apps/tray/tray_app.py --dev` 仍会使用 `http://localhost:3666`。
+
+- 验证：
+  - `python -m pytest tests/test_tray_config.py`（工作目录：`apps/backend`，结果：5 passed）
+
 ## v0.7.28 (2026-07-06)
 
 - 目标：
