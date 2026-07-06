@@ -52,7 +52,10 @@ describe("EventManagementPanel", () => {
     expect(html).toContain("当前任务");
     expect(html).toContain("运行进程");
     expect(html).toContain("具体问题");
+    expect(html).toContain("2 类 / 2 条");
+    expect(html).toContain("2 类问题");
     expect(html).toContain("权限禁止：云文档内容写入失败");
+    expect(html).toContain("权限禁止：云端镜像目录创建失败");
     expect(html).toContain("原因");
     expect(html).toContain("建议动作");
     expect(html).toContain("王远雄 - 工作记录");

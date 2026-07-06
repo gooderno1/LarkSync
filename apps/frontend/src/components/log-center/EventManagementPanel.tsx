@@ -125,6 +125,8 @@ function RunListItem({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const problemTypeCount = group.problemSummaries.length;
+
   return (
     <button
       className={cn(
@@ -141,13 +143,16 @@ function RunListItem({
           <p className="truncate text-sm font-semibold text-zinc-100">{group.label}</p>
           <p className="mt-1 text-xs text-zinc-500">最近事件 {formatTimestamp(group.latestAt)}</p>
         </div>
-        <StatusPill label={`${group.entries.length} 条`} tone={group.needsActionCount > 0 ? "danger" : "neutral"} />
+        <StatusPill label={`${problemTypeCount} 类 / ${group.entries.length} 条`} tone={group.needsActionCount > 0 ? "danger" : "neutral"} />
       </div>
       <p className="mt-2 text-xs leading-5 text-zinc-500">{buildRunSummaryText(group)}</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {group.problemSummaries.slice(0, 3).map(({ problem, count }) => (
           <StatusPill key={problem.key} label={`${problem.shortLabel} ${count}`} tone={problem.tone} />
         ))}
+        {group.problemSummaries.length > 3 ? (
+          <StatusPill label={`+${group.problemSummaries.length - 3} 类`} tone="neutral" />
+        ) : null}
       </div>
     </button>
   );
@@ -253,8 +258,8 @@ export function EventManagementPanel({
   };
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-zinc-50">事件管理</h3>
@@ -371,7 +376,7 @@ export function EventManagementPanel({
         ) : null}
         {eventError ? <p className="mt-3 text-sm text-rose-400">事件加载失败：{eventError}</p> : null}
 
-        <div className="mt-4 grid min-h-[560px] gap-4 xl:grid-cols-[minmax(320px,0.82fr)_minmax(0,1.18fr)]">
+        <div className="mt-4 grid min-h-[560px] flex-1 gap-4 xl:min-h-0 xl:grid-cols-[minmax(320px,0.82fr)_minmax(0,1.18fr)]">
           <aside className="flex min-h-0 flex-col rounded-xl border border-zinc-800 bg-zinc-950/35 p-3">
             <div className="flex items-center justify-between gap-3">
               <div>

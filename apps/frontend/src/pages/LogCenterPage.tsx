@@ -152,7 +152,7 @@ export function LogCenterPage() {
     <section
       className={cn(
         "animate-fade-up",
-        logTab === "tasks"
+        logTab === "tasks" || logTab === "events"
           ? "flex min-h-0 flex-col gap-6 lg:h-[calc(100vh-2.5rem)]"
           : "space-y-6"
       )}

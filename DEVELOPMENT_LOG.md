@@ -1,5 +1,31 @@
 # DEVELOPMENT LOG
 
+## v0.7.28-dev.5 (2026-07-06)
+
+- 目标：
+  - 修正事件管理页左右区域被内容直接撑开的问题，使左侧运行进程和右侧具体问题都在各自区域内滚动。
+  - 明确同一同步进程是否支持多类问题，并在界面上显示问题类型数量。
+
+- 结果：
+  - 日志中心在 `events` 页签下使用与任务诊断一致的 `flex min-h-0 + lg:h-[calc(100vh-2.5rem)]` 工作台高度。
+  - `EventManagementPanel` 主工作区改为 `flex min-h-0 flex-1`，下方左右网格继承剩余高度；左侧进程列表和右侧问题详情继续使用 `overflow-y-auto`，不再把整页向下撑开。
+  - 运行进程卡片从只显示事件条数改为显示 `问题类型数 / 事件数`；问题类型超过 3 类时显示额外数量胶囊。
+  - 同一 `runId` 下的事件仍会先按运行进程聚合，再按具体问题类型拆分；右侧可以同时展示多类问题详情。
+  - README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.5` / `0.7.28-dev.5`。
+
+- 测试：
+  - `npm --prefix apps/frontend run test -- EventManagementPanel.test.tsx eventManagement.test.ts`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - 浏览器检查 `http://127.0.0.1:3666`：进入日志中心事件管理后，左侧运行进程和右侧具体问题的 `.log-scroll-area` 计算 `overflow-y` 均为 `auto`，页面 `bodyScrollHeight` 等于视口高度 `900`。
+  - `python scripts/build_installer.py`
+
+- 问题：
+  - 本轮为前端布局和展示文案调整，未改变后端日志查询、同步事件写入或问题分类规则。
+  - 本轮未执行后端 pytest。
+  - `python scripts/build_installer.py` 已生成 `dist/LarkSync/LarkSync.exe`；未传 `--nsis`，脚本按设计跳过 Windows 安装器生成，未做用户级安装启动体验。
+
 ## v0.7.28-dev.4 (2026-07-06)
 
 - 目标：
