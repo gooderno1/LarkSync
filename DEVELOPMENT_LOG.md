@@ -1,5 +1,32 @@
 # DEVELOPMENT LOG
 
+## v0.7.28-dev.6 (2026-07-06)
+
+- 目标：
+  - 修正仪表盘“任务概览”和“需要关注”面板高度过短的问题，使它们在宽屏下与左侧主工作区保持同一行高度。
+  - 避免再次回到固定 `560px / 390px` 的短面板布局。
+
+- 结果：
+  - `DashboardPage` 在 `1760px+` 宽屏下改为 `flex min-h-0 + h-[calc(100vh-2.5rem)]` 工作台布局；统计卡保持顶部固定，下方双栏区域吃掉剩余高度。
+  - 双栏区域在宽屏下改为 `items-stretch`，`任务概览` 和 `需要关注` 都使用 `flex min-h-0 flex-col + h-full`，共享同一行高度。
+  - `任务概览` 面板移除 `max-h-[560px]`；`需要关注` 列表移除 `max-h-[390px]`，改为 `flex-1 overflow-y-auto` 内部滚动。
+  - 中等宽度仍保持自然纵向布局，不强行把单列仪表盘压成固定高度。
+  - 新增 `DashboardPage.test.tsx` smoke test，断言宽屏工作台类名存在，且旧的 `max-h-[560px]` / `max-h-[390px]` 不再出现。
+  - README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.6` / `0.7.28-dev.6`。
+
+- 测试：
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - 浏览器检查 `http://127.0.0.1:3666`（`2048x900`）：宽屏下“任务概览”和“需要关注”面板实际高度都为 `722px`，两个内部滚动区分别为 `616px` 和 `588px`，旧的 `560px / 390px` 固定短高度已消失。
+  - `python scripts/build_installer.py`
+
+- 问题：
+  - 本轮为前端仪表盘布局修正，未改变任务排序、关注事件筛选口径或日志查询接口。
+  - 本轮未执行后端 pytest。
+  - `python scripts/build_installer.py` 已生成 `dist/LarkSync/LarkSync.exe`；未传 `--nsis`，脚本按设计跳过 Windows 安装器生成，未做用户级安装启动体验。
+
 ## v0.7.28-dev.5 (2026-07-06)
 
 - 目标：

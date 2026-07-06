@@ -252,7 +252,7 @@ export function DashboardPage({ onNavigate }: Props) {
   };
 
   return (
-    <section className="space-y-5 animate-fade-up">
+    <section className="animate-fade-up space-y-5 min-[1760px]:flex min-[1760px]:h-[calc(100vh-2.5rem)] min-[1760px]:min-h-0 min-[1760px]:flex-col min-[1760px]:gap-5 min-[1760px]:space-y-0">
       {/* 防御性提示：正常流程不应到达此处（App.tsx 已门控未连接状态） */}
       {!connected ? (
         <div className="rounded-2xl border border-rose-500/30 bg-rose-950/25 p-4 text-center text-sm text-rose-200">
@@ -269,9 +269,9 @@ export function DashboardPage({ onNavigate }: Props) {
       </div>
 
       {/* Two-column: tasks + logs */}
-      <div className="grid items-start gap-5 min-[1760px]:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+      <div className="grid items-start gap-5 min-[1760px]:min-h-0 min-[1760px]:flex-1 min-[1760px]:items-stretch min-[1760px]:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
         {/* Task overview */}
-        <div className="flex max-h-[560px] min-h-0 flex-col rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
+        <div className="flex min-h-0 flex-col rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 min-[1760px]:h-full">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-zinc-50">任务概览</h2>
@@ -322,7 +322,7 @@ export function DashboardPage({ onNavigate }: Props) {
         </div>
 
         {/* Attention summary */}
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
+        <div className="flex min-h-0 flex-col rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 min-[1760px]:h-full">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-zinc-50">需要关注</h2>
@@ -342,7 +342,7 @@ export function DashboardPage({ onNavigate }: Props) {
               </button>
             </div>
           </div>
-          <div className="mt-4 max-h-[390px] space-y-3 overflow-auto pr-2 log-scroll-area">
+          <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-2 log-scroll-area">
             {focusEntries.length === 0 ? (
               <div className="py-8 text-center">
                 <IconActivity className="mx-auto h-10 w-10 text-emerald-500/70" />
