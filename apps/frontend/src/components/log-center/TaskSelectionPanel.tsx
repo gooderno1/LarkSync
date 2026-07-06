@@ -19,6 +19,10 @@ type TaskSelectionPanelProps = {
   diagnosticsQueryIsFetching: boolean;
   taskPickerOpen: boolean;
   setTaskPickerOpen: (value: boolean | ((value: boolean) => boolean)) => void;
+  showAllTasks: boolean;
+  setShowAllTasks: (value: boolean | ((value: boolean) => boolean)) => void;
+  hiddenTaskCount: number;
+  focusedTaskCount: number;
   taskPickerQuery: string;
   setTaskPickerQuery: (value: string) => void;
   taskPickerOptions: SyncTaskOverview[];
@@ -37,6 +41,10 @@ export function TaskSelectionPanel({
   diagnosticsQueryIsFetching,
   taskPickerOpen,
   setTaskPickerOpen,
+  showAllTasks,
+  setShowAllTasks,
+  hiddenTaskCount,
+  focusedTaskCount,
   taskPickerQuery,
   setTaskPickerQuery,
   taskPickerOptions,
@@ -46,16 +54,36 @@ export function TaskSelectionPanel({
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3.5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-base font-semibold text-zinc-50">任务选择</h3>
+          {hiddenTaskCount > 0 ? (
+            <p className="mt-1 text-xs text-zinc-500">
+              当前显示 {showAllTasks ? focusedTaskCount + hiddenTaskCount : focusedTaskCount} 个任务，
+              {showAllTasks ? "包含无动作任务" : `已隐藏 ${hiddenTaskCount} 个全 0 任务`}。
+            </p>
+          ) : null}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {selectedTask ? (
             <StatusPill
               label={stateLabels[selectedStateKey] || selectedStateKey}
               tone={stateTones[selectedStateKey] || "neutral"}
               dot={selectedStatus?.state === "running"}
             />
+          ) : null}
+          {hiddenTaskCount > 0 ? (
+            <button
+              className={cn(
+                "rounded-lg border px-3 py-2 text-xs font-medium transition",
+                showAllTasks
+                  ? "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                  : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+              )}
+              onClick={() => setShowAllTasks((value) => !value)}
+              type="button"
+            >
+              {showAllTasks ? "只看有动作" : "显示全部任务"}
+            </button>
           ) : null}
           <button
             className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
@@ -93,7 +121,9 @@ export function TaskSelectionPanel({
                 />
                 <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1 log-scroll-area">
                   {taskPickerOptions.length === 0 ? (
-                    <div className="rounded-lg px-3 py-5 text-center text-xs text-zinc-500">没有匹配的任务</div>
+                    <div className="rounded-lg px-3 py-5 text-center text-xs text-zinc-500">
+                      {hiddenTaskCount > 0 && !showAllTasks ? "没有匹配的有动作任务" : "没有匹配的任务"}
+                    </div>
                   ) : (
                     taskPickerOptions.map((overview) => {
                       const task = overview.task;

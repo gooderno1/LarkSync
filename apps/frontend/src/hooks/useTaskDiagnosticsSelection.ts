@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { SyncTaskOverview } from "../types";
 import {
   filterTaskPickerOptions,
+  getFocusedTaskOverviews,
   resolveSelectedTaskId,
 } from "../lib/taskDiagnosticsSelection";
 
@@ -17,16 +18,24 @@ export function useTaskDiagnosticsSelection({
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [taskPickerQuery, setTaskPickerQuery] = useState("");
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [showAllTasks, setShowAllTasks] = useState(false);
+
+  const focusedOverviews = useMemo(
+    () => getFocusedTaskOverviews(sortedOverviews),
+    [sortedOverviews],
+  );
+  const hasHiddenTasks = focusedOverviews.length > 0 && focusedOverviews.length < sortedOverviews.length;
+  const visibleOverviews = showAllTasks || !hasHiddenTasks ? sortedOverviews : focusedOverviews;
 
   useEffect(() => {
-    const resolvedTaskId = resolveSelectedTaskId(sortedOverviews, selectedTaskId);
+    const resolvedTaskId = resolveSelectedTaskId(visibleOverviews, selectedTaskId);
     if (resolvedTaskId !== selectedTaskId) {
       setSelectedTaskId(resolvedTaskId);
     }
     if (resolvedTaskId === null && selectedRunId !== null) {
       setSelectedRunId(null);
     }
-  }, [selectedRunId, selectedTaskId, sortedOverviews]);
+  }, [selectedRunId, selectedTaskId, visibleOverviews]);
 
   useEffect(() => {
     if (!taskPickerOpen) {
@@ -35,13 +44,13 @@ export function useTaskDiagnosticsSelection({
   }, [taskPickerOpen]);
 
   const selectedOverview = useMemo(
-    () => sortedOverviews.find((overview) => overview.task.id === selectedTaskId) || null,
-    [selectedTaskId, sortedOverviews],
+    () => visibleOverviews.find((overview) => overview.task.id === selectedTaskId) || null,
+    [selectedTaskId, visibleOverviews],
   );
 
   const taskPickerOptions = useMemo(
-    () => filterTaskPickerOptions(sortedOverviews, taskPickerQuery),
-    [sortedOverviews, taskPickerQuery],
+    () => filterTaskPickerOptions(visibleOverviews, taskPickerQuery),
+    [visibleOverviews, taskPickerQuery],
   );
 
   const selectTask = (taskId: string) => {
@@ -57,6 +66,10 @@ export function useTaskDiagnosticsSelection({
     setTaskPickerQuery,
     taskPickerOpen,
     setTaskPickerOpen,
+    showAllTasks,
+    setShowAllTasks,
+    hiddenTaskCount: Math.max(0, sortedOverviews.length - visibleOverviews.length),
+    focusedTaskCount: focusedOverviews.length,
     selectedOverview,
     taskPickerOptions,
     selectTask,

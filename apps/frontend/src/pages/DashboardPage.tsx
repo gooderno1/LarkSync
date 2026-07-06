@@ -38,8 +38,11 @@ type SyncLogResponseRaw = {
 
 type Props = { onNavigate: (tab: NavKey) => void };
 
-const ATTENTION_STATUSES = new Set(["failed", "delete_failed", "conflict", "cancelled"]);
-const PENDING_SYNC_STATUSES = new Set(["queued", "creating", "created", "reimporting", "delete_pending"]);
+const FAILURE_STATUSES = new Set(["failed", "delete_failed", "cancelled"]);
+const CONFLICT_STATUSES = new Set(["conflict"]);
+const ATTENTION_STATUSES = new Set([...FAILURE_STATUSES, ...CONFLICT_STATUSES]);
+const DELETE_PENDING_STATUSES = new Set(["delete_pending"]);
+const QUEUED_SYNC_STATUSES = new Set(["queued", "creating", "created", "reimporting"]);
 const SUCCESS_STATUSES = new Set(["success", "uploaded", "downloaded", "mirrored", "deleted", "linked", "bootstrapped"]);
 
 function getStatusActivityTime(status?: SyncTaskStatus | null): number | null {
@@ -58,6 +61,27 @@ function getTaskActivityTime(
     task.updated_at ??
     task.created_at
   );
+}
+
+function getDashboardEventTone(status: string): Tone {
+  if (FAILURE_STATUSES.has(status)) return "danger";
+  if (CONFLICT_STATUSES.has(status) || DELETE_PENDING_STATUSES.has(status)) return "warning";
+  if (QUEUED_SYNC_STATUSES.has(status)) return "info";
+  if (SUCCESS_STATUSES.has(status)) return "success";
+  return "neutral";
+}
+
+function getDashboardEventHint(entry: SyncLogEntry): string | null {
+  if (entry.status === "delete_pending") {
+    return "安全删除宽限队列，到期后自动执行；如非预期，请在源端恢复文件或调整删除策略。";
+  }
+  if (entry.status === "delete_failed") {
+    return "删除动作失败，需要检查权限、文件占用或路径状态。";
+  }
+  if (entry.status === "conflict") {
+    return "本地与云端同时变化，需要到事件管理中选择保留版本。";
+  }
+  return null;
 }
 
 export function DashboardPage({ onNavigate }: Props) {
@@ -120,32 +144,36 @@ export function DashboardPage({ onNavigate }: Props) {
   const runningTasks = tasks.filter((t) => statusMap[t.id]?.state === "running").length;
   const unresolvedConflicts = conflicts.filter((c) => !c.resolved).length;
   const todayEventCount = syncLogEntries.filter((e) => isSameDay(e.timestamp, today)).length;
-  const failedEventCount = syncLogEntries.filter((e) => ATTENTION_STATUSES.has(e.status) && e.status !== "conflict").length;
-  const conflictEventCount = syncLogEntries.filter((e) => e.status === "conflict").length;
-  const pendingUploadCount = syncLogEntries.filter((e) => PENDING_SYNC_STATUSES.has(e.status)).length;
-  const pendingDownloadCount = 0;
+  const failedEventCount = syncLogEntries.filter((e) => FAILURE_STATUSES.has(e.status)).length;
+  const conflictEventCount = syncLogEntries.filter((e) => CONFLICT_STATUSES.has(e.status)).length;
+  const deletePendingCount = syncLogEntries.filter((e) => DELETE_PENDING_STATUSES.has(e.status)).length;
+  const queuedSyncCount = syncLogEntries.filter((e) => QUEUED_SYNC_STATUSES.has(e.status)).length;
+  const pendingEventCount = deletePendingCount + queuedSyncCount;
   const attentionCount = failedEventCount + conflictEventCount + unresolvedConflicts;
   const lastSuccess = syncLogEntries.find((e) => SUCCESS_STATUSES.has(e.status));
   const healthTone: Tone =
     failedEventCount > 0 ? "danger" :
-      unresolvedConflicts > 0 || conflictEventCount > 0 || pendingUploadCount > 0 ? "warning" :
+      unresolvedConflicts > 0 || conflictEventCount > 0 || pendingEventCount > 0 ? "warning" :
         runningTasks > 0 ? "info" :
           enabledTasks > 0 ? "success" : "neutral";
   const healthLabel =
     failedEventCount > 0 ? "有失败" :
       unresolvedConflicts > 0 || conflictEventCount > 0 ? "有冲突" :
-        pendingUploadCount > 0 ? "待同步" :
+        deletePendingCount > 0 ? "待删除" :
+          queuedSyncCount > 0 ? "有队列" :
           runningTasks > 0 ? "同步中" :
             enabledTasks > 0 ? "已一致" : "未启用";
   const healthHint =
-    failedEventCount > 0 ? `${failedEventCount} 条失败事件需要排查` :
+    failedEventCount > 0 ? `${failedEventCount} 条失败或取消事件需要排查` :
       unresolvedConflicts > 0 || conflictEventCount > 0 ? `${unresolvedConflicts + conflictEventCount} 个冲突需要处理` :
-        pendingUploadCount > 0 ? `待上传 ${pendingUploadCount} 项` :
+        deletePendingCount > 0 ? `待删除 ${deletePendingCount} 项，处于安全宽限队列` :
+          queuedSyncCount > 0 ? `队列中 ${queuedSyncCount} 项等待执行` :
           runningTasks > 0 ? `正在同步 ${runningTasks} 个任务` :
             enabledTasks > 0 ? "暂无待处理问题" : "请先启用同步任务";
   const attentionEntries = syncLogEntries.filter((entry) => ATTENTION_STATUSES.has(entry.status));
-  const queuedEntries = syncLogEntries.filter((entry) => PENDING_SYNC_STATUSES.has(entry.status));
-  const focusEntries = attentionEntries.length > 0 ? attentionEntries : queuedEntries;
+  const deletePendingEntries = syncLogEntries.filter((entry) => DELETE_PENDING_STATUSES.has(entry.status));
+  const queuedEntries = syncLogEntries.filter((entry) => QUEUED_SYNC_STATUSES.has(entry.status));
+  const focusEntries = attentionEntries.length > 0 ? attentionEntries : deletePendingEntries.length > 0 ? deletePendingEntries : queuedEntries;
   const runningTaskList = useMemo(
     () => tasks.filter((task) => statusMap[task.id]?.state === "running"),
     [tasks, statusMap]
@@ -170,12 +198,12 @@ export function DashboardPage({ onNavigate }: Props) {
     const progress = progressState.progress;
     const activityTime = getTaskActivityTime(task, st, latestLogTimeByTask[task.id]);
     return (
-      <div key={task.id} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+      <div key={task.id} className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-zinc-100">{task.name || task.local_path}</p>
-            <p className="text-xs text-zinc-400">本地：{task.local_path}</p>
-            <p className="text-xs text-zinc-500" title={task.cloud_folder_token}>云端：{task.cloud_folder_name || task.cloud_folder_token}</p>
+          <div className="min-w-0 space-y-1">
+            <p className="break-words text-sm font-semibold text-zinc-100">{task.name || task.local_path}</p>
+            <p className="break-words text-xs text-zinc-400" title={task.local_path}>本地：{task.local_path}</p>
+            <p className="break-words text-xs text-zinc-500" title={task.cloud_folder_token}>云端：{task.cloud_folder_name || task.cloud_folder_token}</p>
           </div>
           <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
         </div>
@@ -220,15 +248,15 @@ export function DashboardPage({ onNavigate }: Props) {
       ) : null}
 
       {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 min-[1500px]:grid-cols-4">
         <StatCard label="同步健康" value={healthLabel} hint={healthHint} tone={healthTone} icon={<IconActivity className="h-4 w-4" />} />
-        <StatCard label="待同步" value={`${pendingUploadCount + pendingDownloadCount}`} hint={`待处理 ${pendingUploadCount}，待下载 ${pendingDownloadCount}`} tone={pendingUploadCount + pendingDownloadCount > 0 ? "warning" : "success"} icon={<IconArrowRightLeft className="h-4 w-4" />} />
-        <StatCard label="问题处理" value={`${attentionCount}`} hint={`失败 ${failedEventCount}，冲突 ${unresolvedConflicts + conflictEventCount}`} tone={attentionCount > 0 ? "danger" : "success"} icon={<IconConflicts className="h-4 w-4" />} />
+        <StatCard label="待处理事件" value={`${pendingEventCount}`} hint={`待删除 ${deletePendingCount}，队列 ${queuedSyncCount}`} tone={pendingEventCount > 0 ? "warning" : "success"} icon={<IconArrowRightLeft className="h-4 w-4" />} />
+        <StatCard label="问题处理" value={`${attentionCount}`} hint={`失败/取消 ${failedEventCount}，冲突 ${unresolvedConflicts + conflictEventCount}`} tone={attentionCount > 0 ? "danger" : "success"} icon={<IconConflicts className="h-4 w-4" />} />
         <StatCard label="最近成功" value={lastSuccess ? formatShortTime(lastSuccess.timestamp) : "暂无"} hint={lastSuccess ? lastSuccess.taskName : `今日日志事件 ${todayEventCount} 条`} tone="neutral" icon={<IconRefresh className="h-4 w-4" />} />
       </div>
 
       {/* Two-column: tasks + logs */}
-      <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+      <div className="grid gap-6 min-[1760px]:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
         {/* Task overview */}
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -286,7 +314,7 @@ export function DashboardPage({ onNavigate }: Props) {
             <div>
               <h2 className="text-lg font-semibold text-zinc-50">需要关注</h2>
               <p className="mt-1 text-xs text-zinc-400">
-                优先展示失败、冲突和待同步队列摘要。
+                优先展示失败、冲突、待删除和同步队列摘要。
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -318,10 +346,13 @@ export function DashboardPage({ onNavigate }: Props) {
                       <p className="text-xs text-zinc-500">{formatTimestamp(entry.timestamp)}</p>
                       <p className="text-sm text-zinc-200">{entry.taskName}</p>
                     </div>
-                    <StatusPill label={statusLabelMap[entry.status] || entry.status} tone={entry.status === "failed" ? "danger" : entry.status === "skipped" ? "warning" : "success"} />
+                    <StatusPill label={statusLabelMap[entry.status] || entry.status} tone={getDashboardEventTone(entry.status)} />
                   </div>
-                  <p className="mt-2 break-all text-xs text-zinc-500">{entry.path}</p>
-                  {entry.message ? <p className="mt-1 text-xs text-zinc-600">{entry.message}</p> : null}
+                  <p className="mt-2 break-words text-xs text-zinc-500">{entry.path}</p>
+                  {entry.message ? <p className="mt-1 break-words text-xs text-zinc-600">{entry.message}</p> : null}
+                  {getDashboardEventHint(entry) ? (
+                    <p className="mt-1 text-xs text-zinc-500">{getDashboardEventHint(entry)}</p>
+                  ) : null}
                 </div>
               ))
             )}

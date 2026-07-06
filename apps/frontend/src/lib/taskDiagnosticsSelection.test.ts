@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   filterTaskPickerOptions,
+  getFocusedTaskOverviews,
+  hasFocusedTaskActivity,
   resolveActiveRunSelection,
   resolveSelectedTaskId,
 } from "./taskDiagnosticsSelection";
+import type { SyncTaskOverview } from "../types";
 
 const overviewA = {
   task: {
@@ -26,6 +29,78 @@ const overviewB = {
   },
 } as const;
 
+type DiagnosticsOverviewOverrides = Partial<Omit<SyncTaskOverview, "task" | "status" | "counts">> & {
+  task?: Partial<SyncTaskOverview["task"]>;
+  status?: Partial<SyncTaskOverview["status"]>;
+  counts?: Partial<SyncTaskOverview["counts"]>;
+};
+
+function makeDiagnosticsOverview(overrides: DiagnosticsOverviewOverrides = {}): SyncTaskOverview {
+  const base: SyncTaskOverview = {
+    task: {
+      id: "task-focused",
+      name: "同步任务",
+      local_path: "D:/Sync",
+      cloud_folder_name: "云端目录",
+      cloud_folder_token: "fld_focused",
+      sync_mode: "bidirectional",
+      update_mode: "auto",
+      enabled: true,
+      created_at: 1,
+      updated_at: 2,
+      last_run_at: 3,
+    },
+    status: {
+      task_id: "task-focused",
+      state: "success",
+      total_files: 0,
+      completed_files: 0,
+      failed_files: 0,
+      skipped_files: 0,
+      uploaded_files: 0,
+      downloaded_files: 0,
+      deleted_files: 0,
+      conflict_files: 0,
+      delete_pending_files: 0,
+      delete_failed_files: 0,
+      last_files: [],
+    },
+    last_event_at: 3,
+    last_result: "success",
+    problem_count: 0,
+    counts: {
+      total: 0,
+      processed: 0,
+      completed: 0,
+      failed: 0,
+      skipped: 0,
+      uploaded: 0,
+      downloaded: 0,
+      deleted: 0,
+      conflicts: 0,
+      delete_pending: 0,
+      delete_failed: 0,
+    },
+    current_file: null,
+  };
+  return {
+    ...base,
+    ...overrides,
+    task: {
+      ...base.task,
+      ...overrides.task,
+    },
+    status: {
+      ...base.status,
+      ...overrides.status,
+    },
+    counts: {
+      ...base.counts,
+      ...overrides.counts,
+    },
+  };
+}
+
 describe("task diagnostics selection helpers", () => {
   it("resolves selected task id with fallback to the first overview", () => {
     expect(resolveSelectedTaskId([], "task-a")).toBeNull();
@@ -37,6 +112,36 @@ describe("task diagnostics selection helpers", () => {
     expect(filterTaskPickerOptions([overviewA as never, overviewB as never], "日志")).toEqual([overviewB]);
     expect(filterTaskPickerOptions([overviewA as never, overviewB as never], "D:/Knowledge")).toEqual([overviewA]);
     expect(filterTaskPickerOptions([overviewA as never, overviewB as never], "")).toEqual([overviewA, overviewB]);
+  });
+
+  it("keeps only tasks with visible diagnostic activity in focused mode", () => {
+    const emptyOverview = makeDiagnosticsOverview({
+      task: { id: "empty", name: "全零任务" },
+    });
+    const deletePendingOverview = makeDiagnosticsOverview({
+      task: { id: "delete-pending", name: "待删除任务" },
+      counts: { delete_pending: 1 },
+    });
+    const failedOverview = makeDiagnosticsOverview({
+      task: { id: "failed", name: "失败任务" },
+      status: { failed_files: 1 },
+    });
+    const runningOverview = makeDiagnosticsOverview({
+      task: { id: "running", name: "运行任务" },
+      status: { state: "running" },
+    });
+
+    expect(hasFocusedTaskActivity(emptyOverview)).toBe(false);
+    expect(getFocusedTaskOverviews([
+      emptyOverview,
+      deletePendingOverview,
+      failedOverview,
+      runningOverview,
+    ]).map((overview) => overview.task.id)).toEqual([
+      "delete-pending",
+      "failed",
+      "running",
+    ]);
   });
 
   it("resolves active run selection from explicit selection, diagnostics fallback or latest run", () => {

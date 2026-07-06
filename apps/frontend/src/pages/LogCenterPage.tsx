@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/*  日志中心页面：任务诊断 + 系统日志 + 冲突管理                         */
+/*  日志中心页面：任务诊断 + 系统日志 + 事件管理                         */
 /* ------------------------------------------------------------------ */
 
 import { useEffect, useRef, useState } from "react";
@@ -13,10 +13,11 @@ import { CONFLICT_ACTION_LABELS } from "../lib/conflictResolution";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { SystemLogPanel } from "../components/log-center/SystemLogPanel";
-import { ConflictManagementPanel } from "../components/log-center/ConflictManagementPanel";
+import { EventManagementPanel } from "../components/log-center/EventManagementPanel";
 import { TaskSelectionPanel } from "../components/log-center/TaskSelectionPanel";
 import { RunHistoryPanel } from "../components/log-center/RunHistoryPanel";
 import { TaskDiagnosticsDetailPanel } from "../components/log-center/TaskDiagnosticsDetailPanel";
+import { mapSyncLogResponse, type SyncLogResponse, type SyncLogResponseRaw } from "../lib/logCenter";
 
 type FileLogEntry = {
   timestamp: string;
@@ -29,9 +30,11 @@ type FileLogResponse = {
   items: FileLogEntry[];
 };
 
+const EVENT_MANAGEMENT_STATUSES = ["delete_pending", "delete_failed", "failed", "conflict", "cancelled"];
+
 export function LogCenterPage() {
-  const [logTab, setLogTab] = useState<"tasks" | "file-logs" | "conflicts">("tasks");
-  const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflictAsync } = useConflicts(logTab === "conflicts");
+  const [logTab, setLogTab] = useState<"tasks" | "file-logs" | "events">("tasks");
+  const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflictAsync } = useConflicts(logTab === "events");
   const { toast } = useToast();
   const taskPickerRef = useRef<HTMLDivElement | null>(null);
 
@@ -51,6 +54,10 @@ export function LogCenterPage() {
     setTaskPickerQuery,
     taskPickerOpen,
     setTaskPickerOpen,
+    showAllTasks,
+    setShowAllTasks,
+    hiddenTaskCount,
+    focusedTaskCount,
     detailTab,
     setDetailTab,
     eventFilter,
@@ -113,8 +120,28 @@ export function LogCenterPage() {
     placeholderData: { total: 0, items: [] },
   });
 
+  const eventManagementQuery = useQuery<SyncLogResponse>({
+    queryKey: ["event-management-logs"],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", "100");
+      params.set("order", "desc");
+      for (const status of EVENT_MANAGEMENT_STATUSES) {
+        params.append("statuses", status);
+      }
+      return mapSyncLogResponse(await apiFetch<SyncLogResponseRaw>(`/sync/logs/sync?${params.toString()}`));
+    },
+    enabled: logTab === "events",
+    staleTime: 5_000,
+    refetchInterval: logTab === "events" ? 10_000 : false,
+    refetchOnWindowFocus: logTab === "events",
+    placeholderData: { total: 0, items: [] },
+  });
+
   const fileLogs = fileLogsQuery.data?.items || [];
   const fileLogTotal = fileLogsQuery.data?.total || 0;
+  const eventEntries = eventManagementQuery.data?.items || [];
+  const eventTotal = eventManagementQuery.data?.total || 0;
 
   const resetFileLogPage = () => setFileLogPage(1);
 
@@ -148,11 +175,11 @@ export function LogCenterPage() {
             系统日志
           </button>
           <button
-            className={cn("rounded-lg border px-4 py-2 text-xs font-medium transition", logTab === "conflicts" ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : "border-zinc-700 text-zinc-300 hover:bg-zinc-800")}
-            onClick={() => setLogTab("conflicts")}
+            className={cn("rounded-lg border px-4 py-2 text-xs font-medium transition", logTab === "events" ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : "border-zinc-700 text-zinc-300 hover:bg-zinc-800")}
+            onClick={() => setLogTab("events")}
             type="button"
           >
-            冲突管理 {conflicts.filter((c) => !c.resolved).length > 0 ? `(${conflicts.filter((c) => !c.resolved).length})` : ""}
+            事件管理 {conflicts.filter((c) => !c.resolved).length > 0 ? `(${conflicts.filter((c) => !c.resolved).length})` : ""}
           </button>
           <ThemeToggle />
         </div>
@@ -171,6 +198,10 @@ export function LogCenterPage() {
             diagnosticsQueryIsFetching={diagnosticsQuery.isFetching}
             taskPickerOpen={taskPickerOpen}
             setTaskPickerOpen={setTaskPickerOpen}
+            showAllTasks={showAllTasks}
+            setShowAllTasks={setShowAllTasks}
+            hiddenTaskCount={hiddenTaskCount}
+            focusedTaskCount={focusedTaskCount}
             taskPickerQuery={taskPickerQuery}
             setTaskPickerQuery={setTaskPickerQuery}
             taskPickerOptions={taskPickerOptions}
@@ -240,8 +271,13 @@ export function LogCenterPage() {
         />
       ) : null}
 
-      {logTab === "conflicts" ? (
-        <ConflictManagementPanel
+      {logTab === "events" ? (
+        <EventManagementPanel
+          eventEntries={eventEntries}
+          eventTotal={eventTotal}
+          eventLoading={eventManagementQuery.isLoading}
+          eventError={eventManagementQuery.error?.message ?? null}
+          refreshEvents={() => eventManagementQuery.refetch()}
           conflicts={conflicts}
           conflictLoading={conflictLoading}
           conflictError={conflictError}

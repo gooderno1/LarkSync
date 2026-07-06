@@ -138,6 +138,7 @@ describe("LogCenterPage smoke", () => {
     const html = renderToStaticMarkup(<LogCenterPage />);
 
     expect(html).toContain("日志中心");
+    expect(html).toContain("事件管理");
     expect(html).toContain("任务选择");
     expect(html).toContain("运行记录");
   });
