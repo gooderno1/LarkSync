@@ -101,7 +101,11 @@ pre,
 }
 
 :root[data-theme="light"] .bg-zinc-950,
+:root[data-theme="light"] .bg-zinc-950\/35,
+:root[data-theme="light"] .bg-zinc-950\/40,
+:root[data-theme="light"] .bg-zinc-950\/45,
 :root[data-theme="light"] .bg-zinc-950\/50,
+:root[data-theme="light"] .bg-zinc-950\/60,
 :root[data-theme="light"] .bg-zinc-950\/80 {
   background-color: var(--bg-soft);
 }
@@ -218,12 +222,12 @@ select option {
   background-color: rgba(37, 99, 235, 0.1);
 }
 
-:root[data-theme="light"] .bg-zinc-950\/40 {
-  background-color: var(--bg-soft);
-}
-
 :root[data-theme="light"] .hover\:border-zinc-700:hover {
   border-color: var(--border);
+}
+
+:root[data-theme="light"] .hover\:bg-zinc-950\/60:hover {
+  background-color: var(--bg-soft);
 }
 
 /* ---- Animations ---- */

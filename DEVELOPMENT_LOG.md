@@ -1,5 +1,34 @@
 # DEVELOPMENT LOG
 
+## v0.7.28-dev.3 (2026-07-06)
+
+- 目标：
+  - 按任务诊断页的布局方式重做事件管理，避免继续使用问题卡片平铺。
+  - 让“待处理”能落到具体原因，尤其是飞书权限禁止、增强 MD 镜像目录创建失败、Docx 块写入失败和删除目标不存在。
+  - 修正事件管理选中态和底色层级，使其与任务诊断页保持一致。
+  - 默认隐藏普通上传、下载、跳过和完成事件，减少无操作日志噪音。
+
+- 结果：
+  - 新增 `apps/frontend/src/lib/eventManagement.ts`，将同步事件分类为可解释的问题：`mirror_folder_forbidden`、`docx_block_write_forbidden`、`delete_target_missing`、冲突、待删除、取消和普通同步记录。
+  - 事件管理面板改为左侧队列 + 右侧详情：左侧可切换“按问题 / 按任务”，右侧展示问题摘要、原因、建议动作、影响任务和原始事件。
+  - 默认查询仍只拉取 `failed / delete_failed / conflict / delete_pending / cancelled` 等需关注状态；点击“显示全部事件”后才读取最近 100 条完整同步事件。
+  - 选中态统一改为 `border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]`，移除浅色白底按钮；主工作台继续使用 `bg-zinc-900/60`，内部面板使用 `bg-zinc-950/35~40`。
+  - 浅色主题补齐 `bg-zinc-950/35`、`bg-zinc-950/45` 和 `bg-zinc-950/60` 覆盖规则；事件管理内部面板在浅色主题下实际计算背景为 `rgb(244,244,245)`，不再把透明深色直接盖在白底上。
+  - 当前用户新建任务中的 `_LarkSync_MD_Mirror forbidden` 会显示为“权限禁止：云端镜像目录创建失败”；`创建块失败 / 1770032 / forBidden` 会显示为“权限禁止：云文档内容写入失败”；删除 `not found` 会显示为“删除状态已失效：云端目标不存在”。
+  - README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.3` / `0.7.28-dev.3`。
+
+- 测试：
+  - `npm --prefix apps/frontend run test -- eventManagement.test.ts`
+  - `npm --prefix apps/frontend run test -- eventManagement.test.ts EventManagementPanel.test.tsx LogCenterPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - 浏览器检查 `http://127.0.0.1:3666`：事件管理页出现“问题队列 / 原因 / 建议动作 / 删除状态已失效：云端目标不存在”，浅色主题下事件左右面板计算背景为 `rgb(244,244,245)`。
+
+- 问题：
+  - 本轮仍为前端展示与问题解释调整，未改变后端同步、权限校验、删除幂等或冲突解决逻辑。
+  - 本轮未执行后端 pytest 和安装包构建。
+
 ## v0.7.28-dev.2 (2026-07-06)
 
 - 目标：

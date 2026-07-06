@@ -43,6 +43,7 @@ export function LogCenterPage() {
   const [fileLogPage, setFileLogPage] = useState(1);
   const [fileLogPageSize, setFileLogPageSize] = useState(50);
   const [fileLogOrder, setFileLogOrder] = useState<"asc" | "desc">("desc");
+  const [showAllEvents, setShowAllEvents] = useState(false);
   const { conflictResolutionStates, queueSummary, handleResolveConflict } = useConflictResolutionQueue({
     resolveConflictAsync,
     toast,
@@ -121,13 +122,15 @@ export function LogCenterPage() {
   });
 
   const eventManagementQuery = useQuery<SyncLogResponse>({
-    queryKey: ["event-management-logs"],
+    queryKey: ["event-management-logs", showAllEvents],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", "100");
       params.set("order", "desc");
-      for (const status of EVENT_MANAGEMENT_STATUSES) {
-        params.append("statuses", status);
+      if (!showAllEvents) {
+        for (const status of EVENT_MANAGEMENT_STATUSES) {
+          params.append("statuses", status);
+        }
       }
       return mapSyncLogResponse(await apiFetch<SyncLogResponseRaw>(`/sync/logs/sync?${params.toString()}`));
     },
@@ -277,6 +280,9 @@ export function LogCenterPage() {
           eventTotal={eventTotal}
           eventLoading={eventManagementQuery.isLoading}
           eventError={eventManagementQuery.error?.message ?? null}
+          eventWarning={eventManagementQuery.data?.warning ?? null}
+          showAllEvents={showAllEvents}
+          setShowAllEvents={setShowAllEvents}
           refreshEvents={() => eventManagementQuery.refetch()}
           conflicts={conflicts}
           conflictLoading={conflictLoading}
