@@ -1,5 +1,34 @@
 # DEVELOPMENT LOG
 
+## v0.7.28 (2026-07-06)
+
+- 目标：
+  - 将 `v0.7.28-dev.1` 到 `v0.7.28-dev.7` 的日志中心、事件管理、仪表盘和任务待处理说明改动收口为正式稳定版。
+  - 发布一个用户可直接安装升级的稳定版，解决“待处理不知道处理什么”、事件管理结构混乱、任务诊断噪音过多、仪表盘高度不对齐和配色可读性问题。
+
+- 结果：
+  - 当前版本正式提升为 `v0.7.28`。
+  - 本次稳定版纳入日志中心“冲突管理”升级为“事件管理”的完整改造：顶部选任务、左侧选同步运行进程、右侧查看具体问题、原因、建议动作和原始事件。
+  - 事件管理默认只展示需关注事件；普通上传、下载、跳过和完成日志默认隐藏，可通过“显示全部事件”做完整审计。
+  - 事件分类会把 `_LarkSync_MD_Mirror` 创建 forbidden、Docx 块写入 forbidden、删除目标 not found、删除失败、待删除、冲突和取消解释成明确问题，避免只显示笼统待处理数字。
+  - 任务诊断默认隐藏全 0 无动作任务；任务管理页和仪表盘会拆分显示队列、待删、删失败、失败和冲突等待处理来源。
+  - 仪表盘宽屏布局已收口为与左侧边栏同高：Header 和 Dashboard 共享同一个外壳高度，“任务概览”和“需要关注”在剩余高度内各自滚动。
+  - README、CHANGELOG、根包/前端/后端版本、锁文件、`release-notes-preview.md` 与本开发日志同步对齐到 `v0.7.28` / `0.7.28`。
+  - 正式版 Release 继续沿用 tag 驱动的 GitHub Actions 发布链路：推送 `v0.7.28` tag 后会在远端执行 Windows/macOS 质量门、安装包构建、release notes 生成与 Release 资产上传。
+
+- 测试：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - `python -m pytest`（工作目录：`apps/backend`，结果：512 passed）
+  - `python scripts/build_installer.py`
+  - `python scripts/release_notes.py --version v0.7.28 --output release-notes-preview.md`
+
+- 问题：
+  - 真实 GitHub Release 安装包仍以 tag 推送后的远端 workflow 结果为准。
+  - 本机未安装 `makensis`；本地 `python scripts/build_installer.py` 已生成 `dist/LarkSync/LarkSync.exe`，未生成 Windows NSIS 安装器。
+
 ## v0.7.28-dev.7 (2026-07-06)
 
 - 目标：

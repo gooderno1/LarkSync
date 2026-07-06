@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-07-06] v0.7.28 release: v0.7.28
+
 [2026-07-06] v0.7.28-dev.7 fix(frontend): 修正仪表盘宽屏高度计算过长；App 现在用与侧边栏一致的高度包住 Header 和 Dashboard，Dashboard 只占 Header 下方剩余空间，任务概览和需要关注不再把整页撑高
 
 [2026-07-06] v0.7.28-dev.6 fix(frontend): 仪表盘宽屏工作台改为固定高度，下方“任务概览”和“需要关注”共享同一行高度并各自内部滚动；新增 DashboardPage smoke test，防止再次退回固定短高度
