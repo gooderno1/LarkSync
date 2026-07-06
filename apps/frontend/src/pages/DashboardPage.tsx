@@ -10,6 +10,7 @@ import { useConflicts } from "../hooks/useConflicts";
 import { useWebSocketLog } from "../hooks/useWebSocketLog";
 import { apiFetch } from "../lib/api";
 import { formatTimestamp, formatShortTime, isSameDay } from "../lib/formatters";
+import { shortPath } from "../lib/logCenter";
 import { modeLabels, updateModeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
 import { computeTaskProgress } from "../lib/progress";
 import { StatCard } from "../components/StatCard";
@@ -82,6 +83,16 @@ function getDashboardEventHint(entry: SyncLogEntry): string | null {
     return "本地与云端同时变化，需要到事件管理中选择保留版本。";
   }
   return null;
+}
+
+function getTaskPendingHint(status?: SyncTaskStatus): string | null {
+  if (!status) return null;
+  const parts: string[] = [];
+  if (status.delete_pending_files > 0) parts.push(`待删除 ${status.delete_pending_files}：安全宽限队列，到期后自动执行`);
+  if (status.delete_failed_files > 0) parts.push(`删除失败 ${status.delete_failed_files}：检查权限、占用或路径状态`);
+  if (status.failed_files > 0) parts.push(`失败 ${status.failed_files}：查看错误信息后重试`);
+  if (status.conflict_files > 0) parts.push(`冲突 ${status.conflict_files}：到事件管理选择保留版本`);
+  return parts.length > 0 ? parts.join("；") : null;
 }
 
 export function DashboardPage({ onNavigate }: Props) {
@@ -187,7 +198,7 @@ export function DashboardPage({ onNavigate }: Props) {
             getTaskActivityTime(b, statusMap[b.id], latestLogTimeByTask[b.id]) -
             getTaskActivityTime(a, statusMap[a.id], latestLogTimeByTask[a.id])
         )
-        .slice(0, runningTaskList.length > 0 ? 3 : 4),
+        .slice(0, runningTaskList.length > 0 ? 2 : 3),
     [tasks, statusMap, latestLogTimeByTask, runningTaskList.length]
   );
 
@@ -197,13 +208,14 @@ export function DashboardPage({ onNavigate }: Props) {
     const progressState = computeTaskProgress(st);
     const progress = progressState.progress;
     const activityTime = getTaskActivityTime(task, st, latestLogTimeByTask[task.id]);
+    const pendingHint = getTaskPendingHint(st);
     return (
-      <div key={task.id} className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+      <div key={task.id} className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950/50 p-3.5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 space-y-1">
             <p className="break-words text-sm font-semibold text-zinc-100">{task.name || task.local_path}</p>
-            <p className="break-words text-xs text-zinc-400" title={task.local_path}>本地：{task.local_path}</p>
-            <p className="break-words text-xs text-zinc-500" title={task.cloud_folder_token}>云端：{task.cloud_folder_name || task.cloud_folder_token}</p>
+            <p className="break-words text-xs text-zinc-400" title={task.local_path}>本地：{shortPath(task.local_path, 72)}</p>
+            <p className="break-words text-xs text-zinc-500" title={task.cloud_folder_token}>云端：{shortPath(task.cloud_folder_name || task.cloud_folder_token, 72)}</p>
           </div>
           <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
         </div>
@@ -233,13 +245,14 @@ export function DashboardPage({ onNavigate }: Props) {
             完成 {st.completed_files}，删除 {st.deleted_files}，待删 {st.delete_pending_files}，删失败 {st.delete_failed_files}，失败 {st.failed_files}，冲突 {st.conflict_files}
           </p>
         ) : null}
+        {pendingHint ? <p className="mt-1 text-xs leading-5 text-amber-300/90">待处理来源：{pendingHint}</p> : null}
         {st?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{st.last_error}</p> : null}
       </div>
     );
   };
 
   return (
-    <section className="space-y-6 animate-fade-up">
+    <section className="space-y-5 animate-fade-up">
       {/* 防御性提示：正常流程不应到达此处（App.tsx 已门控未连接状态） */}
       {!connected ? (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-center text-sm text-amber-300">
@@ -256,9 +269,9 @@ export function DashboardPage({ onNavigate }: Props) {
       </div>
 
       {/* Two-column: tasks + logs */}
-      <div className="grid gap-6 min-[1760px]:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+      <div className="grid items-start gap-5 min-[1760px]:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
         {/* Task overview */}
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+        <div className="flex max-h-[560px] min-h-0 flex-col rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-zinc-50">任务概览</h2>
@@ -273,7 +286,7 @@ export function DashboardPage({ onNavigate }: Props) {
               </button>
             </div>
           </div>
-          <div className="mt-5 space-y-4">
+          <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 log-scroll-area">
             {taskLoading ? (
               <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-zinc-800/50" />)}</div>
             ) : tasks.length === 0 ? (
@@ -309,7 +322,7 @@ export function DashboardPage({ onNavigate }: Props) {
         </div>
 
         {/* Attention summary */}
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-zinc-50">需要关注</h2>
@@ -329,7 +342,7 @@ export function DashboardPage({ onNavigate }: Props) {
               </button>
             </div>
           </div>
-          <div className="mt-5 max-h-[480px] space-y-3 overflow-auto pr-2 log-scroll-area">
+          <div className="mt-4 max-h-[390px] space-y-3 overflow-auto pr-2 log-scroll-area">
             {focusEntries.length === 0 ? (
               <div className="py-8 text-center">
                 <IconActivity className="mx-auto h-10 w-10 text-emerald-500/70" />
@@ -339,7 +352,7 @@ export function DashboardPage({ onNavigate }: Props) {
                 </p>
               </div>
             ) : (
-              focusEntries.slice(0, 8).map((entry, i) => (
+              focusEntries.slice(0, 5).map((entry, i) => (
                 <div key={`${entry.taskId}-${entry.timestamp}-${i}`} className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="space-y-1">

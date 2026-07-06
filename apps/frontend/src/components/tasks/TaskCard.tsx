@@ -53,6 +53,50 @@ type TaskCardProps = {
   onDelete: () => void;
 };
 
+const TASK_CARD_QUEUE_STATUSES = new Set(["queued", "creating", "created", "reimporting"]);
+
+function countLastFileStatus(status: SyncTaskStatus | undefined, matcher: (value: string) => boolean): number {
+  return (status?.last_files || []).filter((item) => matcher(item.status)).length;
+}
+
+function buildTaskPendingDetail(status: SyncTaskStatus | undefined, conflictCount: number) {
+  const queueCount = countLastFileStatus(status, (value) => TASK_CARD_QUEUE_STATUSES.has(value));
+  const deletePendingCount = Math.max(
+    status?.delete_pending_files ?? 0,
+    countLastFileStatus(status, (value) => value === "delete_pending"),
+  );
+  const deleteFailedCount = status?.delete_failed_files ?? 0;
+  const failedCount = status?.failed_files ?? 0;
+  const parts: string[] = [];
+  const details: string[] = [];
+
+  if (queueCount > 0) {
+    parts.push(`队列 ${queueCount}`);
+    details.push(`队列 ${queueCount} 条表示等待上传、创建或重导入`);
+  }
+  if (deletePendingCount > 0) {
+    parts.push(`待删 ${deletePendingCount}`);
+    details.push(`待删 ${deletePendingCount} 条处于安全删除宽限队列，到期后自动执行`);
+  }
+  if (deleteFailedCount > 0) {
+    parts.push(`删失败 ${deleteFailedCount}`);
+    details.push(`删失败 ${deleteFailedCount} 条需要检查权限、占用或路径状态`);
+  }
+  if (failedCount > 0) {
+    parts.push(`失败 ${failedCount}`);
+    details.push(`失败 ${failedCount} 条需要查看错误并重试`);
+  }
+  if (conflictCount > 0) {
+    parts.push(`冲突 ${conflictCount}`);
+    details.push(`冲突 ${conflictCount} 条需要到事件管理选择保留版本`);
+  }
+
+  return {
+    summary: parts.length > 0 ? parts.join("，") : "无",
+    detail: details.join("；"),
+  };
+}
+
 export function TaskCard({
   task,
   status,
@@ -100,6 +144,7 @@ export function TaskCard({
     failedFiles: status?.failed_files,
     deleteFailedFiles: status?.delete_failed_files,
   });
+  const pendingDetail = buildTaskPendingDetail(status, conflictCount);
 
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
@@ -200,7 +245,7 @@ export function TaskCard({
       <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
         <span>最近同步：{lastSyncTime ? formatTimestamp(lastSyncTime) : "暂无"}</span>
         <span className="text-zinc-600">|</span>
-        <span>待处理 {health.pendingRealtimeCount}</span>
+        <span>待处理：{pendingDetail.summary}</span>
         <span className="text-zinc-600">|</span>
         <span>删除 {status?.deleted_files ?? 0}</span>
         <span className="text-zinc-600">|</span>
@@ -218,6 +263,11 @@ export function TaskCard({
           </>
         ) : null}
       </div>
+      {pendingDetail.detail ? (
+        <p className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs leading-5 text-amber-200/90">
+          待处理说明：{pendingDetail.detail}。
+        </p>
+      ) : null}
       {status?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{status.last_error}</p> : null}
       {progress !== null ? (
         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
