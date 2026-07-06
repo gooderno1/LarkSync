@@ -1,5 +1,33 @@
 # DEVELOPMENT LOG
 
+## v0.7.28-dev.4 (2026-07-06)
+
+- 目标：
+  - 将事件管理继续改成和任务诊断一致的操作路径：顶部选任务，左侧选同步运行进程，右侧展示具体问题。
+  - 移除“按问题 / 按任务”切换，避免事件管理与任务诊断的信息架构不一致。
+  - 修正待处理说明和日志体积提醒的配色，避免黄色底色叠黄色文字导致浅色主题下不可读。
+
+- 结果：
+  - `EventManagementPanel` 改为三段布局：顶部任务选择条、左侧“运行进程”列表、右侧“具体问题”详情。
+  - 顶部任务选择器展示当前任务的问题摘要和最近事件时间；选择任务后会重置左侧进程选择。
+  - 左侧运行进程按 `runId` 聚合事件，展示每次运行的最近时间、事件数量和问题组成；无 `runId` 的历史事件会归到“无运行 ID”。
+  - 右侧具体问题按问题类型聚合当前运行中的事件，继续展示原因、建议动作和原始事件。
+  - 日志体积提醒从 `border-amber + text-amber` 改为中性边框、中性背景和中性文字，浅色主题下不再出现黄色底色 + 黄色文字。
+  - 任务卡片“待处理说明”和仪表盘“待处理来源”改为中性说明文字；仪表盘未连接防御提示改为红色错误提示，不再使用黄底黄字。
+  - README、CHANGELOG、根包版本、前端版本和锁文件已同步到 `v0.7.28-dev.4` / `0.7.28-dev.4`。
+
+- 测试：
+  - `npm --prefix apps/frontend run test -- eventManagement.test.ts EventManagementPanel.test.tsx LogCenterPage.test.tsx`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run build`
+  - `python scripts/build_installer.py`
+
+- 问题：
+  - 本轮仍为前端展示调整，未改变后端日志查询、同步运行记录或冲突处理逻辑。
+  - 本轮未执行后端 pytest。
+  - `python scripts/build_installer.py` 已生成 `dist/LarkSync/LarkSync.exe`；未传 `--nsis`，脚本按设计跳过 Windows 安装器生成，未做用户级安装启动体验。
+
 ## v0.7.28-dev.3 (2026-07-06)
 
 - 目标：

@@ -49,7 +49,9 @@ describe("EventManagementPanel", () => {
     );
 
     expect(html).toContain("事件管理");
-    expect(html).toContain("问题队列");
+    expect(html).toContain("当前任务");
+    expect(html).toContain("运行进程");
+    expect(html).toContain("具体问题");
     expect(html).toContain("权限禁止：云文档内容写入失败");
     expect(html).toContain("原因");
     expect(html).toContain("建议动作");

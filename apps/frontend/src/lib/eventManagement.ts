@@ -50,6 +50,16 @@ export type TaskEventGroup = {
   needsActionCount: number;
 };
 
+export type EventRunGroup = {
+  key: string;
+  runId: string | null;
+  label: string;
+  latestAt: number;
+  entries: SyncLogEntry[];
+  problemSummaries: TaskProblemSummary[];
+  needsActionCount: number;
+};
+
 type EventGroupOptions = {
   includeInformational: boolean;
   unresolvedConflictCount?: number;
@@ -258,6 +268,24 @@ function sortTaskGroups(a: TaskEventGroup, b: TaskEventGroup): number {
   return b.latestAt - a.latestAt;
 }
 
+function sortRunGroups(a: EventRunGroup, b: EventRunGroup): number {
+  if (a.needsActionCount !== b.needsActionCount) return b.needsActionCount - a.needsActionCount;
+  return b.latestAt - a.latestAt;
+}
+
+function compactRunId(runId: string): string {
+  if (runId.length <= 18) return runId;
+  return `${runId.slice(0, 8)}...${runId.slice(-6)}`;
+}
+
+function summarizeProblemCounts(summaries: TaskProblemSummary[]): string {
+  if (summaries.length === 0) return "暂无需要关注的事件。";
+  return summaries
+    .slice(0, 4)
+    .map(({ problem, count }) => `${problem.shortLabel} ${count} 条`)
+    .join("；");
+}
+
 export function buildEventIssueGroups(
   entries: SyncLogEntry[],
   options: EventGroupOptions,
@@ -342,12 +370,56 @@ export function buildTaskEventGroups(
   return Array.from(grouped.values()).sort(sortTaskGroups);
 }
 
+export function buildEventRunGroups(
+  entries: SyncLogEntry[],
+  options: Pick<EventGroupOptions, "includeInformational">,
+): EventRunGroup[] {
+  const grouped = new Map<string, EventRunGroup>();
+  const problemCounts = new Map<string, Map<EventProblemKey, TaskProblemSummary>>();
+
+  for (const entry of entries) {
+    if (!shouldIncludeEntry(entry, options.includeInformational)) continue;
+    const runId = entry.runId || null;
+    const key = runId || "no-run";
+    const problem = classifyEventProblem(entry);
+    const group = grouped.get(key) ?? {
+      key,
+      runId,
+      label: runId ? `运行 ${compactRunId(runId)}` : "无运行 ID",
+      latestAt: 0,
+      entries: [],
+      problemSummaries: [],
+      needsActionCount: 0,
+    };
+    group.entries.push(entry);
+    group.latestAt = Math.max(group.latestAt, entry.timestamp || 0);
+    group.needsActionCount += problem.needsAction ? 1 : 0;
+    grouped.set(key, group);
+
+    const runProblemCounts = problemCounts.get(key) ?? new Map<EventProblemKey, TaskProblemSummary>();
+    const summary = runProblemCounts.get(problem.key) ?? { problem, count: 0 };
+    summary.count += 1;
+    runProblemCounts.set(problem.key, summary);
+    problemCounts.set(key, runProblemCounts);
+  }
+
+  for (const [key, group] of grouped.entries()) {
+    const summaries = Array.from(problemCounts.get(key)?.values() ?? []);
+    group.problemSummaries = summaries.sort((a, b) => {
+      if (a.problem.priority !== b.problem.priority) return b.problem.priority - a.problem.priority;
+      return b.count - a.count;
+    });
+  }
+
+  return Array.from(grouped.values()).sort(sortRunGroups);
+}
+
 export function buildTaskSummaryText(group: TaskEventGroup): string {
-  if (group.problemSummaries.length === 0) return "暂无需要关注的事件。";
-  return group.problemSummaries
-    .slice(0, 4)
-    .map(({ problem, count }) => `${problem.shortLabel} ${count} 条`)
-    .join("；");
+  return summarizeProblemCounts(group.problemSummaries);
+}
+
+export function buildRunSummaryText(group: EventRunGroup): string {
+  return summarizeProblemCounts(group.problemSummaries);
 }
 
 export function eventStatusDisplay(entry: SyncLogEntry): string {

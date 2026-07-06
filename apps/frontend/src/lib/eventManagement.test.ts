@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildEventIssueGroups,
+  buildEventRunGroups,
   buildTaskEventGroups,
   classifyEventProblem,
 } from "./eventManagement";
@@ -96,5 +97,34 @@ describe("event management helpers", () => {
     expect(groups[0].taskName).toBe("王远雄 - 工作记录");
     expect(groups[1].problemSummaries[0].count).toBe(1);
     expect(groups[1].problemSummaries[0].problem.title).toBe("删除状态已失效：云端目标不存在");
+  });
+
+  it("groups selected task events by sync run/process", () => {
+    const groups = buildEventRunGroups([
+      event({
+        runId: "run-20260706-abcdef-123456",
+        timestamp: 200,
+        message: "创建块失败，已中止替换。飞书返回 code=1770032 msg=forBidden",
+      }),
+      event({
+        runId: "run-20260706-abcdef-123456",
+        timestamp: 180,
+        message: "创建云端文件夹失败: forbidden. (name=_LarkSync_MD_Mirror)",
+      }),
+      event({
+        runId: "run-old",
+        timestamp: 100,
+        status: "delete_pending",
+        message: "检测到本地已删除，待处理删除同步",
+      }),
+    ], { includeInformational: false });
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0].label).toContain("run-2026");
+    expect(groups[0].problemSummaries.map((item) => item.problem.key)).toEqual([
+      "docx_block_write_forbidden",
+      "mirror_folder_forbidden",
+    ]);
+    expect(groups[1].problemSummaries[0].problem.key).toBe("delete_pending");
   });
 });

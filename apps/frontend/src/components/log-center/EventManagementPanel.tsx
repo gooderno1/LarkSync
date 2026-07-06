@@ -2,11 +2,14 @@ import { useMemo, useState } from "react";
 
 import {
   buildEventIssueGroups,
+  buildEventRunGroups,
+  buildRunSummaryText,
   buildTaskEventGroups,
   buildTaskSummaryText,
   classifyEventProblem,
   eventStatusDisplay,
   type EventIssueGroup,
+  type EventRunGroup,
   type TaskEventGroup,
 } from "../../lib/eventManagement";
 import { formatTimestamp } from "../../lib/formatters";
@@ -39,8 +42,6 @@ type EventManagementPanelProps = {
   conflictActionLabels: Record<ConflictResolutionAction, string>;
 };
 
-type EventViewMode = "issue" | "task";
-
 function matchEventSearch(entry: SyncLogEntry, keyword: string): boolean {
   if (!keyword) return true;
   const problem = classifyEventProblem(entry);
@@ -49,6 +50,7 @@ function matchEventSearch(entry: SyncLogEntry, keyword: string): boolean {
     entry.path,
     entry.message,
     entry.status,
+    entry.runId,
     problem.title,
     problem.shortLabel,
   ]
@@ -83,48 +85,7 @@ function renderEventRow(entry: SyncLogEntry, key: string) {
   );
 }
 
-function EventIssueListItem({
-  group,
-  selected,
-  onSelect,
-}: {
-  group: EventIssueGroup;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const sourceText = group.taskNames.length > 0
-    ? group.taskNames.slice(0, 2).join(" / ")
-    : group.unresolvedConflictCount
-      ? "冲突处理队列"
-      : "未记录任务";
-  return (
-    <button
-      className={cn(
-        "w-full rounded-lg border px-3 py-3 text-left transition",
-        selected
-          ? "border-[#3370FF]/50 bg-[#3370FF]/10"
-          : "border-zinc-800 bg-zinc-950/40 hover:border-zinc-700 hover:bg-zinc-950/60",
-      )}
-      onClick={onSelect}
-      type="button"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-zinc-100">{group.problem.title}</p>
-          <p className="mt-1 text-xs leading-5 text-zinc-500">{group.problem.summary}</p>
-        </div>
-        <StatusPill label={`${group.count} 条`} tone={group.problem.tone} />
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-        <span className={toneTextClass(group.problem.tone)}>{group.problem.needsAction ? "需要处理" : "状态说明"}</span>
-        <span className="text-zinc-700">|</span>
-        <span className="truncate">{sourceText}</span>
-      </div>
-    </button>
-  );
-}
-
-function TaskEventListItem({
+function TaskPickerOption({
   group,
   selected,
   onSelect,
@@ -136,6 +97,37 @@ function TaskEventListItem({
   return (
     <button
       className={cn(
+        "w-full rounded-lg border px-3 py-2 text-left transition",
+        selected
+          ? "border-[#3370FF]/50 bg-[#3370FF]/10"
+          : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-900",
+      )}
+      onClick={onSelect}
+      type="button"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-zinc-100">{group.taskName}</p>
+          <p className="mt-1 truncate text-[11px] text-zinc-500">{buildTaskSummaryText(group)}</p>
+        </div>
+        <StatusPill label={`${group.entries.length} 条`} tone={group.needsActionCount > 0 ? "danger" : "neutral"} />
+      </div>
+    </button>
+  );
+}
+
+function RunListItem({
+  group,
+  selected,
+  onSelect,
+}: {
+  group: EventRunGroup;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      className={cn(
         "w-full rounded-lg border px-3 py-3 text-left transition",
         selected
           ? "border-[#3370FF]/50 bg-[#3370FF]/10"
@@ -146,11 +138,12 @@ function TaskEventListItem({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-zinc-100">{group.taskName}</p>
-          <p className="mt-1 text-xs leading-5 text-zinc-500">{buildTaskSummaryText(group)}</p>
+          <p className="truncate text-sm font-semibold text-zinc-100">{group.label}</p>
+          <p className="mt-1 text-xs text-zinc-500">最近事件 {formatTimestamp(group.latestAt)}</p>
         </div>
         <StatusPill label={`${group.entries.length} 条`} tone={group.needsActionCount > 0 ? "danger" : "neutral"} />
       </div>
+      <p className="mt-2 text-xs leading-5 text-zinc-500">{buildRunSummaryText(group)}</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {group.problemSummaries.slice(0, 3).map(({ problem, count }) => (
           <StatusPill key={problem.key} label={`${problem.shortLabel} ${count}`} tone={problem.tone} />
@@ -160,80 +153,42 @@ function TaskEventListItem({
   );
 }
 
-function IssueDetail({ group }: { group: EventIssueGroup }) {
+function ProblemDetailCard({ group }: { group: EventIssueGroup }) {
   return (
-    <div className="space-y-4">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusPill label={group.problem.needsAction ? "需要处理" : "无需立即处理"} tone={group.problem.tone} />
-          <StatusPill label={`${group.count} 条事件`} tone="neutral" />
+    <article className="rounded-xl border border-zinc-800 bg-zinc-950/35 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill label={group.problem.needsAction ? "需要处理" : "状态说明"} tone={group.problem.tone} />
+            <StatusPill label={`${group.count} 条事件`} tone="neutral" />
+          </div>
+          <h4 className="mt-3 text-base font-semibold text-zinc-50">{group.problem.title}</h4>
+          <p className="mt-2 text-sm leading-6 text-zinc-400">{group.problem.summary}</p>
         </div>
-        <h4 className="mt-3 text-base font-semibold text-zinc-50">{group.problem.title}</h4>
-        <p className="mt-2 text-sm leading-6 text-zinc-400">{group.problem.summary}</p>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/35 p-3">
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/45 p-3">
           <p className="text-[11px] uppercase tracking-widest text-zinc-500">原因</p>
           <p className="mt-2 text-xs leading-5 text-zinc-300">{group.problem.cause}</p>
         </div>
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/35 p-3">
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/45 p-3">
           <p className="text-[11px] uppercase tracking-widest text-zinc-500">建议动作</p>
           <p className="mt-2 text-xs leading-5 text-zinc-300">{group.problem.recommendedAction}</p>
         </div>
       </div>
 
-      <div>
-        <p className="text-[11px] uppercase tracking-widest text-zinc-500">影响范围</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {group.taskNames.length > 0 ? (
-            group.taskNames.slice(0, 6).map((taskName) => (
-              <span key={taskName} className="rounded-full border border-zinc-800 bg-zinc-950/50 px-3 py-1 text-xs text-zinc-300">
-                {taskName}
-              </span>
-            ))
-          ) : (
-            <span className="text-xs text-zinc-500">暂无任务来源；可能只有冲突队列记录。</span>
-          )}
+      <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] uppercase tracking-widest text-zinc-500">原始事件</p>
+          <span className={cn("text-xs", toneTextClass(group.problem.tone))}>{group.problem.shortLabel}</span>
         </div>
+        {group.entries.slice(0, 6).map((entry, index) => renderEventRow(entry, `${group.key}-${entry.taskId}-${entry.timestamp}-${index}`))}
+        {group.entries.length > 6 ? (
+          <p className="text-center text-xs text-zinc-500">还有 {group.entries.length - 6} 条同类事件。</p>
+        ) : null}
       </div>
-    </div>
-  );
-}
-
-function TaskDetail({ group }: { group: TaskEventGroup }) {
-  const primaryProblem = group.problemSummaries[0]?.problem;
-  return (
-    <div className="space-y-4">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusPill label={`${group.entries.length} 条事件`} tone="neutral" />
-          {group.needsActionCount > 0 ? <StatusPill label={`需处理 ${group.needsActionCount} 条`} tone="danger" /> : null}
-        </div>
-        <h4 className="mt-3 text-base font-semibold text-zinc-50">{group.taskName}</h4>
-        <p className="mt-2 text-sm leading-6 text-zinc-400">{buildTaskSummaryText(group)}</p>
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-[11px] uppercase tracking-widest text-zinc-500">待处理组成</p>
-        {group.problemSummaries.map(({ problem, count }) => (
-          <div key={problem.key} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/35 px-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-zinc-100">{problem.title}</p>
-              <p className="mt-1 text-xs leading-5 text-zinc-500">{problem.recommendedAction}</p>
-            </div>
-            <StatusPill label={`${count} 条`} tone={problem.tone} />
-          </div>
-        ))}
-      </div>
-
-      {primaryProblem ? (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/35 p-3">
-          <p className="text-[11px] uppercase tracking-widest text-zinc-500">优先排查</p>
-          <p className="mt-2 text-xs leading-5 text-zinc-300">{primaryProblem.cause}</p>
-        </div>
-      ) : null}
-    </div>
+    </article>
   );
 }
 
@@ -255,37 +210,42 @@ export function EventManagementPanel({
   onResolveConflict,
   conflictActionLabels,
 }: EventManagementPanelProps) {
-  const [eventViewMode, setEventViewMode] = useState<EventViewMode>("issue");
+  const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [taskPickerQuery, setTaskPickerQuery] = useState("");
   const [eventSearch, setEventSearch] = useState("");
-  const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null);
   const [selectedTaskKey, setSelectedTaskKey] = useState<string | null>(null);
+  const [selectedRunKey, setSelectedRunKey] = useState<string | null>(null);
 
-  const unresolvedConflicts = conflicts.filter((conflict) => !conflict.resolved).length;
   const hasConflictQueue = queueSummary.queued > 0 || queueSummary.running > 0 || queueSummary.waiting > 0 || queueSummary.success > 0 || queueSummary.failed > 0;
   const shouldShowConflictPanel = conflicts.length > 0 || Boolean(conflictError) || hasConflictQueue;
   const searchKeyword = eventSearch.trim().toLowerCase();
-
-  const filteredEntries = useMemo(
-    () => eventEntries.filter((entry) => matchEventSearch(entry, searchKeyword)),
-    [eventEntries, searchKeyword],
-  );
-
-  const issueGroups = useMemo(
-    () => buildEventIssueGroups(filteredEntries, {
-      includeInformational: showAllEvents,
-      unresolvedConflictCount: unresolvedConflicts,
-    }),
-    [filteredEntries, showAllEvents, unresolvedConflicts],
-  );
+  const taskKeyword = taskPickerQuery.trim().toLowerCase();
 
   const taskGroups = useMemo(
-    () => buildTaskEventGroups(filteredEntries, { includeInformational: showAllEvents }),
-    [filteredEntries, showAllEvents],
+    () => buildTaskEventGroups(eventEntries, { includeInformational: showAllEvents }),
+    [eventEntries, showAllEvents],
   );
-
-  const activeIssueGroup = issueGroups.find((group) => group.key === selectedIssueKey) ?? issueGroups[0] ?? null;
-  const activeTaskGroup = taskGroups.find((group) => group.key === selectedTaskKey) ?? taskGroups[0] ?? null;
-  const activeEntries = eventViewMode === "issue" ? activeIssueGroup?.entries ?? [] : activeTaskGroup?.entries ?? [];
+  const taskPickerOptions = useMemo(
+    () => taskGroups.filter((group) => !taskKeyword || group.taskName.toLowerCase().includes(taskKeyword)),
+    [taskGroups, taskKeyword],
+  );
+  const selectedTaskGroup = taskGroups.find((group) => group.key === selectedTaskKey) ?? taskGroups[0] ?? null;
+  const selectedTaskEntries = useMemo(
+    () => (selectedTaskGroup?.entries ?? []).filter((entry) => matchEventSearch(entry, searchKeyword)),
+    [selectedTaskGroup, searchKeyword],
+  );
+  const runGroups = useMemo(
+    () => buildEventRunGroups(selectedTaskEntries, { includeInformational: true }),
+    [selectedTaskEntries],
+  );
+  const selectedRunGroup = runGroups.find((group) => group.key === selectedRunKey) ?? runGroups[0] ?? null;
+  const issueGroups = useMemo(
+    () => buildEventIssueGroups(selectedRunGroup?.entries ?? [], {
+      includeInformational: true,
+      unresolvedConflictCount: 0,
+    }),
+    [selectedRunGroup],
+  );
 
   const refreshAll = () => {
     refreshEvents();
@@ -299,37 +259,11 @@ export function EventManagementPanel({
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-zinc-50">事件管理</h3>
             <p className="mt-1 text-xs text-zinc-500">
-              {showAllEvents ? "正在显示最近同步事件" : "默认只显示失败、冲突、删除和取消等需关注事件"}
-              {eventTotal > filteredEntries.length ? `；本页载入 ${filteredEntries.length} 条，接口返回总量 ${eventTotal} 条` : ""}；未解决冲突 {unresolvedConflicts} 条。
+              先选择任务，再选择同步进程，右侧查看该进程里的具体问题。
+              {eventTotal > eventEntries.length ? ` 本页载入 ${eventEntries.length} 条，接口返回总量 ${eventTotal} 条。` : ""}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-zinc-800 bg-zinc-950/50 p-1">
-              <button
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition",
-                  eventViewMode === "issue"
-                    ? "border border-[#3370FF]/40 bg-[#3370FF]/10 text-[#3370FF]"
-                    : "text-zinc-400 hover:text-zinc-200",
-                )}
-                onClick={() => setEventViewMode("issue")}
-                type="button"
-              >
-                按问题
-              </button>
-              <button
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition",
-                  eventViewMode === "task"
-                    ? "border border-[#3370FF]/40 bg-[#3370FF]/10 text-[#3370FF]"
-                    : "text-zinc-400 hover:text-zinc-200",
-                )}
-                onClick={() => setEventViewMode("task")}
-                type="button"
-              >
-                按任务
-              </button>
-            </div>
             <button
               className={cn(
                 "rounded-lg border px-3 py-2 text-xs font-medium transition",
@@ -353,17 +287,85 @@ export function EventManagementPanel({
           </div>
         </div>
 
-        <div className="mt-3">
-          <input
-            className="w-full rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-[#3370FF]"
-            placeholder="搜索任务、路径、错误码或问题类型"
-            value={eventSearch}
-            onChange={(event) => setEventSearch(event.target.value)}
-          />
+        <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/35 p-3">
+          <div className="grid gap-3 xl:grid-cols-[minmax(420px,1fr)_minmax(0,1fr)]">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-zinc-500">当前任务</label>
+              <div className="relative">
+                <button
+                  className="flex w-full items-center justify-between rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-left text-sm text-zinc-200 outline-none transition hover:border-zinc-600"
+                  onClick={() => setTaskPickerOpen((value) => !value)}
+                  type="button"
+                >
+                  <span className="truncate">{selectedTaskGroup?.taskName || "暂无事件任务"}</span>
+                  <span className="text-xs text-zinc-500">{taskPickerOpen ? "收起" : "选择"}</span>
+                </button>
+                {taskPickerOpen ? (
+                  <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 rounded-xl border border-zinc-800 bg-zinc-950 p-2 shadow-xl">
+                    <input
+                      autoFocus
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-[#3370FF]"
+                      placeholder="搜索任务名"
+                      value={taskPickerQuery}
+                      onChange={(event) => setTaskPickerQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setTaskPickerOpen(false);
+                      }}
+                    />
+                    <div className="mt-2 max-h-64 space-y-1 overflow-y-auto pr-1 log-scroll-area">
+                      {taskPickerOptions.length === 0 ? (
+                        <div className="rounded-lg px-3 py-5 text-center text-xs text-zinc-500">没有匹配的事件任务</div>
+                      ) : (
+                        taskPickerOptions.map((group) => (
+                          <TaskPickerOption
+                            key={group.key}
+                            group={group}
+                            selected={selectedTaskGroup?.key === group.key}
+                            onSelect={() => {
+                              setSelectedTaskKey(group.key);
+                              setSelectedRunKey(null);
+                              setTaskPickerOpen(false);
+                            }}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-zinc-500">当前任务问题</label>
+              <div className="flex min-h-[40px] flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-[11px] text-zinc-500">
+                {selectedTaskGroup ? (
+                  <>
+                    <span>{buildTaskSummaryText(selectedTaskGroup)}</span>
+                    <span className="text-zinc-700">|</span>
+                    <span>最近事件 {formatTimestamp(selectedTaskGroup.latestAt)}</span>
+                  </>
+                ) : (
+                  <span>暂无可展示事件</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <input
+              className="w-full rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200 outline-none transition placeholder:text-zinc-600 focus:border-[#3370FF]"
+              placeholder="在当前任务内搜索路径、错误码或问题类型"
+              value={eventSearch}
+              onChange={(event) => {
+                setEventSearch(event.target.value);
+                setSelectedRunKey(null);
+              }}
+            />
+          </div>
         </div>
 
         {eventWarning ? (
-          <p className="mt-3 rounded-lg border border-amber-500/25 bg-zinc-950/35 px-3 py-2 text-xs leading-5 text-amber-300">
+          <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/35 px-3 py-2 text-xs leading-5 text-zinc-400">
             {eventWarning}
           </p>
         ) : null}
@@ -373,45 +375,27 @@ export function EventManagementPanel({
           <aside className="flex min-h-0 flex-col rounded-xl border border-zinc-800 bg-zinc-950/35 p-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-zinc-100">{eventViewMode === "issue" ? "问题队列" : "任务队列"}</p>
-                <p className="mt-1 text-[11px] text-zinc-500">
-                  {eventViewMode === "issue" ? `${issueGroups.length} 类问题` : `${taskGroups.length} 个任务`}
-                </p>
+                <p className="text-sm font-semibold text-zinc-100">运行进程</p>
+                <p className="mt-1 text-[11px] text-zinc-500">{runGroups.length} 个进程</p>
               </div>
-              <StatusPill label={`${filteredEntries.length} 条`} tone={filteredEntries.length > 0 ? "info" : "neutral"} />
+              <StatusPill label={`${selectedTaskEntries.length} 条`} tone={selectedTaskEntries.length > 0 ? "info" : "neutral"} />
             </div>
 
             <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 log-scroll-area">
-              {eventLoading && filteredEntries.length === 0 ? (
+              {eventLoading && selectedTaskEntries.length === 0 ? (
                 [1, 2, 3, 4].map((item) => <div key={item} className="h-24 animate-pulse rounded-lg bg-zinc-800/50" />)
-              ) : eventViewMode === "issue" ? (
-                issueGroups.length === 0 ? (
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 py-10 text-center">
-                    <IconActivity className="mx-auto h-9 w-9 text-zinc-700" />
-                    <p className="mt-3 text-sm text-zinc-500">暂无需要关注的事件。</p>
-                  </div>
-                ) : (
-                  issueGroups.map((group) => (
-                    <EventIssueListItem
-                      key={group.key}
-                      group={group}
-                      selected={activeIssueGroup?.key === group.key}
-                      onSelect={() => setSelectedIssueKey(group.key)}
-                    />
-                  ))
-                )
-              ) : taskGroups.length === 0 ? (
+              ) : runGroups.length === 0 ? (
                 <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 py-10 text-center">
                   <IconActivity className="mx-auto h-9 w-9 text-zinc-700" />
-                  <p className="mt-3 text-sm text-zinc-500">暂无匹配任务事件。</p>
+                  <p className="mt-3 text-sm text-zinc-500">当前任务暂无匹配事件。</p>
                 </div>
               ) : (
-                taskGroups.map((group) => (
-                  <TaskEventListItem
+                runGroups.map((group) => (
+                  <RunListItem
                     key={group.key}
                     group={group}
-                    selected={activeTaskGroup?.key === group.key}
-                    onSelect={() => setSelectedTaskKey(group.key)}
+                    selected={selectedRunGroup?.key === group.key}
+                    onSelect={() => setSelectedRunKey(group.key)}
                   />
                 ))
               )}
@@ -419,40 +403,33 @@ export function EventManagementPanel({
           </aside>
 
           <section className="flex min-h-0 flex-col rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-            {eventViewMode === "issue" && activeIssueGroup ? (
-              <IssueDetail group={activeIssueGroup} />
-            ) : null}
-            {eventViewMode === "task" && activeTaskGroup ? (
-              <TaskDetail group={activeTaskGroup} />
-            ) : null}
-            {!activeIssueGroup && !activeTaskGroup ? (
-              <div className="flex flex-1 items-center justify-center text-center">
-                <div>
-                  <IconActivity className="mx-auto h-10 w-10 text-zinc-700" />
-                  <p className="mt-3 text-sm text-zinc-500">请选择左侧事件查看详情。</p>
-                </div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-zinc-100">具体问题</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {selectedRunGroup ? `${selectedRunGroup.label}；${buildRunSummaryText(selectedRunGroup)}` : "请选择左侧运行进程"}
+                </p>
               </div>
-            ) : null}
+              {selectedRunGroup ? <StatusPill label={`${issueGroups.length} 类问题`} tone={issueGroups.length > 0 ? "info" : "neutral"} /> : null}
+            </div>
 
-            {activeIssueGroup || activeTaskGroup ? (
-              <div className="mt-5 min-h-0 flex-1 overflow-y-auto border-t border-zinc-800 pt-4 pr-1 log-scroll-area">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-zinc-100">原始事件</p>
-                  <span className="text-xs text-zinc-500">
-                    {activeEntries.length > 0 ? `最近 ${Math.min(activeEntries.length, 20)} / ${activeEntries.length} 条` : "暂无原始日志"}
-                  </span>
+            <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 log-scroll-area">
+              {!selectedRunGroup ? (
+                <div className="flex h-full items-center justify-center text-center">
+                  <div>
+                    <IconActivity className="mx-auto h-10 w-10 text-zinc-700" />
+                    <p className="mt-3 text-sm text-zinc-500">请选择左侧运行进程查看具体问题。</p>
+                  </div>
                 </div>
-                {activeEntries.length === 0 ? (
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 py-8 text-center text-xs text-zinc-500">
-                    当前问题没有对应同步日志，可能来自未解决冲突队列。
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {activeEntries.slice(0, 20).map((entry, index) => renderEventRow(entry, `${entry.taskId}-${entry.timestamp}-${index}`))}
-                  </div>
-                )}
-              </div>
-            ) : null}
+              ) : issueGroups.length === 0 ? (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 py-10 text-center">
+                  <IconActivity className="mx-auto h-9 w-9 text-zinc-700" />
+                  <p className="mt-3 text-sm text-zinc-500">当前运行没有需要展示的问题。</p>
+                </div>
+              ) : (
+                issueGroups.map((group) => <ProblemDetailCard key={group.key} group={group} />)
+              )}
+            </div>
           </section>
         </div>
       </section>

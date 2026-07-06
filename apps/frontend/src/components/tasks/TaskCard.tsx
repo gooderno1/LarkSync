@@ -264,7 +264,7 @@ export function TaskCard({
         ) : null}
       </div>
       {pendingDetail.detail ? (
-        <p className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs leading-5 text-amber-200/90">
+        <p className="mt-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs leading-5 text-zinc-400">
           待处理说明：{pendingDetail.detail}。
         </p>
       ) : null}

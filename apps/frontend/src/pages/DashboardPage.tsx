@@ -245,7 +245,7 @@ export function DashboardPage({ onNavigate }: Props) {
             完成 {st.completed_files}，删除 {st.deleted_files}，待删 {st.delete_pending_files}，删失败 {st.delete_failed_files}，失败 {st.failed_files}，冲突 {st.conflict_files}
           </p>
         ) : null}
-        {pendingHint ? <p className="mt-1 text-xs leading-5 text-amber-300/90">待处理来源：{pendingHint}</p> : null}
+        {pendingHint ? <p className="mt-1 text-xs leading-5 text-zinc-500">待处理来源：{pendingHint}</p> : null}
         {st?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{st.last_error}</p> : null}
       </div>
     );
@@ -255,7 +255,7 @@ export function DashboardPage({ onNavigate }: Props) {
     <section className="space-y-5 animate-fade-up">
       {/* 防御性提示：正常流程不应到达此处（App.tsx 已门控未连接状态） */}
       {!connected ? (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-center text-sm text-amber-300">
+        <div className="rounded-2xl border border-rose-500/30 bg-rose-950/25 p-4 text-center text-sm text-rose-200">
           飞书账号未连接，请刷新页面以完成授权引导。
         </div>
       ) : null}
