@@ -134,7 +134,13 @@ export type CloudSelection = {
   path: string;
 };
 
-export type NavKey = "dashboard" | "tasks" | "logcenter" | "settings";
+export type NavKey =
+  | "dashboard"
+  | "tasks"
+  | "activity"
+  | "conflicts"
+  | "settings"
+  | "maintenance";
 
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
 

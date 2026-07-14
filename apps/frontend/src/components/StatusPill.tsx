@@ -6,11 +6,11 @@ import { cn } from "../lib/utils";
 import type { Tone } from "../types";
 
 const toneStyles: Record<Tone, string> = {
-  neutral: "border-zinc-700 text-zinc-300 bg-zinc-800/50",
-  info: "border-blue-500/40 text-blue-300 bg-blue-500/15",
-  success: "border-emerald-500/40 text-emerald-300 bg-emerald-500/15",
-  warning: "border-amber-500/40 text-amber-300 bg-amber-500/15",
-  danger: "border-rose-500/40 text-rose-300 bg-rose-500/15",
+  neutral: "border-[#c9d8ec] text-[#52657a] bg-white",
+  info: "border-[#3370ff]/25 text-[#1d4ed8] bg-[#eef5ff]",
+  success: "border-[#10b981]/25 text-[#047857] bg-[#ecfdf5]",
+  warning: "border-[#f59e0b]/30 text-[#b45309] bg-[#fffbeb]",
+  danger: "border-[#f43f5e]/30 text-[#be123c] bg-[#fff1f2]",
 };
 
 export function StatusPill({
@@ -25,7 +25,7 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
+        "inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium",
         toneStyles[tone]
       )}
     >

@@ -14,6 +14,10 @@ type AuthStatus = {
   device_id?: string | null;
 };
 
+export function getAuthStatusRefetchInterval(data?: AuthStatus | null): number | false {
+  return data?.connected ? false : 2_500;
+}
+
 export function useAuth() {
   const qc = useQueryClient();
 
@@ -22,6 +26,8 @@ export function useAuth() {
     queryFn: () => apiFetch<AuthStatus>("/auth/status"),
     retry: false,
     staleTime: 30_000,
+    refetchInterval: (query) => getAuthStatusRefetchInterval(query.state.data),
+    refetchIntervalInBackground: true,
   });
 
   const logoutMutation = useMutation({

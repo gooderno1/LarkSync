@@ -43,7 +43,14 @@ describe("task panels smoke", () => {
     );
 
     expect(html).toContain("同步任务");
+    expect(html).toContain("搜索任务");
+    expect(html).toContain("全部状态");
+    expect(html).toContain("全部模式");
+    expect(html).toContain("全部健康");
     expect(html).toContain("暂无同步任务");
+    expect(html).toContain("border-[#c9d8ec]");
+    expect(html).not.toContain("bg-zinc-900/60");
+    expect(html).not.toContain("border-zinc-800");
   });
 
   it("renders task card shell", () => {
@@ -94,5 +101,8 @@ describe("task panels smoke", () => {
     expect(html).toContain("示例任务");
     expect(html).toContain("收起管理");
     expect(html).toContain("同步模式");
+    expect(html).toContain("bg-[#f8fbff]");
+    expect(html).not.toContain("bg-zinc-900/60");
+    expect(html).not.toContain("bg-zinc-950/50");
   });
 });

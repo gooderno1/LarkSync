@@ -1,6 +1,6 @@
 /* ------------------------------------------------------------------ */
 /*  WebSocket 实时日志流 Hook                                           */
-/*  后端 ws://host/ws/logs 路由需配合实现                                */
+/*  后端 ws://host/ws/events 路由通过同源或 Vite proxy 暴露                 */
 /* ------------------------------------------------------------------ */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,10 +20,8 @@ export function useWebSocketLog(enabled = true) {
     if (!enabled) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const base = import.meta.env.PROD
-      ? `${protocol}//${window.location.host}/api`
-      : `${protocol}//${window.location.hostname}:8000`;
-    const url = `${base}/ws/logs`;
+    const base = `${protocol}//${window.location.host}`;
+    const url = `${base}/ws/events`;
 
     setStatus("connecting");
 

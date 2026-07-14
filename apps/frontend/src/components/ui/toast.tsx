@@ -28,11 +28,11 @@ export function useToast() {
 let nextId = 0;
 
 const toneStyles: Record<Tone, string> = {
-  neutral: "border-zinc-700 bg-zinc-900 text-zinc-100",
-  info: "border-blue-500/40 bg-blue-950 text-blue-100",
-  success: "border-emerald-500/40 bg-emerald-950 text-emerald-100",
-  warning: "border-amber-500/40 bg-amber-950 text-amber-100",
-  danger: "border-rose-500/40 bg-rose-950 text-rose-100",
+  neutral: "border-[#c9d8ec] bg-white text-[#334762]",
+  info: "border-[#3370ff]/25 bg-[#eef5ff] text-[#1d4ed8]",
+  success: "border-[#10b981]/25 bg-[#ecfdf5] text-[#047857]",
+  warning: "border-[#f59e0b]/30 bg-[#fffbeb] text-[#b45309]",
+  danger: "border-[#f43f5e]/30 bg-[#fff1f2] text-[#be123c]",
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -55,7 +55,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={item.id}
             className={cn(
-              "pointer-events-auto animate-slide-up rounded-xl border px-4 py-3 text-sm shadow-lg backdrop-blur-sm",
+              "pointer-events-auto animate-slide-up rounded-lg border px-4 py-3 text-sm shadow-[0_18px_48px_rgba(16,32,51,0.14)] backdrop-blur-sm",
               toneStyles[item.tone]
             )}
           >

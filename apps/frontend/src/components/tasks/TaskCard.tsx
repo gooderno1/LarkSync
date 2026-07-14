@@ -51,6 +51,7 @@ type TaskCardProps = {
   onRun: () => void;
   onToggleEnabled: () => void;
   onDelete: () => void;
+  onOpenDetail?: () => void;
 };
 
 const TASK_CARD_QUEUE_STATUSES = new Set(["queued", "creating", "created", "reimporting"]);
@@ -123,6 +124,7 @@ export function TaskCard({
   onRun,
   onToggleEnabled,
   onDelete,
+  onOpenDetail,
 }: TaskCardProps) {
   const stateKey = !task.enabled ? "paused" : status?.state || "idle";
   const progressState = computeTaskProgress(status);
@@ -147,48 +149,48 @@ export function TaskCard({
   const pendingDetail = buildTaskPendingDetail(status, conflictCount);
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+    <article className="min-w-0 rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_16px_40px_rgba(51,112,255,0.06)]">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 space-y-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             <StatusPill label={health.label} tone={health.tone} dot={health.isRunning} />
-            <p className="text-lg font-semibold text-zinc-50">{task.name || "未命名任务"}</p>
+            <p className="min-w-0 truncate text-lg font-semibold text-[#102033]">{task.name || "未命名任务"}</p>
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-[#6b7f96]">
             {summarizePath(task.local_path, 2, 42)} 与 {summarizePath(cloudPath, 2, 42)} 保持同步
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-          <span className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-1">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-[#52657a]">
+          <span className="inline-flex items-center gap-2 rounded-lg border border-[#c9d8ec] bg-[#f8fbff] px-3 py-1">
             <ModeIcon mode={task.sync_mode} className="h-3.5 w-3.5" />
             {modeLabels[task.sync_mode] || task.sync_mode}
           </span>
-          <span className="rounded-lg border border-zinc-700 px-3 py-1">
+          <span className="rounded-lg border border-[#c9d8ec] bg-[#f8fbff] px-3 py-1">
             更新：{updateModeLabels[task.update_mode || "auto"]}
           </span>
-          <span className="rounded-lg border border-zinc-700 px-3 py-1">
+          <span className="rounded-lg border border-[#c9d8ec] bg-[#f8fbff] px-3 py-1">
             MD：
             {task.sync_mode === "download_only"
               ? "不适用（仅下载）"
               : mdSyncModeLabels[task.md_sync_mode || "enhanced"]}
           </span>
-          <span className="rounded-lg border border-zinc-700 px-3 py-1">
+          <span className="rounded-lg border border-[#c9d8ec] bg-[#f8fbff] px-3 py-1">
             {deletePolicyLabel(task.delete_policy)}
           </span>
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-        <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
+      <div className="mt-4 rounded-xl border border-[#d7e4f5] bg-[#f8fbff] p-4">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)] gap-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-emerald-500/20 p-2 text-emerald-300">
+            <div className="rounded-xl bg-[#ecfdf5] p-2 text-[#047857]">
               <IconFolder className="h-4 w-4" />
             </div>
             <div className="min-w-0 w-full">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] uppercase tracking-widest text-zinc-500">本地目录</p>
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-[#6b7f96]">本地目录</p>
                 <button
-                  className="text-[11px] text-zinc-500 hover:text-zinc-300"
+                  className="text-[11px] text-[#3370ff] hover:text-[#1d4ed8]"
                   onClick={() => onTogglePath("local")}
                   type="button"
                 >
@@ -196,7 +198,7 @@ export function TaskCard({
                 </button>
               </div>
               <button
-                className={`mt-1 w-full text-left font-mono text-xs leading-relaxed text-zinc-200 ${
+                className={`mt-1 w-full text-left font-mono text-xs leading-relaxed text-[#334762] ${
                   localPathExpanded ? "break-all" : "truncate"
                 }`}
                 onClick={() => onTogglePath("local")}
@@ -208,16 +210,16 @@ export function TaskCard({
             </div>
           </div>
           <div className="flex items-center justify-center">
-            <span className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-zinc-400">
+            <span className="rounded-full border border-[#c9d8ec] bg-white p-2 text-[#3370ff] shadow-[0_8px_22px_rgba(51,112,255,0.12)]">
               <ModeIcon mode={task.sync_mode} className="h-4 w-4" />
             </span>
           </div>
           <div className="flex items-center justify-end gap-3 text-right">
             <div className="min-w-0 w-full">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] uppercase tracking-widest text-zinc-500">云端目录</p>
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-[#6b7f96]">云端目录</p>
                 <button
-                  className="text-[11px] text-zinc-500 hover:text-zinc-300"
+                  className="text-[11px] text-[#3370ff] hover:text-[#1d4ed8]"
                   onClick={() => onTogglePath("cloud")}
                   type="button"
                 >
@@ -225,7 +227,7 @@ export function TaskCard({
                 </button>
               </div>
               <button
-                className={`mt-1 w-full text-left text-xs leading-relaxed text-zinc-200 ${
+                className={`mt-1 w-full text-left text-xs leading-relaxed text-[#334762] ${
                   cloudPathExpanded ? "break-all" : "truncate"
                 }`}
                 onClick={() => onTogglePath("cloud")}
@@ -235,49 +237,58 @@ export function TaskCard({
                 {cloudPathExpanded ? cloudPath : summarizePath(cloudPath)}
               </button>
             </div>
-            <div className="rounded-xl bg-[#3370FF]/15 p-2 text-[#3370FF]">
+            <div className="rounded-xl bg-[#eaf2ff] p-2 text-[#3370ff]">
               <IconCloud className="h-4 w-4" />
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[#6b7f96]">
         <span>最近同步：{lastSyncTime ? formatTimestamp(lastSyncTime) : "暂无"}</span>
-        <span className="text-zinc-600">|</span>
+        <span className="text-[#c9d8ec]">|</span>
         <span>待处理：{pendingDetail.summary}</span>
-        <span className="text-zinc-600">|</span>
+        <span className="text-[#c9d8ec]">|</span>
         <span>删除 {status?.deleted_files ?? 0}</span>
-        <span className="text-zinc-600">|</span>
+        <span className="text-[#c9d8ec]">|</span>
         <span>待删 {status?.delete_pending_files ?? 0}</span>
-        <span className="text-zinc-600">|</span>
+        <span className="text-[#c9d8ec]">|</span>
         <span>删失败 {status?.delete_failed_files ?? 0}</span>
-        <span className="text-zinc-600">|</span>
+        <span className="text-[#c9d8ec]">|</span>
         <span>失败 {status?.failed_files ?? 0}</span>
-        <span className="text-zinc-600">|</span>
+        <span className="text-[#c9d8ec]">|</span>
         <span>冲突 {conflictCount}</span>
         {progress !== null ? (
           <>
-            <span className="text-zinc-600">|</span>
+            <span className="text-[#c9d8ec]">|</span>
             <span>完成率：{progress}%</span>
           </>
         ) : null}
       </div>
       {pendingDetail.detail ? (
-        <p className="mt-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs leading-5 text-zinc-400">
+        <p className="mt-2 rounded-lg border border-[#f59e0b]/25 bg-[#fffbeb] px-3 py-2 text-xs leading-5 text-[#92400e]">
           待处理说明：{pendingDetail.detail}。
         </p>
       ) : null}
-      {status?.last_error ? <p className="mt-2 text-xs text-rose-400">错误：{status.last_error}</p> : null}
+      {status?.last_error ? <p className="mt-2 text-xs text-[#be123c]">错误：{status.last_error}</p> : null}
       {progress !== null ? (
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
-          <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[#dce8f8]">
+          <div className="h-full rounded-full bg-[#3370ff] transition-all" style={{ width: `${progress}%` }} />
         </div>
       ) : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        {onOpenDetail ? (
+          <button
+            className="inline-flex items-center gap-2 rounded-lg bg-[#3370ff] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.2)] transition hover:bg-[#1d4ed8]"
+            onClick={onOpenDetail}
+            type="button"
+          >
+            查看详情
+          </button>
+        ) : null}
         <button
-          className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg border border-[#10b981]/30 bg-[#ecfdf5] px-4 py-2 text-xs font-semibold text-[#047857] transition hover:bg-[#d1fae5] disabled:opacity-50"
           onClick={onRun}
           disabled={health.isRunning}
           type="button"
@@ -285,21 +296,21 @@ export function TaskCard({
           <IconPlay className="h-3.5 w-3.5" /> {health.isRunning ? "同步中" : "立即同步"}
         </button>
         <button
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+          className="rounded-lg border border-[#c9d8ec] px-4 py-2 text-xs font-medium text-[#334762] hover:bg-[#f6faff]"
           onClick={onToggleEnabled}
           type="button"
         >
           {task.enabled ? "停用" : "启用"}
         </button>
         <button
-          className="inline-flex items-center gap-2 rounded-lg border border-rose-500/40 px-4 py-2 text-xs font-medium text-rose-300 transition hover:bg-rose-500/10"
+          className="inline-flex items-center gap-2 rounded-lg border border-[#f43f5e]/40 px-4 py-2 text-xs font-medium text-[#be123c] transition hover:bg-[#fff1f2]"
           onClick={onDelete}
           type="button"
         >
           <IconTrash className="h-3.5 w-3.5" /> 删除
         </button>
         <button
-          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[#c9d8ec] px-4 py-2 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
           onClick={onToggleExpanded}
           type="button"
         >
@@ -309,10 +320,10 @@ export function TaskCard({
       </div>
 
       {expanded ? (
-        <div className="mt-4 grid gap-4 lg:grid-cols-4">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 lg:col-span-4">
-            <p className="text-xs uppercase tracking-widest text-zinc-500">高级信息</p>
-            <div className="mt-3 grid gap-2 text-xs text-zinc-500 md:grid-cols-2">
+        <div className="mt-4 grid grid-cols-4 gap-4">
+          <div className="col-span-4 rounded-xl border border-[#d7e4f5] bg-[#f8fbff] p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#6b7f96]">高级信息</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#52657a]">
               <p className="break-all">任务 ID：{task.id}</p>
               <p className="break-all">base_path：{task.base_path || "默认同本地目录"}</p>
               {status ? (
@@ -325,11 +336,11 @@ export function TaskCard({
               <p>原始状态：{stateLabels[stateKey] || stateKey}</p>
             </div>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-            <p className="text-xs uppercase tracking-widest text-zinc-500">同步模式</p>
+          <div className="rounded-xl border border-[#d7e4f5] bg-[#f8fbff] p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#6b7f96]">同步模式</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <select
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-xs text-zinc-200 outline-none"
+                className="rounded-lg border border-[#c9d8ec] bg-white px-4 py-2 text-xs text-[#334762] outline-none focus:border-[#3370ff]"
                 value={syncModeValue}
                 onChange={(e) => onSyncModeChange(e.target.value)}
               >
@@ -338,7 +349,7 @@ export function TaskCard({
                 <option value="upload_only">仅上传</option>
               </select>
               <button
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                className="rounded-lg border border-[#c9d8ec] bg-white px-4 py-2 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
                 onClick={onApplySyncMode}
                 type="button"
               >
@@ -346,11 +357,11 @@ export function TaskCard({
               </button>
             </div>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-            <p className="text-xs uppercase tracking-widest text-zinc-500">更新模式</p>
+          <div className="rounded-xl border border-[#d7e4f5] bg-[#f8fbff] p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#6b7f96]">更新模式</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <select
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-xs text-zinc-200 outline-none"
+                className="rounded-lg border border-[#c9d8ec] bg-white px-4 py-2 text-xs text-[#334762] outline-none focus:border-[#3370ff]"
                 value={updateModeValue}
                 onChange={(e) => onUpdateModeChange(e.target.value)}
               >
@@ -359,7 +370,7 @@ export function TaskCard({
                 <option value="full">全量覆盖</option>
               </select>
               <button
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                className="rounded-lg border border-[#c9d8ec] bg-white px-4 py-2 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
                 onClick={onApplyUpdateMode}
                 type="button"
               >
@@ -367,13 +378,13 @@ export function TaskCard({
               </button>
             </div>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-            <p className="text-xs uppercase tracking-widest text-zinc-500">MD 上传模式</p>
+          <div className="rounded-xl border border-[#d7e4f5] bg-[#f8fbff] p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#6b7f96]">MD 上传模式</p>
             {taskUploadEnabled ? (
               <>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <select
-                    className="rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2 text-xs text-zinc-200 outline-none"
+                    className="rounded-lg border border-[#c9d8ec] bg-white px-4 py-2 text-xs text-[#334762] outline-none focus:border-[#3370ff]"
                     value={mdSyncModeValue}
                     onChange={(e) =>
                       onMdSyncModeChange(
@@ -386,14 +397,14 @@ export function TaskCard({
                     <option value="doc_only">仅云文档上传</option>
                   </select>
                   <button
-                    className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                    className="rounded-lg border border-[#c9d8ec] bg-white px-4 py-2 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
                     onClick={onApplyMdSyncMode}
                     type="button"
                   >
                     应用
                   </button>
                 </div>
-                <p className="mt-2 text-[11px] text-zinc-500">
+                <p className="mt-2 text-[11px] leading-5 text-[#6b7f96]">
                   {mdSyncModeValue === "enhanced"
                     ? "增强：上传云文档，并维护云端 MD 副本目录。"
                     : mdSyncModeValue === "download_only"
@@ -402,16 +413,16 @@ export function TaskCard({
                 </p>
               </>
             ) : (
-              <p className="mt-3 text-sm leading-6 text-zinc-400">
+              <p className="mt-3 text-sm leading-6 text-[#6b7f96]">
                 当前任务为仅下载，不会执行本地 Markdown 上行，因此不显示 MD 上传配置。
               </p>
             )}
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-            <p className="text-xs uppercase tracking-widest text-zinc-500">删除策略</p>
+          <div className="rounded-xl border border-[#d7e4f5] bg-[#f8fbff] p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#6b7f96]">删除策略</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <select
-                className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 outline-none"
+                className="rounded-lg border border-[#c9d8ec] bg-white px-3 py-2 text-xs text-[#334762] outline-none focus:border-[#3370ff]"
                 value={deletePolicyValue}
                 onChange={(e) =>
                   onDeletePolicyChange(e.target.value as "off" | "safe" | "strict")
@@ -422,7 +433,7 @@ export function TaskCard({
                 <option value="strict">严格</option>
               </select>
               <input
-                className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200 outline-none"
+                className="w-20 rounded-lg border border-[#c9d8ec] bg-white px-3 py-2 text-xs text-[#334762] outline-none disabled:bg-[#edf3fb] disabled:text-[#9fb2c8] focus:border-[#3370ff]"
                 type="number"
                 min="0"
                 step="1"
@@ -430,16 +441,16 @@ export function TaskCard({
                 onChange={(e) => onDeleteGraceChange(e.target.value)}
                 disabled={deletePolicyValue === "strict"}
               />
-              <span className="text-xs text-zinc-500">分钟</span>
+              <span className="text-xs text-[#6b7f96]">分钟</span>
               <button
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                className="rounded-lg border border-[#c9d8ec] bg-white px-4 py-2 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
                 onClick={onApplyDeletePolicy}
                 type="button"
               >
                 应用
               </button>
             </div>
-            <p className="mt-2 text-[11px] text-zinc-500">
+            <p className="mt-2 text-[11px] leading-5 text-[#6b7f96]">
               {deletePolicyValue === "off"
                 ? "关闭：本地删除和云端删除都不联动。"
                 : deletePolicyValue === "safe"
@@ -449,6 +460,6 @@ export function TaskCard({
           </div>
         </div>
       ) : null}
-    </div>
+    </article>
   );
 }

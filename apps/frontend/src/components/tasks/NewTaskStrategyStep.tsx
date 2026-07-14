@@ -9,6 +9,7 @@ import { IconArrowDown, IconArrowRightLeft, IconArrowUp } from "../Icons";
 import type { CloudSelection } from "../../types";
 
 type NewTaskStrategyStepProps = {
+  view?: "all" | "mode" | "rules" | "confirm";
   inputCls: string;
   taskName: string;
   taskLocalPath: string;
@@ -29,6 +30,7 @@ type NewTaskStrategyStepProps = {
 };
 
 export function NewTaskStrategyStep({
+  view = "all",
   inputCls,
   taskName,
   taskLocalPath,
@@ -50,9 +52,11 @@ export function NewTaskStrategyStep({
   const taskUploadEnabled = syncModeSupportsUpload(taskSyncMode);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
+      {view === "all" || view === "mode" ? (
+        <>
       <div>
-        <label className="mb-2 block text-xs font-medium text-zinc-400">同步模式</label>
+        <label className="mb-2 block text-xs font-medium text-[#52657a]">同步模式</label>
         <div className="grid grid-cols-3 gap-2">
           {[
             { value: "bidirectional", label: "双向同步", Icon: IconArrowRightLeft },
@@ -64,8 +68,8 @@ export function NewTaskStrategyStep({
               className={cn(
                 "flex flex-col items-center gap-1.5 rounded-xl border p-3.5 transition",
                 taskSyncMode === value
-                  ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                  : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
+                  ? "border-[#3370ff]/45 bg-[#eef5ff] text-[#3370ff]"
+                  : "border-[#d7e4f5] bg-white text-[#6b7f96] hover:border-[#bfd8ff] hover:bg-[#f6faff]"
               )}
               onClick={() => {
                 onTaskSyncModeChange(value);
@@ -82,8 +86,11 @@ export function NewTaskStrategyStep({
         </div>
       </div>
 
+      <details className="rounded-lg border border-[#d7e4f5] bg-[#f8fbff] p-3">
+        <summary className="cursor-pointer text-xs font-semibold text-[#3370ff]">高级同步选项</summary>
+        <div className="mt-3 space-y-3">
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-zinc-400">更新模式</label>
+        <label className="mb-1.5 block text-xs font-medium text-[#52657a]">更新模式</label>
         <div className="grid grid-cols-3 gap-2">
           {[
             { value: "auto", label: "自动", desc: "智能选择" },
@@ -95,24 +102,24 @@ export function NewTaskStrategyStep({
               className={cn(
                 "rounded-xl border p-3 text-center transition",
                 taskUpdateMode === value
-                  ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                  : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
+                  ? "border-[#3370ff]/45 bg-[#eef5ff] text-[#3370ff]"
+                  : "border-[#d7e4f5] bg-white text-[#6b7f96] hover:border-[#bfd8ff] hover:bg-[#f6faff]"
               )}
               onClick={() => onTaskUpdateModeChange(value)}
               type="button"
             >
               <p className="text-xs font-medium">{label}</p>
-              <p className="mt-0.5 text-[10px] text-zinc-600">{desc}</p>
+              <p className="mt-0.5 text-[10px] text-[#7a8da3]">{desc}</p>
             </button>
           ))}
         </div>
       </div>
 
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-zinc-400">MD 上传模式</label>
+        <label className="mb-1.5 block text-xs font-medium text-[#52657a]">MD 上传模式</label>
         {taskUploadEnabled ? (
           <>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <div className="grid grid-cols-3 gap-2">
               {[
                 {
                   value: "enhanced",
@@ -135,8 +142,8 @@ export function NewTaskStrategyStep({
                   className={cn(
                     "rounded-xl border p-3 text-left transition",
                     taskMdSyncMode === value
-                      ? "border-[#3370FF]/50 bg-[#3370FF]/10 text-[#3370FF]"
-                      : "border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-800/30"
+                      ? "border-[#3370ff]/45 bg-[#eef5ff] text-[#3370ff]"
+                      : "border-[#d7e4f5] bg-white text-[#6b7f96] hover:border-[#bfd8ff] hover:bg-[#f6faff]"
                   )}
                   onClick={() =>
                     onTaskMdSyncModeChange(value as "enhanced" | "download_only" | "doc_only")
@@ -144,26 +151,32 @@ export function NewTaskStrategyStep({
                   type="button"
                 >
                   <p className="text-xs font-medium">{label}</p>
-                  <p className="mt-0.5 text-[10px] text-zinc-600">{desc}</p>
+                  <p className="mt-0.5 text-[10px] text-[#7a8da3]">{desc}</p>
                 </button>
               ))}
             </div>
             {taskMdSyncMode === "doc_only" ? (
-              <p className="mt-2 text-[11px] text-amber-300">
+              <p className="mt-2 text-[11px] text-[#b45309]">
                 提示：仅云文档上传会经历 Markdown 转换，复杂内容可能存在格式损耗风险。
               </p>
             ) : null}
           </>
         ) : (
-          <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/50 px-4 py-3 text-xs text-zinc-500">
+          <div className="rounded-xl border border-dashed border-[#c9d8ec] bg-white px-4 py-3 text-xs text-[#6b7f96]">
             当前任务为仅下载，不会执行任何本地 Markdown 上行，因此无需配置 MD 上传模式。
           </div>
         )}
       </div>
+        </div>
+      </details>
+        </>
+      ) : null}
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      {view === "all" || view === "rules" ? (
+        <>
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-zinc-400">删除同步策略</label>
+          <label className="mb-1.5 block text-xs font-medium text-[#52657a]">删除同步策略</label>
           <select
             className={inputCls}
             value={taskDeletePolicy}
@@ -175,7 +188,7 @@ export function NewTaskStrategyStep({
           </select>
         </div>
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-zinc-400">删除宽限（分钟）</label>
+          <label className="mb-1.5 block text-xs font-medium text-[#52657a]">删除宽限（分钟）</label>
           <input
             className={inputCls}
             type="number"
@@ -188,39 +201,48 @@ export function NewTaskStrategyStep({
         </div>
       </div>
 
-      <label className="flex items-center gap-2.5 text-sm text-zinc-200">
+      <label className="flex items-center gap-2.5 text-sm text-[#334762]">
         <input
           type="checkbox"
           checked={taskEnabled}
           onChange={(e) => onTaskEnabledChange(e.target.checked)}
-          className="h-4 w-4 accent-[#3370FF]"
+          className="h-4 w-4 accent-[#3370ff]"
         />
         创建后立即启用
       </label>
+        <div className="rounded-lg border border-[#d7e4f5] bg-[#f8fbff] p-3 text-xs leading-5 text-[#52657a]">
+          默认忽略隐藏路径、缓存目录和临时文件；任务创建后可在设置中追加任务级忽略目录。
+        </div>
+        </>
+      ) : null}
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
-        <p className="text-xs font-semibold text-zinc-300">任务摘要</p>
+      {view === "all" || view === "confirm" ? (
+        <>
+      <div className="rounded-xl border border-[#d7e4f5] bg-[#f8fbff] p-4">
+        <p className="text-xs font-semibold text-[#102033]">任务摘要</p>
         <div className="mt-3 grid grid-cols-2 gap-y-2 text-xs">
-          <span className="text-zinc-500">任务名称</span>
-          <span className="truncate text-zinc-200">{taskName || "未命名"}</span>
-          <span className="text-zinc-500">本地目录</span>
-          <span className="truncate text-zinc-200">{taskLocalPath || "—"}</span>
-          <span className="text-zinc-500">云端目录</span>
-          <span className="truncate text-zinc-200">{selectedCloud?.path || "—"}</span>
-          <span className="text-zinc-500">同步模式</span>
-          <span className="text-zinc-200">{modeLabels[taskSyncMode]}</span>
-          <span className="text-zinc-500">更新模式</span>
-          <span className="text-zinc-200">{updateModeLabels[taskUpdateMode]}</span>
-          <span className="text-zinc-500">MD 模式</span>
-          <span className="text-zinc-200">
+          <span className="text-[#6b7f96]">任务名称</span>
+          <span className="truncate text-[#334762]">{taskName || "未命名"}</span>
+          <span className="text-[#6b7f96]">本地目录</span>
+          <span className="truncate text-[#334762]">{taskLocalPath || "—"}</span>
+          <span className="text-[#6b7f96]">云端目录</span>
+          <span className="truncate text-[#334762]">{selectedCloud?.path || "—"}</span>
+          <span className="text-[#6b7f96]">同步模式</span>
+          <span className="text-[#334762]">{modeLabels[taskSyncMode]}</span>
+          <span className="text-[#6b7f96]">更新模式</span>
+          <span className="text-[#334762]">{updateModeLabels[taskUpdateMode]}</span>
+          <span className="text-[#6b7f96]">MD 模式</span>
+          <span className="text-[#334762]">
             {taskUploadEnabled ? mdSyncModeLabels[taskMdSyncMode] : "不适用（仅下载）"}
           </span>
-          <span className="text-zinc-500">删除策略</span>
-          <span className="text-zinc-200">{taskDeletePolicy}</span>
+          <span className="text-[#6b7f96]">删除策略</span>
+          <span className="text-[#334762]">{taskDeletePolicy}</span>
         </div>
       </div>
 
-      {error ? <p className="text-sm text-rose-400">错误：{error}</p> : null}
+      {error ? <p className="text-sm text-[#be123c]">错误：{error}</p> : null}
+        </>
+      ) : null}
     </div>
   );
 }

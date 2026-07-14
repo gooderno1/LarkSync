@@ -59,7 +59,13 @@ describe("new task wizard panels smoke", () => {
 
     expect(html).toContain("选择本地目录");
     expect(html).toContain("选择飞书云端目录");
+    expect(html).toContain("同步模式");
+    expect(html).toContain("删除与忽略");
+    expect(html).toContain("确认");
     expect(html).toContain("共享链接");
+    expect(html).toContain("bg-[#f8fbff]");
+    expect(html).not.toContain("border-zinc-800");
+    expect(html).not.toContain("text-zinc-500");
   });
 
   it("renders strategy step summary", () => {
@@ -88,6 +94,8 @@ describe("new task wizard panels smoke", () => {
     expect(html).toContain("同步模式");
     expect(html).toContain("任务摘要");
     expect(html).toContain("增强 MD 上传");
+    expect(html).toContain("border-[#d7e4f5]");
+    expect(html).not.toContain("bg-zinc-950/50");
   });
 
   it("renders updated permission guidance for cloud tree errors", () => {

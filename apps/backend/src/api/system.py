@@ -11,8 +11,18 @@ from pydantic import BaseModel
 from loguru import logger
 
 from src.api.watcher import watcher_manager
+from src.core.config import ConfigManager
+from src.core.device import current_device_id
+from src.core.paths import data_dir, bundle_root
 from src.db.session import dispose_engines
-from src.services.update_install_service import queue_install_request
+from src.services import AuthService
+from src.services.update_install_service import (
+    UpdateInstallHandoff,
+    UpdateInstallRequest,
+    load_install_handoff,
+    load_install_request,
+    queue_install_request,
+)
 from src.services.update_service import (
     UpdateService,
     UpdateStatus,
@@ -30,7 +40,8 @@ class FolderResponse(BaseModel):
 
 
 class UpdateStatusResponse(UpdateStatus):
-    pass
+    install_request: UpdateInstallRequest | None = None
+    install_handoff: UpdateInstallHandoff | None = None
 
 
 class UpdateInstallPayload(BaseModel):
@@ -47,6 +58,64 @@ class UpdateInstallResponse(BaseModel):
 
 class UpdateOpenFolderPayload(BaseModel):
     download_path: str | None = None
+
+
+class DesktopRuntimeStatus(BaseModel):
+    backend_running: bool
+    frontend_static_available: bool
+    data_dir: str
+    database_url: str
+    packaged: bool
+
+
+class DesktopAuthStatus(BaseModel):
+    connected: bool
+    oauth_configured: bool
+    open_id: str | None = None
+    account_name: str | None = None
+    device_id: str
+    expires_at: float | None = None
+
+
+class DesktopTaskStatus(BaseModel):
+    total: int
+    enabled: int
+    paused: int
+    running: int
+    failed: int
+    last_error: str | None = None
+    last_sync_time: float | None = None
+
+
+class DesktopConflictStatus(BaseModel):
+    unresolved: int
+
+
+class DesktopUpdateStatus(BaseModel):
+    current_version: str
+    latest_version: str | None = None
+    update_available: bool = False
+    last_check: float | None = None
+    last_error: str | None = None
+    download_path: str | None = None
+
+
+class DesktopStatusResponse(BaseModel):
+    runtime: DesktopRuntimeStatus
+    auth: DesktopAuthStatus
+    tasks: DesktopTaskStatus
+    conflicts: DesktopConflictStatus
+    update: DesktopUpdateStatus
+
+
+class TrayStatusResponse(BaseModel):
+    backend_running: bool
+    tasks_total: int
+    tasks_running: int
+    tasks_paused: int
+    unresolved_conflicts: int
+    last_error: str | None = None
+    last_sync_time: float | None = None
 
 
 def _select_folder() -> str | None:
@@ -98,6 +167,89 @@ def _resolve_download_directory(service: UpdateService, raw_path: str | None) ->
     return installer_path.parent
 
 
+def _frontend_dist_available() -> bool:
+    root = bundle_root() or Path(__file__).resolve().parents[3]
+    return (root / "apps" / "frontend" / "dist" / "index.html").exists()
+
+
+def _runtime_packaged() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+async def build_desktop_status(request: Request) -> DesktopStatusResponse:
+    config = ConfigManager.get().config
+    runner = getattr(request.app.state, "sync_runner", None)
+    task_service = getattr(request.app.state, "sync_task_service", None)
+    conflict_service = getattr(request.app.state, "conflict_service", None)
+
+    statuses = runner.list_statuses() if runner is not None else {}
+    tasks = await task_service.list_tasks() if task_service is not None else []
+    conflicts = (
+        await conflict_service.list_conflicts(include_resolved=False)
+        if conflict_service is not None
+        else []
+    )
+    errors = [status.last_error for status in statuses.values() if status.last_error]
+    last_sync = max(
+        (status.finished_at for status in statuses.values() if status.finished_at),
+        default=None,
+    )
+    try:
+        token = AuthService().get_cached_token()
+    except Exception as exc:
+        logger.debug("读取桌面状态 token 缓存失败: {}", exc)
+        token = None
+    update_status = _get_update_service(request).load_cached_status()
+
+    return DesktopStatusResponse(
+        runtime=DesktopRuntimeStatus(
+            backend_running=True,
+            frontend_static_available=_frontend_dist_available(),
+            data_dir=str(data_dir()),
+            database_url=config.database_url,
+            packaged=_runtime_packaged(),
+        ),
+        auth=DesktopAuthStatus(
+            connected=token is not None,
+            oauth_configured=bool(config.auth_client_id.strip()),
+            open_id=token.open_id if token else None,
+            account_name=token.account_name if token else None,
+            device_id=current_device_id(),
+            expires_at=token.expires_at if token else None,
+        ),
+        tasks=DesktopTaskStatus(
+            total=len(tasks),
+            enabled=sum(1 for task in tasks if task.enabled),
+            paused=sum(1 for task in tasks if not task.enabled),
+            running=sum(1 for status in statuses.values() if status.state == "running"),
+            failed=sum(1 for status in statuses.values() if status.state == "failed"),
+            last_error=errors[0] if errors else None,
+            last_sync_time=last_sync,
+        ),
+        conflicts=DesktopConflictStatus(unresolved=len(conflicts)),
+        update=DesktopUpdateStatus(
+            current_version=get_version(),
+            latest_version=update_status.latest_version,
+            update_available=bool(update_status.update_available),
+            last_check=update_status.last_check,
+            last_error=update_status.last_error,
+            download_path=update_status.download_path,
+        ),
+    )
+
+
+def desktop_status_to_tray_status(status: DesktopStatusResponse) -> TrayStatusResponse:
+    return TrayStatusResponse(
+        backend_running=status.runtime.backend_running,
+        tasks_total=status.tasks.total,
+        tasks_running=status.tasks.running,
+        tasks_paused=status.tasks.paused,
+        unresolved_conflicts=status.conflicts.unresolved,
+        last_error=status.tasks.last_error,
+        last_sync_time=status.tasks.last_sync_time,
+    )
+
+
 @router.post("/select-folder", response_model=FolderResponse)
 async def select_folder() -> FolderResponse:
     try:
@@ -108,6 +260,11 @@ async def select_folder() -> FolderResponse:
     if not path:
         raise HTTPException(status_code=400, detail="未选择文件夹")
     return FolderResponse(path=path)
+
+
+@router.get("/desktop/status", response_model=DesktopStatusResponse)
+async def desktop_status(request: Request) -> DesktopStatusResponse:
+    return await build_desktop_status(request)
 
 
 def _get_update_service(request: Request) -> UpdateService:
@@ -132,14 +289,22 @@ def _current_restart_path() -> str | None:
 async def update_status(request: Request) -> UpdateStatusResponse:
     service = _get_update_service(request)
     status = service.load_cached_status()
-    return UpdateStatusResponse.model_validate(status.model_dump())
+    return UpdateStatusResponse(
+        **status.model_dump(),
+        install_request=load_install_request(),
+        install_handoff=load_install_handoff(),
+    )
 
 
 @router.post("/update/check", response_model=UpdateStatusResponse)
 async def update_check(request: Request) -> UpdateStatusResponse:
     service = _get_update_service(request)
     status = await service.check_for_updates(force=True)
-    return UpdateStatusResponse.model_validate(status.model_dump())
+    return UpdateStatusResponse(
+        **status.model_dump(),
+        install_request=load_install_request(),
+        install_handoff=load_install_handoff(),
+    )
 
 
 @router.post("/update/download", response_model=UpdateStatusResponse)
@@ -149,7 +314,11 @@ async def update_download(request: Request) -> UpdateStatusResponse:
         status = await service.download_update()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return UpdateStatusResponse.model_validate(status.model_dump())
+    return UpdateStatusResponse(
+        **status.model_dump(),
+        install_request=load_install_request(),
+        install_handoff=load_install_handoff(),
+    )
 
 
 @router.post("/update/install", response_model=UpdateInstallResponse)

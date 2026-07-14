@@ -36,8 +36,7 @@ def generate_icons(size: int = 64, force: bool = False) -> dict[str, Path]:
 
     # 加载原始图标并裁剪白色边缘，缩放到目标尺寸
     original = Image.open(str(BRAND_ICON)).convert("RGBA")
-    original = _trim_whitespace(original)
-    original = original.resize((size, size), Image.LANCZOS)
+    original = _prepare_base_icon(original, size)
 
     # ---- idle: 原始配色 ----
     idle_path = ICONS_DIR / "icon_idle.png"
@@ -69,6 +68,28 @@ def generate_icons(size: int = 64, force: bool = False) -> dict[str, Path]:
     result["paused"] = paused_path
 
     return result
+
+
+def _prepare_base_icon(img: "Image.Image", size: int) -> "Image.Image":
+    """裁剪源图并放入透明正方形画布，保留小尺寸安全边距。"""
+    from PIL import Image
+    if img.mode != "RGBA":
+        img = img.convert("RGBA")
+    trimmed = _trim_whitespace(img)
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    padding = max(2, size // 18)
+    target = size - padding * 2
+    if trimmed.width <= 0 or trimmed.height <= 0:
+        return canvas
+    ratio = min(target / trimmed.width, target / trimmed.height)
+    resized = trimmed.resize(
+        (max(1, int(trimmed.width * ratio)), max(1, int(trimmed.height * ratio))),
+        Image.LANCZOS,
+    )
+    x = (size - resized.width) // 2
+    y = (size - resized.height) // 2
+    canvas.alpha_composite(resized, (x, y))
+    return canvas
 
 
 def _trim_whitespace(img: "Image.Image", threshold: int = 240) -> "Image.Image":
@@ -117,10 +138,8 @@ def _apply_color_tint(
     """对图像应用颜色着色（保留明度通道）。"""
     from PIL import Image
     rgba = img.convert("RGBA")
-    r, g, b, a = rgba.split()
-    # 转灰度作为明度参考
+    _r, _g, _b, a = rgba.split()
     gray = img.convert("L")
-    # 用灰度值按比例混合目标色
     tr, tg, tb = tint_rgb
     new_r = gray.point(lambda p: int(p / 255.0 * tr))
     new_g = gray.point(lambda p: int(p / 255.0 * tg))

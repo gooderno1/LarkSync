@@ -25,9 +25,9 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
 }
 
 const toneButton: Record<string, string> = {
-  danger: "bg-rose-600 hover:bg-rose-500 text-white",
-  warning: "bg-amber-600 hover:bg-amber-500 text-white",
-  neutral: "bg-blue-600 hover:bg-blue-500 text-white",
+  danger: "bg-[#e11d48] text-white hover:bg-[#be123c]",
+  warning: "bg-[#f59e0b] text-white hover:bg-[#d97706]",
+  neutral: "bg-[#3370ff] text-white hover:bg-[#2456d6]",
 };
 
 export function ConfirmDialogProvider() {
@@ -45,15 +45,15 @@ export function ConfirmDialogProvider() {
   if (!dialog) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-        <h3 className="text-lg font-semibold text-zinc-100">{dialog.title}</h3>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#102033]/35 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-lg border border-[#d7e4f5] bg-white p-6 shadow-[0_28px_90px_rgba(16,32,51,0.22)]">
+        <h3 className="text-lg font-semibold text-[#102033]">{dialog.title}</h3>
         {dialog.description ? (
-          <p className="mt-2 whitespace-pre-line text-sm leading-6 text-zinc-400">{dialog.description}</p>
+          <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#58708d]">{dialog.description}</p>
         ) : null}
         <div className="mt-6 flex justify-end gap-3">
           <button
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:bg-zinc-800"
+            className="rounded-lg border border-[#c9d8eb] bg-white px-4 py-2 text-sm font-medium text-[#52677f] transition hover:border-[#3370ff]/40 hover:bg-[#f2f7ff] hover:text-[#2456d6]"
             onClick={() => handleResolve(false)}
             type="button"
           >

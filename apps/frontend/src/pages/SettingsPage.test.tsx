@@ -33,32 +33,21 @@ vi.mock("../hooks/useConfig", () => ({
   }),
 }));
 
-vi.mock("../hooks/useUpdate", () => ({
-  useUpdate: () => ({
-    status: {
-      current_version: "v0.7.16",
-      latest_version: "v0.7.16",
-      published_at: "2026-05-22T00:00:00Z",
-      last_check: 1_747_872_000,
-    },
-    checkUpdate: vi.fn(),
-    checking: false,
-    downloadUpdate: vi.fn(),
-    downloading: false,
-    installUpdate: vi.fn(),
-    installing: false,
-    openUpdateFolder: vi.fn(),
-    openingUpdateFolder: false,
-  }),
-}));
-
 vi.mock("../hooks/useTasks", () => ({
   useTasks: () => ({
     tasks: [],
-    resetLinks: vi.fn(),
-    resettingLinks: false,
     updateIgnoredSubpaths: vi.fn(),
     updatingIgnoredSubpaths: false,
+  }),
+}));
+
+vi.mock("../hooks/useAuth", () => ({
+  useAuth: () => ({
+    connected: true,
+    driveOk: true,
+    accountName: "张三",
+    deviceId: "4d6c2e1f-8b12-4eac-9b56",
+    logout: vi.fn(),
   }),
 }));
 
@@ -68,16 +57,26 @@ vi.mock("../components/ui/toast", () => ({
   }),
 }));
 
-vi.mock("../components/ThemeToggle", () => ({
-  ThemeToggle: () => <div>Theme Toggle</div>,
-}));
-
 describe("SettingsPage smoke", () => {
   it("renders OAuth, sync strategy and advanced settings sections", () => {
     const html = renderToStaticMarkup(<SettingsPage />);
 
+    expect(html).toContain("飞书账号");
+    expect(html).toContain("飞书已连接");
+    expect(html).toContain("当前设备");
+    expect(html).toContain("默认同步策略");
+    expect(html).toContain("忽略规则");
+    expect(html).toContain("高级 OAuth");
     expect(html).toContain("OAuth 配置");
     expect(html).toContain("同步策略");
-    expect(html).toContain("更多设置");
+    expect(html).toContain("本地忽略目录");
+    expect(html.indexOf("飞书账号")).toBeLessThan(html.indexOf("当前设备"));
+    expect(html.indexOf("当前设备")).toBeLessThan(html.indexOf("默认同步策略"));
+    expect(html.indexOf("默认同步策略")).toBeLessThan(html.indexOf("忽略规则"));
+    expect(html.indexOf("忽略规则")).toBeLessThan(html.indexOf("高级 OAuth"));
+    expect(html).not.toContain("自动更新");
+    expect(html).not.toContain("重置同步映射");
+    expect(html).not.toContain("bg-zinc-900/60");
+    expect(html).not.toContain("border-zinc-800");
   });
 });

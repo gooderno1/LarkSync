@@ -5,7 +5,7 @@ import time
 import uuid
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from src.core.paths import update_data_dir
 
@@ -18,8 +18,20 @@ class UpdateInstallRequest(BaseModel):
     restart_path: str | None = None
 
 
+class UpdateInstallHandoff(BaseModel):
+    request_id: str | None = None
+    stage: str | None = None
+    message: str | None = None
+    exit_code: int | None = None
+    timestamp: float | None = None
+
+
 def install_request_path() -> Path:
     return update_data_dir() / "install-request.json"
+
+
+def install_handoff_path() -> Path:
+    return update_data_dir() / "install-handoff.json"
 
 
 def queue_install_request(
@@ -61,9 +73,28 @@ def load_install_request() -> UpdateInstallRequest | None:
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (OSError, json.JSONDecodeError):
         return None
-    return UpdateInstallRequest.model_validate(payload)
+    try:
+        return UpdateInstallRequest.model_validate(payload)
+    except ValidationError:
+        return None
+
+
+def load_install_handoff() -> UpdateInstallHandoff | None:
+    path = install_handoff_path()
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return UpdateInstallHandoff.model_validate(payload)
+    except ValidationError:
+        return None
 
 
 def clear_install_request() -> None:
@@ -72,8 +103,11 @@ def clear_install_request() -> None:
 
 __all__ = [
     "UpdateInstallRequest",
+    "UpdateInstallHandoff",
     "clear_install_request",
+    "install_handoff_path",
     "install_request_path",
+    "load_install_handoff",
     "load_install_request",
     "queue_install_request",
 ]

@@ -14,13 +14,21 @@ def _reload_tray_config(
     platform: str,
     bind_host: str | None = None,
     client_host: str | None = None,
+    backend_port: str | None = None,
+    vite_port: str | None = None,
 ):
     monkeypatch.delenv("LARKSYNC_BACKEND_BIND_HOST", raising=False)
     monkeypatch.delenv("LARKSYNC_BACKEND_CLIENT_HOST", raising=False)
+    monkeypatch.delenv("LARKSYNC_BACKEND_PORT", raising=False)
+    monkeypatch.delenv("LARKSYNC_VITE_DEV_PORT", raising=False)
     if bind_host is not None:
         monkeypatch.setenv("LARKSYNC_BACKEND_BIND_HOST", bind_host)
     if client_host is not None:
         monkeypatch.setenv("LARKSYNC_BACKEND_CLIENT_HOST", client_host)
+    if backend_port is not None:
+        monkeypatch.setenv("LARKSYNC_BACKEND_PORT", backend_port)
+    if vite_port is not None:
+        monkeypatch.setenv("LARKSYNC_VITE_DEV_PORT", vite_port)
 
     monkeypatch.setattr(sys, "platform", platform, raising=False)
     import apps.tray.config as tray_config
@@ -70,4 +78,20 @@ def test_production_urls_ignore_running_vite_port(monkeypatch):
 
     assert cfg.get_dashboard_url() == "http://127.0.0.1:8000/"
     assert cfg.get_settings_url() == "http://127.0.0.1:8000/#settings"
-    assert cfg.get_logs_url() == "http://127.0.0.1:8000/#logcenter"
+    assert cfg.get_logs_url() == "http://127.0.0.1:8000/#activity"
+
+
+def test_dev_ports_can_be_isolated_from_installed_app(monkeypatch):
+    cfg = _reload_tray_config(
+        monkeypatch,
+        platform="win32",
+        bind_host="127.0.0.1",
+        backend_port="18000",
+        vite_port="13666",
+    )
+
+    assert cfg.BACKEND_HOST == "127.0.0.1"
+    assert cfg.BACKEND_PORT == 18000
+    assert cfg.BACKEND_URL == "http://127.0.0.1:18000"
+    assert cfg.VITE_DEV_PORT == 13666
+    assert cfg.VITE_DEV_URL == "http://localhost:13666"

@@ -52,6 +52,7 @@ from apps.tray.config import (
     _is_port_active,
 )
 from apps.tray.backend_manager import BackendManager
+from apps.tray.desktop_window import DesktopWindowLaunchResult, open_browser_dashboard, open_desktop_window
 from apps.tray.icon_generator import generate_icons, get_icon_path
 from apps.tray.autostart import is_autostart_enabled, repair_autostart_if_needed, toggle_autostart
 from apps.tray import notifier
@@ -453,6 +454,17 @@ def _truthy_env(value: str | None) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _int_env(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if 0 < value < 65536 else default
+
+
 def _kill_process_tree(pid: int) -> None:
     """终止进程及其所有子进程（Windows 使用 taskkill /T，其他平台使用 SIGTERM）。"""
     try:
@@ -475,6 +487,7 @@ class LarkSyncTray:
         self._dev_mode = dev_mode
         self._backend = BackendManager(dev_mode=dev_mode)
         self._vite_process: subprocess.Popen | None = None
+        self._desktop_window_process: subprocess.Popen | None = None
         self._icon: pystray.Icon | None = None
         self._current_state = "idle"
         self._global_paused = False
@@ -526,17 +539,21 @@ class LarkSyncTray:
                 print("等待 Vite 前端就绪...")
                 if _wait_for_port(VITE_DEV_PORT, timeout=15):
                     dashboard = f"{VITE_DEV_URL}/"
-                    print(f"Vite 就绪，打开管理面板: {dashboard}")
+                    print(f"Vite 就绪，打开桌面窗口: {dashboard}")
                 else:
                     print("警告：Vite 启动超时，尝试打开 3666...")
                     dashboard = f"{VITE_DEV_URL}/"
             else:
                 dashboard = get_dashboard_url()
-                print(f"后端已就绪，打开管理面板: {dashboard}")
-            webbrowser.open(dashboard)
+                print(f"后端已就绪，打开桌面窗口: {dashboard}")
+            launch_result = self._open_desktop_window(dashboard)
+            launch_message = getattr(launch_result, "message", "") or "桌面窗口已启动。"
+            if getattr(launch_result, "mode", None) == "browser":
+                print(f"桌面窗口不可用，已回退浏览器: {dashboard}；原因：{launch_message}")
             self._notify(
                 "LarkSync 已启动",
-                "托盘图标已启动；若未看到，请在任务栏隐藏图标中查找。",
+                launch_message if getattr(launch_result, "mode", None) == "browser"
+                else "桌面窗口已启动；关闭窗口后同步服务仍会在托盘中运行。",
                 category="startup",
             )
         else:
@@ -572,8 +589,8 @@ class LarkSyncTray:
         print("正在启动后端服务（无托盘模式）...")
         success = self._backend.start(wait=True)
         if success:
-            print(f"后端就绪，打开管理面板: {VITE_DEV_URL}/")
-            webbrowser.open(f"{VITE_DEV_URL}/")
+            print(f"后端就绪，打开桌面窗口: {VITE_DEV_URL}/")
+            self._open_desktop_window(f"{VITE_DEV_URL}/")
         else:
             print("警告：后端启动失败，请检查日志。")
         try:
@@ -597,8 +614,28 @@ class LarkSyncTray:
     def _cleanup_all(self) -> None:
         """清理所有子进程（Vite + 后端）。确保在任何退出场景下都被调用。"""
         self._running = False
+        self._stop_desktop_window()
         self._stop_vite()
         self._backend.stop()
+
+    def _stop_desktop_window(self) -> None:
+        """停止托盘拉起的桌面窗口子进程。"""
+        process = getattr(self, "_desktop_window_process", None)
+        if not process:
+            return
+        self._desktop_window_process = None
+        try:
+            if process.poll() is not None:
+                return
+        except Exception:
+            return
+        pid = getattr(process, "pid", None)
+        if pid:
+            _kill_process_tree(pid)
+        try:
+            process.wait(timeout=5)
+        except Exception:
+            pass
 
     # ---- Vite 前端开发服务器管理 ----
 
@@ -607,12 +644,12 @@ class LarkSyncTray:
         npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
         frontend_dir = str(FRONTEND_DIR)
 
-        print("正在启动 Vite 前端开发服务器（端口 3666）...")
+        print(f"正在启动 Vite 前端开发服务器（端口 {VITE_DEV_PORT}）...")
 
         # 日志文件
-        log_dir = os.path.join(_PROJECT_ROOT, "data", "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        vite_log_path = os.path.join(log_dir, "vite-dev.log")
+        log_dir = _data_dir() / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        vite_log_path = log_dir / "vite-dev.log"
         vite_log = open(vite_log_path, "a", encoding="utf-8")
 
         creationflags = 0
@@ -656,9 +693,13 @@ class LarkSyncTray:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
-                "打开管理面板",
-                self._on_open_dashboard,
+                "打开桌面窗口",
+                self._on_open_desktop_window,
                 default=True,  # 双击图标的默认动作
+            ),
+            pystray.MenuItem(
+                "在浏览器中打开",
+                self._on_open_browser_dashboard,
             ),
             pystray.MenuItem(
                 "立即同步",
@@ -699,14 +740,41 @@ class LarkSyncTray:
             return VITE_DEV_URL
         return get_dashboard_url().rstrip("/")
 
-    def _on_open_dashboard(self, icon=None, item=None) -> None:
-        webbrowser.open(f"{self._get_frontend_url()}/")
+    def _open_desktop_window(self, url: str):
+        existing = getattr(self, "_desktop_window_process", None)
+        if existing is not None:
+            try:
+                if existing.poll() is None:
+                    return DesktopWindowLaunchResult(
+                        opened=True,
+                        mode="webview",
+                        url=url,
+                        message="桌面窗口已在运行。",
+                        pid=getattr(existing, "pid", None),
+                        process=existing,
+                    )
+            except Exception:
+                pass
+            self._desktop_window_process = None
+
+        result = open_desktop_window(url)
+        if getattr(result, "mode", None) == "webview":
+            process = getattr(result, "process", None)
+            if process is not None:
+                self._desktop_window_process = process
+        return result
+
+    def _on_open_desktop_window(self, icon=None, item=None) -> None:
+        self._open_desktop_window(f"{self._get_frontend_url()}/")
+
+    def _on_open_browser_dashboard(self, icon=None, item=None) -> None:
+        open_browser_dashboard(f"{self._get_frontend_url()}/")
 
     def _on_open_settings(self, icon=None, item=None) -> None:
-        webbrowser.open(f"{self._get_frontend_url()}/#settings")
+        self._open_desktop_window(f"{self._get_frontend_url()}/#settings")
 
     def _on_open_logs(self, icon=None, item=None) -> None:
-        webbrowser.open(f"{self._get_frontend_url()}/#logcenter")
+        self._open_desktop_window(f"{self._get_frontend_url()}/#activity")
 
     def _on_sync_now(self, icon=None, item=None) -> None:
         """触发所有启用任务立即运行。"""
@@ -973,7 +1041,7 @@ def _acquire_lock() -> bool:
     if _LOCK_SOCKET is not None:
         return True
 
-    lock_port = 48901  # 用一个不常见端口作为锁
+    lock_port = _int_env("LARKSYNC_LOCK_PORT", 48901)  # 用一个不常见端口作为锁
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind(("127.0.0.1", lock_port))
@@ -1002,6 +1070,18 @@ def _parse_args() -> argparse.Namespace:
         description="LarkSync 系统托盘应用",
     )
     parser.add_argument(
+        "--desktop-window",
+        action="store_true",
+        help="内部参数：启动桌面窗口宿主进程",
+    )
+    parser.add_argument("--url", help=argparse.SUPPRESS)
+    parser.add_argument("--title", default="LarkSync", help=argparse.SUPPRESS)
+    parser.add_argument("--width", type=int, default=1280, help=argparse.SUPPRESS)
+    parser.add_argument("--height", type=int, default=820, help=argparse.SUPPRESS)
+    parser.add_argument("--min-width", type=int, default=1080, help=argparse.SUPPRESS)
+    parser.add_argument("--min-height", type=int, default=720, help=argparse.SUPPRESS)
+    parser.add_argument("--debug-window", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
         "--dev",
         action="store_true",
         help="开发模式：启动 Vite 热重载 + uvicorn --reload",
@@ -1012,18 +1092,34 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     """入口函数。"""
     args = _parse_args()
+    if args.desktop_window:
+        from apps.tray.desktop_window import run_desktop_window
+
+        if not args.url:
+            raise SystemExit("--desktop-window requires --url")
+        raise SystemExit(
+            run_desktop_window(
+                args.url,
+                title=args.title,
+                width=args.width,
+                height=args.height,
+                min_width=args.min_width,
+                min_height=args.min_height,
+                debug=args.debug_window,
+            )
+        )
 
     if not _acquire_lock():
         print("LarkSync 已在运行中，请勿重复启动。")
-        # 尝试打开浏览器让用户看到现有实例
-        webbrowser.open(get_dashboard_url())
+        # 尝试打开桌面窗口让用户看到现有实例；不可用时由 helper 回退浏览器。
+        open_desktop_window(get_dashboard_url())
         return
 
     if args.dev:
         print("=" * 50)
         print("  LarkSync 开发模式")
-        print("  前端: http://localhost:3666 (Vite HMR)")
-        print("  后端: http://localhost:8000 (uvicorn --reload)")
+        print(f"  前端: {VITE_DEV_URL} (Vite HMR)")
+        print(f"  后端: {BACKEND_URL} (uvicorn --reload)")
         print("  退出: 托盘右键「退出」或 Ctrl+C")
         print("=" * 50)
 

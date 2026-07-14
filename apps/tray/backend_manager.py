@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+import json
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -149,6 +150,13 @@ class BackendManager:
             # ---- 检测端口占用 ----
             if self._is_port_in_use():
                 if self.health_check():
+                    if not self._can_reuse_existing_backend():
+                        logger.warning(
+                            "已有后端服务在 {}:{} 可用，但数据目录与当前运行目录不一致，拒绝复用",
+                            BACKEND_CLIENT_HOST,
+                            BACKEND_PORT,
+                        )
+                        return False
                     logger.info(
                         "检测到已有后端服务在 {}:{} 可用（bind={}），将复用该服务",
                         BACKEND_CLIENT_HOST,
@@ -377,6 +385,48 @@ class BackendManager:
             env.pop("PYTHONPATH", None)
             logger.warning("检测到不兼容 PYTHONPATH，已为后端子进程清空该变量")
         return env
+
+    def _can_reuse_existing_backend(self) -> bool:
+        """显式指定数据目录时，只复用同一运行目录的后端。"""
+        if not (os.getenv("LARKSYNC_DATA_DIR") or "").strip():
+            return True
+
+        actual_dir = self._read_existing_backend_data_dir()
+        if actual_dir is None:
+            logger.warning("无法确认已有后端数据目录，拒绝复用")
+            return False
+
+        expected_dir = _runtime_data_dir()
+        try:
+            matches = actual_dir.resolve() == expected_dir.resolve()
+        except Exception:
+            matches = str(actual_dir) == str(expected_dir)
+
+        if not matches:
+            logger.warning(
+                "已有后端数据目录不匹配: expected={} actual={}",
+                expected_dir,
+                actual_dir,
+            )
+        return matches
+
+    @staticmethod
+    def _read_existing_backend_data_dir() -> Path | None:
+        status_url = f"{BACKEND_URL}/system/desktop/status"
+        try:
+            req = urllib.request.Request(status_url, method="GET")
+            with urllib.request.urlopen(req, timeout=HEALTH_CHECK_TIMEOUT) as resp:
+                if resp.status != 200:
+                    return None
+                payload = json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+
+        runtime = payload.get("runtime") if isinstance(payload, dict) else None
+        raw_data_dir = runtime.get("data_dir") if isinstance(runtime, dict) else None
+        if not isinstance(raw_data_dir, str) or not raw_data_dir.strip():
+            return None
+        return Path(raw_data_dir).expanduser()
 
     @staticmethod
     def _is_port_in_use() -> bool:

@@ -60,6 +60,35 @@ def remove_white_background(
     return img
 
 
+def has_transparent_border(img: Image.Image, alpha_threshold: int = 12) -> bool:
+    """判断图片是否已经是透明背景，避免误删 Logo 内部白色细节。"""
+    rgba = img.convert("RGBA")
+    w, h = rgba.size
+    if w == 0 or h == 0:
+        return False
+    pixels = rgba.load()
+    transparent = 0
+    total = 0
+    for x in range(w):
+        for y in (0, h - 1):
+            total += 1
+            if pixels[x, y][3] <= alpha_threshold:
+                transparent += 1
+    for y in range(1, h - 1):
+        for x in (0, w - 1):
+            total += 1
+            if pixels[x, y][3] <= alpha_threshold:
+                transparent += 1
+    return total > 0 and transparent / total >= 0.6
+
+
+def prepare_transparent_logo(img: Image.Image) -> Image.Image:
+    """兼容旧白底 PNG 与新版透明 PNG。"""
+    if has_transparent_border(img):
+        return img.convert("RGBA")
+    return remove_white_background(img)
+
+
 def trim_transparent(img: Image.Image, margin: int = 4) -> Image.Image:
     """裁剪图片周围的全透明区域，保留少量边距。"""
     if img.mode != "RGBA":
@@ -120,8 +149,8 @@ def process_horizontal_logo(max_width: int = 600):
     img.load()  # 确保图片完全加载
     print(f"       原始尺寸：{img.size}")
 
-    # 去除白色背景
-    transparent = remove_white_background(img)
+    # 去除旧白底背景；新版透明源图则保留白色细节
+    transparent = prepare_transparent_logo(img)
     # 裁剪多余透明区域
     trimmed = trim_transparent(transparent, margin=6)
     print(f"       裁剪后尺寸：{trimmed.size}")
@@ -149,8 +178,8 @@ def process_favicon():
     img = Image.open(str(BRAND_ICON))
     print(f"       原始尺寸：{img.size}")
 
-    # 去除白色背景
-    transparent = remove_white_background(img)
+    # 去除旧白底背景；新版透明源图则保留白色细节
+    transparent = prepare_transparent_logo(img)
     trimmed = trim_transparent(transparent, margin=2)
 
     # 生成 192x192 透明 favicon

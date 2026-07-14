@@ -28,6 +28,7 @@ def tray_client(tmp_path, monkeypatch) -> Generator[TestClient, None, None]:
     monkeypatch.setenv("LARKSYNC_DB_PATH", str(tmp_path / "test.db"))
     monkeypatch.setenv("LARKSYNC_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("LARKSYNC_UPDATE_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("LARKSYNC_TOKEN_STORE", "file")
 
     # 确保配置单例与 API 模块按新的环境重载，避免复用旧 service/runner 实例。
     ConfigManager.reset()
@@ -136,6 +137,59 @@ def test_tray_status_counts_running_and_errors(
     assert status["tasks_paused"] == 2
     assert status["tasks_running"] == 1
     assert status["last_error"] == "boom"
+
+
+def test_desktop_status_aggregates_shell_state(
+    tray_client: TestClient, tmp_path: Path, monkeypatch
+) -> None:
+    import src.main as main
+
+    local_dir = tmp_path / "desktop-status-local"
+    local_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "name": "桌面状态任务",
+        "local_path": str(local_dir),
+        "cloud_folder_token": "desktop-token",
+        "cloud_folder_name": "桌面状态云端",
+        "base_path": None,
+        "sync_mode": "download_only",
+        "update_mode": "auto",
+        "enabled": True,
+    }
+    created = tray_client.post("/sync/tasks", json=payload)
+    assert created.status_code == 200
+    task_id = created.json()["id"]
+    monkeypatch.setattr(
+        main.sync_runner,
+        "list_statuses",
+        lambda: {
+            task_id: SyncTaskStatus(
+                task_id=task_id,
+                state="running",
+                finished_at=123.0,
+            )
+        },
+    )
+
+    response = tray_client.get("/system/desktop/status")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runtime"]["backend_running"] is True
+    assert body["runtime"]["data_dir"].endswith("data")
+    assert body["auth"]["connected"] is False
+    assert body["auth"]["device_id"]
+    assert body["tasks"]["total"] == 1
+    assert body["tasks"]["enabled"] == 1
+    assert body["tasks"]["running"] == 1
+    assert body["tasks"]["last_sync_time"] == 123.0
+    assert body["conflicts"]["unresolved"] == 0
+    assert body["update"]["current_version"]
+
+    tray_response = tray_client.get("/tray/status")
+    assert tray_response.status_code == 200
+    tray_body = tray_response.json()
+    assert tray_body["tasks_total"] == body["tasks"]["total"]
+    assert tray_body["tasks_running"] == body["tasks"]["running"]
 
 
 def test_sync_task_status_includes_delete_counters(

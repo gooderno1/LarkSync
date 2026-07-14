@@ -17,11 +17,13 @@ export function NewTaskWizardStepIndicator({
   const stepMeta = [
     { num: 1, label: "选择本地目录", icon: IconFolder, done: Boolean(taskLocalPath.trim()) },
     { num: 2, label: "选择云端目录", icon: IconCloud, done: Boolean(taskCloudToken.trim()) },
-    { num: 3, label: "配置与确认", icon: IconArrowRightLeft, done: false },
+    { num: 3, label: "同步模式", icon: IconArrowRightLeft, done: step > 3 },
+    { num: 4, label: "删除与忽略", icon: IconFolder, done: step > 4 },
+    { num: 5, label: "确认", icon: IconCloud, done: false },
   ];
 
   return (
-    <div className="flex border-b border-zinc-800">
+    <div className="flex border-b border-[#edf3fb] bg-[#f8fbff]">
       {stepMeta.map((item) => {
         const isActive = step === item.num;
         const isPast = step > item.num;
@@ -29,12 +31,12 @@ export function NewTaskWizardStepIndicator({
           <button
             key={item.num}
             className={cn(
-              "flex flex-1 items-center justify-center gap-2.5 px-4 py-3.5 text-xs font-medium transition",
+              "flex flex-1 items-center justify-center gap-2 px-2 py-3 text-xs font-medium transition",
               isActive
-                ? "border-b-2 border-[#3370FF] bg-[#3370FF]/5 text-[#3370FF]"
+                ? "border-b-2 border-[#3370ff] bg-[#eef5ff] text-[#3370ff]"
                 : isPast
-                  ? "text-emerald-400"
-                  : "text-zinc-500"
+                  ? "text-[#047857]"
+                  : "text-[#6b7f96]"
             )}
             onClick={() => onSelectStep(item.num)}
             type="button"
@@ -43,10 +45,10 @@ export function NewTaskWizardStepIndicator({
               className={cn(
                 "flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold",
                 isActive
-                  ? "bg-[#3370FF] text-white"
+                  ? "bg-[#3370ff] text-white"
                   : isPast
-                    ? "bg-emerald-500/20 text-emerald-400"
-                    : "bg-zinc-800 text-zinc-500"
+                    ? "bg-[#ecfdf5] text-[#047857]"
+                    : "bg-[#edf3fb] text-[#6b7f96]"
               )}
             >
               {isPast ? "✓" : item.num}

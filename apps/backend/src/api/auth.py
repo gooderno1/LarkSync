@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -10,6 +10,7 @@ from loguru import logger
 
 from src.core.device import current_device_id
 from src.services import AuthError, AuthService, AuthStateStore
+from src.services.lark_cli_auth_service import LarkCliAuthStatus, get_lark_cli_auth_status
 from src.services.update_service import UpdateService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -31,6 +32,27 @@ async def login(
     except AuthError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url)
+
+
+@router.get("/authorize-url")
+async def authorize_url(
+    request: Request,
+    state: str | None = Query(default=None),
+    redirect: str | None = Query(default=None),
+):
+    auth_service = AuthService()
+    redirect_target = _sanitize_redirect(redirect, request)
+    state_value = state or state_store.issue(redirect_target)
+    try:
+        url = auth_service.build_authorize_url(state_value)
+    except AuthError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "authorize_url": url,
+        "state": state_value,
+        "expires_in": state_store.ttl_seconds,
+        "local_callback": _authorize_url_has_local_callback(url),
+    }
 
 
 @router.get("/callback")
@@ -94,6 +116,11 @@ async def status():
     return result
 
 
+@router.get("/cli/status", response_model=LarkCliAuthStatus)
+async def cli_status() -> LarkCliAuthStatus:
+    return await asyncio.to_thread(get_lark_cli_auth_status)
+
+
 async def _check_drive_permission(access_token: str) -> bool:
     """尝试调用飞书 Drive 元数据接口验证 token 是否有 drive 权限。"""
     url = "https://open.feishu.cn/open-apis/drive/explorer/v2/root_folder/meta"
@@ -142,6 +169,14 @@ def _sanitize_redirect(redirect: str | None, request: Request) -> str | None:
     if request_host and hostname == request_host:
         return value
     return None
+
+
+def _authorize_url_has_local_callback(authorize_url: str) -> bool:
+    parsed = urlparse(authorize_url)
+    params = parse_qs(parsed.query)
+    redirect_uri = params.get("redirect_uri", [""])[0]
+    callback = urlparse(redirect_uri)
+    return (callback.hostname or "") in {"localhost", "127.0.0.1"}
 
 
 def _schedule_login_update_check(request: Request) -> None:

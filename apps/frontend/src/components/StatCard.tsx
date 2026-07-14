@@ -7,11 +7,35 @@ import { cn } from "../lib/utils";
 import type { Tone } from "../types";
 
 const toneStyles: Record<Tone, string> = {
-  neutral: "border-zinc-700/70",
-  info: "border-blue-500/40",
-  success: "border-emerald-500/40",
-  warning: "border-amber-500/40",
-  danger: "border-rose-500/40",
+  neutral: "border-[#d7e4f5]",
+  info: "border-[#d7e4f5]",
+  success: "border-[#d7e4f5]",
+  warning: "border-[#d7e4f5]",
+  danger: "border-[#d7e4f5]",
+};
+
+const iconStyles: Record<Tone, string> = {
+  neutral: "bg-[#edf5ff] text-[#3370ff]",
+  info: "bg-[#e9f1ff] text-[#3370ff]",
+  success: "bg-[#ecfdf5] text-[#10b981]",
+  warning: "bg-[#fff7ed] text-[#f59e0b]",
+  danger: "bg-[#fff1f2] text-[#f43f5e]",
+};
+
+const plainIconStyles: Record<Tone, string> = {
+  neutral: "text-[#3370ff]",
+  info: "text-[#3370ff]",
+  success: "text-[#10b981]",
+  warning: "text-[#f59e0b]",
+  danger: "text-[#f43f5e]",
+};
+
+const valueStyles: Record<Tone, string> = {
+  neutral: "text-[#102033]",
+  info: "text-[#3370ff]",
+  success: "text-[#10b981]",
+  warning: "text-[#f59e0b]",
+  danger: "text-[#f43f5e]",
 };
 
 export function StatCard({
@@ -20,21 +44,50 @@ export function StatCard({
   hint,
   tone = "neutral",
   icon,
+  iconFrame = "circle",
+  valueClassName,
 }: {
   label: string;
   value: string;
   hint?: string;
   tone?: Tone;
   icon?: ReactNode;
+  iconFrame?: "circle" | "plain";
+  valueClassName?: string;
 }) {
+  const iconFrameClassName =
+    iconFrame === "plain"
+      ? cn("grid h-16 w-16 shrink-0 place-items-center", plainIconStyles[tone])
+      : cn("grid h-14 w-14 shrink-0 place-items-center rounded-full", iconStyles[tone]);
+
   return (
-    <div className={cn("rounded-2xl border bg-zinc-900/60 p-4", toneStyles[tone])}>
-      <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-widest text-zinc-400">{label}</p>
-        {icon ? <span className="text-zinc-400">{icon}</span> : null}
+    <div
+      className={cn(
+        "flex min-h-[146px] items-center rounded-lg border bg-white px-5 py-5 shadow-[0_8px_22px_rgba(51,112,255,0.03)]",
+        iconFrame === "plain" ? "gap-3" : "gap-4",
+        toneStyles[tone]
+      )}
+    >
+      <div className={iconFrameClassName}>{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium text-[#52657a]">{label}</p>
+        <p
+          className={cn(
+            "mt-2 whitespace-nowrap font-semibold leading-none",
+            "text-[24px]",
+            valueStyles[tone],
+            valueClassName
+          )}
+          title={value}
+        >
+          {value}
+        </p>
+        {hint ? (
+          <p className="mt-3 line-clamp-2 text-[11px] leading-4 text-[#6b7f96]" title={hint}>
+            {hint}
+          </p>
+        ) : null}
       </div>
-      <p className="mt-3 text-2xl font-semibold text-zinc-50">{value}</p>
-      {hint ? <p className="mt-2 text-xs text-zinc-400">{hint}</p> : null}
     </div>
   );
 }

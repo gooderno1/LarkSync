@@ -66,6 +66,10 @@ PYINSTALLER_HIDDENIMPORTS = [
     "PIL",
     "plyer",
     "keyring",
+    "webview",
+    "webview.platforms",
+    "webview.platforms.edgechromium",
+    "webview.platforms.winforms",
 ]
 
 

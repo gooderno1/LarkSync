@@ -16,6 +16,24 @@ export type UpdateStatus = {
   last_check?: number | null;
   last_error?: string | null;
   download_path?: string | null;
+  install_request?: UpdateInstallRequest | null;
+  install_handoff?: UpdateInstallHandoff | null;
+};
+
+export type UpdateInstallRequest = {
+  request_id: string;
+  installer_path: string;
+  created_at: number;
+  silent: boolean;
+  restart_path?: string | null;
+};
+
+export type UpdateInstallHandoff = {
+  request_id?: string | null;
+  stage?: string | null;
+  message?: string | null;
+  exit_code?: number | null;
+  timestamp?: number | null;
 };
 
 export type UpdateInstallResponse = {

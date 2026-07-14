@@ -68,6 +68,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.desktop-grid-surface {
+  background-color: #fbfcfe;
+  background-image: linear-gradient(180deg, #fbfcfe 0%, #fcfdfe 48%, #fbfcfe 100%);
+}
+
 code,
 pre,
 .font-mono {

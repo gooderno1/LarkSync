@@ -5,9 +5,7 @@ import { SettingsOAuthPanel } from "./SettingsOAuthPanel";
 import { SettingsSyncStrategyPanel } from "./SettingsSyncStrategyPanel";
 import { SettingsMorePanel } from "./SettingsMorePanel";
 import { SettingsGeneralPanel } from "./SettingsGeneralPanel";
-import { SettingsUpdatePanel } from "./SettingsUpdatePanel";
 import { SettingsIgnoredDirectoriesPanel } from "./SettingsIgnoredDirectoriesPanel";
-import { SettingsMaintenancePanel } from "./SettingsMaintenancePanel";
 import type { SyncTask } from "../../types";
 
 const task: SyncTask = {
@@ -44,7 +42,6 @@ describe("settings panels", () => {
           tokenStore="keyring"
           setTokenStore={vi.fn()}
           inputCls="input"
-          themeSlot={<div>Theme Toggle</div>}
         />
         <SettingsSyncStrategyPanel
           syncMode="bidirectional"
@@ -72,6 +69,12 @@ describe("settings panels", () => {
     expect(html).toContain("OAuth 配置");
     expect(html).toContain("同步策略");
     expect(html).toContain("双向同步");
+    expect(html).toContain("grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]");
+    expect(html).toContain("min-h-[72px]");
+    expect(html).toContain("计划设置");
+    expect(html).toContain("border-[#d7e4f5]");
+    expect(html).not.toContain("bg-zinc-900/60");
+    expect(html).not.toContain("border-zinc-800");
   });
 
   it("renders more settings panels", () => {
@@ -86,38 +89,6 @@ describe("settings panels", () => {
           inputCls="input"
           deviceDisplayName="开发机"
           setDeviceDisplayName={vi.fn()}
-          syncLogRetentionDays="0"
-          setSyncLogRetentionDays={vi.fn()}
-          syncLogWarnSizeMb="200"
-          setSyncLogWarnSizeMb={vi.fn()}
-          systemLogRetentionDays="1"
-          setSystemLogRetentionDays={vi.fn()}
-        />
-        <SettingsUpdatePanel
-          status={{
-            current_version: "v0.7.17",
-            latest_version: "v0.7.18",
-            update_available: true,
-            download_path: "D:/Temp/LarkSync.exe",
-            asset: { name: "LarkSync.exe", url: "https://example.com" },
-          }}
-          inputCls="input"
-          autoUpdateEnabled
-          setAutoUpdateEnabled={vi.fn()}
-          updateCheckIntervalHours="24"
-          setUpdateCheckIntervalHours={vi.fn()}
-          allowDevToStable={false}
-          setAllowDevToStable={vi.fn()}
-          handleCheckUpdate={vi.fn()}
-          checking={false}
-          handleDownloadUpdate={vi.fn()}
-          downloading={false}
-          installing={false}
-          handleOpenDownloadedUpdateFolder={vi.fn()}
-          openingUpdateFolder={false}
-          handleInstallDownloadedUpdate={vi.fn()}
-          lastCheckLabel="今天"
-          publishedLabel="今天"
         />
         <SettingsIgnoredDirectoriesPanel
           tasks={[task]}
@@ -135,18 +106,16 @@ describe("settings panels", () => {
           pickingIgnoredTaskId={null}
           handlePickIgnoredSubpath={vi.fn(async () => undefined)}
         />
-        <SettingsMaintenancePanel
-          tasks={[task]}
-          resettingLinks={false}
-          onResetTask={vi.fn(async () => undefined)}
-        />
       </SettingsMorePanel>,
     );
 
     expect(html).toContain("更多设置");
-    expect(html).toContain("自动更新");
+    expect(html).toContain("当前设备");
     expect(html).toContain("本地忽略目录");
     expect(html).toContain("默认忽略隐藏/缓存路径");
-    expect(html).toContain("维护工具");
+    expect(html).not.toContain("自动更新");
+    expect(html).not.toContain("维护工具");
+    expect(html).not.toContain("bg-zinc-900/60");
+    expect(html).not.toContain("border-zinc-800");
   });
 });

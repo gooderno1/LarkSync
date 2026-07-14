@@ -38,6 +38,7 @@ from src.services.conflict_service import ConflictService
 from src.services.sync_log_maintenance_service import SyncLogMaintenanceService
 from src.services.sync_scheduler import SyncScheduler
 from src.services.update_scheduler import UpdateScheduler
+from src.api.system import build_desktop_status, desktop_status_to_tray_status
 
 InitDbFn = Callable[[], Awaitable[Any]]
 InitLoggingFn = Callable[[], None]
@@ -229,6 +230,8 @@ def create_app(
 
     app.state.sync_scheduler = sync_scheduler_instance
     app.state.sync_runner = sync_runner_service
+    app.state.sync_task_service = sync_task_service_instance
+    app.state.conflict_service = conflict_service_instance
     app.state.log_maintenance_service = log_maintenance_service_instance
     app.state.update_scheduler = update_scheduler_instance
 
@@ -250,27 +253,10 @@ def create_app(
     app.include_router(system_router)
 
     @app.get("/tray/status", tags=["tray"])
-    async def tray_status() -> dict:
+    async def tray_status(request: Request) -> dict:
         """返回托盘应用需要的聚合状态信息。"""
-        statuses = sync_runner_service.list_statuses()
-        tasks = await sync_task_service_instance.list_tasks()
-        conflicts = await conflict_service_instance.list_conflicts(include_resolved=False)
-        running = sum(1 for s in statuses.values() if s.state == "running")
-        paused = sum(1 for t in tasks if not t.enabled)
-        errors = [s.last_error for s in statuses.values() if s.last_error]
-        last_sync = max(
-            (s.finished_at for s in statuses.values() if s.finished_at),
-            default=None,
-        )
-        return {
-            "backend_running": True,
-            "tasks_total": len(tasks),
-            "tasks_running": running,
-            "tasks_paused": paused,
-            "unresolved_conflicts": len(conflicts),
-            "last_error": errors[0] if errors else None,
-            "last_sync_time": last_sync,
-        }
+        desktop_status = await build_desktop_status(request)
+        return desktop_status_to_tray_status(desktop_status).model_dump()
 
     @app.get("/health", tags=["health"])
     async def health_check() -> dict:

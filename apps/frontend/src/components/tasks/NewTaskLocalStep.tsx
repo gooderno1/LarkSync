@@ -26,10 +26,10 @@ export function NewTaskLocalStep({
   onPickLocalFolder,
 }: NewTaskLocalStepProps) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-          任务名称 <span className="text-zinc-600">（可选）</span>
+        <label className="mb-1.5 block text-xs font-medium text-[#52657a]">
+          任务名称 <span className="text-[#9fb2c8]">（可选）</span>
         </label>
         <input
           className={inputCls}
@@ -39,7 +39,7 @@ export function NewTaskLocalStep({
         />
       </div>
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-zinc-400">本地同步目录</label>
+        <label className="mb-1.5 block text-xs font-medium text-[#52657a]">本地同步目录</label>
         <div className="flex gap-2">
           <input
             className={`flex-1 ${inputCls}`}
@@ -48,7 +48,7 @@ export function NewTaskLocalStep({
             onChange={(e) => onTaskLocalPathChange(e.target.value)}
           />
           <button
-            className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800 px-4 py-2.5 text-xs font-medium text-zinc-200 transition hover:bg-zinc-700"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#c9d8ec] bg-[#eef5ff] px-2.5 py-2 text-xs font-semibold text-[#3370ff] transition hover:bg-[#dbeafe]"
             onClick={onPickLocalFolder}
             type="button"
           >
@@ -56,17 +56,17 @@ export function NewTaskLocalStep({
             {folderPickLoading ? "选择中..." : "浏览"}
           </button>
         </div>
-        {folderPickError ? <p className="mt-1.5 text-xs text-rose-400">{folderPickError}</p> : null}
+        {folderPickError ? <p className="mt-1.5 text-xs text-[#be123c]">{folderPickError}</p> : null}
         {taskLocalPath ? (
-          <div className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+          <div className="mt-2 flex items-center gap-2 rounded-lg border border-[#10b981]/25 bg-[#ecfdf5] px-3 py-2 text-xs text-[#047857]">
             <IconFolder className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{taskLocalPath}</span>
           </div>
         ) : null}
       </div>
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-zinc-400">
-          Base Path <span className="text-zinc-600">（可选，默认同本地目录）</span>
+        <label className="mb-1.5 block text-xs font-medium text-[#52657a]">
+          Base Path <span className="text-[#9fb2c8]">（可选，默认同本地目录）</span>
         </label>
         <input
           className={inputCls}

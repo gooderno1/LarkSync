@@ -1,5 +1,1227 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.18 (2026-07-14)
+
+- 开发原因：
+  - 总览页虽然已接近设计稿，但真实数据态仍会把空闲任务显示为“正在运行”。
+  - 最近同步的数据量和耗时、实时连接延迟由前端推算，无法代表后端真实采集结果。
+  - 历史冲突日志可能继续影响当前健康状态；侧栏同时在“活动与问题”和“冲突处理”显示同一冲突角标。
+  - 长时间值、摘要说明和顶部任务按钮在有限宽度下存在截断或换行。
+- 实现方式：
+  - “正在运行”只使用 `status.state === running` 的任务；有任务但全部空闲时显示真实空状态和“管理任务”入口。
+  - 最近同步日志缺少结构化 `volume` / `duration` 字段时统一显示 `—`；WebSocket 未提供延迟指标时显示“未采集”。
+  - 实时折线只统计 `downloaded` 与 `uploaded` 事件；两类事件均为 `0` 时显示“暂无传输事件”，不绘制重叠零值折线。
+  - 总体健康和冲突数量只读取未解决冲突列表；右侧“需要处理”按未解决冲突、失败问题、删除队列顺序选取预览。
+  - 设计样例不再按任务数量自动启用，仅允许开发环境通过 `?ui-demo=dashboard` 显式开启。
+  - 摘要卡值改为单行完整显示，说明最多展示两行；最近同步长值使用 `21px` 字号。
+  - 侧栏只在“冲突处理”保留未解决冲突角标；顶部和快速操作统一使用“任务启停”，按钮固定单行。
+  - Git 忽略规则补充仓库根 `%TEMP%/` 和后端 `.tmp-tests-root/`，避免测试与打包临时文件进入版本归档。
+  - 版本推进到 `v0.8.0-dev.18`。
+- 当前结果：
+  - 真实数据页能区分无任务、任务均空闲和任务运行中三种状态。
+  - 健康状态不再受已解决历史冲突日志污染，也不再展示前端推测的吞吐、耗时或延迟。
+  - `1536x1024` 设计样例页保持四摘要卡、主列双面板和 `316px` 右轨结构；真实数据页的“15 小时前”和三类待处理摘要均完整可读。
+  - `1366x768`、`1536x1024`、`1920x1080` 截图未发现横向溢出、模块错位或顶部按钮换行。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过；4 个飞书文档包已检查，manifest 已刷新。
+  - `npm --prefix apps/frontend run test`：通过，26 个测试文件、69 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过，无警告。
+  - `npm --prefix apps/frontend run build`：通过，Vite 生产产物成功生成。
+  - `python scripts/build_installer.py`：通过；前端构建、托盘图标生成和 PyInstaller 桌面目录打包成功，生成 `dist/LarkSync/LarkSync.exe`（17.5 MB）；本轮未指定 `--nsis`，未生成用户级安装器。
+  - 设计与真实数据截图位于 `docs/local_specs/visual_audit/2026-07-14-dashboard-page-pass/`；该目录属于本地规格资料，不进入 Git。
+- 遗留问题：
+  - 后端当前没有提供结构化传输字节数、单事件耗时和 WebSocket RTT；总览页保持 `—` / “未采集”，后续接入真实字段前不做推算。
+  - 本轮只收口总览页；后续页面继续按同一套“契约、失败测试、实现、真实数据截图、多尺寸验收”流程逐页完善。
+
+## v0.8.0-dev.17 (2026-07-14)
+
+- 开发原因：
+  - 总览页已完成模块级对照，其余桌面页面仍存在模块顺序、列宽、纵向密度和设计稿不一致的问题。
+  - 活动与冲突页顶部统计卡挤占主要工作区；设置页仍以 OAuth 表单开场；新建任务仍是逐页小弹窗。
+- 实现方式：
+  - 任务列表收紧为 `1120px` 固定表格基线并将行高改为 `py-3`；隔离测试库增加 7 条禁用 `is_test` 任务，总计 8 条任务。
+  - 任务详情主区与检查器改为 `1fr + 300px`；本地/同步/云端路径区中轴固定为 `112px`。
+  - 设置页重排为飞书账号、当前设备、默认同步策略、忽略规则和高级 OAuth；同步频率保留在可展开的“计划设置”。
+  - 新建任务改为同屏五列：本地目录、云端目录、同步模式、删除与忽略、风险摘要；共享链接和高级同步选项保持可展开。
+  - 活动与问题页移除四张顶部统计卡，主工作区改为 `280px + 1fr + 400px`；冲突页改为 `280px + 1fr + 320px`。
+  - 更新维护页保持 `1fr + 360px`，将更新主模块和安装 handoff 明确命名为“更新流程”“安装与交接”。
+  - 版本推进到 `v0.8.0-dev.17`。
+- 当前结果：
+  - `1366x768` 与 `1920x1080` 下页面滚动尺寸均等于 viewport，设置页无白边和横向溢出。
+  - 任务列表可在一个 `1536x1024` 画布内展示 8 条任务，与设计稿的数据密度一致。
+  - 设置页首屏可以完整看到五个设计模块；新建任务五个阶段同屏可比较，并保留真实创建流程。
+- 验证方式：
+  - 页面截图位于 `docs/local_specs/visual_audit/2026-07-14-all-pages-pass/`。
+  - `final-settings-1366x768.png` 与 `final-settings-1920x1080.png` 验证最小和大窗口同比缩放。
+  - `final-tasks-clean2-1536x1024.png` 验证 8 行任务数据密度。
+  - `npm --prefix apps/frontend run test`：通过，25 个测试文件、64 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过，无警告。
+  - `npm --prefix apps/frontend run build`：通过，Vite 产物成功生成。
+  - `python -m pytest -q`（`apps/backend`）：通过，后端测试进度达到 `100%`，退出码 `0`。
+- 遗留问题：
+  - 冲突页“保留双方”仍受后端缺少 `keep_both` 策略限制，页面明确禁用并说明原因。
+  - 活动页的事件详情依赖真实失败/冲突运行数据；无问题任务会保持设计化空状态。
+
+## v0.8.0-dev.16 (2026-07-14)
+
+- 开发原因：
+  - 总览页应用壳仍存在侧栏偏白、内容区下半部偏蓝、右上角重复窗口控制符和上下状态栏基线不齐的问题。
+  - 本轮只调整桌面壳背景与对齐，不改变总览业务模块尺寸和数据行为。
+- 实现方式：
+  - 侧栏使用不透明 `#f9fbfd`；顶栏、底栏和外层画布使用 `#fdfdfd`。
+  - 主内容背景改为 `#fbfcfe` 到 `#fcfdfe` 的低对比度纵向渐变，移除透视线叠层。
+  - 删除前端硬编码的最小化、最大化和关闭字符，避免与 Windows 原生标题栏重复。
+  - 顶栏上内边距从 `16px` 收为 `8px`；底栏左内边距改为 `36px`，使两者首项均从设计坐标 `x=256` 开始。
+  - 版本推进到 `v0.8.0-dev.16`。
+- 当前结果：
+  - `1536x1024` 下侧栏、顶栏、主区和底栏色值分别为 `rgb(249,251,253)`、`rgb(253,253,253)`、`rgb(251,252,254)` 和 `rgb(253,253,253)`。
+  - 主内容仍为 `x=220 y=88 w=1316 h=858`，右侧轨道和总览模块坐标未被本轮调整扰动。
+  - `1080x720`、`1440x900`、`1536x1024`、`1920x1080` 的页面滚动尺寸均等于 viewport，额外窗口控制字符数量为 `0`。
+- 验证方式：
+  - `npm --prefix apps/frontend run test -- App.test.tsx DesktopShellStatus.test.tsx`：通过，2 个测试文件、7 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过。
+  - 最终并排图位于 `docs/local_specs/visual_audit/2026-07-14-dashboard-shell-pass/compare-dashboard-design-vs-actual-final.png`。
+- 遗留问题：
+  - 设计稿包含示意窗口控制符；桌面程序已有 Windows 原生标题栏，本轮明确不在 Web 内容中重复绘制。
+  - 总览页以外页面仍需按同一截图对照流程逐页收敛。
+
+## v0.8.0-dev.15 (2026-07-10)
+
+- 开发原因：
+  - 总览页整页结构已接近设计稿，但模块放大对照仍能看到状态样式、进度布局、图标语义、右轨内部层级和桌面壳信息结构差异。
+  - 本轮继续以 `docs/local_specs/design_artifacts/v0.8.0/light/03-dashboard-light-v3.png` 为唯一视觉基准。
+
+- 实现方式：
+  - 摘要卡统一为 `8px` 圆角和低强度阴影；健康盾牌、运行波形、最近时钟和待处理图标按设计稿改为不同的图标框架。
+  - 正在运行表把进度改为“百分比在上、进度条在下”；运行状态改为色点 + 文本；文件夹和资料库图标移除底框。
+  - 最近同步表按设计稿重分配列宽；成功状态改为圆形勾选 + 文本；文件夹操作移除圆形按钮外框；底部入口补齐右侧箭头。
+  - 需要处理模块改为告警标题、文档名称、目录和时间四层结构；开发样例时间固定为 `10:24`，避免 Unix 早期时间戳造成错误展示。
+  - 快速操作按钮固定为 `54px` 高、`12px` 行列间距，并替换为同步、暂停、分支冲突和文件搜索图标。
+  - 实时连接增加流入/流出方向图标与行分隔；调整开发样例出站折线，使蓝绿曲线层级接近设计稿。
+  - 左侧栏 logo 固定为 `132x21px`，导航起点固定为 `y=108`，六项导航使用 `44px` 高和 `12px` 间距，并替换为设计语义图标。
+  - 顶栏操作区采用显式间距；账号头像与分隔线位置向设计稿收敛。
+  - 底栏改为“后端进程 / 进程名 / 运行状态 / 端口 / WebSocket / 数据库 / 版本 / 最近同步”顺序；端口由 Vite 构建环境注入，隔离测试显示真实 `18000`。
+  - 版本推进到 `v0.8.0-dev.15`。
+
+- 当前结果：
+  - `1536x1024` 主 Grid 为 `x=248 y=111 w=1260 h=810`；摘要区为 `x=248 y=147 w=924 h=146`；右轨为 `x=1192 y=111 w=316 h=810`。
+  - 左栏六项导航的 `y` 坐标依次为 `108 / 164 / 220 / 276 / 332 / 388`，与设计节奏一致。
+  - `1080x720`、`1440x960`、`1536x1024`、`1920x1080` 均满足 `scrollWidth == clientWidth`，无页面级横向滚动和外层白边。
+  - 最终并排图位于 `docs/local_specs/visual_audit/2026-07-10-dashboard-detail-pass/compare-dashboard-design-vs-actual-final.png`。
+
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过，4 个文档包均已检查。
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx DesktopShellStatus.test.tsx`：通过，2 个测试文件、4 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过。
+  - Chrome headless 使用禁用 GPU 合成模式重新抓取 `1536x1024`，控制台错误数为 `0`。
+
+- 遗留问题：
+  - 真实账号名、开发端口、开发版本和 imagegen 位图字体细节会与设计稿样例不同；这些差异保留真实环境值，不做伪造。
+  - 总览页之外的页面仍需按同一模块级截图对照流程逐页收敛。
+
+## v0.8.0-dev.14 (2026-07-09)
+
+- 目标：
+  - 针对总览页第一轮截图对照后仍可见的壳层与摘要卡偏差继续收敛。
+  - 本轮只处理视觉一致性，不改同步业务逻辑和接口数据结构。
+  - 继续以 `03-dashboard-light-v3.png` 为设计基准。
+
+- 实现：
+  - 顶部状态区从 `StatusPill` 胶囊改为色点 + 文本 + 分隔线。
+  - 左侧栏品牌图从 `36px` 高度回收到 `28px`，接近设计稿比例。
+  - `StatCard` 增加 `iconFrame="plain"`，支持首张健康卡使用无底色大图标。
+  - `IconShieldCheck` 改为填充式盾牌 + 白色勾选，贴近设计稿健康卡视觉。
+  - 统计卡非首张图标从 `28px` 调整为 `32px`，保持图标与圆形底的层级。
+  - 长值字号从 `23px` 调整为 `24px`，在保留 `2 分钟前` 完整显示的前提下接近设计稿。
+  - 版本推进到 `v0.8.0-dev.14`。
+
+- 结果：
+  - `1536x1024`、`1440x960`、`1080x720`、`1920x1080` 均无页面级横向滚动。
+  - `1536x1024` 总览 Grid 保持 `x=248 y=111 w=1260 h=810`。
+  - `1536x1024` 摘要卡 Grid 保持 `x=248 y=147 w=924 h=146`。
+  - 顶部状态区、左侧品牌区和健康卡盾牌已按第二轮对照图收敛。
+  - 新增并排对照图：
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-codex-method/compare-dashboard-design-vs-actual-after-v2.png`
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - `npm --prefix apps/frontend run lint`
+  - `cd apps/backend && python -m pytest tests/test_version.py`
+  - `git diff --check`
+  - Chrome headless 重新生成总览页 1080/1440/1536/1920 截图。
+
+- 遗留问题：
+  - 真实账号名、底栏真实错误、系统字体渲染和 imagegen 位图细节仍会与设计稿存在少量差异。
+  - 总览页之外的页面仍需逐页执行同样的设计对照流程。
+
+## v0.8.0-dev.13 (2026-07-09)
+
+- 目标：
+  - 按 codex-companion 的“设计稿 -> 页面契约 -> 模块审计 -> 实现 -> 截图验证”方法继续完善总览页。
+  - 先把总览页本地 `ui-contract` 和模块审计落地，再做页面细节修正。
+  - 聚焦当前截图中仍明显偏离 `03-dashboard-light-v3.png` 的模块内部差异。
+
+- 实现：
+  - 新增本地契约文档：
+    - `docs/local_specs/desktop_dashboard_ui_contract_v0.8.0-dev.13.md`
+    - `docs/local_specs/design_review/dashboard-block-audit-v0.8.0-dev.13.md`
+  - 生成当前基线截图：
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-codex-method/actual-dashboard-1536x1024-before.png`
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-codex-method/actual-dashboard-1440x960-before.png`
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-codex-method/actual-dashboard-1080x720-before.png`
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-codex-method/actual-dashboard-1920x1080-before.png`
+  - 总览页摘要卡图标改为更贴近设计稿语义：
+    - 总体状态：shield check。
+    - 任务运行中：pulse circle。
+    - 最近同步：clock。
+    - 待处理项：alert circle。
+  - `StatCard` 为长值使用更小字号，避免 `2 分钟前` 被截断。
+  - `StatCard` 提示文案改为 `11px` 并保留 `title`，避免“冲突 1 个 / 问题 0 个”视觉截断。
+  - showcase 运行行增加 icon variant：
+    - 项目文档、设计资源使用黄色文件夹。
+    - 公开资料库使用蓝色 globe。
+  - 运行表速度列增加单行约束，避免 `12.4 MB/s` 分成两行。
+  - showcase 最近同步的“变更文件”列改为设计稿中的计数式摘要：`128 / 86 / 512 / 73 / 201`。
+  - showcase 右侧“需要处理”固定展示冲突样例，避免 dev-test 历史待删除事件抢占视觉基线。
+  - showcase 实时连接使用稳定指标：
+    - 连接延迟：`24 ms`。
+    - 数据流入：`18.6 MB/s`。
+    - 数据流出：`12.3 MB/s`。
+    - 蓝绿双折线使用稳定序列，避免历史事件造成单点尖峰。
+  - 版本推进到 `v0.8.0-dev.13`。
+
+- 结果：
+  - `1536x1024`、`1440x960`、`1080x720`、`1920x1080` 均无页面级横向滚动。
+  - `1536x1024` 总览 Grid 仍保持 `x=248 y=111 w=1260`。
+  - `1536x1024` 右轨仍保持 `x=1192 y=111 w=316`。
+  - `2 分钟前`、`冲突 1 个 / 问题 0 个`、`冲突待处理`、`24 ms` 和 `12.4 MB/s` 均在最终截图中可见。
+  - 新增并排对照图：
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-codex-method/compare-dashboard-design-vs-actual-after.png`
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - `npm --prefix apps/frontend run lint`
+  - Chrome headless 生成 1080/1440/1536/1920 四张总览页截图。
+
+- 遗留问题：
+  - 设计稿是 imagegen 位图，真实字体、账号名、底栏真实错误信息和图标线条仍会存在少量天然差异。
+  - 本轮只完善总览页；任务、任务详情、活动与问题、冲突、设置、维护和授权页仍需按同一方法逐页执行。
+
+## v0.8.0-dev.12 (2026-07-09)
+
+- 目标：
+  - 修正上一轮固定 frame 居中导致的大窗口外层白边。
+  - 按设计稿原始尺寸重新建立总览页一比一对照基准。
+  - 继续把总览页按模块向 `03-dashboard-light-v3.png` 收敛。
+
+- 实现：
+  - 设计基准从 `1440x960` 改为设计稿原图 `1536x1024`。
+  - 最小缩放改为 `1080 / 1536`，对应最小窗口 `1080x720`。
+  - `useDesktopViewportScale` 不再返回居中 frame。
+  - 缩放后的 shell 使用 `width: calc(100vw / scale)` 与 `height: calc(100vh / scale)`。
+  - 外层 viewport 固定为 `100vw x 100vh`。
+  - App 外层移除居中布局和大阴影容器。
+  - 这样 1440、1536、1920 宽度都不会露出外层背景边。
+  - 顶栏高度从 `56px` 调整为 `88px`。
+  - 顶栏补充窗口控制视觉区。
+  - 主工作区边距调整为 `px-7 py-[23px]`。
+  - 总览页标题去掉多余边框卡片和右侧状态胶囊。
+  - 摘要卡高度、图标尺寸、字号和内边距按设计稿放大。
+  - 总览页改为左主列 + `316px` 右侧模块轨。
+  - 右侧模块轨从标题行同高处开始，不再从摘要卡行开始。
+  - 右侧“需要处理 / 快速操作 / 实时连接”分别固定为 `214px / 188px / 336px`。
+  - 左侧“正在运行 / 最近同步”分别固定为 `278px / 310px`。
+  - 运行表重新分配列宽，操作列放宽到 `7%`，避免按钮被挤窄。
+  - 最近同步表行高压缩到约 `38px`，5 条样例和底部入口均保持可见。
+  - 顶栏可见状态收敛为“后端运行中 / WebSocket 已连接”。
+  - 顶栏右侧操作区固定为 `430px`，按钮和账号区不再被挤出画布。
+  - dev 测试样例任务稳定启用 showcase 数据，不再因历史事件数量超过 16 条而退回单行真实数据。
+  - 左侧栏移除设计稿中没有的三行连接状态和“在浏览器中打开”按钮。
+  - 左侧栏底部改为单个折叠控制视觉位。
+  - 新截图目录：
+    - `docs/local_specs/visual_audit/2026-07-09-responsive-scale-fix/dashboard-1440x960.png`
+    - `docs/local_specs/visual_audit/2026-07-09-responsive-scale-fix/dashboard-1920x1080.png`
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-detail-pass/actual-dashboard-1536x1024-after-b.png`
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-detail-pass/compare-dashboard-design-vs-actual-after-b.png`
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-pixel-pass/actual-iab-1536x1024-final-tight.png`
+    - `docs/local_specs/visual_audit/2026-07-09-dashboard-pixel-pass/compare-dashboard-design-vs-actual-final-tight.png`
+  - 版本推进到 `v0.8.0-dev.12`。
+
+- 结果：
+  - 1920x1080 截图不再出现左右外层白边。
+  - 1536x1024 截图已可与设计稿原图直接并排比较。
+  - 总览页顶栏、标题、摘要卡、运行表、最近同步、右侧栏和左侧栏底部比 `v0.8.0-dev.11` 更接近设计稿。
+  - 应用内浏览器固定 `1536x1024` 复核后，shell 关键坐标为：
+    - 左侧栏：`x=0 y=0 w=220 h=1024`。
+    - 顶栏：`x=220 y=0 w=1316 h=88`。
+    - 主区：`x=220 y=88 w=1316 h=858`，`scrollHeight=858`。
+    - 底栏：`x=220 y=946 w=1316 h=78`。
+  - 总览页模块关键坐标为：
+    - 顶栏操作区：`x=1074 y=32 w=430 h=40`。
+    - 摘要卡行：`y=148 h=146`。
+    - 正在运行：`x=248 y=314 w=924 h=278`。
+    - 最近同步：`x=248 y=612 w=924 h=310`。
+    - 需要处理：`x=1192 y=112 w=316 h=214`。
+    - 快速操作：`x=1192 y=342 w=316 h=188`。
+    - 实时连接：`x=1192 y=546 w=316 h=336`。
+  - 连接状态仍保留在顶栏和底栏，不再重复堆在左侧栏底部。
+
+- 验证：
+  - `npm --prefix apps/frontend run test -- App.test.tsx DesktopShellStatus.test.tsx DashboardPage.test.tsx`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+  - Chrome headless 截图验证 1440x960、1536x1024、1920x1080。
+  - 应用内浏览器固定 `1536x1024` 截图验证 `actual-iab-1536x1024-final-tight.png`。
+
+- 遗留问题：
+  - 当前轮只继续收口了 shell 和总览页。
+  - 设计稿中的窗口控制为静态视觉位，当前还不是原生窗口控制按钮。
+  - 总览页仍存在少量由真实字体渲染和 imagegen 位图文本造成的 1-3px 视觉差。
+  - 任务页、任务详情页、活动与问题页、冲突页、设置页、维护页和授权页还需要按同样方法逐页截图对照。
+
+## v0.8.0-dev.11 (2026-07-09)
+
+- 目标：
+  - 修正桌面页面随窗口尺寸变化时结构断点过多、最小窗口和设计稿不一致的问题。
+  - 参考 codex-companion 的固定画布缩放方法，让桌面端先保持同一套浅色科技风页面结构。
+  - 最小窗口按设计图完整显示，窗口变大时整体同步放大，而不是各页面分别切换版式。
+
+- 实现：
+  - 对照 codex-companion 的 `BrowserWindow minWidth/minHeight` 与 `.app-shell` transform scale 方案。
+  - 新增 `useDesktopViewportScale`。
+  - 设计画布固定为 `1440x960`。
+  - 最小缩放固定为 `0.75`，对应 `1080x720`。
+  - 缩放比例使用 `min(window.innerWidth / 1440, window.innerHeight / 960)`。
+  - `App.tsx` 将已连接桌面壳和首次授权页都包进同一固定画布。
+  - 左侧栏固定为 `220px`，不再在 1080px 下切换为图标栏。
+  - 顶栏和底栏固定展示完整状态，不再按窗口高度隐藏运行数、账号、数据库、版本或最近同步。
+  - 总览页固定为主列 + `300px` 右侧栏。
+  - 任务详情页固定为主列 + `320px` 检查器。
+  - 活动与问题、冲突处理、设置、更新维护、任务页、任务卡片、新建任务向导和首次授权页移除 viewport 断点结构。
+  - 修复 `.desktop-perspective-line` 覆盖 `overflow-y-auto` 的问题，避免主工作区不能正常滚动。
+  - 生产 TSX 文件中已清除 `sm:`、`md:`、`lg:`、`xl:`、`min-[...]`、`max-height` 和 `@media` 断点类。
+  - 新截图目录：
+    - `docs/local_specs/visual_audit/2026-07-09-responsive-scale/dashboard-1080x720.png`
+    - `docs/local_specs/visual_audit/2026-07-09-responsive-scale/dashboard-1280x820.png`
+    - `docs/local_specs/visual_audit/2026-07-09-responsive-scale/dashboard-1440x960.png`
+    - `docs/local_specs/visual_audit/2026-07-09-responsive-scale/dashboard-1920x1080.png`
+    - `docs/local_specs/visual_audit/2026-07-09-responsive-scale/tasks-1080x720.png`
+    - `docs/local_specs/visual_audit/2026-07-09-responsive-scale/tasks-1440x960.png`
+  - 版本推进到 `v0.8.0-dev.11`。
+
+- 结果：
+  - 1080x720 下会显示完整 1440x960 设计结构的 0.75 倍版本。
+  - 1440x960 下按 1.0 倍显示设计画布。
+  - 1920x1080 下按高度约束放大到 1.125 倍，结构不发生切换。
+  - 左栏、顶栏、底栏、总览、任务、任务详情、活动与问题、冲突处理、设置、维护和授权页现在使用同一桌面结构。
+  - `dev:test` 仍使用项目内 `data/dev-test` 数据目录，不影响已安装版程序和默认网页版本数据。
+
+- 验证：
+  - `rg -n "min-\[|sm:|md:|lg:|xl:|2xl:|max-height|@media" apps/frontend/src --glob "*.tsx" --glob "!**/*.test.tsx"`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run build`
+  - `python -m pytest apps/backend/tests/test_version.py`
+  - Chrome headless 截图验证 1080x720、1280x820、1440x960、1920x1080。
+
+- 遗留问题：
+  - 当前轮解决的是窗口配适和结构一致性。
+  - 后续仍需要按“设计稿 + 真实截图 + 模块拆分”的方法，继续逐页做像素级视觉对齐。
+  - 任务页截图中的测试数据仍需要继续补齐，便于审查真实表格态和任务详情态。
+
+## v0.8.0-dev.10 (2026-07-08)
+
+- 目标：
+  - 修正“窗口配适还没做完”的问题，继续压缩桌面壳在低高度和中等宽度窗口下的占位。
+  - 将总览页除明确不保留的真实吞吐/精确 ETA 之外，其余设计结构尽量收敛到页面稿。
+  - 用真实截图而不是只看代码，重新核对 1080 / 1280 / 1440 三个断点。
+
+- 实现：
+  - `App.tsx` 将主工作区改为 `overflow-y-auto + overflow-x-hidden`。
+  - 主工作区在常规窗口和低高度窗口分别收紧内边距。
+  - `DesktopTopBar.tsx` 收紧为 56px 顶栏。
+  - 顶栏在低高度窗口下压缩按钮尺寸，并隐藏低优先级运行数、待处理数和账号名。
+  - `Sidebar.tsx` 在低高度窗口下继续收紧 Logo 区、导航区和底部状态区的垂直占位。
+  - `DesktopStatusBar.tsx` 在低高度窗口下隐藏任务统计、前端类型、数据库、版本和最近同步文本，只保留关键状态和刷新按钮。
+  - `StatCard.tsx` 将摘要卡高度、图标尺寸和数值字号继续收紧。
+  - `DashboardPage.tsx` 将标题区改回“标题 + 右侧状态胶囊”。
+  - 总览页移除设计稿中没有的标题副文案。
+  - 总览页移除右侧“任务待处理摘要”多余卡片，只保留“需要处理 / 快速操作 / 实时连接”三段结构。
+  - 右侧“实时连接”改为三行指标：连接延迟、数据流入、数据流出。
+  - 运行表补回速度列、操作列和行内动作按钮。
+  - 最近同步表补回数据量、耗时和末列查看入口。
+  - 在 `import.meta.env.DEV` 且当前测试数据属于样例任务时，启用总览页展示态样例数据。
+  - 展示态样例数据覆盖摘要卡、运行表、最近同步表和右侧实时连接速率。
+  - 这样在 `dev:test` 下，即使真实任务和历史不足，也能对照设计稿审查布局与密度。
+  - 使用 Chrome headless 对 `http://localhost:13666/#dashboard` 重新截图。
+  - 新截图目录：
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/fix-pass-3/dashboard-1080x720.png`
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/fix-pass-3/dashboard-1280x900.png`
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/fix-pass-3/dashboard-1440x960.png`
+  - 版本推进到 `v0.8.0-dev.10`。
+
+- 结果：
+  - 1440px 已恢复设计稿的主列 + 300px 右栏结构，并且总览页展示态与 `03-dashboard-light-v3.png` 更接近。
+  - 1280px 下不再提前展开右侧栏，四摘要卡保持两列，主表和最近同步维持主内容优先。
+  - 1080px 下左栏继续收为图标栏，顶栏和底栏占位收紧，首屏不再被壳层进一步压缩。
+  - 总览页目前明确不保留的只有“真实 MB/s 吞吐”和“精确 ETA”。
+  - 其余结构都已改成设计稿形态，测试环境中用稳定样例数据填满。
+
+- 验证：
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx DesktopShellStatus.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run build`
+  - `Invoke-WebRequest http://localhost:13666/`
+  - Chrome headless 截图验证 1080x720、1280x900、1440x960。
+
+- 遗留问题：
+  - 当前这轮只继续收口了桌面壳和总览页。
+  - 任务详情、活动与问题、冲突处理、设置、维护页仍需要按同样的“设计稿 + 真实截图”方法逐页继续对齐。
+
+## v0.8.0-dev.9 (2026-07-08)
+
+- 目标：
+  - 回应总览页设计稿中出现但旧版未具备的数据能力，先判断能否实现，再决定页面是否保留。
+  - 对暂时缺少真实接口的能力使用稳定占位数据，避免空页面影响真实数据态视觉审查。
+  - 继续完善总览页，让右侧实时连接卡和历史测试数据能够更接近设计稿表达。
+
+- 实现：
+  - 新增本地规划文档：`docs/local_specs/desktop_overview_future_feature_plan_v0.8.0-dev.9.md`。
+  - 文档将总览页能力分为“已有能力”“可做但先用派生占位数据”“暂不保留”三类。
+  - 保留总体健康、运行任务数、最近同步、待处理项、正在运行表格、最近同步列表、需要处理右栏、快速操作等已有或可直接承接能力。
+  - 保留连接延迟、数据流入/流出趋势、实时连接折线，但当前先从 WebSocket 状态和同步事件派生稳定占位值。
+  - 暂不展示真实 MB/s 吞吐速率。
+  - 暂不展示精确 ETA。
+  - 原因是当前事件模型没有稳定的字节数、耗时和方向字段，空闲任务也无法推断剩余时间。
+  - `DashboardPage` 新增 `buildRealtimeMetrics`。
+  - `buildRealtimeMetrics` 将 `downloaded` 计入流入，将 `uploaded`、`mirrored`、`created`、`linked` 计入流出。
+  - 失败、冲突和待删除事件只作为双线趋势的关注波动，不计入真实方向总数。
+  - 实时连接卡展示连接延迟、数据流向和运行任务数，不再显示无来源的 `-- ms`。
+  - `useWebSocketLog` 从开发环境硬编码 `hostname:8000/ws/logs` 改为同源 `/ws/events`。
+  - Vite 代理继续负责将 `/ws/events` 转发到当前 `dev:test` 后端端口，避免测试后端自动换端口后页面仍连旧地址。
+  - 生成总览页截图：
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/future-features-pass-2/dashboard-1280x900.png`
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/future-features-pass-2/dashboard-1440x960.png`
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/future-features-pass-2/dashboard-1920x1080.png`
+  - 版本推进到 `v0.8.0-dev.9`。
+
+- 结果：
+  - 总览页的新设计能力都已标注实现边界，后续不会把占位数据误当真实后端能力。
+  - 1440px 真实数据态下，右侧实时连接卡显示 `良好`，连接延迟显示稳定毫秒值，数据流向显示当前测试历史事件的流入/流出统计。
+  - 1280px 下右栏继续下移，主表格保持横向滚动边界，不挤占主体。
+  - 1920px 下主列和 300px 右栏比例稳定。
+  - 当前页面继续承接网页版已有功能；批量暂停、真实心跳延迟、时间桶聚合和吞吐统计放入后续开发。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx DesktopShellStatus.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run build`
+  - Chrome / Edge headless 截图验证 1280x900、1440x960、1920x1080。
+
+- 遗留问题：
+  - 连接延迟仍是由 WebSocket 状态、最近日志量和运行任务数派生的占位值。
+  - 数据流向仍是从同步事件状态推断的事件数，不代表真实字节流量。
+  - 批量暂停按钮当前跳转同步任务页，后续需要新增批量暂停/恢复 API 和确认弹窗。
+
+## v0.8.0-dev.8 (2026-07-08)
+
+- 目标：
+  - 修正 `dev:test` 看起来启动成功但页面仍无数据的问题。
+  - 将历史测试数据放入项目内 `data/dev-test`，用于真实数据态 UI 审查。
+  - 继续按设计稿收紧总览页整体布局，重点处理统计卡、主表格、右侧上下文栏的密度差异。
+
+- 实现：
+  - `scripts/start_dev_test.mjs` 启动前会检查默认后端端口。
+  - 当 `18000` 已被其他数据目录的 LarkSync 后端占用时，`dev:test` 会自动尝试 `18001` 等后续端口。
+  - `apps/tray/backend_manager.py` 在显式设置 `LARKSYNC_DATA_DIR` 时，会读取已有后端 `/system/desktop/status`。
+  - 只有已有后端的数据目录与当前运行目录一致时才允许复用，避免项目内测试前端连到 Temp 测试库或安装版数据。
+  - 将历史库中的 1 个真实任务复制到 `data/dev-test/larksync.db`。
+  - 将测试任务归属改为当前测试 OAuth 身份和当前设备。
+  - 将测试任务本地目录改到项目内 `data/dev-test/sample-workspace/Test4LarkSync`。
+  - 创建 Markdown / 附件占位样例文件，避免 watcher 因旧本地目录不存在而启动失败。
+  - 将测试配置的自动上传 / 下载间隔调为每日固定时间，避免 UI 审查期间被高频调度日志污染。
+  - 清理旧 `F:/File/Data/Test4LarkSync` 路径噪声，重建 11 条可读同步事件和 1 条未解决冲突样例。
+  - 总览页移除标题行右侧重复的实时连接状态胶囊；连接状态仍由顶栏和右侧实时连接卡展示。
+  - `StatCard` 高度、图标尺寸、内边距和文本行距收紧，接近 v3 设计稿摘要卡密度。
+  - 总览页主面板内边距、模块间距和表格行高收紧，降低真实数据态下的纵向松散感。
+  - 生成真实数据态视觉审查截图：
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/history-data/pass-3/dashboard-1440x960.png`
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/history-data/pass-3/dashboard-1280x900.png`
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/history-data/pass-3/dashboard-1920x1080.png`
+    - `docs/local_specs/visual_audit/2026-07-08-dashboard/history-data/pass-3/compare-dashboard-design-vs-history-pass-3.png`
+  - 版本推进到 `v0.8.0-dev.8`。
+
+- 结果：
+  - `npm run dev:test` 默认仍使用前端 `13666`，但后端端口会在默认 `18000` 被不匹配数据目录占用时自动切到 `18001`。
+  - 前端代理已确认读取项目内 `data/dev-test`：1 个任务、11 条同步日志、1 条未解决冲突。
+  - 1440px 总览页恢复主列 + 300px 右侧栏布局，并在真实数据态下接近设计稿的统计卡高度和表格密度。
+  - 1280px 下右侧上下文栏按当前设计下移到主内容后方，主内容不横向挤压。
+  - 1920px 下主列和右侧栏比例正常，底栏和侧栏没有遮挡主体内容。
+
+- 验证：
+  - `python -m pytest apps/backend/tests/test_backend_manager.py`
+  - `node --check scripts/start_dev_test.mjs`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx DesktopShellStatus.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run build`
+  - Chrome / Edge headless 截图验证 1280x900、1440x960、1920x1080。
+
+- 遗留问题：
+  - 历史库当前只有 1 个真实同步任务；设计稿的“正在运行”模块是 3 行任务态，因此该模块高度不会完全一致。
+  - 如后续需要严格压测 3 行任务表格，应在 `data/dev-test` 中额外生成 2 个样例任务和对应本地目录，但不能把这些样例误当真实历史数据。
+
+## v0.8.0-dev.7 (2026-07-08)
+
+- 目标：
+  - 修正桌面页面没有按窗口大小配适的问题。
+  - 将浅色科技风设计稿和实际页面的断点行为重新对齐。
+  - 先保障壳层、同步任务、活动与问题、冲突处理、更新维护不在中等窗口互相挤压。
+
+- 实现：
+  - 新增 `docs/local_specs/desktop_design_implementation_alignment_v0.8.0.md`。
+  - 文档按设计稿、实现入口、关键布局、当前偏差和修正动作建立页面矩阵。
+  - 新增 `docs/local_specs/visual_audit/2026-07-08-dashboard/README.md`。
+  - 用隔离 `dev:test` 对总览页截取 1080x720、1280x820、1440x960、1920x1080 实际页面。
+  - 生成 `compare-dashboard-design-vs-actual-1440.png`，并排对照 `03-dashboard-light-v3.png` 与 1440 实际截图。
+  - 生成 `compare-dashboard-responsive-strip.png`，对照四个实际窗口尺寸。
+  - 左侧栏在 1080px 到 1179px 窗口自动收为 72px 图标栏。
+  - 左侧栏在 1180px 以上恢复 220px 完整导航，对齐 `light-prompts.md` 中的 220px 设计约束。
+  - 顶栏在窄窗口将“立即同步”和“暂停”压缩为图标按钮。
+  - 底栏在窄窗口隐藏版本和最近同步等低优先级文本。
+  - 主工作区内边距从固定 24px 改为 12px / 20px / 24px 分段。
+  - 总览页摘要卡在 1440px 以上恢复四列。
+  - 总览页主列 + 300px 右侧上下文栏在 1440px 以上展开，对齐 v3 设计稿基准。
+  - 总览页将四摘要卡移入左主列，使右侧上下文栏从摘要卡顶部开始，而不是在摘要卡下方才出现。
+  - 总览页摘要卡改为圆形状态图标 + 指标文本的横向结构，接近设计稿卡片视觉重心。
+  - 总览页右侧“实时连接”从柱状图改为蓝/绿双折线图。
+  - 总览页“正在运行”模块移除设计稿中不存在的右上刷新按钮和说明行。
+  - 总览页“最近同步”的历史入口移动到底部，接近设计稿链接位置。
+  - 活动与问题页完整三栏工作台从 1440px 后移到 1760px。
+  - 冲突处理页完整三栏工作台和版本双列从 1440px/1500px 后移到 1760px。
+  - 更新与维护页双栏工作台从 1440px 后移到 1760px。
+  - 同步任务表格最小宽度从 1180px 降为 980px。
+  - 同步任务表格的云端目录列在 1320px 以上展示。
+  - 同步任务展开策略四列从 1440px 后移到 1760px。
+  - 后端版本同步到 `v0.8.0-dev.7`，避免底栏版本和文档版本不一致。
+
+- 结果：
+  - 1080px 最小桌面窗口不再从左侧栏和主区边距开始挤占页面。
+  - 1440px 窗口中，总览页恢复设计稿的 300px 右侧上下文栏；活动、冲突和维护页仍保持主内容优先，不提前展开完整三栏工作台。
+  - 1760px 以上再进入活动、冲突和维护页的完整多栏设计结构。
+  - 1920px 以上继续承接任务详情的检查器布局。
+  - 本轮没有变更后端同步、OAuth、冲突解决和更新安装接口。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test -- App.test.tsx DesktopShellStatus.test.tsx TasksPage.test.tsx ActivityIssuesPage.test.tsx ConflictResolutionPage.test.tsx MaintenancePage.test.tsx`
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+  - Chrome headless 截图：`actual-dashboard-1080x720.png`
+  - Chrome headless 截图：`actual-dashboard-1280x820.png`
+  - Chrome headless 截图：`actual-dashboard-1440x960.png`
+  - Chrome headless 截图：`actual-dashboard-1920x1080-rerun.png`
+  - Chrome headless 截图：`actual-dashboard-1440x960-module-pass-2.png`
+  - 模块对照图：`modules-pass-2/dashboard-module-contact-sheet.png`
+
+- 遗留问题：
+  - 仍需要通过 `npm run dev:test` 做 1080x720、1280x820、1440x960、1920x1080 的人工视觉验收。
+  - 新建任务向导、设置页和首次授权页的细节仍需继续按页面矩阵逐项核验。
+  - OAuth 测试仍要求飞书开发者后台配置 `http://localhost:13666/auth/callback` 作为 Redirect URI。
+
+## v0.8.0-dev.6 (2026-07-08)
+
+- 目标：
+  - 将桌面版主界面继续对齐浅色科技风视觉稿。
+  - 优先修正桌面壳、总览标题区和同步任务页与设计稿不一致的问题。
+  - 保持本轮只改页面与交互骨架，不改同步核心和数据目录策略。
+
+- 实现：
+  - App 主工作区增加冷白浅蓝网格和透视线背景。
+  - 顶栏改为全局状态序列，展示后端、WebSocket、飞书授权、运行任务数和待处理数。
+  - 左侧栏收敛为 Logo、主导航、问题角标、飞书授权、后端、WebSocket 和浏览器 fallback。
+  - 总览、活动与问题、冲突处理、设置、更新与维护补齐页面级标题和主操作。
+  - 同步任务页从旧大卡片列表改为高密度表格。
+  - 同步任务页新增搜索、状态筛选、同步模式筛选和健康筛选。
+  - 同步任务表格保留启用/停用、立即同步、详情入口、策略展开和删除任务能力。
+  - 表格展开行继续承载同步模式、更新模式、MD 上传模式和删除策略编辑。
+
+- 结果：
+  - 桌面版页面更接近 `docs/local_specs/design_artifacts/v0.8.0/light/` 下的浅色科技风视觉稿。
+  - 同步任务页在 1080 px 以上保持表格主体验，路径和 token 使用截断展示。
+  - 页面改版没有变更后端同步、OAuth、冲突解决或更新安装接口。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test -- TasksPage.test.tsx TaskPanels.test.tsx DashboardPage.test.tsx DesktopShellStatus.test.tsx ActivityIssuesPage.test.tsx ConflictResolutionPage.test.tsx SettingsPage.test.tsx`
+  - `npm --prefix apps/frontend run test`
+  - `npm --prefix apps/frontend run build`
+
+- 遗留问题：
+  - 本轮完成代码层对齐和自动化验证，仍建议通过 `npm run dev:test` 做一次桌面窗口人工视觉验收。
+  - OAuth 测试仍要求飞书开发者后台配置 `http://localhost:13666/auth/callback` 作为 Redirect URI。
+
+## v0.8.0-dev.5 (2026-07-08)
+
+- 目标：
+  - 将隔离开发测试数据固定放回项目目录。
+  - 避免 `npm run dev:test` 默认向系统临时目录写入数据。
+  - 继续保证安装版运行时不被开发测试入口影响。
+
+- 实现：
+  - `scripts/start_dev_test.mjs` 的默认 `LARKSYNC_DATA_DIR` 改为仓库内 `data/dev-test`。
+  - 保留 `LARKSYNC_DATA_DIR` 环境变量覆盖能力。
+  - 项目内 `data/dev-test/config.json` 预填测试 OAuth 配置。
+  - 测试 OAuth Redirect URI 使用 `http://localhost:13666/auth/callback`。
+  - 测试 token 存储继续使用 `file`。
+
+- 结果：
+  - 默认 `npm run dev:test` 使用项目内 `data/dev-test` 数据目录。
+  - 测试配置不读取安装版用户数据目录。
+  - 测试配置不读取或写入安装版 Windows 凭据管理器里的 `larksync` token。
+
+- 验证：
+  - `node --check scripts/start_dev_test.mjs`
+  - `python -m pytest tests/test_desktop_window.py tests/test_tray_config.py`
+  - `python -m py_compile apps/tray/desktop_window.py apps/tray/tray_app.py apps/tray/config.py`
+  - `npm --prefix apps/frontend run typecheck`
+
+- 遗留问题：
+  - 如果旧的 `dev:test` 后端进程仍在运行，它仍会继续使用启动时的旧环境变量。
+  - 需要重启 `npm run dev:test` 后才会切换到项目内 `data/dev-test`。
+
+## v0.8.0-dev.4 (2026-07-07)
+
+- 目标：
+  - 允许安装版 LarkSync 正在运行时查看桌面化开发效果。
+  - 避免默认开发入口抢占安装版后端端口、托盘单实例锁或凭证存储。
+  - 保持当前阶段测试目标聚焦“桌面版承接网页版本已有功能”。
+
+- 实现：
+  - 根包新增 `npm run dev:test`。
+  - `dev:test` 默认使用后端端口 `18000`。
+  - `dev:test` 默认使用前端端口 `13666`。
+  - `dev:test` 默认使用单实例锁端口 `48911`。
+  - `dev:test` 使用独立测试数据目录，后续在 `v0.8.0-dev.5` 改为项目内 `data/dev-test`。
+  - `dev:test` 默认设置 `LARKSYNC_TOKEN_STORE=file`，不读取或写入安装版 Windows 凭据管理器里的 `larksync` token。
+  - 托盘配置支持通过 `LARKSYNC_BACKEND_PORT` 和 `LARKSYNC_VITE_DEV_PORT` 改端口。
+  - 托盘单实例锁支持通过 `LARKSYNC_LOCK_PORT` 改锁端口。
+  - Vite 代理支持通过环境变量指向隔离后端。
+  - Vite 开发日志写入当前 `LARKSYNC_DATA_DIR/logs`。
+  - 桌面窗口 fallback 输出补充具体原因。
+  - 缺少 `pywebview` 时会明确提示“未检测到 pywebview/webview 模块”。
+
+- 结果：
+  - 安装版继续占用 `8000` 和默认托盘锁时，可以用 `npm run dev:test` 启动隔离开发预览。
+  - `http://localhost:13666` 用于隔离测试前端。
+  - `http://127.0.0.1:18000` 用于隔离测试后端。
+  - 默认 `npm run dev` 保持原开发入口语义。
+  - 本机 `C:\Python314\python.exe` 缺少 `pywebview` 是“桌面窗口不可用”的直接原因。
+  - 已执行 `python -m pip install "pywebview>=5.0"`，当前环境可以 import `webview`。
+
+- 验证：
+  - `python -c "import importlib.util, webview; print(importlib.util.find_spec('webview'))"`
+  - `python -m pytest tests/test_tray_config.py`
+  - `python -m pytest tests/test_desktop_window.py tests/test_tray_config.py`
+  - `python -m py_compile apps/tray/config.py apps/tray/tray_app.py`
+  - `python -m py_compile apps/tray/desktop_window.py apps/tray/tray_app.py apps/tray/config.py`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run build`
+
+- 遗留问题：
+  - `dev:test` 使用独立测试数据目录，因此不会直接展示安装版真实任务数据。
+  - 如需用真实任务验证承接效果，应先复制数据到测试目录或暂停安装版后再做专门回归。
+
+## v0.8.0-dev.3 (2026-07-07)
+
+- 目标：
+  - 为首次授权页补齐 `lark-cli` 辅助诊断入口。
+  - 降低后续设备码/二维码授权方案验证成本。
+  - 保持 LarkSync 原生 OAuth 和本地加密凭证仍为主流程。
+
+- 实现：
+  - 新增 `LarkCliAuthStatus` 后端只读探测服务。
+  - 后端固定执行 `lark-cli auth status --json --verify`。
+  - 后端设置 `LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1` 和 `LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1`。
+  - Windows 下隐藏 CLI 检测进程窗口。
+  - `/auth/cli/status` 返回 CLI 安装状态、身份类型、用户可用性、scope 数量、docs scope 检测和 drive scope 检测。
+  - `/auth/cli/status` 不返回 raw scope、access token、refresh token 或 open_id，只返回 `open_id_present` 布尔值。
+  - 首次授权页右侧面板新增“CLI 辅助授权”。
+  - 前端展示 CLI 检测状态、复制状态检查命令、设备码命令和二维码命令。
+  - 前端文案明确当前主流程仍使用 LarkSync 原生 OAuth。
+
+- 结果：
+  - 未安装 `lark-cli` 时，页面提示可继续使用原生 OAuth。
+  - 已安装且用户身份可用时，页面展示 `CLI 可用`、用户名称和 docs/drive 权限检测结果。
+  - 该能力只做状态诊断，不读取或导入 CLI token。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `python -m pytest tests/test_lark_cli_auth_service.py tests/test_auth_api.py`
+  - `python -m py_compile src/services/lark_cli_auth_service.py src/api/auth.py src/services/__init__.py`
+  - `npm --prefix apps/frontend run test -- OnboardingWizard.test.tsx`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+
+- 遗留问题：
+  - 本轮只实现 CLI 状态探测。
+  - 设备码登录和二维码登录仍需后续专项方案确认后再接入主流程。
+
+## v0.8.0-dev.1 (2026-07-06)
+
+- 目标：
+  - 在桌面化重构前先整理 Logo 资产。
+  - 保留旧版“无限循环箭头 + 鸟形 + 蓝绿渐变”的识别点。
+  - 解决旧资产白边大、透明导出不稳定、小尺寸托盘图标不稳定的问题。
+
+- 实现：
+  - 新增 `scripts/generate_logo_assets.py`，以旧版原图为唯一视觉来源，统一导出品牌 PNG、Windows ICO、前端 favicon 和托盘四态图标。
+  - 背景移除算法只处理与画布边缘连通的近白背景，保留旧 Logo 内部白色鸟眼和原始形状。
+  - 覆盖兼容旧文件名的品牌 PNG 和 `LarkSync.ico`，避免现有 README、安装包和构建脚本引用失效。
+  - 将重做前的品牌、前端和托盘图标复制到 `assets/branding/archive/2026-07-06-original/`。
+  - 更新 `scripts/process_logo.py`，当源图已经是透明背景时保留白色细节，不再误删图标内部白色眼睛。
+  - 更新 `apps/tray/icon_generator.py`，继续从同一品牌图标派生 `idle`、`syncing`、`paused`、`error` 四态，保留原有整图增强/灰度/红色着色方式。
+
+- 结果：
+  - 新版资产保持旧版 Logo 视觉设计，不再引入新几何图形。
+  - `apps/frontend/public/logo-horizontal.png` 输出为透明 PNG。
+  - `apps/tray/icons/` 四态图标均为 64 x 64 透明 PNG。
+  - `assets/branding/LarkSync.ico` 继续作为 Windows 安装包图标入口。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `python scripts/generate_logo_assets.py`
+  - `python -m py_compile scripts/generate_logo_assets.py scripts/process_logo.py apps/tray/icon_generator.py`
+  - `python scripts/process_logo.py`
+  - `python apps/tray/icon_generator.py`
+  - 使用 Pillow 检查品牌 PNG、favicon、ICO 和托盘四态图标尺寸与 alpha 通道。
+
+- 遗留问题：
+  - 当前资产严格基于旧版原图；如需要更高清的同款 Logo，需要提供旧设计的原始矢量文件或更高质量源图。
+
+### 2026-07-07 桌面总览与任务详情布局
+
+- 原因：
+  - 用户评审指出总览页和任务详情页仍有多个框互相挤占的问题。
+  - 旧前端总览页仍是深色双列卡片结构，与 v0.8.0 桌面浅色科技风壳层不一致。
+  - 代码中没有独立任务详情页，任务级信息仍混在任务卡展开区域里。
+
+- 实现：
+  - 用 imagegen 重新生成 `03-dashboard-light-v3.png` 和 `06-task-detail-light-v3.png`。
+  - 将 v3 设计稿归档到 `docs/local_specs/design_artifacts/v0.8.0/light/`。
+  - 更新本地设计索引和 prompt 归档，明确总览页主列 + 300px 右轨、任务详情页主列 + 300px 检查器。
+  - 重写 `DashboardPage` 为浅色科技风布局。
+  - 总览页上方固定四张摘要卡。
+  - 总览页主列只承载“正在运行”和“最近同步”两个大面板。
+  - 总览页右侧只承载“需要处理”“快速操作”“实时连接”。
+  - 新增 `TaskDetailPage`。
+  - 任务详情页主列承载任务标题、路径关系、当前运行和运行历史。
+  - 任务详情页右侧检查器承载问题摘要、任务操作、策略摘要、忽略目录和危险操作。
+  - 任务列表卡新增“查看详情”入口，App 在“同步任务”页签内切换列表和详情。
+  - `StatusPill` 和 `StatCard` 改为浅色 token，避免旧暗色组件混入桌面壳。
+
+- 结果：
+  - 1440px 宽度下，总览页主列宽度约 806px，右轨宽度 300px。
+  - 总览页实机检查未出现横向溢出。
+  - 任务详情页已具备独立页面入口和可测试布局骨架。
+  - 任务详情页危险操作使用既有 `reset-links` 和删除任务确认，不新增未知后端字段。
+
+- 验证：
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`（22 files / 55 tests passed）
+  - 浏览器打开 `http://127.0.0.1:3666`，按 1440 x 960 视口截图验证总览页。
+  - 浏览器布局检测结果：`scrollWidth=1440`，`clientWidth=1440`，无横向溢出。
+  - 总览页检测到主列面板宽度约 806px，右侧检查轨宽度 300px。
+
+- 遗留问题：
+  - 首轮实现时本地数据库任务数为 0，未创建临时任务污染数据，因此当时没有用真实任务数据截图验证任务详情页。
+  - 任务详情页布局已通过 `TaskDetailPage.test.tsx` smoke test 验证。
+  - WebSocket 在本地浏览器验证时返回 403，页面能显示重连态；后续需要在桌面壳鉴权上下文稳定后继续验证实时日志连接。
+
+### 2026-07-07 总览与任务详情布局二次收口
+
+- 原因：
+  - 用户评审指出总览页和任务详情页仍有框体互相挤占的问题。
+  - 现有两栏断点按浏览器视口触发，没有扣除左侧 248px 导航和主内容区 48px 内边距。
+  - 任务详情页原 `minmax(760px,1fr) + 300px` 检查器在 1280px 桌面窗口下会超出真实工作区。
+  - 顶部栏在 1280px 宽度会同时显示页面摘要、状态胶囊、操作按钮和账号区，导致“同步任务”标题换行。
+
+- 实现：
+  - 总览页主列 + 300px 右轨从 `1180px` 触发改为 `1440px` 触发。
+  - 任务详情页主列 + 300px 检查器从 `1180px` 触发改为 `1440px` 触发。
+  - 任务详情页移除主列 `760px` 强制最小宽度，避免右侧检查器挤压主内容。
+  - 任务详情页“当前运行”上传、下载、跳过和错误指标改为自适应网格，不再横向硬塞在进度环右侧。
+  - 顶部栏标题增加 `whitespace-nowrap`，页面摘要和状态胶囊延后到 `1500px` 以上显示，账号区延后到 `1360px` 以上显示。
+  - 总览页“正在运行”表格最小宽度收敛为 `740px`，1440px 并排状态下不再出现内部横向滚动条。
+
+- 结果：
+  - 1280 x 820 视口下，总览页无页面级横向溢出。
+  - 1280 x 820 视口下，任务详情页无页面级横向溢出。
+  - 1280 x 820 视口下，顶部栏高度保持 56px，“同步任务”标题保持单行。
+  - 1440 x 960 视口下，总览页右轨正常并排。
+  - 1440 x 960 视口下，总览页“正在运行”表格内部滚动区 `clientWidth=764`，`scrollWidth=764`，无内部横向溢出。
+  - 1440 x 960 视口下，任务详情页右侧检查器正常并排。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`（24 files / 57 tests passed）
+  - `npm --prefix apps/frontend run build`
+  - 浏览器打开 `http://127.0.0.1:3666`，用真实任务数据验证 1280 x 820 和 1440 x 960 视口。
+  - 总览页 1280 x 820：`documentElement.clientWidth=1280`，`documentElement.scrollWidth=1280`，`main.clientWidth=1022`，`main.scrollWidth=1022`。
+  - 任务详情页 1280 x 820：`documentElement.clientWidth=1280`，`documentElement.scrollWidth=1280`，`main.clientWidth=1022`，`main.scrollWidth=1022`，顶部栏 `h1Height=27`。
+  - 总览页 1440 x 960：`documentElement.clientWidth=1440`，`documentElement.scrollWidth=1440`，`main.clientWidth=1182`，`main.scrollWidth=1182`。
+
+- 遗留问题：
+  - 1440px 并排时总览主列信息密度较高，但不再出现卡片互相挤占或横向溢出。
+  - 后续若继续强化宽屏体验，可考虑为 1600px 以上增加更宽主列或隐藏低优先级表格列。
+
+### 2026-07-07 桌面壳安全断点统一
+
+- 原因：
+  - 活动与问题页、冲突处理页仍在 `1280px` 触发 `300px + 主列 + 320px` 三栏布局。
+  - 1280px 桌面窗口扣除 248px 左侧导航和主内容区左右内边距后，真实工作区约为 1022px。
+  - 在 1022px 工作区内强行三栏会让中间排障列只有约 360px，容易出现信息拥挤。
+  - 更新与维护页仍用 Tailwind `xl` 在 1280px 触发双列，也没有按桌面壳真实工作区计算。
+
+- 实现：
+  - 活动与问题页三栏断点从 `1280px` 改为 `1440px`。
+  - 冲突处理页三栏断点从 `1280px` 改为 `1440px`。
+  - 活动与问题页、冲突处理页顶部四摘要卡从 `1180px` 改为 `1440px` 触发四列。
+  - 总览页顶部四摘要卡从 `1180px` 改为 `1440px` 触发四列。
+  - 更新与维护页主列 + 维护侧栏从 `xl` 改为 `1440px` 触发。
+  - 统一给活动与问题页、冲突处理页的面板增加 `min-w-0`、标题截断和 action 固定宽度处理。
+  - 新增 `MaintenancePage.test.tsx`，锁定更新维护页的 1440px 宽屏断点。
+
+- 结果：
+  - 1280 x 820 视口下，总览页、活动与问题页、冲突处理页、更新与维护页均无页面级横向溢出。
+  - 1440 x 960 视口下，总览页、活动与问题页、冲突处理页、更新与维护页均无页面级横向溢出。
+  - 活动与问题页在 1280px 下纵向展示任务选择、运行历史、问题摘要、事件详情和建议动作。
+  - 活动与问题页在 1440px 下恢复左侧任务/运行、中间问题/时间线、右侧事件详情的三栏排障工作台。
+  - 冲突处理页在 1280px 下纵向展示冲突队列、版本对比、处理状态和版本选择。
+  - 冲突处理页在 1440px 下恢复冲突队列、版本对比、处理侧栏的三栏工作台。
+  - 更新与维护页在 1280px 下纵向展示更新状态和日志/映射维护。
+  - 更新与维护页在 1440px 下恢复更新主列 + 维护侧栏。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`（25 files / 58 tests passed）
+  - `npm --prefix apps/frontend run build`
+  - 浏览器打开 `http://127.0.0.1:3666`，用真实任务数据验证 1280 x 820 和 1440 x 960 视口。
+  - 1280 x 820：总览、活动与问题、冲突处理、更新与维护均满足 `documentElement.clientWidth=1280` 且 `documentElement.scrollWidth=1280`。
+  - 1280 x 820：四个页面均满足 `main.clientWidth=1022` 且 `main.scrollWidth=1022`。
+  - 1440 x 960：总览、活动与问题、更新与维护均满足 `documentElement.clientWidth=1440` 且 `documentElement.scrollWidth=1440`。
+  - 1440 x 960：冲突处理页满足 `documentElement.clientWidth=1440` 且 `documentElement.scrollWidth=1440`；该页主内容测得 `main.clientWidth=1192` 且 `main.scrollWidth=1192`。
+
+- 遗留问题：
+  - 旧日志中心组件仍保留给测试和兼容入口，但桌面导航中的活动与问题、冲突处理已切到独立浅色工作台。
+  - 后续继续实现 OAuth 二维码授权、启动连接状态页和新建任务向导时，应沿用 1440px 桌面壳安全断点。
+
+### 2026-07-07 总览与任务详情布局三次收口
+
+- 原因：
+  - 用户继续反馈总览页和任务详情页仍有框体互相挤占。
+  - 1440px 断点只按浏览器视口计算，没有扣除 248px 左侧导航和主内容区左右 48px 内边距。
+  - 在 1440px 桌面窗口中，真实主工作区约 1144px；若同时放 300px 右轨、28px gutter 和主列表，主列视觉仍偏紧。
+
+- 实现：
+  - 总览页顶部四摘要卡从 `1440px` 改为 `1600px` 以上进入四列。
+  - 总览页主列 + 300px 右侧处理轨从 `1440px` 改为 `1600px` 以上触发。
+  - 任务详情页主列 + 300px 检查器从 `1440px` 改为 `1600px` 以上触发。
+  - 更新 `DashboardPage.test.tsx` 和 `TaskDetailPage.test.tsx`，明确禁止回退到 1440px 右轨断点。
+  - 更新 README 和 CHANGELOG，将总览/任务详情与其它页面的断点口径区分开。
+
+- 结果：
+  - 1280px 和 1440px 初始桌面窗口下，总览页保持纵向主内容，不再出现右侧处理轨抢占主列。
+  - 1280px 和 1440px 初始桌面窗口下，任务详情页保持纵向主内容，不再出现右侧检查器挤压路径关系、当前运行和运行历史。
+  - 1600px 以上恢复 v3 设计中的主列 + 约 300px 右轨/检查器。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx TaskDetailPage.test.tsx`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`（26 files / 60 tests passed）
+  - `npm --prefix apps/frontend run build`
+  - Chrome headless 1440 x 960：总览页 `documentElement.scrollWidth=1440`，`main.width=1192`，右侧处理区位于主列下方，容器宽度 `1144px`。
+  - Chrome headless 1600 x 960：总览页 `documentElement.scrollWidth=1600`，主列宽度 `976px`，右侧处理轨宽度 `300px`。
+  - Chrome headless 1440 x 960：任务详情页已打开真实任务详情，`documentElement.scrollWidth=1440`，问题摘要/任务操作/策略摘要/危险操作位于主列下方，容器宽度 `1144px`。
+  - Chrome headless 1600 x 960：任务详情页主列宽度 `976px`，右侧检查器宽度 `300px`。
+
+- 遗留问题：
+  - 本轮先做布局断点修复，未改动数据口径、任务排序、运行历史和后端接口。
+  - 后续如要进一步贴近设计稿，可再按真实截图微调 1600px 以上的主列表格列宽。
+
+### 2026-07-07 总览与任务详情布局四次收口
+
+- 原因：
+  - 用户继续反馈总览页和任务详情页存在框体互相挤占。
+  - 1600px 浏览器视口在桌面壳内需要扣除 248px 左侧导航和主内容区 48px 内边距。
+  - 扣除后真实工作区约 1304px，同时放 300px 右轨、28px gutter 和主列表时，主列仍容易显得拥挤。
+  - 任务详情页内部“本地目录 / 同步模式 / 云端目录”三列原先在 1440px 触发，会在主列变窄时继续挤压路径文本。
+
+- 实现：
+  - 总览页顶部四摘要卡从 `1600px` 改为 `1760px` 以上进入四列。
+  - 总览页主列 + 300px 右侧处理轨从 `1600px` 改为 `1760px` 以上触发。
+  - 任务详情页主列 + 300px 检查器从 `1600px` 改为 `1760px` 以上触发。
+  - 任务详情页当前运行的四个传输指标从 `1500px` 改为 `1760px` 以上进入四列。
+  - 任务详情页路径关系区从 `1440px` 改为 `1760px` 以上进入三列。
+  - 更新 `DashboardPage.test.tsx` 和 `TaskDetailPage.test.tsx`，明确禁止回退到 1600px、1500px 和 1440px 的拥挤断点。
+
+- 结果：
+  - 1440px、1536px 和 1600px 常见桌面窗口下，总览页保持纵向主内容，右侧处理轨不再抢占主列宽度。
+  - 1440px、1536px 和 1600px 常见桌面窗口下，任务详情页保持纵向主内容，检查器、路径三列和四指标不会同步挤压主列。
+  - 1760px 以上才恢复 v3 设计中的主列 + 约 300px 右轨/检查器。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx TaskDetailPage.test.tsx`
+
+- 遗留问题：
+  - 本轮只调整布局断点和测试断言，未改动接口、数据口径、任务排序和运行历史逻辑。
+  - 如后续在 1760px 以上仍觉得表格密度高，应优先压缩低优先级列或改为容器查询，而不是继续按浏览器整宽提前分栏。
+
+### 2026-07-07 总览与任务详情布局五次收口
+
+- 原因：
+  - 用户继续反馈任务详情页和总览页仍有框体互相挤占。
+  - 1760px 断点仍按浏览器整宽触发，未按桌面壳左侧 248px 导航、主内容区 48px 内边距和系统缩放后的可用工作区计算。
+  - 任务详情页路径关系区和当前运行指标在右侧检查器出现时同时进入宽屏多列，长路径、云端标识和四个指标卡仍容易被压缩。
+
+- 实现：
+  - 总览页顶部四摘要卡从 `1760px` 改为 `1920px` 以上进入四列。
+  - 总览页主列 + 右侧处理轨从 `1760px` 改为 `1920px` 以上触发。
+  - 总览页右侧处理轨从 `300px` 扩为 `320px`，减少右轨内部按钮和状态卡拥挤。
+  - 任务详情页主列 + 检查器从 `1760px` 改为 `1920px` 以上触发。
+  - 任务详情页检查器从 `300px` 扩为 `320px`。
+  - 任务详情页路径关系区从 `1760px` 改为 `1920px` 以上进入 `本地 / 同步模式 / 云端` 三列。
+  - 任务详情页当前运行的四个传输指标从 `1760px` 改为 `1920px` 以上进入四列。
+  - 任务详情页云端目录右对齐从 `lg` 改为 `1920px` 同步触发，避免纵向布局下视觉左右分裂。
+  - `DashboardPage.test.tsx` 和 `TaskDetailPage.test.tsx` 明确禁止回退到 `1760px` 右轨和路径三列断点。
+
+- 结果：
+  - 1280px、1440px、1600px 和 1760px 常见桌面窗口下，总览页保持主列优先，不再提前出现右侧处理轨抢宽度。
+  - 1280px、1440px、1600px 和 1760px 常见桌面窗口下，任务详情页保持主列优先，检查器、路径三列和当前运行四指标不会同时挤压主列。
+  - 1920px 以上恢复 v3 设计中的宽屏右轨/检查器，并给右侧栏保留 320px 宽度。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run test -- DashboardPage.test.tsx TaskDetailPage.test.tsx`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run test`（25 files / 61 tests passed）
+  - `npm --prefix apps/frontend run build`
+  - 浏览器打开 `http://127.0.0.1:3666/#dashboard`，在 1280 x 720 实际窗口下验证总览页。
+  - 总览页 1280 x 720：`documentElement.clientWidth=1280`，`documentElement.scrollWidth=1280`，`main.clientWidth=1022`，`main.scrollWidth=1022`，右侧处理区位于主列下方。
+  - 浏览器打开真实任务详情，1280 x 720：`documentElement.clientWidth=1280`，`documentElement.scrollWidth=1280`，`main.clientWidth=1022`，`main.scrollWidth=1022`，路径关系区为单列。
+
+- 遗留问题：
+  - 本轮先处理页面框体挤占，不改任务数据、同步状态和后端接口。
+  - 浏览器控制接口当前不能直接设置 1760px / 1920px 视口；这两个断点由页面 smoke test 约束。
+  - 后续如继续收紧，应优先考虑容器查询或表格列降级，而不是只按浏览器整宽断点推进。
+
+### 2026-07-07 Windows 桌面窗口宿主
+
+- 原因：
+  - 桌面化规划要求安装版默认进入桌面窗口，而不是继续默认打开外部浏览器管理面板。
+  - 现有 `tray_app.py` 在后端启动成功后直接调用 `webbrowser.open()`。
+  - 托盘菜单只有“打开管理面板”，缺少“打开桌面窗口”和“在浏览器中打开”双入口。
+  - `pystray` 和 `pywebview` 都有阻塞事件循环，不能把 WebView 窗口直接塞进托盘主事件循环。
+
+- 实现：
+  - 新增 `apps/tray/desktop_window.py`。
+  - 桌面窗口使用独立子进程运行 pywebview，托盘主进程继续负责后端生命周期、状态轮询、通知和菜单。
+  - 子进程通过 `tray_app.py --desktop-window --url ...` 启动，非打包态走当前 Python + `apps/tray/tray_app.py`，打包态走当前可执行文件。
+  - Windows 下 pywebview 启动优先指定 `edgechromium`，并设置初始尺寸 `1280 x 820`、最小尺寸 `1080 x 720`。
+  - 如果 `webview` 模块不存在、用户设置 `LARKSYNC_FORCE_BROWSER=1` 或子进程启动失败，则自动回退到浏览器。
+  - 如果桌面窗口子进程刚启动就退出，则托盘立即回退浏览器，避免用户看到无窗口状态。
+  - 托盘菜单主入口改为“打开桌面窗口”，并新增“在浏览器中打开”备用入口。
+  - 托盘“设置”和“查看日志/问题”入口改为优先打开桌面窗口路由。
+  - 查看问题入口从旧 `#logcenter` 更新为 `#activity`。
+  - 重复启动检测到已有实例时，也优先打开桌面窗口；如果桌面宿主不可用，则由同一 helper 回退浏览器。
+  - `DesktopWindowLaunchResult` 增加窗口子进程句柄。
+  - `LarkSyncTray` 记录托盘拉起的桌面窗口子进程。
+  - 托盘进程内再次打开桌面窗口时，如果原窗口仍在运行，直接复用原进程，不再生成第二个 WebView 窗口。
+  - 如果原窗口已经退出，托盘会清空旧进程引用并重新打开窗口。
+  - 退出托盘时同步清理仍在运行的桌面窗口子进程。
+  - 前端 `App` 启动时读取 `#settings`、`#activity`、`#maintenance` 等 hash 路由。
+  - 前端继续兼容旧 `#logcenter`，自动映射到“活动与问题”。
+  - 新增运行依赖 `pywebview>=5.0`，并把 `webview` 相关模块加入 PyInstaller hiddenimports。
+
+- 结果：
+  - 托盘启动成功后会优先打开桌面窗口。
+  - 用户关闭桌面窗口时，只会关闭窗口子进程，托盘和后端同步服务继续运行。
+  - WebView2/pywebview 不可用时仍能通过浏览器 fallback 使用。
+  - 托盘菜单已形成桌面窗口与浏览器 fallback 的双入口。
+  - 设置、活动与问题、重复启动入口不再默认跳出到外部浏览器。
+  - `/#settings` 和 `/#activity` 可以直达桌面壳对应页面，避免打开窗口后仍停留在总览页。
+  - 托盘进程内的重复打开动作不会再创建多个桌面窗口。
+  - 托盘退出会清理桌面窗口子进程，避免残留 WebView 进程。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run test -- App.test.tsx DashboardPage.test.tsx TaskDetailPage.test.tsx`（3 files / 7 tests passed）
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+  - `python -m pytest tests/test_desktop_window.py tests/test_tray_config.py tests/test_tray_lock.py tests/test_tray_update_install.py tests/test_build_installer.py`（工作目录：`apps/backend`，结果：61 passed）
+  - `python -m py_compile apps/tray/desktop_window.py apps/tray/tray_app.py apps/tray/config.py apps/tray/notifier.py scripts/build_installer.py`
+  - `python -m pip install -e apps/backend --dry-run`（可解析 `pywebview-6.2.1`、`pythonnet`、`bottle`、`proxy_tools` 等依赖，未实际安装）
+  - `python -c "import importlib.util; print(importlib.util.find_spec('webview') is not None)"`：当前开发环境输出 `False`，未做真实 GUI 打开验证。
+
+- 遗留问题：
+  - 本轮未做真实 WebView2 安装版 smoke；后续进入安装体验批次时需要执行 `python scripts/build_installer.py --nsis` 并手动验证窗口创建、关闭窗口后托盘仍运行、托盘重新打开窗口。
+  - 当前已实现托盘进程内单窗口复用；如果要让“重复启动应用”也聚焦既有窗口，还需要跨进程 IPC。
+
+### 2026-07-07 同步任务页与新建任务向导浅色化
+
+- 原因：
+  - 桌面壳、总览页和任务详情页已进入浅色科技风，但同步任务页仍保留 `zinc-900/zinc-950` 旧暗色卡片。
+  - 任务列表、任务卡片、云端目录树和新建任务向导是创建同步关系的主链路，视觉割裂会影响桌面版一致性。
+  - 设计稿要求同步任务页采用表格化/密集任务行和浅色冷白面板，新建任务向导应作为分步配置流程，而不是旧暗色弹窗。
+
+- 实现：
+  - `TasksPageHeader` 改为浅色工具条，移除页面内部主题切换按钮，保留刷新、新建任务和测试任务显隐。
+  - `TasksEmptyState` 改为浅色虚线空态。
+  - `TaskCard` 改为白色任务行卡片，路径关系区使用冷白技术面板，状态胶囊、模式标签、进度条和操作按钮统一浅色 token。
+  - `TaskCard` 展开管理区改为浅色策略编辑区，保留同步模式、更新模式、MD 上传模式和删除策略的原有保存行为。
+  - `NewTaskModal` 改为浅色桌面弹窗，宽度提升到 `max-w-4xl`，保留三步向导、系统目录选择、云端目录树、手动链接/Token 和创建 payload。
+  - `NewTaskLocalStep`、`NewTaskCloudStep`、`NewTaskStrategyStep` 和 `NewTaskWizardStepIndicator` 全部替换旧暗色边框、文本和背景。
+  - `TreeNode` 改为浅色目录树节点，避免新建任务第二步仍混入暗色控件。
+  - 更新 `TasksPage.test.tsx`、`TaskPanels.test.tsx` 和 `NewTaskWizardPanels.test.tsx`，断言任务页/任务卡/向导不再包含旧暗色类名。
+
+- 结果：
+  - 同步任务页与桌面壳、总览页和任务详情页的浅色科技风一致。
+  - 新建任务向导仍使用既有 `/system/select-folder`、`/drive/tree` 和 `/sync/tasks` 接口。
+  - 本轮未改变同步模式、删除策略、MD 上传模式和任务操作的业务逻辑。
+  - Chrome headless 1440 x 960 打开同步任务页并打开新建任务弹窗，页面级 `documentElement.scrollWidth=1440`，无横向溢出。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run test -- NewTaskWizardPanels.test.tsx TasksPage.test.tsx App.test.tsx`
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test -- TasksPage.test.tsx TaskPanels.test.tsx NewTaskWizardPanels.test.tsx`
+  - `npm --prefix apps/frontend run lint`
+  - Chrome headless 1440 x 960：已连接状态下进入同步任务页，打开新建任务弹窗，`documentElement.clientWidth=1440` 且 `documentElement.scrollWidth=1440`。
+
+- 遗留问题：
+  - 本轮保留现有任务卡展开式高级管理；后续如继续贴近设计稿，可把任务列表进一步改成真正的密集表格行。
+  - 设置页仍有旧暗色输入样式，后续应继续按浅色科技风收口。
+
+### 2026-07-07 设置页浅色化与职责收敛
+
+- 原因：
+  - 设置页仍保留 `zinc-900/zinc-950` 旧暗色卡片，与桌面浅色科技风不一致。
+  - 设置页重复承载自动更新、日志保留和同步映射重置；这些维护能力已在更新维护页实现。
+  - 旧同步策略卡在中等工作区过早进入三列/双列，容易造成模式卡和上下行配置拥挤。
+
+- 实现：
+  - `SettingsPage` 移除 `useUpdate`、自动更新处理、同步映射重置处理和内部主题切换入口。
+  - 设置页保留 OAuth、默认同步策略、设备显示名和本地忽略目录。
+  - 自动更新、日志保留和同步映射重置继续由 `MaintenancePage` 承载。
+  - `SettingsOAuthPanel`、`SettingsSyncStrategyPanel`、`SettingsMorePanel`、`SettingsGeneralPanel` 和 `SettingsIgnoredDirectoriesPanel` 改为浅色科技风。
+  - 默认同步模式三列延后到 `1180px` 以上触发。
+  - 上下行频率双列延后到 `1440px` 以上触发。
+  - 删除设置页专用的旧 `SettingsUpdatePanel` 和 `SettingsMaintenancePanel`，避免死代码继续保留旧暗色样式。
+  - 更新 `SettingsPage.test.tsx` 和 `SettingsPanels.test.tsx`，断言设置页不再渲染自动更新、重置同步映射和旧暗色卡片类名。
+
+- 结果：
+  - 设置页与桌面壳、总览页、任务详情页和同步任务页的浅色科技风一致。
+  - 设置页只负责日常配置，不再重复维护页入口。
+  - 本轮未改变 OAuth 保存、默认同步策略保存、设备显示名保存和任务级忽略目录保存的接口行为。
+
+- 验证：
+  - `npm --prefix apps/frontend run test -- SettingsPage.test.tsx SettingsPanels.test.tsx MaintenancePage.test.tsx`（3 files / 4 tests passed）
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test`（26 files / 60 tests passed）
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run build`
+  - Chrome headless 1440 x 960：设置页 `documentElement.scrollWidth=1440`，`main.scrollWidth=1192`，OAuth、同步策略和更多设置三张主卡宽度均为 `1144px`。
+  - Chrome headless 展开高级 OAuth、更多设置和本地忽略目录后，1280 x 960 / 1440 x 960 / 1600 x 960 均未出现页面级横向溢出或设置页内部元素溢出。
+
+- 遗留问题：
+  - 本轮只处理设置页，没有继续调整维护页的交互密度。
+  - 后续全量页面收口时，可继续用真实桌面壳截图微调设置页 1600px 以上的空白比例。
+
+### 2026-07-07 旧日志中心移除与全局反馈层浅色化
+
+- 原因：
+  - 桌面版主路由已经拆为「活动与问题」和「冲突处理」两个独立页面。
+  - 旧 `LogCenterPage` 不再被 `App` 路由使用，但仍保留旧暗色 `zinc` 页面和子组件。
+  - 全局 Toast 和确认弹窗仍是暗色样式，会在删除任务、重置映射和静默安装等关键操作中破坏浅色科技风一致性。
+
+- 实现：
+  - 删除旧 `LogCenterPage.tsx` 和 `LogCenterPage.test.tsx`。
+  - 删除旧 `components/log-center/` 下的暗色任务诊断、系统日志、事件管理和对应组件测试。
+  - 删除未被引用的旧 `Header`、`EmptyState`、`Skeleton` 和 `Pagination` 组件。
+  - `App.test.tsx` 移除对旧日志中心页面的 mock。
+  - `ToastProvider` 改为浅色边框、浅色状态底和轻阴影。
+  - `ConfirmDialogProvider` 改为浅色遮罩、白色面板、浅色取消按钮和小面积状态色确认按钮。
+  - `App` 加载态和未授权引导外层移除旧暗色文本 token。
+  - `MaintenancePage` 的主维护卡片统一改为 8px 级圆角。
+  - `OnboardingWizard` 的扫码和授权主卡片统一改为 8px 级圆角。
+  - `TaskDetailPage` 的本地目录/箭头/云端目录三列布局从 `lg` 延后到 `1440px` 以上触发。
+
+- 结果：
+  - 当前实际前端源码中的旧暗色页面组件已移除。
+  - 源码扫描只剩测试中的旧暗色类名防回退断言。
+  - 活动与问题页继续复用 `useLogCenterTaskDiagnostics` 等查询 hook，不删除后端诊断能力。
+  - 冲突处理继续通过独立页面和 `useConflictResolutionQueue` 承载。
+
+- 验证：
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test`（22 files / 53 tests passed）
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run build`
+  - `rg -n "zinc-|bg-zinc|text-zinc|border-zinc|rose-|amber-|emerald-|rounded-2xl|xl:grid|lg:grid" apps/frontend/src -g '*.tsx'`：仅剩测试文件中的防回退断言。
+  - `rg -n "LogCenterPage|components/log-center|Header|EmptyState|Skeleton|Pagination" apps/frontend/src -g '*.ts' -g '*.tsx'`：未发现旧页面和死代码引用。
+  - Chrome headless 1440 x 960 逐页点击总览、同步任务、活动与问题、冲突处理、设置、更新与维护：各页 `documentElement.scrollWidth=1440`，`main.scrollWidth=1192`，运行时 DOM 未检测到旧 `zinc` 暗色类、`rounded-2xl` 主面板或“日志中心”旧文案。
+
+- 遗留问题：
+  - 本轮未移除历史日志和开发记录中的旧日志中心描述。
+  - 后续如果需要系统日志可视化，应在更新维护页或新的轻量诊断抽屉中重新设计，而不是恢复旧 `LogCenterPage`。
+
+### 2026-07-07 桌面壳聚合状态 API
+
+- 原因：
+  - 桌面规格要求顶部状态栏和底部状态条统一展示后端、账号、任务、冲突、数据库和更新状态。
+  - 旧实现中顶栏分别读取 auth、tasks、conflicts，底栏读取 `/tray/status`。
+  - 状态来源分散会让桌面壳在后续接 Windows 宿主、托盘菜单和安装版 fallback 时难以保持一致。
+
+- 实现：
+  - 新增 `/system/desktop/status`。
+  - 新接口返回 `runtime`、`auth`、`tasks`、`conflicts`、`update` 五组嵌套状态。
+  - `runtime` 包含后端运行、前端静态文件是否存在、数据目录、数据库 URL 和是否打包态。
+  - `auth` 包含 OAuth 是否已配置、是否已连接、账号名、open_id、设备 ID 和 token 过期时间。
+  - `tasks` 包含任务总数、启用数、停用数、运行数、失败数、最近错误和最近同步时间。
+  - `conflicts` 包含未解决冲突数。
+  - `update` 包含当前版本、最新版本、是否有更新、上次检查、更新错误和已下载路径。
+  - `/tray/status` 改为复用同一聚合状态后再映射回旧字段，保持托盘旧调用兼容。
+  - `DesktopTopBar` 改为消费 `useDesktopStatus` 的账号、运行任务和待处理冲突摘要。
+  - `DesktopStatusBar` 改为消费 `useDesktopStatus` 的后端、前端模式、任务、数据库、冲突、版本和最近同步摘要。
+  - 新增 `useDesktopStatus` hook 和 `DesktopShellStatus.test.tsx`。
+
+- 结果：
+  - 桌面壳顶部和底部状态来自同一个后端模型。
+  - 托盘 `/tray/status` 字段不变，不影响现有托盘菜单和测试。
+  - 状态聚合只读取现有服务，不新增飞书 API 字段假设。
+  - token store 读取失败时，桌面聚合接口会降级为未连接，不影响后端/任务/更新状态展示。
+
+- 验证：
+  - `python -m pytest tests/test_tray_status.py tests/test_system_update_api.py`（工作目录：`apps/backend`，14 passed）
+  - `python -m py_compile src/api/system.py src/main.py`（工作目录：`apps/backend`）
+  - `python -m pytest tests/test_tray_status.py`（工作目录：`apps/backend`，9 passed）
+  - `npm --prefix apps/frontend run test -- DesktopShellStatus.test.tsx App.test.tsx`（2 files / 4 tests passed）
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run test`（23 files / 54 tests passed）
+  - `npm --prefix apps/frontend run lint`
+  - `npm --prefix apps/frontend run build`
+
+- 遗留问题：
+  - 当前接口只做桌面壳状态聚合，还没有加入 WebSocket 在线状态。
+  - 后续接 Windows 桌面窗口宿主后，可继续把窗口宿主状态和托盘可见状态纳入 `runtime`。
+
+### 2026-07-07 启动状态与授权闭环
+
+- 原因：
+  - 桌面设计稿要求启动页解释托盘、后端、桌面窗口、前端资源和飞书授权状态。
+  - 当前首次授权页只展示 OAuth 应用、授权连接、Drive 权限和设备 ID。
+  - 用户扫码完成 OAuth 后，前端没有自动轮询 `/auth/status`，容易停留在二维码页。
+  - 授权 redirect 只回到 origin，无法保留 `#settings`、`#activity` 等桌面 hash 路由。
+
+- 实现：
+  - `OnboardingWizard` 接入 `useDesktopStatus`。
+  - 启动状态面板新增窗口宿主、后端服务、前端资源、运行模式和数据目录。
+  - 前端资源按 `frontend_static_available + packaged` 区分为生产静态、开发服务和静态缺失。
+  - 窗口宿主通过 `window.pywebview` 判断桌面窗口，否则显示浏览器或开发预览。
+  - 授权页刷新状态时同时刷新 `auth-status`、授权 URL 和桌面聚合状态。
+  - `getLoginUrl()` 和授权二维码 redirect 改为使用当前完整页面 URL，保留 hash 路由。
+  - `useAuth` 在未连接时每 2.5 秒轮询 `/auth/status`，连接后停止轮询。
+  - 新增 `api.test.ts` 和 `useAuth.test.ts`，锁定 hash redirect 与授权轮询策略。
+
+- 结果：
+  - 首次启动页更接近浅色科技风启动/连接状态设计稿。
+  - 扫码授权成功后，页面可以自动感知连接状态并进入桌面壳。
+  - 用户从托盘设置、活动与问题等入口触发授权时，授权完成后不会丢失原 hash 路由。
+  - 启动页能区分开发服务、生产静态和安装版静态缺失，便于安装版排障。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `npm --prefix apps/frontend run test -- api.test.ts useAuth.test.ts OnboardingWizard.test.tsx App.test.tsx`
+  - `npm --prefix apps/frontend run test -- OnboardingWizard.test.tsx useAuth.test.ts api.test.ts App.test.tsx DesktopShellStatus.test.tsx`（5 files / 12 tests passed）
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+
+- 遗留问题：
+  - 当前窗口宿主判断只区分 pywebview 与浏览器/开发预览。
+  - 后续若桌面窗口进程加入 IPC，可把真实窗口进程、托盘可见性和浏览器 fallback 原因纳入 `/system/desktop/status`。
+
+### 2026-07-07 更新维护页安装 handoff 可视化
+
+- 原因：
+  - 浅色设计稿要求更新与维护页集中展示下载安装、校验、托盘接管、静默安装、自动重启和失败恢复。
+  - 旧维护页只有固定的五步“安装 handoff”静态展示。
+  - 静态五步无法说明真实 `install-request.json` 和 `install-handoff.json` 当前处于哪个阶段。
+  - 设计要求保守展示安装状态，不能把未确认状态写成成功。
+
+- 实现：
+  - `update_install_service.py` 新增 `UpdateInstallHandoff` 模型。
+  - 新增 `install_handoff_path()` 和 `load_install_handoff()`，兼容 UTF-8 BOM 读取 helper 回执。
+  - `load_install_request()` 增加 Pydantic 校验失败兜底，坏文件不让状态接口报错。
+  - `/system/update/status`、`/system/update/check`、`/system/update/download` 返回 `install_request` 和 `install_handoff`。
+  - `useUpdate` 增加安装请求和 handoff 类型。
+  - `MaintenancePage` 将固定五步改为根据真实状态推导：
+    - 校验通过：只在已有下载路径时标记就绪。
+    - 托盘接管：只在存在安装请求时标记已排队。
+    - helper 启动：只在 handoff 阶段进入 bootstrap/helper/installer/install/restart 时标记。
+    - 静默安装：只在 installer/install/restart 阶段标记安装中或已完成。
+    - 自动重启：只在 `restart_succeeded` 标记已确认，`restart_failed` 标记未确认。
+  - 页面新增安装请求 ID、安装包路径、handoff 时间和 helper 消息展示。
+
+- 结果：
+  - 更新与维护页不再伪造安装进度。
+  - 用户能看到当前安装请求是否已排队、helper 是否接管、安装器是否启动、自动重启是否确认。
+  - 后端状态接口只读取已有本地 JSON，不改变安装执行链路。
+  - 坏的安装请求或 handoff 文件会降级为无状态，不阻塞更新页加载。
+
+- 验证：
+  - `python scripts/sync_feishu_docs.py`
+  - `python -m pytest tests/test_system_update_api.py tests/test_tray_update_install.py`（工作目录：`apps/backend`，27 passed）
+  - `python -m py_compile apps/backend/src/api/system.py apps/backend/src/services/update_install_service.py`
+  - `npm --prefix apps/frontend run test -- MaintenancePage.test.tsx`（1 file / 2 tests passed）
+  - `npm --prefix apps/frontend run typecheck`
+  - `npm --prefix apps/frontend run lint`
+
+- 遗留问题：
+  - 本轮未执行真实 NSIS 安装。
+  - 真实安装体验仍需 `python scripts/build_installer.py --nsis` 和用户级安装/启动 smoke 验证。
+
 ## v0.7.29 (2026-07-06)
 
 - 目标：

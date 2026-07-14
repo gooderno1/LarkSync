@@ -303,6 +303,8 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     content = spec_file.read_text(encoding="utf-8")
     assert "'plyer'" in content
     assert "'keyring'" in content
+    assert "'webview'" in content
+    assert "'webview.platforms.edgechromium'" in content
     assert "'sqlalchemy.ext.asyncio'" in content
     assert "'sqlalchemy.dialects.sqlite'" in content
     assert "'greenlet'" in content
@@ -314,9 +316,19 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     assert "\n        ,\n" not in content
 
 
-def test_backend_runtime_metadata_declares_greenlet_dependency() -> None:
+def test_backend_runtime_metadata_declares_desktop_runtime_dependencies() -> None:
     requirements = (PROJECT_ROOT / "apps" / "backend" / "requirements.txt").read_text(encoding="utf-8")
     pyproject = (PROJECT_ROOT / "apps" / "backend" / "pyproject.toml").read_text(encoding="utf-8")
 
     assert "greenlet>=3.0" in requirements
     assert '"greenlet>=3.0"' in pyproject
+    assert "pywebview>=5.0" in requirements
+    assert '"pywebview>=5.0"' in pyproject
+
+
+def test_checked_in_spec_includes_webview_hiddenimports() -> None:
+    spec = (PROJECT_ROOT / "scripts" / "larksync.spec").read_text(encoding="utf-8")
+
+    assert '"webview"' in spec
+    assert '"webview.platforms.edgechromium"' in spec
+    assert '"webview.platforms.winforms"' in spec

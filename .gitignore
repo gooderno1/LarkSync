@@ -18,6 +18,8 @@ data/
 data/*.db
 data/config.json
 *.log
+/%TEMP%/
+apps/backend/.tmp-tests-root/
 
 # Feishu dev docs (local only)
 docs/feishu/

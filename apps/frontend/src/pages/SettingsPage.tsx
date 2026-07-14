@@ -4,35 +4,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useConfig } from "../hooks/useConfig";
-import { useUpdate } from "../hooks/useUpdate";
 import { useTasks } from "../hooks/useTasks";
+import { useAuth } from "../hooks/useAuth";
 import { syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
 import { apiFetch } from "../lib/api";
 import { useToast } from "../components/ui/toast";
-import { confirm } from "../components/ui/confirm-dialog";
-import { ThemeToggle } from "../components/ThemeToggle";
 import { SettingsOAuthPanel } from "../components/settings/SettingsOAuthPanel";
 import { SettingsSyncStrategyPanel } from "../components/settings/SettingsSyncStrategyPanel";
-import { SettingsMorePanel } from "../components/settings/SettingsMorePanel";
 import { SettingsGeneralPanel } from "../components/settings/SettingsGeneralPanel";
-import { SettingsUpdatePanel } from "../components/settings/SettingsUpdatePanel";
 import { SettingsIgnoredDirectoriesPanel } from "../components/settings/SettingsIgnoredDirectoriesPanel";
-import { SettingsMaintenancePanel } from "../components/settings/SettingsMaintenancePanel";
+import { IconCircleCheck, IconLogout } from "../components/Icons";
 
 export function SettingsPage() {
   const { config, configLoading, saveConfig, saving, saveError } = useConfig();
-  const {
-    status,
-    checkUpdate,
-    checking,
-    downloadUpdate,
-    downloading,
-    installUpdate,
-    installing,
-    openUpdateFolder,
-    openingUpdateFolder,
-  } = useUpdate();
-  const { tasks, resetLinks, resettingLinks, updateIgnoredSubpaths, updatingIgnoredSubpaths } = useTasks();
+  const { tasks, updateIgnoredSubpaths, updatingIgnoredSubpaths } = useTasks();
+  const { connected, driveOk, accountName, deviceId, logout } = useAuth();
   const { toast } = useToast();
 
   const [authorizeUrl, setAuthorizeUrl] = useState("");
@@ -40,6 +26,7 @@ export function SettingsPage() {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [syncMode, setSyncMode] = useState("bidirectional");
+  const [deletePolicy, setDeletePolicy] = useState<"off" | "safe" | "strict">("safe");
   const [ignoreHiddenCachePaths, setIgnoreHiddenCachePaths] = useState(true);
   const [tokenStore, setTokenStore] = useState("keyring");
   const [uploadValue, setUploadValue] = useState("60");
@@ -49,14 +36,7 @@ export function SettingsPage() {
   const [downloadUnit, setDownloadUnit] = useState("days");
   const [downloadTime, setDownloadTime] = useState("01:00");
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showMoreSettings, setShowMoreSettings] = useState(false);
   const [showIgnoredDirectorySettings, setShowIgnoredDirectorySettings] = useState(false);
-  const [syncLogRetentionDays, setSyncLogRetentionDays] = useState("0");
-  const [syncLogWarnSizeMb, setSyncLogWarnSizeMb] = useState("200");
-  const [systemLogRetentionDays, setSystemLogRetentionDays] = useState("1");
-  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
-  const [updateCheckIntervalHours, setUpdateCheckIntervalHours] = useState("24");
-  const [allowDevToStable, setAllowDevToStable] = useState(false);
   const [deviceDisplayName, setDeviceDisplayName] = useState("");
   const [ignoredPathDrafts, setIgnoredPathDrafts] = useState<Record<string, string>>({});
   const [ignoredSubpathsMap, setIgnoredSubpathsMap] = useState<Record<string, string[]>>({});
@@ -77,24 +57,6 @@ export function SettingsPage() {
     );
   };
 
-  const lastCheckLabel = useMemo(() => {
-    if (!status.last_check) return "未检查";
-    try {
-      return new Date(status.last_check * 1000).toLocaleString();
-    } catch {
-      return "未检查";
-    }
-  }, [status.last_check]);
-
-  const publishedLabel = useMemo(() => {
-    if (!status.published_at) return "—";
-    try {
-      return new Date(status.published_at).toLocaleString();
-    } catch {
-      return status.published_at;
-    }
-  }, [status.published_at]);
-
   // populate from server data
   useEffect(() => {
     if (!config || configLoading) return;
@@ -102,6 +64,7 @@ export function SettingsPage() {
     setTokenUrl(config.auth_token_url || "");
     setClientId(config.auth_client_id || "");
     setSyncMode(config.sync_mode || "bidirectional");
+    setDeletePolicy(config.delete_policy || "safe");
     if (config.ignore_hidden_cache_paths != null) {
       setIgnoreHiddenCachePaths(Boolean(config.ignore_hidden_cache_paths));
     }
@@ -112,12 +75,6 @@ export function SettingsPage() {
     if (config.download_interval_value != null) setDownloadValue(String(config.download_interval_value));
     if (config.download_interval_unit) setDownloadUnit(config.download_interval_unit);
     if (config.download_daily_time) setDownloadTime(config.download_daily_time);
-    if (config.sync_log_retention_days != null) setSyncLogRetentionDays(String(config.sync_log_retention_days));
-    if (config.sync_log_warn_size_mb != null) setSyncLogWarnSizeMb(String(config.sync_log_warn_size_mb));
-    if (config.system_log_retention_days != null) setSystemLogRetentionDays(String(config.system_log_retention_days));
-    if (config.auto_update_enabled != null) setAutoUpdateEnabled(Boolean(config.auto_update_enabled));
-    if (config.update_check_interval_hours != null) setUpdateCheckIntervalHours(String(config.update_check_interval_hours));
-    if (config.allow_dev_to_stable != null) setAllowDevToStable(Boolean(config.allow_dev_to_stable));
     setDeviceDisplayName(config.device_display_name || "");
   }, [config, configLoading]);
 
@@ -199,6 +156,7 @@ export function SettingsPage() {
         auth_client_secret: clientSecret.trim() || null,
         auth_redirect_uri: redirectUri,
         sync_mode: syncMode,
+        delete_policy: deletePolicy,
         token_store: tokenStore,
         upload_interval_value: uVal,
         upload_interval_unit: uploadUnit,
@@ -215,19 +173,8 @@ export function SettingsPage() {
   };
 
   const handleSaveMoreSettings = async () => {
-    const syncRetention = syncLogRetentionDays.trim() ? Number.parseInt(syncLogRetentionDays, 10) : null;
-    const syncWarnSize = syncLogWarnSizeMb.trim() ? Number.parseInt(syncLogWarnSizeMb, 10) : null;
-    const systemRetention = systemLogRetentionDays.trim() ? Number.parseInt(systemLogRetentionDays, 10) : null;
-    const updateInterval = updateCheckIntervalHours.trim() ? Number.parseInt(updateCheckIntervalHours, 10) : null;
-
     try {
       await saveConfig({
-        sync_log_retention_days: syncRetention,
-        sync_log_warn_size_mb: syncWarnSize,
-        system_log_retention_days: systemRetention,
-        auto_update_enabled: autoUpdateEnabled,
-        update_check_interval_hours: updateInterval,
-        allow_dev_to_stable: allowDevToStable,
         ignore_hidden_cache_paths: ignoreHiddenCachePaths,
         device_display_name: deviceDisplayName.trim() || null,
       });
@@ -237,72 +184,9 @@ export function SettingsPage() {
     }
   };
 
-  const handleCheckUpdate = async () => {
-    try {
-      await checkUpdate();
-      toast("已完成更新检查", "success");
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "检查更新失败", "danger");
-    }
-  };
-
-  const handleDownloadUpdate = async () => {
-    try {
-      const result = await downloadUpdate();
-      if (result.download_path) {
-        const confirmed = await confirm({
-          title: "安装已下载更新",
-          description: `更新包已下载：\n${result.download_path}\n\n继续后 LarkSync 会退出并开始静默安装；安装向导界面不会出现，但 Windows 仍可能弹出系统权限确认。`,
-          confirmLabel: "开始安装",
-          tone: "warning",
-        });
-        if (confirmed) {
-          await installUpdate(result.download_path);
-          toast("正在开始静默安装，LarkSync 即将退出并在完成后自动重启", "success");
-          return;
-        }
-        toast(`更新包已下载：${result.download_path}`, "success");
-      } else {
-        toast("更新包已下载", "success");
-      }
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "下载更新失败", "danger");
-    }
-  };
-
-  const handleInstallDownloadedUpdate = async () => {
-    const downloadPath = status.download_path;
-    if (!downloadPath) {
-      toast("尚未下载更新包", "danger");
-      return;
-    }
-    const confirmed = await confirm({
-      title: "静默安装已下载更新",
-      description: `即将安装：\n${downloadPath}\n\n继续后 LarkSync 会退出并在完成后自动重启；安装向导界面不会出现，但 Windows 仍可能弹出系统权限确认。`,
-      confirmLabel: "开始安装",
-      tone: "warning",
-    });
-    if (!confirmed) return;
-    try {
-      await installUpdate(downloadPath);
-      toast("正在开始静默安装，LarkSync 即将退出并在完成后自动重启", "success");
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "启动安装失败", "danger");
-    }
-  };
-
-  const handleOpenDownloadedUpdateFolder = async () => {
-    const downloadPath = status.download_path;
-    if (!downloadPath) {
-      toast("尚未下载更新包", "danger");
-      return;
-    }
-    try {
-      const result = await openUpdateFolder(downloadPath);
-      toast(`已打开目录：${result.path}`, "success");
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "打开目录失败", "danger");
-    }
+  const handleSaveAll = async () => {
+    await handleSave();
+    await handleSaveMoreSettings();
   };
 
   const handlePickIgnoredSubpath = async (taskId: string, localPath: string) => {
@@ -338,52 +222,55 @@ export function SettingsPage() {
     }
   };
 
-  const handleResetTask = async (task: (typeof tasks)[number]) => {
-    const confirmed = await confirm({
-      title: "重置同步映射",
-      description: `任务：${task.name || task.id}\n\n此操作会清除该任务的 SyncLink 映射，下次同步将重新建立本地文件与飞书文件的对应关系。\n\n不会删除本地文件，也不会删除飞书文件。`,
-      confirmLabel: "重置映射",
-      tone: "warning",
-    });
-    if (!confirmed) return;
-    try {
-      const result = await resetLinks(task.id);
-      toast(
-        `已清除 ${result.deleted_links} 条同步映射`,
-        "success"
-      );
-    } catch (err) {
-      toast(
-        err instanceof Error ? err.message : "重置失败",
-        "danger"
-      );
-    }
-  };
-
-  const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF] placeholder:text-zinc-600";
+  const inputCls = "h-9 w-full rounded-lg border border-[#c9d8eb] bg-white px-3 text-sm text-[#1f2d3d] outline-none transition placeholder:text-[#8fa1b7] focus:border-[#3370FF] focus:ring-2 focus:ring-[#3370FF]/15";
 
   return (
-    <section className="space-y-6 animate-fade-up">
-      <SettingsOAuthPanel
-        clientId={clientId}
-        setClientId={setClientId}
-        clientSecret={clientSecret}
-        setClientSecret={setClientSecret}
-        redirectUri={redirectUri}
-        copyRedirectUri={copyRedirectUri}
-        handleSave={handleSave}
-        saving={saving}
-        saveError={saveError}
-        showAdvanced={showAdvanced}
-        toggleAdvanced={() => setShowAdvanced((prev) => !prev)}
-        authorizeUrl={authorizeUrl}
-        setAuthorizeUrl={setAuthorizeUrl}
-        tokenUrl={tokenUrl}
-        setTokenUrl={setTokenUrl}
-        tokenStore={tokenStore}
-        setTokenStore={setTokenStore}
+    <section className="min-w-0 space-y-4 animate-fade-up">
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold text-[#102033]">设置</h1>
+          <p className="mt-1 text-sm text-[#52657A]">飞书账号、当前设备、默认同步策略和忽略规则。</p>
+        </div>
+        <button
+          className="inline-flex h-9 items-center rounded-lg bg-[#3370FF] px-4 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.22)] hover:bg-[#2563eb]"
+          onClick={() => void handleSaveAll()}
+          disabled={saving}
+          type="button"
+        >
+          {saving ? "保存中" : "保存设置"}
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
+        <div className="grid grid-cols-[140px_minmax(0,1fr)_auto] items-center gap-4">
+          <h2 className="text-base font-semibold text-[#102033]">飞书账号</h2>
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ecfdf5] text-[#10b981]">
+              <IconCircleCheck className="h-6 w-6" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#102033]">{connected ? "飞书已连接" : "飞书未连接"}</p>
+              <p className="mt-1 truncate text-xs text-[#6b7f96]">
+                {connected ? `${accountName || "当前账号"} · ${driveOk ? "云空间权限正常" : "请检查云空间权限"}` : "请在高级 OAuth 中完成授权"}
+              </p>
+            </div>
+          </div>
+          <button
+            className="inline-flex h-8 items-center gap-2 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs font-semibold text-[#52677f] hover:border-[#3370ff]/40 hover:text-[#3370ff]"
+            onClick={() => logout()}
+            type="button"
+          >
+            <IconLogout className="h-3.5 w-3.5" />
+            {connected ? "登出设备" : "重新授权"}
+          </button>
+        </div>
+      </div>
+
+      <SettingsGeneralPanel
         inputCls={inputCls}
-        themeSlot={<ThemeToggle />}
+        deviceDisplayName={deviceDisplayName}
+        setDeviceDisplayName={setDeviceDisplayName}
+        deviceId={deviceId}
       />
 
       <SettingsSyncStrategyPanel
@@ -405,67 +292,48 @@ export function SettingsPage() {
         setDownloadTime={setDownloadTime}
         handleSave={handleSave}
         saving={saving}
+        deletePolicy={deletePolicy}
+        setDeletePolicy={setDeletePolicy}
       />
 
-      <SettingsMorePanel
-        showMoreSettings={showMoreSettings}
-        toggleMoreSettings={() => setShowMoreSettings((prev) => !prev)}
-        handleSaveMoreSettings={handleSaveMoreSettings}
+      <SettingsIgnoredDirectoriesPanel
+        tasks={tasks}
+        showIgnoredDirectorySettings={showIgnoredDirectorySettings}
+        toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
+        ignoreHiddenCachePaths={ignoreHiddenCachePaths}
+        setIgnoreHiddenCachePaths={setIgnoreHiddenCachePaths}
+        ignoredSubpathsMap={ignoredSubpathsMap}
+        ignoredPathDrafts={ignoredPathDrafts}
+        setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}
+        updatingIgnoredSubpaths={updatingIgnoredSubpaths}
+        handleSaveIgnoredSubpaths={handleSaveIgnoredSubpaths}
+        removeIgnoredSubpath={removeIgnoredSubpath}
+        addIgnoredSubpath={addIgnoredSubpath}
+        pickingIgnoredTaskId={pickingIgnoredTaskId}
+        handlePickIgnoredSubpath={handlePickIgnoredSubpath}
+      />
+
+      <SettingsOAuthPanel
+        clientId={clientId}
+        setClientId={setClientId}
+        clientSecret={clientSecret}
+        setClientSecret={setClientSecret}
+        redirectUri={redirectUri}
+        copyRedirectUri={copyRedirectUri}
+        handleSave={handleSave}
         saving={saving}
-      >
-        <SettingsGeneralPanel
-          inputCls={inputCls}
-          deviceDisplayName={deviceDisplayName}
-          setDeviceDisplayName={setDeviceDisplayName}
-          syncLogRetentionDays={syncLogRetentionDays}
-          setSyncLogRetentionDays={setSyncLogRetentionDays}
-          syncLogWarnSizeMb={syncLogWarnSizeMb}
-          setSyncLogWarnSizeMb={setSyncLogWarnSizeMb}
-          systemLogRetentionDays={systemLogRetentionDays}
-          setSystemLogRetentionDays={setSystemLogRetentionDays}
-        />
-        <SettingsUpdatePanel
-          status={status}
-          inputCls={inputCls}
-          autoUpdateEnabled={autoUpdateEnabled}
-          setAutoUpdateEnabled={setAutoUpdateEnabled}
-          updateCheckIntervalHours={updateCheckIntervalHours}
-          setUpdateCheckIntervalHours={setUpdateCheckIntervalHours}
-          allowDevToStable={allowDevToStable}
-          setAllowDevToStable={setAllowDevToStable}
-          handleCheckUpdate={handleCheckUpdate}
-          checking={checking}
-          handleDownloadUpdate={handleDownloadUpdate}
-          downloading={downloading}
-          installing={installing}
-          handleOpenDownloadedUpdateFolder={handleOpenDownloadedUpdateFolder}
-          openingUpdateFolder={openingUpdateFolder}
-          handleInstallDownloadedUpdate={handleInstallDownloadedUpdate}
-          lastCheckLabel={lastCheckLabel}
-          publishedLabel={publishedLabel}
-        />
-        <SettingsIgnoredDirectoriesPanel
-          tasks={tasks}
-          showIgnoredDirectorySettings={showIgnoredDirectorySettings}
-          toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
-          ignoreHiddenCachePaths={ignoreHiddenCachePaths}
-          setIgnoreHiddenCachePaths={setIgnoreHiddenCachePaths}
-          ignoredSubpathsMap={ignoredSubpathsMap}
-          ignoredPathDrafts={ignoredPathDrafts}
-          setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}
-          updatingIgnoredSubpaths={updatingIgnoredSubpaths}
-          handleSaveIgnoredSubpaths={handleSaveIgnoredSubpaths}
-          removeIgnoredSubpath={removeIgnoredSubpath}
-          addIgnoredSubpath={addIgnoredSubpath}
-          pickingIgnoredTaskId={pickingIgnoredTaskId}
-          handlePickIgnoredSubpath={handlePickIgnoredSubpath}
-        />
-        <SettingsMaintenancePanel
-          tasks={tasks}
-          resettingLinks={resettingLinks}
-          onResetTask={handleResetTask}
-        />
-      </SettingsMorePanel>
+        saveError={saveError}
+        showAdvanced={showAdvanced}
+        toggleAdvanced={() => setShowAdvanced((prev) => !prev)}
+        authorizeUrl={authorizeUrl}
+        setAuthorizeUrl={setAuthorizeUrl}
+        tokenUrl={tokenUrl}
+        setTokenUrl={setTokenUrl}
+        tokenStore={tokenStore}
+        setTokenStore={setTokenStore}
+        inputCls={inputCls}
+      />
+
     </section>
   );
 }

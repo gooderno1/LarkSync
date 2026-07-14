@@ -1,32 +1,42 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const frontendPort = Number(process.env.LARKSYNC_VITE_DEV_PORT ?? "3666");
+const backendTarget = process.env.LARKSYNC_BACKEND_TARGET
+  ?? `http://localhost:${process.env.LARKSYNC_BACKEND_PORT ?? "8000"}`;
+const backendWsTarget = backendTarget.replace(/^http/, "ws");
+
 export default defineConfig({
   plugins: [react()],
+  define: {
+    "import.meta.env.VITE_LARKSYNC_BACKEND_PORT": JSON.stringify(
+      process.env.LARKSYNC_BACKEND_PORT ?? "8000"
+    ),
+  },
   test: {
     environment: "node",
     globals: true,
   },
   server: {
-    port: 3666,
+    port: frontendPort,
     strictPort: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: backendTarget,
         changeOrigin: true,
         ws: true,
         rewrite: (path) => path.replace(/^\/api/, "")
       },
-      "/auth": "http://localhost:8000",
-      "/config": "http://localhost:8000",
-      "/drive": "http://localhost:8000",
-      "/conflicts": "http://localhost:8000",
-      "/sync": "http://localhost:8000",
-      "/watcher": "http://localhost:8000",
-      "/system": "http://localhost:8000",
-      "/health": "http://localhost:8000",
+      "/auth": backendTarget,
+      "/config": backendTarget,
+      "/drive": backendTarget,
+      "/conflicts": backendTarget,
+      "/sync": backendTarget,
+      "/watcher": backendTarget,
+      "/system": backendTarget,
+      "/health": backendTarget,
       "/ws": {
-        target: "ws://localhost:8000",
+        target: backendWsTarget,
         ws: true
       }
     }

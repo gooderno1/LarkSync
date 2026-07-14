@@ -10,10 +10,15 @@ export function apiUrl(path: string): string {
   return `${apiBase}${path}`;
 }
 
+export function getCurrentAppUrl(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.href;
+}
+
 export function getLoginUrl(): string {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return origin
-    ? `${apiUrl("/auth/login")}?redirect=${encodeURIComponent(origin)}`
+  const redirect = getCurrentAppUrl();
+  return redirect
+    ? `${apiUrl("/auth/login")}?redirect=${encodeURIComponent(redirect)}`
     : apiUrl("/auth/login");
 }
 

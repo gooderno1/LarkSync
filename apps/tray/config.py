@@ -18,12 +18,23 @@ FRONTEND_DIST = FRONTEND_DIR / "dist"
 ICONS_DIR = Path(__file__).resolve().parent / "icons"
 
 # ---- 后端服务 ----
+def _int_env(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if 0 < value < 65536 else default
+
+
 _bind_host_raw = (os.getenv("LARKSYNC_BACKEND_BIND_HOST") or "").strip()
 # Windows 默认绑定 0.0.0.0，确保 WSL/OpenClaw 可访问宿主机后端。
 # 如需仅本机回环访问，可显式设置 LARKSYNC_BACKEND_BIND_HOST=127.0.0.1
 _DEFAULT_BACKEND_BIND_HOST = "0.0.0.0" if sys.platform == "win32" else "127.0.0.1"
 BACKEND_HOST = _bind_host_raw or _DEFAULT_BACKEND_BIND_HOST
-BACKEND_PORT = 8000
+BACKEND_PORT = _int_env("LARKSYNC_BACKEND_PORT", 8000)
 _client_host_raw = (os.getenv("LARKSYNC_BACKEND_CLIENT_HOST") or "").strip()
 if _client_host_raw:
     BACKEND_CLIENT_HOST = _client_host_raw
@@ -35,7 +46,7 @@ else:
 BACKEND_URL = f"http://{BACKEND_CLIENT_HOST}:{BACKEND_PORT}"
 
 # ---- 前端开发服务器 ----
-VITE_DEV_PORT = 3666
+VITE_DEV_PORT = _int_env("LARKSYNC_VITE_DEV_PORT", 3666)
 # Vite 在 Windows 上默认绑定 IPv6 [::1]，必须用 localhost（自动解析 IPv4/IPv6）
 VITE_DEV_URL = f"http://localhost:{VITE_DEV_PORT}"
 
@@ -98,4 +109,4 @@ def get_settings_url() -> str:
 
 
 def get_logs_url() -> str:
-    return f"{_detect_frontend_url()}/#logcenter"
+    return f"{_detect_frontend_url()}/#activity"

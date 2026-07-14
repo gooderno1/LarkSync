@@ -7,7 +7,7 @@ export function ThemeToggle() {
   const { theme, toggle } = useTheme();
   return (
     <button
-      className="inline-flex items-center justify-center rounded-lg border border-zinc-700 p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#bfd8ff] bg-white text-[#3370FF] transition hover:bg-[#eef5ff]"
       onClick={toggle}
       type="button"
       title={theme === "dark" ? "切换明亮模式" : "切换深色模式"}

@@ -88,6 +88,45 @@ def test_backend_manager_sanitizes_incompatible_pythonpath(monkeypatch, tmp_path
     assert env["PYTHONPATH"] == _repo_backend_path()
 
 
+def test_backend_manager_reuses_external_backend_with_same_data_dir(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    expected_data_dir = tmp_path / "data"
+    monkeypatch.setenv("LARKSYNC_DATA_DIR", str(expected_data_dir))
+    manager = bm.BackendManager()
+
+    monkeypatch.setattr(manager, "_is_port_in_use", lambda: True)
+    monkeypatch.setattr(manager, "health_check", lambda: True)
+    monkeypatch.setattr(
+        manager,
+        "_read_existing_backend_data_dir",
+        lambda: expected_data_dir,
+    )
+
+    assert manager.start(wait=True) is True
+    assert manager._external_backend is True
+
+
+def test_backend_manager_rejects_external_backend_with_different_data_dir(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("LARKSYNC_DATA_DIR", str(tmp_path / "expected"))
+    manager = bm.BackendManager()
+
+    monkeypatch.setattr(manager, "_is_port_in_use", lambda: True)
+    monkeypatch.setattr(manager, "health_check", lambda: True)
+    monkeypatch.setattr(
+        manager,
+        "_read_existing_backend_data_dir",
+        lambda: tmp_path / "other",
+    )
+
+    assert manager.start(wait=True) is False
+    assert manager._external_backend is False
+
+
 def test_runtime_data_dir_uses_external_app_data_when_frozen(
     monkeypatch,
     tmp_path: Path,

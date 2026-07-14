@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import App from "./App";
+import App, { getNavKeyFromHash } from "./App";
 
 const authState = vi.hoisted(() => ({
   connected: false,
@@ -31,8 +31,12 @@ vi.mock("./components/Sidebar", () => ({
   Sidebar: () => <div>Sidebar</div>,
 }));
 
-vi.mock("./components/Header", () => ({
-  Header: () => <div>Header</div>,
+vi.mock("./components/DesktopTopBar", () => ({
+  DesktopTopBar: () => <div>Desktop Top Bar</div>,
+}));
+
+vi.mock("./components/DesktopStatusBar", () => ({
+  DesktopStatusBar: () => <div>Desktop Status Bar</div>,
 }));
 
 vi.mock("./components/OnboardingWizard", () => ({
@@ -47,19 +51,38 @@ vi.mock("./pages/TasksPage", () => ({
   TasksPage: () => <div>Tasks Page</div>,
 }));
 
-vi.mock("./pages/LogCenterPage", () => ({
-  LogCenterPage: () => <div>Log Center Page</div>,
+vi.mock("./pages/ActivityIssuesPage", () => ({
+  ActivityIssuesPage: () => <div>Activity Issues Page</div>,
+}));
+
+vi.mock("./pages/ConflictResolutionPage", () => ({
+  ConflictResolutionPage: () => <div>Conflict Resolution Page</div>,
 }));
 
 vi.mock("./pages/SettingsPage", () => ({
   SettingsPage: () => <div>Settings Page</div>,
 }));
 
+vi.mock("./pages/MaintenancePage", () => ({
+  MaintenancePage: () => <div>Maintenance Page</div>,
+}));
+
 vi.mock("./components/ui/confirm-dialog", () => ({
   ConfirmDialogProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("App smoke", () => {
+  it("parses desktop hash routes and keeps legacy log center hash compatible", () => {
+    expect(getNavKeyFromHash("#settings")).toBe("settings");
+    expect(getNavKeyFromHash("#activity")).toBe("activity");
+    expect(getNavKeyFromHash("#logcenter")).toBe("activity");
+    expect(getNavKeyFromHash("#unknown")).toBeNull();
+  });
+
   it("renders onboarding when OAuth is configured but account is not connected", () => {
     authState.connected = false;
     authState.driveOk = false;
@@ -79,14 +102,38 @@ describe("App smoke", () => {
     expect(html).toContain("docx:document.block:convert");
   });
 
-  it("bounds dashboard header and content to the sidebar height", () => {
+  it("renders the desktop shell around the dashboard", () => {
     authState.connected = true;
     authState.driveOk = true;
 
     const html = renderToStaticMarkup(<App />);
 
-    expect(html).toContain("Header");
+    expect(html).toContain("Desktop Top Bar");
+    expect(html).toContain("Desktop Status Bar");
     expect(html).toContain("Dashboard Page");
-    expect(html).toContain("lg:h-[calc(100vh-2.5rem)]");
+    expect(html).toContain("Sidebar");
+    expect(html).toContain('data-desktop-scale="1.000"');
+    expect(html).toContain("px-7 py-[23px]");
+    expect(html).toContain("desktop-grid-surface");
+    expect(html).toContain("bg-[#fdfdfd]");
+    expect(html).not.toContain("desktop-perspective-line");
+    expect(html).not.toContain("min-[1180px]");
+    expect(html).not.toContain("min-[1440px]");
+  });
+
+  it("opens the page requested by the desktop window hash", () => {
+    authState.connected = true;
+    authState.driveOk = true;
+    vi.stubGlobal("window", {
+      location: { hash: "#settings" },
+      history: { replaceState: vi.fn() },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain("Settings Page");
+    expect(html).not.toContain("Dashboard Page");
   });
 });

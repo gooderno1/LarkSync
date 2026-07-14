@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from src.api import system as system_api
 from src.main import app
-from src.services.update_install_service import load_install_request
+from src.services.update_install_service import install_handoff_path, load_install_request
 from src.services.update_service import UpdateAsset, UpdateStatus
 
 
@@ -55,6 +55,49 @@ def test_system_update_endpoints_return_200() -> None:
     download_resp = client.post("/system/update/download")
     assert download_resp.status_code == 200
     assert download_resp.json()["download_path"]
+
+
+def test_system_update_status_includes_install_request_and_handoff(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("LARKSYNC_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(system_api, "get_version", lambda: "v0.5.43")
+    installer_path = tmp_path / "LarkSync-Setup-v0.5.51.exe"
+    installer_path.write_bytes(b"exe")
+
+    client = TestClient(app)
+    app.state.update_scheduler = _StubScheduler()
+
+    install_response = client.post(
+        "/system/update/install",
+        json={"download_path": str(installer_path)},
+    )
+    assert install_response.status_code == 200
+    request = load_install_request()
+    assert request is not None
+    request_id = request.request_id
+
+    handoff_path = install_handoff_path()
+    handoff_path.parent.mkdir(parents=True, exist_ok=True)
+    handoff_path.write_text(
+        (
+            '{"request_id":"%s","stage":"installer_started",'
+            '"message":"pid=1234","exit_code":0,"timestamp":1800000000}'
+        )
+        % request_id,
+        encoding="utf-8",
+    )
+
+    status_response = client.get("/system/update/status")
+
+    assert status_response.status_code == 200
+    payload = status_response.json()
+    assert payload["install_request"]["request_id"] == request_id
+    assert Path(payload["install_request"]["installer_path"]) == installer_path.resolve()
+    assert payload["install_handoff"]["request_id"] == request_id
+    assert payload["install_handoff"]["stage"] == "installer_started"
+    assert payload["install_handoff"]["message"] == "pid=1234"
 
 
 def test_system_update_install_endpoint_writes_install_request(

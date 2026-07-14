@@ -110,7 +110,7 @@ def notify_conflict(file_path: str) -> bool:
     """通知发现冲突。"""
     return notify(
         "发现文件冲突",
-        f"文件 {file_path} 存在冲突，请打开管理面板处理。",
+        f"文件 {file_path} 存在冲突，请打开桌面窗口处理。",
         level="warning",
         category=f"conflict:{file_path}",
     )

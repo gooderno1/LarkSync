@@ -12,9 +12,9 @@ export function TasksEmptyState({
   testTaskCount,
 }: TasksEmptyStateProps) {
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 py-16 text-center">
-      <IconPlus className="mx-auto h-12 w-12 text-zinc-700" />
-      <p className="mt-4 text-sm text-zinc-500">
+    <div className="rounded-xl border border-dashed border-[#c9d8ec] bg-white/70 py-16 text-center">
+      <IconPlus className="mx-auto h-12 w-12 text-[#9fb2c8]" />
+      <p className="mt-4 text-sm text-[#6b7f96]">
         {hasAnyTasks
           ? hideTestTasks && testTaskCount > 0
             ? "当前已隐藏测试任务，可点击「显示测试任务」查看。"

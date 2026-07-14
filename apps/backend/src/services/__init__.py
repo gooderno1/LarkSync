@@ -20,6 +20,7 @@ from .export_task_service import (
     ExportTaskService,
 )
 from .import_task_service import ImportTaskCreateResult, ImportTaskError, ImportTaskService
+from .lark_cli_auth_service import LarkCliAuthStatus, LarkCliUserStatus, get_lark_cli_auth_status
 from .sync_link_service import SyncLinkItem, SyncLinkService
 from .sync_block_service import BlockStateItem, SyncBlockService
 from .sync_task_service import SyncTaskItem, SyncTaskService
@@ -56,6 +57,9 @@ __all__ = [
     "ImportTaskCreateResult",
     "ImportTaskError",
     "ImportTaskService",
+    "LarkCliAuthStatus",
+    "LarkCliUserStatus",
+    "get_lark_cli_auth_status",
     "SyncLinkItem",
     "SyncLinkService",
     "BlockStateItem",

@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/*  新建同步任务弹窗 — 分步向导 (Step 1/2/3) 优化版                      */
+/*  新建同步任务弹窗 — 五步桌面向导                                      */
 /* ------------------------------------------------------------------ */
 
 import { useState } from "react";
@@ -142,19 +142,19 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
 
   if (!open) return null;
 
-  const inputCls = "w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-200 outline-none focus:border-[#3370FF] placeholder:text-zinc-600";
+  const inputCls = "h-9 w-full rounded-lg border border-[#c9d8ec] bg-white px-3 text-sm text-[#334762] outline-none placeholder:text-[#9fb2c8] focus:border-[#3370ff] focus:ring-2 focus:ring-[#3370ff]/10 disabled:bg-[#edf3fb] disabled:text-[#9fb2c8]";
 
   const modal = (
-    <div className="fixed inset-0 z-50 bg-black/50">
+    <div className="fixed inset-0 z-50 bg-[#102033]/35 backdrop-blur-sm">
         <div className="flex min-h-full items-center justify-center overflow-y-auto px-4 py-6">
-        <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
+        <div className="max-h-[94vh] w-[1460px] max-w-[calc(100vw-32px)] overflow-auto rounded-lg border border-[#d7e4f5] bg-white shadow-[0_24px_80px_rgba(16,32,51,0.18)]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-5">
+        <div className="flex items-center justify-between border-b border-[#edf3fb] px-6 py-4">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-50">新建同步任务</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">按步骤配置本地目录、云端目录和同步策略</p>
+            <h2 className="text-lg font-semibold text-[#102033]">新建同步任务</h2>
+            <p className="mt-0.5 text-xs text-[#6b7f96]">按步骤配置本地目录、云端目录和同步策略。</p>
           </div>
-          <button className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300" onClick={resetAndClose} type="button">
+          <button className="rounded-lg border border-[#d7e4f5] p-2 text-[#6b7f96] transition hover:bg-[#eef5ff] hover:text-[#3370ff]" onClick={resetAndClose} type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path d="M18 6L6 18M6 6l12 12" /></svg>
           </button>
         </div>
@@ -167,10 +167,11 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
         />
 
         {/* Content */}
-        <div className="px-6 py-5">
-          {/* Step 1: Local */}
-          {step === 1 ? (
-            <NewTaskLocalStep
+        <div className="bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-5 py-4">
+          <div className="grid min-w-[1240px] grid-cols-[1.05fr_1.05fr_1fr_1.05fr_.9fr] items-stretch gap-3">
+            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 1 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
+              <h3 className="mb-3 text-sm font-semibold text-[#102033]">选择本地目录</h3>
+              <NewTaskLocalStep
               inputCls={inputCls}
               taskName={taskName}
               taskLocalPath={taskLocalPath}
@@ -182,11 +183,11 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
               onTaskBasePathChange={setTaskBasePath}
               onPickLocalFolder={pickLocalFolder}
             />
-          ) : null}
+            </section>
 
-          {/* Step 2: Cloud */}
-          {step === 2 ? (
-            <NewTaskCloudStep
+            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 2 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
+              <h3 className="mb-3 text-sm font-semibold text-[#102033]">选择云端目录</h3>
+              <NewTaskCloudStep
               inputCls={inputCls}
               tree={tree}
               treeLoading={treeLoading}
@@ -205,11 +206,12 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
               onManualCloudNameChange={setManualCloudName}
               onApplyManualCloud={applyManualCloud}
             />
-          ) : null}
+            </section>
 
-          {/* Step 3: Strategy + Confirm */}
-          {step === 3 ? (
-            <NewTaskStrategyStep
+            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 3 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
+              <h3 className="mb-3 text-sm font-semibold text-[#102033]">同步模式</h3>
+              <NewTaskStrategyStep
+              view="mode"
               inputCls={inputCls}
               taskName={taskName}
               taskLocalPath={taskLocalPath}
@@ -228,37 +230,94 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
               onTaskDeleteGraceMinutesChange={setTaskDeleteGraceMinutes}
               onTaskEnabledChange={setTaskEnabled}
             />
-          ) : null}
+            </section>
+
+            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 4 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
+              <h3 className="mb-3 text-sm font-semibold text-[#102033]">删除与忽略</h3>
+              <NewTaskStrategyStep
+              view="rules"
+              inputCls={inputCls}
+              taskName={taskName}
+              taskLocalPath={taskLocalPath}
+              selectedCloud={selectedCloud}
+              taskSyncMode={taskSyncMode}
+              taskUpdateMode={taskUpdateMode}
+              taskMdSyncMode={taskMdSyncMode}
+              taskDeletePolicy={taskDeletePolicy}
+              taskDeleteGraceMinutes={taskDeleteGraceMinutes}
+              taskEnabled={taskEnabled}
+              error={error}
+              onTaskSyncModeChange={setTaskSyncMode}
+              onTaskUpdateModeChange={setTaskUpdateMode}
+              onTaskMdSyncModeChange={setTaskMdSyncMode}
+              onTaskDeletePolicyChange={setTaskDeletePolicy}
+              onTaskDeleteGraceMinutesChange={setTaskDeleteGraceMinutes}
+              onTaskEnabledChange={setTaskEnabled}
+            />
+            </section>
+
+            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 5 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
+              <h3 className="mb-3 text-sm font-semibold text-[#102033]">风险摘要</h3>
+              <NewTaskStrategyStep
+                view="confirm"
+                inputCls={inputCls}
+                taskName={taskName}
+                taskLocalPath={taskLocalPath}
+                selectedCloud={selectedCloud}
+                taskSyncMode={taskSyncMode}
+                taskUpdateMode={taskUpdateMode}
+                taskMdSyncMode={taskMdSyncMode}
+                taskDeletePolicy={taskDeletePolicy}
+                taskDeleteGraceMinutes={taskDeleteGraceMinutes}
+                taskEnabled={taskEnabled}
+                error={error}
+                onTaskSyncModeChange={setTaskSyncMode}
+                onTaskUpdateModeChange={setTaskUpdateMode}
+                onTaskMdSyncModeChange={setTaskMdSyncMode}
+                onTaskDeletePolicyChange={setTaskDeletePolicy}
+                onTaskDeleteGraceMinutesChange={setTaskDeleteGraceMinutes}
+                onTaskEnabledChange={setTaskEnabled}
+              />
+              <aside className="mt-3 rounded-lg border border-[#10b981]/25 bg-[#ecfdf5] p-3">
+                <h4 className="text-sm font-semibold text-[#047857]">{taskDeletePolicy === "strict" ? "中风险" : "低风险"}</h4>
+                <div className="mt-3 space-y-3 text-xs leading-5 text-[#786043]">
+                  <p>安全删除不会直接删除云端文件。</p>
+                  <p>隐藏目录和缓存路径默认不参与同步。</p>
+                </div>
+              </aside>
+            </section>
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-zinc-800 px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-[#edf3fb] bg-white px-6 py-4">
+          <button className="rounded-lg border border-[#c9d8ec] px-4 py-2 text-sm font-medium text-[#334762] transition hover:bg-[#f6faff]" onClick={resetAndClose} type="button">
+            取消
+          </button>
           <button
-            className={cn("rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200", step === 1 && "invisible")}
+            className="rounded-lg border border-[#c9d8ec] px-4 py-2 text-sm font-medium text-[#334762] transition hover:bg-[#f6faff] disabled:opacity-40"
             onClick={() => setStep((s) => Math.max(1, s - 1))}
+            disabled={step === 1}
             type="button"
           >
             上一步
           </button>
-          {step < 3 ? (
-            <button
-              className="rounded-lg bg-[#3370FF] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
-              onClick={() => setStep((s) => s + 1)}
-              disabled={step === 1 ? !taskLocalPath.trim() : !taskCloudToken.trim()}
-              type="button"
-            >
-              下一步
-            </button>
-          ) : (
-            <button
-              className="rounded-lg bg-[#3370FF] px-6 py-2 text-sm font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50"
-              onClick={handleCreate}
-              disabled={creating}
-              type="button"
-            >
-              {creating ? "创建中..." : "创建任务"}
-            </button>
-          )}
+          <button
+            className="rounded-lg bg-[#3370ff] px-5 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.2)] transition hover:bg-[#1d4ed8] disabled:opacity-40"
+            onClick={() => setStep((s) => Math.min(5, s + 1))}
+            disabled={step === 5 || (step === 1 ? !taskLocalPath.trim() : step === 2 ? !taskCloudToken.trim() : false)}
+            type="button"
+          >
+            下一步
+          </button>
+          <button
+            className="rounded-lg bg-[#3370ff] px-6 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.2)] transition hover:bg-[#1d4ed8] disabled:opacity-40"
+            onClick={handleCreate}
+            disabled={creating || step !== 5 || !taskLocalPath.trim() || !taskCloudToken.trim()}
+            type="button"
+          >
+            {creating ? "创建中..." : "创建任务"}
+          </button>
         </div>
         </div>
       </div>

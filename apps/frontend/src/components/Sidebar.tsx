@@ -3,13 +3,14 @@
 /* ------------------------------------------------------------------ */
 
 import type { NavKey } from "../types";
-import { useAuth } from "../hooks/useAuth";
-import { useConfig } from "../hooks/useConfig";
-import { getLoginUrl } from "../lib/api";
-import { formatIntervalLabel } from "../lib/formatters";
-import { modeLabels } from "../lib/constants";
-import { StatusPill } from "./StatusPill";
-import { IconDashboard, IconTasks, IconConflicts, IconSettings } from "./Icons";
+import {
+  IconActivityList,
+  IconConflicts,
+  IconDownloadTray,
+  IconHome,
+  IconSettings,
+  IconSyncCircle,
+} from "./Icons";
 import { cn } from "../lib/utils";
 
 type SidebarProps = {
@@ -21,48 +22,32 @@ type SidebarProps = {
 const navItems: Array<{
   id: NavKey;
   label: string;
-  icon: typeof IconDashboard;
+  icon: typeof IconHome;
   badgeKey?: "conflicts";
 }> = [
-  { id: "dashboard", label: "仪表盘", icon: IconDashboard },
-  { id: "tasks", label: "同步任务", icon: IconTasks },
-  { id: "logcenter", label: "日志中心", icon: IconConflicts, badgeKey: "conflicts" },
+  { id: "dashboard", label: "总览", icon: IconHome },
+  { id: "tasks", label: "同步任务", icon: IconSyncCircle },
+  { id: "activity", label: "活动与问题", icon: IconActivityList },
+  { id: "conflicts", label: "冲突处理", icon: IconConflicts, badgeKey: "conflicts" },
   { id: "settings", label: "设置", icon: IconSettings },
+  { id: "maintenance", label: "更新与维护", icon: IconDownloadTray },
 ];
 
 export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarProps) {
-  const { connected, loading, logout, accountName } = useAuth();
-  const { config } = useConfig();
-  const loginUrl = getLoginUrl();
-  const deviceLabel = connected
-    ? (config.device_display_name?.trim() || "当前设备")
-    : "待识别";
-  const accountLabel = connected
-    ? (accountName?.trim() || "已连接（昵称未同步）")
-    : "未登录";
-
-  const uploadVal = config.upload_interval_value != null ? String(config.upload_interval_value) : "60";
-  const uploadUnit = config.upload_interval_unit || "seconds";
-  const uploadTime = config.upload_daily_time || "01:00";
-  const downloadVal = config.download_interval_value != null ? String(config.download_interval_value) : "1";
-  const downloadUnit = config.download_interval_unit || "days";
-  const downloadTime = config.download_daily_time || "01:00";
-  const syncMode = config.sync_mode || "bidirectional";
-
   return (
-    <aside className="flex w-full flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 lg:sticky lg:top-5 lg:h-[calc(100vh-2.5rem)] lg:w-64 lg:flex-none lg:shrink-0">
+    <aside className="flex h-full w-[220px] flex-none flex-col border-r border-[#d7e6ff] bg-[#f9fbfd] px-4 pb-7 pt-6">
       {/* Logo */}
-      <div className="flex items-center justify-center px-2 py-1">
+      <div className="flex h-14 items-center justify-start px-3">
         <img
           src="/logo-horizontal.png"
           alt="LarkSync"
-          className="h-8 w-auto object-contain drop-shadow-[0_1px_6px_rgba(51,112,255,0.24)]"
+          className="h-auto w-[140px] object-contain"
           draggable={false}
         />
       </div>
 
       {/* Nav */}
-      <nav className="grid gap-1.5">
+      <nav className="mt-7 grid gap-3">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -71,20 +56,24 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
             <button
               key={item.id}
               className={cn(
-                "flex items-center justify-between rounded-xl px-3 py-2 text-sm transition",
+                "group relative flex h-11 items-center justify-between rounded-lg px-3 text-sm transition",
                 isActive
-                  ? "bg-[#3370FF]/10 text-[#3370FF] font-medium"
-                  : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
+                  ? "bg-[#eaf3ff] text-[#3370FF] font-semibold shadow-[inset_3px_0_0_#3370FF]"
+                  : "text-[#52657A] hover:bg-[#f2f7ff] hover:text-[#102033]"
               )}
               onClick={() => onNavigate(item.id)}
+              title={item.label}
               type="button"
             >
-              <span className="flex items-center gap-3">
-                <Icon className="h-4 w-4" />
-                {item.label}
+              <span className="flex min-w-0 items-center justify-start gap-5">
+                <Icon className="h-[18px] w-[18px]" />
+                <span>{item.label}</span>
               </span>
               {badge ? (
-                <span className="rounded-full bg-rose-500/20 px-2 py-0.5 text-xs font-semibold text-rose-300">
+                <span
+                  className="rounded-full bg-[#fff1f2] px-2 py-0.5 text-xs font-semibold leading-none text-[#e11d48] ring-1 ring-[#fecdd3]"
+                  data-sidebar-badge={item.badgeKey}
+                >
                   {badge}
                 </span>
               ) : null}
@@ -94,56 +83,14 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
       </nav>
 
       {/* Connection status */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3.5">
-        <p className="text-xs uppercase tracking-widest text-zinc-500">连接状态</p>
-        <div className="mt-3 flex items-center justify-between">
-          <StatusPill
-            label={loading ? "检测中" : connected ? "已连接" : "未连接"}
-            tone={loading ? "info" : connected ? "success" : "danger"}
-            dot
-          />
-          <span className="text-xs text-zinc-500">
-            {connected ? "自动续期中" : "—"}
-          </span>
-        </div>
-        <div className="mt-2 space-y-1 text-[11px] text-zinc-500">
-          <p>设备：{deviceLabel}</p>
-          <p>账号：{accountLabel}</p>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {!connected ? (
-            <a
-              className="inline-flex items-center justify-center rounded-lg bg-[#3370FF] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80"
-              href={loginUrl}
-            >
-              连接飞书
-            </a>
-          ) : (
-            <a
-              className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
-              href={loginUrl}
-            >
-              手动重新授权
-            </a>
-          )}
-          <button
-            className="inline-flex items-center justify-center rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition hover:bg-zinc-800"
-            onClick={() => logout()}
-            type="button"
-          >
-            断开连接
-          </button>
-        </div>
-      </div>
-
-      {/* Strategy summary */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3.5 text-xs text-zinc-500">
-        <p className="font-semibold text-zinc-300">当前策略</p>
-        <ul className="mt-2.5 space-y-1.5">
-          <li>本地 → 云端：每 {formatIntervalLabel(uploadVal, uploadUnit, uploadTime)}</li>
-          <li>云端 → 本地：每 {formatIntervalLabel(downloadVal, downloadUnit, downloadTime)}</li>
-          <li>默认同步：{modeLabels[syncMode] || syncMode}</li>
-        </ul>
+      <div className="mt-auto flex justify-center pb-3">
+        <button
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#1f3763] transition hover:bg-[#eef5ff] hover:text-[#3370ff]"
+          type="button"
+          title="折叠侧边栏"
+        >
+          <span className="text-xl leading-none">«</span>
+        </button>
       </div>
 
     </aside>

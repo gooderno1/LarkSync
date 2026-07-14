@@ -1,7 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { DashboardPage } from "./DashboardPage";
+import {
+  buildRealtimeMetrics,
+  buildRecentRow,
+  DashboardPage,
+  formatDashboardRelativeTime,
+  shouldUseDashboardShowcase,
+} from "./DashboardPage";
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({
@@ -126,17 +132,122 @@ vi.mock("../hooks/useWebSocketLog", () => ({
 }));
 
 describe("DashboardPage smoke", () => {
-  it("renders dashboard panels with wide-screen workbench height classes", () => {
+  it("renders the v3 dashboard workbench without crowded legacy layout classes", () => {
     const html = renderToStaticMarkup(<DashboardPage onNavigate={vi.fn()} />);
 
-    expect(html).toContain("任务概览");
-    expect(html).toContain("需要关注");
-    expect(html).toContain("min-[1760px]:flex-1");
-    expect(html).toContain("min-[1760px]:overflow-hidden");
-    expect(html).toContain("min-[1760px]:items-stretch");
-    expect(html).toContain("min-[1760px]:h-full");
+    expect(html).toContain("总体状态");
+    expect(html).toContain("任务运行中");
+    expect(html).toContain("正在运行");
+    expect(html).toContain("最近同步");
+    expect(html).toContain("需要处理");
+    expect(html).toContain("实时连接");
+    expect(html).toContain("数据流入");
+    expect(html).toContain("数据流出");
+    expect(html).toContain('data-dashboard-running-state="idle"');
+    expect(html).toContain('data-dashboard-recent-status="check"');
+    expect(html).toContain('data-dashboard-attention-card="summary"');
+    expect(html).toContain('data-dashboard-flow-direction="incoming"');
+    expect(html).toContain('data-dashboard-flow-direction="outgoing"');
+    expect(html).toContain('data-dashboard-realtime-state="empty"');
+    expect(html).toContain("暂无传输事件");
+    expect(html).not.toContain("-- ms");
+    expect(html).toContain("grid-cols-4");
+    expect(html).toContain("grid-cols-[minmax(0,1fr)_316px]");
+    expect(html).toContain("w-[316px]");
+    expect(html).toContain("min-w-0 overflow-hidden");
+    expect(html).not.toContain("min-[1760px]:grid-cols-4");
+    expect(html).not.toContain("min-[1760px]:grid-cols-[minmax(0,1fr)_300px]");
+    expect(html).not.toContain("min-[1600px]:grid-cols-4");
+    expect(html).not.toContain("min-[1600px]:grid-cols-[minmax(0,1fr)_300px]");
+    expect(html).not.toContain("min-[1440px]:grid-cols-4");
+    expect(html).not.toContain("min-[1440px]:grid-cols-[minmax(0,1fr)_300px]");
+    expect(html).not.toContain("min-[1440px]:grid-cols-[minmax(0,1fr)_320px]");
+    expect(html).not.toContain("min-[1180px]:grid-cols-4");
+    expect(html).not.toContain("min-[1180px]:grid-cols-[minmax(0,1fr)_300px]");
+    expect(html).not.toContain("[@media(max-height:760px)]");
     expect(html).not.toContain("min-[1760px]:h-[calc(100vh-2.5rem)]");
     expect(html).not.toContain("max-h-[560px]");
     expect(html).not.toContain("max-h-[390px]");
+  });
+
+  it("keeps the running panel truthful when every task is idle", () => {
+    const html = renderToStaticMarkup(<DashboardPage onNavigate={vi.fn()} />);
+
+    expect(html).toContain('data-dashboard-running-state="idle"');
+    expect(html).toContain("当前没有正在运行的任务");
+    expect(html).toContain("任务启停");
+    expect(html).not.toContain("12.4 MB/s");
+  });
+});
+
+describe("dashboard showcase boundary", () => {
+  it("only enables design fixtures through an explicit development query", () => {
+    expect(shouldUseDashboardShowcase("?ui-demo=dashboard", true)).toBe(true);
+    expect(shouldUseDashboardShowcase("", true)).toBe(false);
+    expect(shouldUseDashboardShowcase("?ui-demo=dashboard", false)).toBe(false);
+  });
+});
+
+describe("buildRecentRow", () => {
+  it("does not invent transfer volume or duration for an event log", () => {
+    const row = buildRecentRow({
+      taskId: "task-1",
+      taskName: "任务A",
+      timestamp: 10,
+      status: "downloaded",
+      path: "D:/Docs/a.md",
+      message: null,
+    });
+
+    expect(row.path).toContain("a.md");
+    expect(row.volumeLabel).toBe("—");
+    expect(row.durationLabel).toBe("—");
+  });
+});
+
+describe("formatDashboardRelativeTime", () => {
+  it("uses relative language for recent successful activity", () => {
+    expect(formatDashboardRelativeTime(1_000, 1_030)).toBe("刚刚");
+    expect(formatDashboardRelativeTime(1_000, 1_180)).toBe("3 分钟前");
+    expect(formatDashboardRelativeTime(1_000, 8_200)).toBe("2 小时前");
+  });
+});
+
+describe("buildRealtimeMetrics", () => {
+  it("derives stable placeholder realtime metrics from sync events", () => {
+    const metrics = buildRealtimeMetrics([
+        {
+          taskId: "task-1",
+          taskName: "任务A",
+          timestamp: 10,
+          status: "downloaded",
+          path: "D:/Docs/a.md",
+          message: null,
+        },
+        {
+          taskId: "task-1",
+          taskName: "任务A",
+          timestamp: 20,
+          status: "uploaded",
+          path: "D:/Docs/b.md",
+          message: null,
+        },
+        {
+          taskId: "task-1",
+          taskName: "任务A",
+          timestamp: 30,
+          status: "conflict",
+          path: "D:/Docs/c.md",
+          message: "冲突",
+        },
+      ]);
+
+    expect(metrics.latencyMs).toBeNull();
+    expect(metrics.incomingEvents).toBe(1);
+    expect(metrics.outgoingEvents).toBe(1);
+    expect(metrics.incomingSeries).toHaveLength(20);
+    expect(metrics.outgoingSeries).toHaveLength(20);
+    expect(Math.max(...metrics.incomingSeries)).toBeGreaterThanOrEqual(10);
+    expect(Math.max(...metrics.outgoingSeries)).toBeGreaterThanOrEqual(10);
   });
 });

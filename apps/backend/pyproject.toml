@@ -1,6 +1,6 @@
 [project]
 name = "larksync-backend"
-version = "v0.7.29"
+version = "v0.8.0-dev.18"
 description = "LarkSync backend service"
 readme = { text = "LarkSync backend service for local Feishu document synchronization.", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -14,7 +14,8 @@ dependencies = [
   "loguru>=0.7",
   "aiosqlite>=0.19",
   "httpx>=0.25",
-  "keyring>=25.0"
+  "keyring>=25.0",
+  "pywebview>=5.0"
 ]
 
 [project.optional-dependencies]
