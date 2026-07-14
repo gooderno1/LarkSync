@@ -71,7 +71,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
   };
 
   return (
-    <header className="relative z-30 flex h-[88px] flex-none items-center justify-between gap-4 border-b border-[#c6d7e9] bg-[#fdfdfd] pb-0 pl-9 pr-8 pt-2">
+    <header className="relative z-30 flex h-[88px] flex-none items-center justify-between gap-4 border-b border-[#c6d7e9] bg-white pb-0 pl-9 pr-8 pt-2">
       <div
         className="flex min-w-0 items-center gap-6 text-sm text-[#334762]"
         aria-label={`${desktopStatus.auth.connected ? "飞书已连接" : "飞书未连接"}，${desktopStatus.tasks.running} 个任务运行中，${pendingCount} 个待处理`}

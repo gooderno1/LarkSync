@@ -121,13 +121,15 @@ describe("desktop shell status", () => {
     expect(html).toContain("w-[128px]");
     expect(html).toContain("w-[116px]");
     expect(html).toContain("任务启停");
+    expect(html).toContain('data-desktop-statusbar="true"');
+    expect(html).toContain("bg-white");
     expect(html).toContain('data-account-menu-trigger="true"');
     expect(html).toContain('aria-haspopup="menu"');
     expect(html).toContain('aria-label="账户菜单"');
     expect(html).toContain("账号与授权");
     expect(html).toContain("更新与维护");
     expect(html).toContain("bg-[#f9fbfd]");
-    expect(html).toContain("bg-[#fdfdfd]");
+    expect(html).not.toContain('data-desktop-statusbar="true" class="h-[78px] shrink-0 border-t border-[#dce6f2] bg-[#fdfdfd]');
     expect(html).not.toContain("□");
     expect(html).not.toContain("×");
     expect(html).not.toContain("w-[72px]");

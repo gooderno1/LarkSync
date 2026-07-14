@@ -115,7 +115,8 @@ describe("App smoke", () => {
     expect(html).toContain('data-desktop-scale="1.000"');
     expect(html).toContain("px-7 py-[23px]");
     expect(html).toContain("desktop-grid-surface");
-    expect(html).toContain("bg-[#fdfdfd]");
+    expect(html).toContain('data-desktop-main="true"');
+    expect(html).toContain("bg-white");
     expect(html).not.toContain("desktop-perspective-line");
     expect(html).not.toContain("min-[1180px]");
     expect(html).not.toContain("min-[1440px]");

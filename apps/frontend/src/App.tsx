@@ -119,9 +119,9 @@ export default function App() {
 
   /* ---------- 正常渲染主界面 ---------- */
   return (
-    <div className="h-screen overflow-hidden bg-[#fdfdfd] text-[#102033]" style={desktopViewport.viewportStyle}>
+    <div className="h-screen overflow-hidden bg-white text-[#102033]" style={desktopViewport.viewportStyle}>
       <div
-        className="overflow-hidden bg-[#fdfdfd]"
+        className="overflow-hidden bg-white"
         data-desktop-scale={desktopViewport.scale.toFixed(3)}
         style={desktopViewport.canvasStyle}
       >
@@ -135,7 +135,7 @@ export default function App() {
           <div className="flex min-w-0 flex-1 flex-col">
             <DesktopTopBar activeTab={activeTab} onNavigate={handleNavigate} />
 
-            <main className="desktop-grid-surface min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-7 py-[23px]">
+            <main data-desktop-main="true" className="desktop-grid-surface min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-7 py-[23px]">
               {connected && !driveOk && (
                 <div className="mb-5 rounded-xl border border-[#f59e0b]/30 bg-[#fffbeb] px-5 py-4 text-sm text-[#92400e]">
                   <p className="font-semibold">飞书云文档权限不足</p>

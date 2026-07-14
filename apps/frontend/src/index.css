@@ -69,8 +69,17 @@ body {
 }
 
 .desktop-grid-surface {
-  background-color: #fbfcfe;
-  background-image: linear-gradient(180deg, #fbfcfe 0%, #fcfdfe 48%, #fbfcfe 100%);
+  background-color: #ffffff;
+  background-image: linear-gradient(180deg, #f8fbff 0%, #fbfdff calc(100% - 56px), #ffffff 100%);
+}
+
+.showcase-scroll-region {
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+.showcase-scroll-region::-webkit-scrollbar-thumb {
+  background: rgba(82, 101, 122, 0.34);
 }
 
 /* 业务页在固定画布缩放后仍保持清晰的文字与分隔层级。 */

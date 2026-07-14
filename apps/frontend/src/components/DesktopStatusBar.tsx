@@ -12,7 +12,7 @@ export function DesktopStatusBar() {
     : "LarkSync.Backend.dev";
 
   return (
-    <footer className="flex h-[78px] flex-none items-center justify-between border-t border-[#c6d7e9] bg-[#fdfdfd] pl-9 pr-8 text-xs font-medium text-[#3f536b]">
+    <footer data-desktop-statusbar="true" className="flex h-[78px] flex-none items-center justify-between border-t border-[#dce6f2] bg-white pl-9 pr-8 text-xs font-medium text-[#3f536b]">
       <div className="flex min-w-0 items-center gap-4">
         <span className="inline-flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${status.runtime.backend_running ? "bg-[#10B981]" : "bg-[#F43F5E]"}`} />
