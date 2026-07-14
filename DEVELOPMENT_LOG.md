@@ -1,5 +1,34 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.31 (2026-07-15)
+
+- 开发原因：
+  - 用户澄清 v0.8.0-dev.29 的品牌 Logo 正确；真正问题是 Logo 在本地与云端两个可见内容块之间没有居中，距离云端目录明显更近。
+  - v0.8.0-dev.30 把位置问题误判成图形问题，错误替换了品牌 Logo；对称箭头修改得到用户确认。
+- 实现方式：
+  - 新增本地规格 `docs/local_specs/task_detail_brand_logo_visual_centering_v0.8.0-dev.31.md`，以两个可见端点的边缘间距作为验收口径。
+  - 修正 v0.8.0-dev.29 与 v0.8.0-dev.30 本地规格的有效性说明：品牌 Logo 规则恢复，对称连接线等改进继续有效。
+  - 先更新任务详情测试，使代码双环和整列云端布局因缺少品牌图源与等宽端点容器而失败，再修改实现。
+  - 恢复从 `logo-horizontal.png` 左侧 205×97 视口等比裁切的品牌 Logo，页面尺寸为 106×50。
+  - 本地与云端内容分别收口为 `w-[300px] max-w-full` 容器；本地容器左对齐，云端容器右对齐。
+  - 保留 v0.8.0-dev.30 的电脑端点、左右对称 SVG 箭头、精简模式文字和实心映射健康状态。
+- 当前结果：
+  - 1536×960 下，Logo 到左右端点容器的可见间距均为 136.1px。
+  - 1440×900 下，两侧可见间距均为 127.6px；1280×800 下均为 113.4px。
+  - 三档可见间距误差、Logo 中心误差、连接线宽度误差均为 0px。
+  - 三档品牌图源均为 `/logo-horizontal.png`，无横向溢出，控制台错误为 0。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过；4 个飞书文档包已检查。
+  - TDD 失败阶段：任务详情品牌 Logo 和端点容器新增断言按预期失败。
+  - 任务详情定向测试：通过，1 个测试文件、3 个测试。
+  - `npm --prefix apps/frontend test`：通过，30 个测试文件、87 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过，无警告。
+  - `python -m pytest`（`apps/backend`）：通过，537 个测试。
+  - `python scripts/build_installer.py`：通过；Vite 生产构建与 PyInstaller 桌面目录打包成功，生成 `dist/LarkSync/LarkSync.exe`（17.5 MB），本轮未指定 `--nsis`。
+  - Edge + Playwright 三档局部截图与端点间距测量：通过。
+  - 截图与报告位于 `docs/local_specs/visual_audit/2026-07-15-task-detail-brand-logo-centering/`，不进入 Git。
+
 ## v0.8.0-dev.30 (2026-07-15)
 
 - 开发原因：
