@@ -68,10 +68,10 @@ function LarkSyncBrandMark() {
   return (
     <svg
       aria-label="LarkSync 同步标识"
-      className="h-[50px] w-[106px] shrink-0"
+      className="h-[50px] w-[110px] shrink-0"
       data-sync-brand-mark="true"
       role="img"
-      viewBox="0 0 205 97"
+      viewBox="0 0 214 97"
     >
       <image height="97" href="/logo-horizontal.png" preserveAspectRatio="xMinYMid meet" width="600" />
     </svg>
@@ -465,8 +465,8 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
                 <p className="mt-2 text-xs text-[#52657a]">{stats.localFiles}</p>
                 <button className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-[#bfd3ee] px-3 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]" onClick={() => void handleOpenLocalFolder()} type="button"><IconExternalLink className="h-3.5 w-3.5" />打开目录</button>
               </div>
-              <div className="flex flex-col items-center text-center" data-sync-relationship="true">
-                <div className="grid w-full grid-cols-[minmax(0,1fr)_106px_minmax(0,1fr)] items-center gap-2">
+              <div className="flex -translate-x-[17px] flex-col items-center text-center" data-sync-relationship="true" data-sync-visual-offset="-17">
+                <div className="grid w-full grid-cols-[minmax(0,1fr)_110px_minmax(0,1fr)] items-center gap-2">
                   <SyncConnector direction="left" />
                   <LarkSyncBrandMark />
                   <SyncConnector direction="right" />

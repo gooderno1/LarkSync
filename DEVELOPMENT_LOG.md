@@ -1,5 +1,34 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.32 (2026-07-15)
+
+- 开发原因：
+  - 用户指出 v0.8.0-dev.31 的中央品牌 Logo 仍然偏右，并且图标最右缘被裁切。
+  - 复核发现上一版以左右各 300px 的外层容器作为居中基准，没有计算两端文字、图标和按钮的真实可见宽度，因而把 26.2px 至 31.5px 的视觉间距差误判为 0px。
+  - `logo-horizontal.png` 的左侧品牌图有效像素范围为 x=0..213；旧 205×97 视口裁掉了最右侧 9px。
+- 实现方式：
+  - 新增本地规格 `docs/local_specs/task_detail_brand_logo_pixel_bounds_v0.8.0-dev.32.md`，将品牌图完整像素和真实内容间距定义为验收口径。
+  - 先更新任务详情测试，使旧视口、旧尺寸和缺少视觉补偿标记的实现按预期失败，再修改生产代码。
+  - 将品牌图 SVG 视口扩为 214×97，页面尺寸调整为 110×50，保留源图比例并完整覆盖最右侧有效像素。
+  - 中央关系网格同步调整为 110px Logo 列；关系组整体向左平移 17px，用于补偿本地端文本比云端端文本更宽产生的视觉偏差。
+  - 浏览器测量改用 DOM Range 获取标题和说明文字的实际字形包围盒，并合并图标与按钮边界，不再以 300px 外层容器替代可见内容。
+- 当前结果：
+  - 1536×960 下，Logo 到左右实际内容的间距分别为 149.8px 和 150.2px，误差为 0.4px。
+  - 1440×900 下，两侧间距分别为 140.4px 和 140.8px，误差为 0.4px。
+  - 1280×800 下，两侧间距分别为 124.8px 和 125.2px，误差为 0.3px。
+  - 三档左右连接线宽度误差均为 0px；品牌图完整显示，无横向溢出，控制台错误为 0。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过；4 个飞书文档包已检查。
+  - TDD 失败阶段：任务详情新增的 214×97 视口、110×50 尺寸和 -17px 视觉补偿断言按预期失败。
+  - 任务详情定向测试：通过，1 个测试文件、3 个测试。
+  - Edge + Playwright 1536×960、1440×900、1280×800 三档真实内容边界测量与局部截图：通过。
+  - `npm --prefix apps/frontend test`：通过，30 个测试文件、87 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过，无警告。
+  - `python -m pytest`（`apps/backend`）：通过，537 个测试。
+  - `python scripts/build_installer.py`：通过；Vite 生产构建与 PyInstaller 桌面目录打包成功，生成 `dist/LarkSync/LarkSync.exe`（17.5 MB），本轮未指定 `--nsis`。
+  - 截图与报告位于 `docs/local_specs/visual_audit/2026-07-15-task-detail-brand-logo-centering/`，不进入 Git。
+
 ## v0.8.0-dev.31 (2026-07-15)
 
 - 开发原因：

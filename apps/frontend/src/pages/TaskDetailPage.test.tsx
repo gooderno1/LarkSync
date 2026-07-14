@@ -158,9 +158,11 @@ describe("TaskDetailPage smoke", () => {
     expect(html).toContain('data-sync-endpoint-content="cloud"');
     expect((html.match(/w-\[300px\] max-w-full/g) || [])).toHaveLength(2);
     expect(html).toContain('data-sync-brand-mark="true"');
-    expect(html).toContain('viewBox="0 0 205 97"');
+    expect(html).toContain('viewBox="0 0 214 97"');
     expect(html).toContain('href="/logo-horizontal.png"');
-    expect(html).toContain('h-[50px] w-[106px]');
+    expect(html).toContain('h-[50px] w-[110px]');
+    expect(html).toContain('data-sync-visual-offset="-17"');
+    expect(html).toContain('-translate-x-[17px]');
     expect((html.match(/data-sync-connector=/g) || [])).toHaveLength(2);
     expect((html.match(/data-sync-mode-label=/g) || [])).toHaveLength(1);
     expect((html.match(/data-sync-health=/g) || [])).toHaveLength(1);
