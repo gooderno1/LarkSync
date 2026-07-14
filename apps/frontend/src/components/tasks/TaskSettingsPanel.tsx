@@ -28,7 +28,8 @@ type TaskSettingsPanelProps = {
   processed: number;
   total: number;
   onClose: () => void;
-  onDelete: () => void;
+  onDelete: () => void | Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
   onSave: (patch: Record<string, unknown>) => Promise<void>;
 };
 
@@ -50,6 +51,7 @@ export function TaskSettingsPanel({
   total,
   onClose,
   onDelete,
+  onDirtyChange,
   onSave,
 }: TaskSettingsPanelProps) {
   const [draft, setDraft] = useState<TaskSettingsDraft>(() => createTaskSettingsDraft(task));
@@ -67,6 +69,10 @@ export function TaskSettingsPanel({
   const uploadEnabled = syncModeSupportsUpload(draft.syncMode);
   const changeCount = countTaskSettingsDraftChanges(baseline, draft);
   const risk = getTaskSettingsRisk(draft.syncMode, draft.deletePolicy);
+
+  useEffect(() => {
+    onDirtyChange?.(changeCount > 0);
+  }, [changeCount, onDirtyChange]);
 
   const updateDraft = <K extends keyof TaskSettingsDraft>(key: K, value: TaskSettingsDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -92,13 +98,13 @@ export function TaskSettingsPanel({
       <div className="flex items-center justify-between gap-4 border-b border-[#d7e4f5] px-5 py-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-[#102033]">任务设置</h3>
+            <h3 id="task-settings-dialog-title" className="text-sm font-semibold text-[#102033]">任务设置</h3>
             <span className="text-[#c9d8ec]">·</span>
             <span className="truncate text-sm font-medium text-[#334762]">{task.name || "未命名任务"}</span>
           </div>
           <p className="mt-1 text-xs text-[#52657a]">调整内容流向、写入方式和删除联动，完成后统一保存。</p>
         </div>
-        <button aria-label="关闭任务设置" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#c9d8ec] text-[#52657a] hover:bg-[#eef5ff] hover:text-[#3370ff]" onClick={onClose} type="button">
+        <button data-task-settings-close="true" aria-label="关闭任务设置" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#c9d8ec] text-[#52657a] hover:bg-[#eef5ff] hover:text-[#3370ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3370ff]/40" onClick={onClose} type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M18 6 6 18M6 6l12 12" /></svg>
         </button>
       </div>
@@ -214,7 +220,7 @@ export function TaskSettingsPanel({
           </div>
           <details className="mt-4 border-t border-[#d7e4f5] pt-3">
             <summary className="cursor-pointer text-xs font-semibold text-[#52657a]">维护操作</summary>
-            <button className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#f43f5e]/40 px-3 py-2 text-xs font-semibold text-[#be123c] hover:bg-[#fff1f2]" onClick={onDelete} type="button"><IconTrash className="h-3.5 w-3.5" />删除任务</button>
+            <button className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#f43f5e]/40 px-3 py-2 text-xs font-semibold text-[#be123c] hover:bg-[#fff1f2]" onClick={() => void onDelete()} type="button"><IconTrash className="h-3.5 w-3.5" />删除任务</button>
           </details>
         </aside>
       </div>

@@ -46,8 +46,8 @@ export function ConfirmDialogProvider() {
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#102033]/35 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-lg border border-[#d7e4f5] bg-white p-6 shadow-[0_28px_90px_rgba(16,32,51,0.22)]">
-        <h3 className="text-lg font-semibold text-[#102033]">{dialog.title}</h3>
+      <div data-confirm-dialog="true" aria-labelledby="confirm-dialog-title" aria-modal="true" className="w-full max-w-md rounded-lg border border-[#d7e4f5] bg-white p-6 shadow-[0_28px_90px_rgba(16,32,51,0.22)]" role="alertdialog">
+        <h3 id="confirm-dialog-title" className="text-lg font-semibold text-[#102033]">{dialog.title}</h3>
         {dialog.description ? (
           <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#58708d]">{dialog.description}</p>
         ) : null}

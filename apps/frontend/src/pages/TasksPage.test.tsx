@@ -127,8 +127,10 @@ describe("TasksPage smoke", () => {
     expect(html).toContain('aria-label="查看任务详情"');
     expect(html).toContain('role="switch"');
     expect(html).toContain('aria-checked="true"');
-    expect(html).toContain("展开任务设置");
+    expect(html).toContain("打开任务设置");
+    expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("whitespace-nowrap");
+    expect(html).not.toContain("展开任务设置");
     expect(html).not.toContain("展开策略");
     expect(html).not.toContain("任务卡片");
 

@@ -2,13 +2,13 @@
 /*  同步任务管理页面                                                     */
 /* ------------------------------------------------------------------ */
 
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTasks } from "../hooks/useTasks";
 import { useConflicts } from "../hooks/useConflicts";
 import { NewTaskModal } from "../components/NewTaskModal";
 import { TasksEmptyState } from "../components/tasks/TasksEmptyState";
 import { TasksPageHeader } from "../components/tasks/TasksPageHeader";
-import { TaskSettingsPanel } from "../components/tasks/TaskSettingsPanel";
+import { TaskSettingsModal } from "../components/tasks/TaskSettingsModal";
 import { StatusPill } from "../components/StatusPill";
 import {
   IconFolder,
@@ -84,7 +84,7 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
   const [stateFilter, setStateFilter] = useState("all");
   const [syncModeFilter, setSyncModeFilter] = useState("all");
   const [healthFilter, setHealthFilter] = useState("all");
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [settingsTaskId, setSettingsTaskId] = useState<string | null>(null);
   const isDevMode = import.meta.env.DEV;
   const testTaskCount = tasks.filter((task) => Boolean(task.is_test)).length;
   const showTestToggle = isDevMode && testTaskCount > 0;
@@ -151,6 +151,9 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
     visibleTasksBeforeFilters,
   ]);
 
+  const settingsTask = tasks.find((task) => task.id === settingsTaskId) || null;
+  const settingsProgress = computeTaskProgress(settingsTask ? statusMap[settingsTask.id] : undefined);
+
   const handleDelete = async (task: SyncTask) => {
     const ok = await confirm({
       title: "确认删除任务",
@@ -158,10 +161,10 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
       confirmLabel: "删除",
       tone: "danger",
     });
-    if (ok) {
-      deleteTask(task);
-      toast("任务已删除", "danger");
-    }
+    if (!ok) return false;
+    deleteTask(task);
+    toast("任务已删除", "danger");
+    return true;
   };
 
   return (
@@ -245,7 +248,6 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                   {displayTasks.map((task) => {
                     const st = statusMap[task.id];
                     const conflictCount = Math.max(unresolvedConflictCountByTask[task.id] || 0, st?.conflict_files ?? 0);
-                    const isExpanded = expandedTaskId === task.id;
                     const stateKey = taskStateKey(task, st);
                     const stateLabel = stateLabels[stateKey] || stateKey;
                     const health = deriveTaskHealth({
@@ -264,8 +266,7 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                     const lastSyncTime = st?.finished_at ?? st?.started_at ?? task.last_run_at ?? null;
 
                     return (
-                      <Fragment key={task.id}>
-                        <tr className="align-middle text-[#334762] transition hover:bg-[#f8fbff]">
+                      <tr key={task.id} className="align-middle text-[#334762] transition hover:bg-[#f8fbff]">
                           <td className="px-4 py-3">
                             <div className="flex min-w-0 items-center gap-3">
                               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#eaf2ff] text-[#3370ff]">
@@ -361,42 +362,19 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                                 <span className={`block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${task.enabled ? "translate-x-5" : "translate-x-0"}`} />
                               </button>
                               <button
-                                aria-expanded={isExpanded}
-                                aria-label={isExpanded ? "收起任务设置" : "展开任务设置"}
-                                className={`inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg border transition ${isExpanded ? "border-[#3370ff] bg-[#eef5ff] text-[#3370ff]" : "border-[#c9d8ec] text-[#52657A] hover:bg-[#f6faff] hover:text-[#3370ff]"}`}
-                                onClick={() => setExpandedTaskId((current) => current === task.id ? null : task.id)}
+                                aria-expanded={settingsTaskId === task.id}
+                                aria-haspopup="dialog"
+                                aria-label="打开任务设置"
+                                className={`inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg border transition ${settingsTaskId === task.id ? "border-[#3370ff] bg-[#eef5ff] text-[#3370ff]" : "border-[#c9d8ec] text-[#52657A] hover:bg-[#f6faff] hover:text-[#3370ff]"}`}
+                                onClick={() => setSettingsTaskId(task.id)}
                                 type="button"
-                                title={isExpanded ? "收起任务设置" : "展开任务设置"}
+                                title="打开任务设置"
                               >
                                 <IconMoreHorizontal className="h-4 w-4" />
                               </button>
                             </div>
                           </td>
                         </tr>
-
-                        {isExpanded ? (
-                          <tr>
-                            <td colSpan={11} className="bg-[#f8fbff] px-4 py-4">
-                              <TaskSettingsPanel
-                                task={task}
-                                processed={progressState.processed}
-                                total={progressState.effectiveTotal}
-                                onClose={() => setExpandedTaskId(null)}
-                                onDelete={() => void handleDelete(task)}
-                                onSave={async (patch) => {
-                                  try {
-                                    await updateTaskSettings({ id: task.id, patch });
-                                    toast("任务设置已保存", "success");
-                                  } catch (error) {
-                                    toast(error instanceof Error ? error.message : "任务设置保存失败", "danger");
-                                    throw error;
-                                  }
-                                }}
-                              />
-                            </td>
-                          </tr>
-                        ) : null}
-                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -416,6 +394,27 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
       </div>
 
       <NewTaskModal open={showModal} onClose={() => setShowModal(false)} onCreated={refreshTasks} />
+      {settingsTask ? (
+        <TaskSettingsModal
+          task={settingsTask}
+          processed={settingsProgress.processed}
+          total={settingsProgress.effectiveTotal}
+          onClose={() => setSettingsTaskId(null)}
+          onDelete={async () => {
+            const deleted = await handleDelete(settingsTask);
+            if (deleted) setSettingsTaskId(null);
+          }}
+          onSave={async (patch) => {
+            try {
+              await updateTaskSettings({ id: settingsTask.id, patch });
+              toast("任务设置已保存", "success");
+            } catch (error) {
+              toast(error instanceof Error ? error.message : "任务设置保存失败", "danger");
+              throw error;
+            }
+          }}
+        />
+      ) : null}
     </section>
   );
 }

@@ -1,5 +1,40 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.23 (2026-07-14)
+
+- 开发原因：
+  - 用户认为三点任务设置使用行内下拉会改变表格结构，视线需要在表格与展开区之间来回定位。
+  - 任务设置包含三组策略、实时摘要、风险说明和维护操作，已经超出轻量下拉菜单的合理信息量。
+  - 行内面板会显著推高当前任务行之后的内容，不利于比较任务，也不利于后续继续完善弹窗内部设计。
+- 实现方式：
+  - 先新增本地规格 `docs/local_specs/task_settings_modal_redesign_v0.8.0-dev.23.md`，明确弹窗尺寸、层级、关闭规则、未保存保护和验收口径。
+  - 新增 `TaskSettingsModal`，使用 Portal 挂载为 `role=dialog` 的独立模态层；标准宽度为 `1040px`，最大宽度为 `calc(100vw - 32px)`，最大高度为 `88vh`。
+  - 三点按钮的语义改为“打开任务设置”，并增加 `aria-haspopup=dialog`；任务表不再插入额外 `<tr>`。
+  - 打开弹窗后锁定页面滚动、聚焦关闭按钮，并将 Tab 焦点限制在弹窗内部；关闭后恢复原触发按钮焦点。
+  - 背景遮罩不响应点击关闭，避免误触丢失配置；无修改时关闭按钮或 `Escape` 直接关闭。
+  - 有未保存修改时，关闭按钮或 `Escape` 打开应用内确认框；选择“取消”保留草稿，选择“放弃更改”才关闭。
+  - 任务删除继续使用既有危险操作确认；保存仍保持单次组合 PATCH，成功后弹窗留在当前任务并重置修改基线。
+  - 确认框补齐 `role=alertdialog`、`aria-modal` 和标题关联，避免与任务设置弹窗的焦点处理冲突。
+- 当前结果：
+  - 打开弹窗前后任务表均为 8 行，表格高度均为 `551.25px`，三点操作不再引起列表跳动。
+  - `1536px`、`1440px`、`1280px` 三档宽度下弹窗均为 `1040px` 居中展示，页面 `scrollWidth` 均等于 viewport 宽度。
+  - 弹窗高度为 `583px`；初始“保存更改”禁用，修改内容流向后立即启用。
+  - 打开后 `body` 滚动被锁定，初始焦点位于“关闭任务设置”；浏览器控制台无错误。
+  - 未保存确认框完整展示修改丢失后果；取消后设置弹窗和草稿继续保留。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过；4 个飞书文档包已检查。
+  - `npm --prefix apps/frontend test -- --run src/components/tasks/TaskSettingsModal.test.tsx src/pages/TasksPage.test.tsx`：通过，2 个测试文件、4 个测试。
+  - `npm --prefix apps/frontend test`：通过，29 个测试文件、79 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过，无警告。
+  - `python -m pytest tests/test_version.py -q`（`apps/backend`）：通过，确认开发态版本读取为 `v0.8.0-dev.23`。
+  - `python scripts/build_installer.py`：通过；前端生产构建、托盘图标生成和 PyInstaller 桌面目录打包成功，生成 `dist/LarkSync/LarkSync.exe`（17.5 MB）；本轮未指定 `--nsis`。
+  - Playwright + Edge 完成三档真实页面弹窗、表格稳定性、焦点、滚动锁定、保存状态、未保存保护、溢出和控制台检查：通过。
+  - 截图证据位于 `docs/local_specs/visual_audit/2026-07-14-task-settings-modal-redesign/`；该目录属于本地规格资料，不进入 Git。
+- 遗留问题：
+  - 本轮仅改变任务设置的展示与关闭交互，沿用 `v0.8.0-dev.22` 的字段、风险计算和组合 PATCH 契约。
+  - 未新增或猜测任何飞书 API 字段。
+
 ## v0.8.0-dev.22 (2026-07-14)
 
 - 开发原因：
