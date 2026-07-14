@@ -12,7 +12,7 @@ export function DesktopStatusBar() {
     : "LarkSync.Backend.dev";
 
   return (
-    <footer className="flex h-[78px] flex-none items-center justify-between border-t border-[#d7e6ff] bg-[#fdfdfd] pl-9 pr-8 text-xs text-[#52657A]">
+    <footer className="flex h-[78px] flex-none items-center justify-between border-t border-[#c6d7e9] bg-[#fdfdfd] pl-9 pr-8 text-xs font-medium text-[#3f536b]">
       <div className="flex min-w-0 items-center gap-4">
         <span className="inline-flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${status.runtime.backend_running ? "bg-[#10B981]" : "bg-[#F43F5E]"}`} />
@@ -23,24 +23,24 @@ export function DesktopStatusBar() {
           label={status.runtime.backend_running ? "运行中" : "失败"}
           tone={status.runtime.backend_running ? "success" : "danger"}
         />
-        <span className="h-4 w-px bg-[#d7e6ff]" aria-hidden="true" />
+        <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
         <span className="inline-flex items-center gap-2 whitespace-nowrap">
           <span>端口</span>
           <span className="font-medium text-[#3370ff]">{backendPort}</span>
         </span>
-        <span className="h-4 w-px bg-[#d7e6ff]" aria-hidden="true" />
+        <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
         <span className="inline-flex items-center gap-2 whitespace-nowrap">
           <span>WebSocket</span>
           <span className="h-2 w-2 rounded-full bg-[#3370ff]" aria-hidden="true" />
           <span className="font-medium text-[#3370ff]">已连接</span>
         </span>
-        <span className="h-4 w-px bg-[#d7e6ff]" aria-hidden="true" />
+        <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
         <span className="inline-flex items-center gap-2 whitespace-nowrap">
           <IconDatabase className="h-3.5 w-3.5 text-[#3370FF]" />
           数据库
           <span className="font-medium text-[#52657a]">SQLite 3</span>
         </span>
-        <span className="h-4 w-px bg-[#d7e6ff]" aria-hidden="true" />
+        <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
         <span className="whitespace-nowrap">版本 {status.update.current_version}</span>
       </div>
 

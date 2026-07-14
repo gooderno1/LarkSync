@@ -154,6 +154,10 @@ describe("DashboardPage smoke", () => {
     expect(html).toContain("grid-cols-4");
     expect(html).toContain("grid-cols-[minmax(0,1fr)_316px]");
     expect(html).toContain("w-[316px]");
+    expect(html).toContain("dashboard-clarity");
+    expect(html).toContain('data-dashboard-rail="aligned"');
+    expect(html).toContain("grid-rows-[146px_278px_310px]");
+    expect(html).toContain("gap-5 pt-9");
     expect(html).toContain("min-w-0 overflow-hidden");
     expect(html).not.toContain("min-[1760px]:grid-cols-4");
     expect(html).not.toContain("min-[1760px]:grid-cols-[minmax(0,1fr)_300px]");

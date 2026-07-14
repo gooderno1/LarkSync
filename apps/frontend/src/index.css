@@ -73,6 +73,36 @@ body {
   background-image: linear-gradient(180deg, #fbfcfe 0%, #fcfdfe 48%, #fbfcfe 100%);
 }
 
+/* 总览页在固定画布缩放后仍保持清晰的文字与分隔层级。 */
+.dashboard-clarity {
+  -webkit-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+}
+
+.dashboard-clarity [class*="text-[#6b7f96]"],
+.dashboard-clarity [class*="text-[#6b83a7]"],
+.dashboard-clarity [class*="text-[#8a9bb0]"] {
+  color: #465b73;
+}
+
+.dashboard-clarity [class*="text-[#52657a]"],
+.dashboard-clarity [class*="text-[#52657A]"] {
+  color: #3f536b;
+}
+
+.dashboard-clarity [class*="border-[#d7e4f5]"] {
+  border-color: #c6d7e9;
+}
+
+.dashboard-clarity [class*="border-[#edf3fb]"],
+.dashboard-clarity [class*="divide-[#edf3fb]"] {
+  border-color: #dce7f3;
+}
+
+.dashboard-clarity table tbody {
+  font-weight: 500;
+}
+
 code,
 pre,
 .font-mono {

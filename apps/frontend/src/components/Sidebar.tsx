@@ -35,7 +35,7 @@ const navItems: Array<{
 
 export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarProps) {
   return (
-    <aside className="flex h-full w-[220px] flex-none flex-col border-r border-[#d7e6ff] bg-[#f9fbfd] px-4 pb-7 pt-6">
+    <aside className="flex h-full w-[220px] flex-none flex-col border-r border-[#c6d7e9] bg-[#f9fbfd] px-4 pb-7 pt-6">
       {/* Logo */}
       <div className="flex h-14 items-center justify-start px-3">
         <img
@@ -59,7 +59,7 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
                 "group relative flex h-11 items-center justify-between rounded-lg px-3 text-sm transition",
                 isActive
                   ? "bg-[#eaf3ff] text-[#3370FF] font-semibold shadow-[inset_3px_0_0_#3370FF]"
-                  : "text-[#52657A] hover:bg-[#f2f7ff] hover:text-[#102033]"
+                  : "font-medium text-[#3f536b] hover:bg-[#edf4ff] hover:text-[#102033]"
               )}
               onClick={() => onNavigate(item.id)}
               title={item.label}
@@ -81,17 +81,6 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
           );
         })}
       </nav>
-
-      {/* Connection status */}
-      <div className="mt-auto flex justify-center pb-3">
-        <button
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#1f3763] transition hover:bg-[#eef5ff] hover:text-[#3370ff]"
-          type="button"
-          title="折叠侧边栏"
-        >
-          <span className="text-xl leading-none">«</span>
-        </button>
-      </div>
 
     </aside>
   );

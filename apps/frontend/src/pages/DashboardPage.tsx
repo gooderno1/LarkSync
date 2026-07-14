@@ -27,7 +27,6 @@ import {
   IconClock,
   IconConflicts,
   IconFileSearch,
-  IconFileText,
   IconFolder,
   IconGlobe,
   IconPauseCircle,
@@ -479,7 +478,7 @@ function RealtimeLineChart({ metrics }: { metrics: RealtimeMetrics }) {
   if (!hasTransferEvents) {
     return (
       <div
-        className="mt-2 flex h-[82px] items-center justify-center border-b border-[#edf3fb] text-xs text-[#8a9bb0]"
+        className="mt-2 flex h-[64px] items-center justify-center border-b border-[#dce7f3] text-xs font-medium text-[#52657a]"
         data-dashboard-realtime-state="empty"
       >
         暂无传输事件
@@ -500,7 +499,7 @@ function RealtimeLineChart({ metrics }: { metrics: RealtimeMetrics }) {
   };
 
   return (
-    <svg className="mt-2 h-[82px] w-full" viewBox="0 0 240 82" role="img" aria-label="实时连接数据流折线">
+    <svg className="mt-2 h-[64px] w-full" viewBox="0 0 240 82" role="img" aria-label="实时连接数据流折线">
       <path d="M0 76H240" stroke="#edf3fb" strokeWidth="1" />
       <polyline points={toPoints(incomingSeries)} fill="none" stroke="#3370ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <polyline points={toPoints(outgoingSeries)} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -675,7 +674,7 @@ export function DashboardPage({ onNavigate }: Props) {
   };
 
   return (
-    <section className="animate-fade-up min-w-0">
+    <section className="dashboard-clarity animate-fade-up min-w-0">
       {!connected ? (
         <div className="mb-4 rounded-xl border border-[#f43f5e]/30 bg-[#fff1f2] p-4 text-sm text-[#be123c]">
           飞书账号未连接，请刷新页面以完成授权引导。
@@ -878,77 +877,65 @@ export function DashboardPage({ onNavigate }: Props) {
           </div>
         </div>
 
-        <aside className="min-w-0 w-[316px] space-y-4">
-          <section className="h-[214px] overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.035)]">
+        <aside className="grid min-w-0 w-[316px] grid-rows-[146px_278px_310px] gap-5 pt-9" data-dashboard-rail="aligned">
+          <section className="h-full overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.055)]">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-[#102033]">需要处理</h2>
               <span className="rounded-full bg-[#fff1f2] px-2 py-0.5 text-xs font-semibold text-[#be123c]">{displayAttentionValue}</span>
             </div>
-            <div className="mt-2.5">
+            <div className="mt-3">
               {attentionPreviewEntries.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-[#c9d8ec] px-4 py-6 text-center text-sm text-[#6b7f96]">
+                <div className="flex h-[70px] items-center justify-center rounded-lg border border-dashed border-[#c9d8ec] px-4 text-center text-sm font-medium text-[#52657a]">
                   暂无待处理问题。
                 </div>
               ) : (
                 attentionPreviewEntries.map((entry, index) => (
-                  <div
+                  <button
                     key={entry.id}
-                    className={`h-[108px] rounded-lg border p-3 ${attentionCardStyles[entry.tone]}`}
+                    className={`flex h-[70px] w-full items-center gap-3 rounded-lg border p-3 text-left transition hover:brightness-[0.98] ${attentionCardStyles[entry.tone]}`}
                     data-dashboard-attention-card="summary"
                     data-dashboard-attention-tone={entry.tone}
+                    onClick={() => onNavigate(hasConflictAttention ? "conflicts" : "activity")}
+                    type="button"
                   >
-                    <div className={`flex items-center justify-between gap-2 ${inlineStatusStyles[entry.tone]}`}>
-                      <span className="inline-flex min-w-0 items-center gap-2 text-xs font-semibold">
-                        <IconAlertTriangle className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{entry.title}</span>
-                      </span>
-                      <span className="text-xs font-medium">{index + 1}</span>
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/70 ${inlineStatusStyles[entry.tone]}`}>
+                      <IconAlertTriangle className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`truncate text-xs font-semibold ${inlineStatusStyles[entry.tone]}`}>{entry.title}</p>
+                      <p className="mt-1 truncate text-xs font-medium text-[#52657a]" title={`${entry.fileName} · ${entry.folderPath}`}>{entry.fileName}</p>
                     </div>
-                    <div className="mt-5 flex min-w-0 items-start gap-2 text-[#52657a]">
-                      <IconFileText className="mt-0.5 h-6 w-6 shrink-0 text-[#6b83a7]" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium text-[#52657a]">{entry.fileName}</p>
-                        <p className="mt-1 truncate text-xs text-[#6b7f96]" title={entry.folderPath}>{entry.folderPath}</p>
-                      </div>
-                      <span className="mt-5 shrink-0 text-xs text-[#6b83a7]">{entry.timeLabel}</span>
-                    </div>
-                  </div>
+                    <span className="shrink-0 text-xs font-semibold text-[#52657a]">{index + 1}</span>
+                    <IconChevronRight className="h-4 w-4 shrink-0 text-[#3370ff]" />
+                  </button>
                 ))
               )}
             </div>
-            <button
-              className="mt-5 flex w-full items-center justify-between text-xs font-semibold text-[#3370ff] hover:text-[#1d4ed8]"
-              onClick={() => onNavigate(hasConflictAttention ? "conflicts" : "activity")}
-              type="button"
-            >
-              <span>查看全部</span>
-              <IconChevronRight className="h-4 w-4" />
-            </button>
           </section>
 
-          <section className="h-[188px] overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.035)]">
+          <section className="h-full overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.055)]">
             <h2 className="text-base font-semibold text-[#102033]">快速操作</h2>
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <button className="inline-flex h-[54px] items-center justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]" onClick={handleRunEnabledTasks} type="button">
-                <IconRefresh className="h-5 w-5" />
-                立即同步
+              <button className="flex h-[94px] flex-col items-start justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-left text-xs font-semibold text-[#3370ff] hover:border-[#9ebce0] hover:bg-[#eef5ff]" onClick={handleRunEnabledTasks} type="button">
+                <span className="inline-flex items-center gap-2"><IconRefresh className="h-5 w-5" />立即同步</span>
+                <span className="text-[11px] font-medium leading-4 text-[#52657a]">运行全部已启用任务</span>
               </button>
-              <button className="inline-flex h-[54px] items-center justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]" onClick={() => onNavigate("tasks")} type="button">
-                <IconPauseCircle className="h-5 w-5" />
-                任务启停
+              <button className="flex h-[94px] flex-col items-start justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-left text-xs font-semibold text-[#3370ff] hover:border-[#9ebce0] hover:bg-[#eef5ff]" onClick={() => onNavigate("tasks")} type="button">
+                <span className="inline-flex items-center gap-2"><IconPauseCircle className="h-5 w-5" />任务启停</span>
+                <span className="text-[11px] font-medium leading-4 text-[#52657a]">管理启用与暂停状态</span>
               </button>
-              <button className="inline-flex h-[54px] items-center justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]" onClick={() => onNavigate("conflicts")} type="button">
-                <IconConflicts className="h-5 w-5" />
-                处理冲突
+              <button className="flex h-[94px] flex-col items-start justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-left text-xs font-semibold text-[#3370ff] hover:border-[#9ebce0] hover:bg-[#eef5ff]" onClick={() => onNavigate("conflicts")} type="button">
+                <span className="inline-flex items-center gap-2"><IconConflicts className="h-5 w-5" />处理冲突</span>
+                <span className="text-[11px] font-medium leading-4 text-[#52657a]">打开未解决冲突队列</span>
               </button>
-              <button className="inline-flex h-[54px] items-center justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]" onClick={() => onNavigate("activity")} type="button">
-                <IconFileSearch className="h-5 w-5" />
-                查看问题
+              <button className="flex h-[94px] flex-col items-start justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-left text-xs font-semibold text-[#3370ff] hover:border-[#9ebce0] hover:bg-[#eef5ff]" onClick={() => onNavigate("activity")} type="button">
+                <span className="inline-flex items-center gap-2"><IconFileSearch className="h-5 w-5" />查看问题</span>
+                <span className="text-[11px] font-medium leading-4 text-[#52657a]">查看失败与待处理事件</span>
               </button>
             </div>
           </section>
 
-          <section className="h-[336px] overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.035)]">
+          <section className="h-full overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.055)]">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-[#102033]">实时连接</h2>
               <StatusPill label={wsStatus === "connected" ? "良好" : "重连中"} tone={wsStatus === "connected" ? "success" : "warning"} dot />
@@ -965,7 +952,7 @@ export function DashboardPage({ onNavigate }: Props) {
               </div>
             </div>
             <RealtimeLineChart metrics={displayRealtimeMetrics} />
-            <div className="mt-8 flex items-center justify-between border-t border-[#edf3fb] pt-4 text-xs text-[#6b7f96]">
+            <div className="mt-3 flex items-center justify-between border-t border-[#edf3fb] pt-3 text-xs font-medium text-[#52657a]">
               <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#3370ff]" /> 流入</span>
               <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#10b981]" /> 流出</span>
             </div>
