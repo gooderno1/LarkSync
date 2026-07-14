@@ -8,28 +8,17 @@ import { useConflicts } from "../hooks/useConflicts";
 import { NewTaskModal } from "../components/NewTaskModal";
 import { TasksEmptyState } from "../components/tasks/TasksEmptyState";
 import { TasksPageHeader } from "../components/tasks/TasksPageHeader";
+import { TaskSettingsPanel } from "../components/tasks/TaskSettingsPanel";
 import { StatusPill } from "../components/StatusPill";
 import {
   IconFolder,
   IconMoreHorizontal,
   IconPlay,
-  IconTrash,
   ModeIcon,
 } from "../components/Icons";
-import {
-  mdSyncModeLabels,
-  modeLabels,
-  stateLabels,
-  stateTones,
-  syncModeSupportsUpload,
-} from "../lib/constants";
+import { modeLabels, stateLabels, stateTones } from "../lib/constants";
 import { computeTaskProgress } from "../lib/progress";
-import {
-  deletePolicyLabel,
-  deriveTaskHealth,
-  parseDeleteGraceMinutes,
-  summarizePath,
-} from "../lib/taskManagement";
+import { deriveTaskHealth, summarizePath } from "../lib/taskManagement";
 import { formatTimestamp } from "../lib/formatters";
 import { confirm } from "../components/ui/confirm-dialog";
 import { useToast } from "../components/ui/toast";
@@ -83,10 +72,7 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
     statusMap,
     refreshTasks,
     toggleTask,
-    updateSyncMode,
-    updateMode,
-    updateMdSyncMode,
-    updateDeletePolicy,
+    updateTaskSettings,
     runTask,
     deleteTask,
   } = useTasks();
@@ -98,12 +84,7 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
   const [stateFilter, setStateFilter] = useState("all");
   const [syncModeFilter, setSyncModeFilter] = useState("all");
   const [healthFilter, setHealthFilter] = useState("all");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [localSyncModeMap, setLocalSyncModeMap] = useState<Record<string, string>>({});
-  const [localUpdateModeMap, setLocalUpdateModeMap] = useState<Record<string, string>>({});
-  const [localMdSyncModeMap, setLocalMdSyncModeMap] = useState<Record<string, string>>({});
-  const [localDeletePolicyMap, setLocalDeletePolicyMap] = useState<Record<string, "off" | "safe" | "strict">>({});
-  const [localDeleteGraceMap, setLocalDeleteGraceMap] = useState<Record<string, string>>({});
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const isDevMode = import.meta.env.DEV;
   const testTaskCount = tasks.filter((task) => Boolean(task.is_test)).length;
   const showTestToggle = isDevMode && testTaskCount > 0;
@@ -264,16 +245,7 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                   {displayTasks.map((task) => {
                     const st = statusMap[task.id];
                     const conflictCount = Math.max(unresolvedConflictCountByTask[task.id] || 0, st?.conflict_files ?? 0);
-                    const isExpanded = Boolean(expanded[task.id]);
-                    const effectiveSyncMode = localSyncModeMap[task.id] || task.sync_mode;
-                    const effectiveUpdateMode = localUpdateModeMap[task.id] || task.update_mode || "auto";
-                    const effectiveMdSyncMode = (localMdSyncModeMap[task.id] ||
-                      task.md_sync_mode ||
-                      "enhanced") as "enhanced" | "download_only" | "doc_only";
-                    const effectiveDeletePolicy = (localDeletePolicyMap[task.id] ||
-                      (task.delete_policy as "off" | "safe" | "strict") ||
-                      "safe") as "off" | "safe" | "strict";
-                    const effectiveDeleteGrace = localDeleteGraceMap[task.id] ?? String(task.delete_grace_minutes ?? 30);
+                    const isExpanded = expandedTaskId === task.id;
                     const stateKey = taskStateKey(task, st);
                     const stateLabel = stateLabels[stateKey] || stateKey;
                     const health = deriveTaskHealth({
@@ -290,7 +262,6 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                     const progressState = computeTaskProgress(st);
                     const progress = progressState.progress;
                     const lastSyncTime = st?.finished_at ?? st?.started_at ?? task.last_run_at ?? null;
-                    const taskUploadEnabled = syncModeSupportsUpload(effectiveSyncMode);
 
                     return (
                       <Fragment key={task.id}>
@@ -318,8 +289,8 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                           </td>
                           <td className="px-3 py-3">
                             <span className="inline-flex whitespace-nowrap items-center gap-1 rounded-md border border-[#bfd8ff] bg-[#eef5ff] px-1.5 py-1 text-xs font-semibold text-[#3370ff]">
-                              <ModeIcon mode={effectiveSyncMode} className="h-3.5 w-3.5" />
-                              {modeLabels[effectiveSyncMode] || effectiveSyncMode}
+                              <ModeIcon mode={task.sync_mode} className="h-3.5 w-3.5" />
+                              {modeLabels[task.sync_mode] || task.sync_mode}
                             </span>
                           </td>
                           <td className="px-4 py-3">
@@ -393,7 +364,7 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                                 aria-expanded={isExpanded}
                                 aria-label={isExpanded ? "收起任务设置" : "展开任务设置"}
                                 className={`inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg border transition ${isExpanded ? "border-[#3370ff] bg-[#eef5ff] text-[#3370ff]" : "border-[#c9d8ec] text-[#52657A] hover:bg-[#f6faff] hover:text-[#3370ff]"}`}
-                                onClick={() => setExpanded((prev) => ({ ...prev, [task.id]: !prev[task.id] }))}
+                                onClick={() => setExpandedTaskId((current) => current === task.id ? null : task.id)}
                                 type="button"
                                 title={isExpanded ? "收起任务设置" : "展开任务设置"}
                               >
@@ -406,163 +377,22 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                         {isExpanded ? (
                           <tr>
                             <td colSpan={11} className="bg-[#f8fbff] px-4 py-4">
-                              <div className="grid grid-cols-4 gap-4">
-                                <div className="rounded-xl border border-[#d7e4f5] bg-white p-4">
-                                  <p className="text-xs font-semibold uppercase tracking-widest text-[#6b7f96]">同步模式</p>
-                                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <select
-                                      className="rounded-lg border border-[#c9d8ec] bg-white px-3 py-2 text-xs text-[#334762] outline-none focus:border-[#3370ff]"
-                                      value={effectiveSyncMode}
-                                      onChange={(e) => setLocalSyncModeMap((prev) => ({ ...prev, [task.id]: e.target.value }))}
-                                    >
-                                      <option value="bidirectional">双向同步</option>
-                                      <option value="download_only">仅下载</option>
-                                      <option value="upload_only">仅上传</option>
-                                    </select>
-                                    <button
-                                      className="rounded-lg border border-[#c9d8ec] px-3 py-2 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
-                                      onClick={() => {
-                                        updateSyncMode({ id: task.id, sync_mode: effectiveSyncMode });
-                                        toast("同步模式已更新", "success");
-                                      }}
-                                      type="button"
-                                    >
-                                      应用
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-[#d7e4f5] bg-white p-4">
-                                  <p className="text-xs font-semibold uppercase tracking-widest text-[#6b7f96]">更新模式</p>
-                                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <select
-                                      className="rounded-lg border border-[#c9d8ec] bg-white px-3 py-2 text-xs text-[#334762] outline-none focus:border-[#3370ff]"
-                                      value={effectiveUpdateMode}
-                                      onChange={(e) => setLocalUpdateModeMap((prev) => ({ ...prev, [task.id]: e.target.value }))}
-                                    >
-                                      <option value="auto">自动</option>
-                                      <option value="partial">局部</option>
-                                      <option value="full">全量</option>
-                                    </select>
-                                    <button
-                                      className="rounded-lg border border-[#c9d8ec] px-3 py-2 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
-                                      onClick={() => {
-                                        updateMode({ id: task.id, update_mode: effectiveUpdateMode });
-                                        toast("更新模式已更新", "success");
-                                      }}
-                                      type="button"
-                                    >
-                                      应用
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-[#d7e4f5] bg-white p-4">
-                                  <p className="text-xs font-semibold uppercase tracking-widest text-[#6b7f96]">MD 上传模式</p>
-                                  {taskUploadEnabled ? (
-                                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                                      <select
-                                        className="rounded-lg border border-[#c9d8ec] bg-white px-3 py-2 text-xs text-[#334762] outline-none focus:border-[#3370ff]"
-                                        value={effectiveMdSyncMode}
-                                        onChange={(e) =>
-                                          setLocalMdSyncModeMap((prev) => ({ ...prev, [task.id]: e.target.value }))
-                                        }
-                                      >
-                                        <option value="enhanced">增强 MD 上传</option>
-                                        <option value="download_only">MD 仅下载</option>
-                                        <option value="doc_only">仅云文档上传</option>
-                                      </select>
-                                      <button
-                                        className="rounded-lg border border-[#c9d8ec] px-3 py-2 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
-                                        onClick={() => {
-                                          updateMdSyncMode({ id: task.id, md_sync_mode: effectiveMdSyncMode });
-                                          toast("MD 上传模式已更新", "success");
-                                        }}
-                                        type="button"
-                                      >
-                                        应用
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <p className="mt-3 text-xs leading-5 text-[#6b7f96]">当前模式不执行本地 Markdown 上行。</p>
-                                  )}
-                                  <p className="mt-2 text-[11px] leading-5 text-[#6b7f96]">
-                                    {taskUploadEnabled ? mdSyncModeLabels[effectiveMdSyncMode] : "仅下载任务无需配置 MD 上传。"}
-                                  </p>
-                                </div>
-
-                                <div className="rounded-xl border border-[#d7e4f5] bg-white p-4">
-                                  <p className="text-xs font-semibold uppercase tracking-widest text-[#6b7f96]">删除策略</p>
-                                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <select
-                                      className="rounded-lg border border-[#c9d8ec] bg-white px-3 py-2 text-xs text-[#334762] outline-none focus:border-[#3370ff]"
-                                      value={effectiveDeletePolicy}
-                                      onChange={(e) =>
-                                        setLocalDeletePolicyMap((prev) => ({
-                                          ...prev,
-                                          [task.id]: e.target.value as "off" | "safe" | "strict",
-                                        }))
-                                      }
-                                    >
-                                      <option value="off">关闭</option>
-                                      <option value="safe">安全</option>
-                                      <option value="strict">严格</option>
-                                    </select>
-                                    <input
-                                      className="w-20 rounded-lg border border-[#c9d8ec] bg-white px-3 py-2 text-xs text-[#334762] outline-none disabled:bg-[#edf3fb] disabled:text-[#9fb2c8] focus:border-[#3370ff]"
-                                      type="number"
-                                      min="0"
-                                      step="1"
-                                      value={effectiveDeleteGrace}
-                                      onChange={(e) => setLocalDeleteGraceMap((prev) => ({ ...prev, [task.id]: e.target.value }))}
-                                      disabled={effectiveDeletePolicy === "strict"}
-                                    />
-                                    <button
-                                      className="rounded-lg border border-[#c9d8ec] px-3 py-2 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
-                                      onClick={() => {
-                                        updateDeletePolicy({
-                                          id: task.id,
-                                          delete_policy: effectiveDeletePolicy,
-                                          delete_grace_minutes: parseDeleteGraceMinutes(
-                                            effectiveDeletePolicy,
-                                            effectiveDeleteGrace,
-                                            task.delete_grace_minutes ?? 30
-                                          ),
-                                        });
-                                        toast("删除策略已更新", "success");
-                                      }}
-                                      type="button"
-                                    >
-                                      应用
-                                    </button>
-                                  </div>
-                                  <p className="mt-2 text-[11px] leading-5 text-[#6b7f96]">{deletePolicyLabel(effectiveDeletePolicy)}</p>
-                                </div>
-
-                                <div className="col-span-4 rounded-xl border border-[#d7e4f5] bg-white p-4">
-                                  <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="min-w-0 text-xs text-[#52657A]">
-                                      <p className="font-semibold text-[#102033]">高级信息</p>
-                                      <p className="mt-1 break-all font-mono">base_path：{task.base_path || "默认同本地目录"}</p>
-                                      {st ? (
-                                        <p className="mt-1">
-                                          处理 {progressState.processed}/{progressState.effectiveTotal}，完成 {st.completed_files}，跳过 {st.skipped_files}，删除 {st.deleted_files}
-                                        </p>
-                                      ) : null}
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                      <button
-                                        className="rounded-lg border border-[#f43f5e]/40 px-3 py-2 text-xs font-semibold text-[#be123c] hover:bg-[#fff1f2]"
-                                        onClick={() => handleDelete(task)}
-                                        type="button"
-                                      >
-                                        <IconTrash className="mr-1 inline h-3.5 w-3.5" />
-                                        删除任务
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
+                              <TaskSettingsPanel
+                                task={task}
+                                processed={progressState.processed}
+                                total={progressState.effectiveTotal}
+                                onClose={() => setExpandedTaskId(null)}
+                                onDelete={() => void handleDelete(task)}
+                                onSave={async (patch) => {
+                                  try {
+                                    await updateTaskSettings({ id: task.id, patch });
+                                    toast("任务设置已保存", "success");
+                                  } catch (error) {
+                                    toast(error instanceof Error ? error.message : "任务设置保存失败", "danger");
+                                    throw error;
+                                  }
+                                }}
+                              />
                             </td>
                           </tr>
                         ) : null}

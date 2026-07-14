@@ -1,5 +1,42 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.22 (2026-07-14)
+
+- 开发原因：
+  - 用户澄清“任务详情”是任务表格最右侧三点按钮展开后的行内视图，而非独立任务详情页。
+  - 旧行内视图把同步、更新、MD 上传和删除策略拆成四张同权重卡片，缺少配置顺序。
+  - 每张卡片都要求单独点击“应用”，一次策略调整可能产生四次保存，用户无法判断是否全部完成。
+  - 仅下载任务的 MD 上传卡没有可配置内容仍占整列；删除任务长期暴露在底部并抢占注意力。
+- 实现方式：
+  - 先新增本地规格 `docs/local_specs/task_row_settings_panel_redesign_v0.8.0-dev.22.md`，明确范围、信息架构、交互、尺寸和验收标准。
+  - 新增独立 `TaskSettingsPanel`，将表单重排为“内容流向 → 写入方式 → 删除联动”三段连续主线。
+  - 右侧 `272px` 摘要栏展示内容流向、更新模式、MD 模式、删除策略、变更项数量和风险等级。
+  - 同步模式与删除策略改为带影响说明的三选卡；仅下载时将 MD 上传降级为“不适用”说明。
+  - 初始“放弃更改 / 保存更改”均禁用；修改后按配置组统计待保存数量，保存失败保留草稿并允许重试。
+  - 新增 `updateTaskSettings` mutation，通过单次任务 PATCH 提交全部已变字段；严格删除强制宽限为 0。
+  - 删除任务移入默认折叠的“维护操作”，继续使用既有应用内二次确认。
+  - 展开状态从任务 ID 映射改为单一 `expandedTaskId`，任意时刻只保留一个行内设置面板。
+  - 补齐根目录、前端和后端版本一致性，统一推进到 `v0.8.0-dev.22`。
+- 当前结果：
+  - 展开面板不再出现四个“应用”，所有策略只保留一个“保存更改”。
+  - `1536x1024` 下完整面板高度为 `586px`，可在任务工作区内完整展示。
+  - `1536x1024`、`1440x900`、`1280x800` 下页面 `scrollWidth` 均等于 viewport 宽度。
+  - 点击另一任务三点按钮后，展开面板数量始终为 1。
+  - 三档视口下浏览器控制台与页面异常监听均无错误。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过；4 个飞书文档包已检查。
+  - `npm --prefix apps/frontend test -- --run src/lib/taskSettings.test.ts src/components/tasks/TaskSettingsPanel.test.tsx src/pages/TasksPage.test.tsx`：通过，3 个测试文件、7 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend test`：通过，28 个测试文件、78 个测试。
+  - `npm --prefix apps/frontend run lint`：通过，无警告。
+  - `python -m pytest tests/test_version.py -q`（`apps/backend`）：通过，确认开发态版本读取为 `v0.8.0-dev.22`。
+  - `python scripts/build_installer.py`：通过；前端生产构建、托盘图标生成和 PyInstaller 桌面目录打包成功，生成 `dist/LarkSync/LarkSync.exe`（17.5 MB）；本轮未指定 `--nsis`。
+  - Playwright + Edge 完成三档真实页面展开、修改态、唯一面板、保存禁用、溢出和浏览器错误检查：通过。
+  - 截图证据位于 `docs/local_specs/visual_audit/2026-07-14-task-row-settings-redesign/`；该目录属于本地规格资料，不进入 Git。
+- 遗留问题：
+  - 本轮沿用现有任务 PATCH 契约，没有新增后端字段或猜测第三方 API 数据。
+  - 独立任务详情页继续保留；三点展开区统一称为“任务设置”，避免后续再次混淆。
+
 ## v0.8.0-dev.21 (2026-07-14)
 
 - 开发原因：
