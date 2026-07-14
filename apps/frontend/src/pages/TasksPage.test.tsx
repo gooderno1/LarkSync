@@ -131,6 +131,8 @@ describe("TasksPage smoke", () => {
     expect(html).toContain("云端目录");
     expect(html).toContain("状态 / 健康");
     expect(html).toContain("知识库同步");
+    expect(html).toContain('data-task-detail-name-entry="task-desktop-main"');
+    expect(html).toContain('aria-label="查看项目详情：知识库同步"');
     expect(html).toContain("双向同步");
     expect(html).toContain("同步中");
     expect(html).toContain('aria-label="查看任务详情"');
@@ -184,6 +186,8 @@ describe("TasksPage smoke", () => {
     expect(html).toContain('data-task-page-mode="showcase"');
     expect(html.match(/data-task-row="true"/g)).toHaveLength(8);
     expect(html).toContain("项目文档同步");
+    expect(html).toContain('data-task-detail-name-entry="task_001"');
+    expect(html).toContain('aria-label="查看项目详情：项目文档同步"');
     expect(html).toContain("设计资源库");
     expect(html).toContain("历史资料只读");
     expect(html).toContain("同步中");

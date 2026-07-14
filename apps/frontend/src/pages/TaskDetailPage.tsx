@@ -64,6 +64,20 @@ const liveStats: TaskDetailShowcaseStats = {
   runSizes: {},
 };
 
+function LarkSyncBrandMark() {
+  return (
+    <svg
+      aria-label="LarkSync 同步标识"
+      className="mx-2 h-[50px] w-[106px] shrink-0"
+      data-sync-brand-mark="true"
+      role="img"
+      viewBox="0 0 205 97"
+    >
+      <image height="97" href="/logo-horizontal.png" preserveAspectRatio="xMinYMid meet" width="600" />
+    </svg>
+  );
+}
+
 function countLastFileStatus(status: SyncTaskStatus | undefined, matcher: (value: string) => boolean): number {
   return (status?.last_files || []).filter((item) => matcher(item.status)).length;
 }
@@ -431,7 +445,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
               <div className="flex flex-col items-center text-center">
                 <div className="relative flex w-full items-center justify-center">
                   <span className="h-px flex-1 bg-[#3370ff]" /><span className="-ml-1 border-y-[4px] border-r-[7px] border-y-transparent border-r-[#3370ff]" />
-                  <img alt="LarkSync" className="mx-3 h-[68px] w-[68px]" src="/favicon.png" />
+                  <LarkSyncBrandMark />
                   <span className="-mr-1 border-y-[4px] border-l-[7px] border-y-transparent border-l-[#10b981]" /><span className="h-px flex-1 bg-[#10b981]" />
                 </div>
                 <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-[#334762]"><ModeIcon mode={task.sync_mode} className="h-3.5 w-3.5 text-[#3370ff]" />{modeLabels[task.sync_mode] || task.sync_mode}</div>

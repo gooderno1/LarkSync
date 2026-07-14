@@ -153,6 +153,12 @@ describe("TaskDetailPage smoke", () => {
     expect(html).toContain("打开目录");
     expect(html).toContain('data-task-detail-identity="true"');
     expect(html).toContain('data-task-detail-path-map="true"');
+    expect(html).toContain('data-sync-brand-mark="true"');
+    expect(html).toContain('viewBox="0 0 205 97"');
+    expect(html).toContain('href="/logo-horizontal.png"');
+    expect(html).toContain('h-[50px] w-[106px]');
+    expect(html).not.toContain('h-[68px] w-[68px]');
+    expect(html).not.toContain('src="/favicon.png"');
     expect(html).toContain('data-task-detail-current-run="true"');
     expect(html).toContain('data-task-detail-history="true"');
     expect(html).toContain('data-task-detail-inspector="true"');

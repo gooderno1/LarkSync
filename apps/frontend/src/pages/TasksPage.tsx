@@ -384,9 +384,22 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
                                 <IconFolder className="h-4 w-4" />
                               </span>
                               <div className="min-w-0">
-                                <p className="truncate text-[13px] font-semibold text-[#102033]" title={task.name || task.local_path}>
-                                  {task.name || "未命名任务"}
-                                </p>
+                                {onOpenTaskDetail ? (
+                                  <button
+                                    aria-label={`查看项目详情：${task.name || "未命名任务"}`}
+                                    className="block max-w-full truncate rounded-sm text-left text-[13px] font-semibold text-[#102033] transition-colors hover:text-[#3370ff] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3370ff]/40"
+                                    data-task-detail-name-entry={task.id}
+                                    onClick={() => onOpenTaskDetail(task.id)}
+                                    title={task.name || task.local_path}
+                                    type="button"
+                                  >
+                                    {task.name || "未命名任务"}
+                                  </button>
+                                ) : (
+                                  <p className="truncate text-[13px] font-semibold text-[#102033]" title={task.name || task.local_path}>
+                                    {task.name || "未命名任务"}
+                                  </p>
+                                )}
                                 <p className="mt-0.5 truncate font-mono text-[11px] text-[#6b7f96]" title={task.id}>
                                   ID: {summarizePath(task.id, 1, 20)}
                                 </p>

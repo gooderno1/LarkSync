@@ -1,5 +1,34 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.29 (2026-07-15)
+
+- 开发原因：
+  - 任务详情的同步关系中央使用 192×192 方形 `favicon` 并按 68×68 展示，横向 LarkSync 品牌标识显得过窄。
+  - 同步任务表中的项目名称为静态文本，只能通过行尾文件夹按钮进入详情，主要信息与主要操作没有直接关联。
+- 实现方式：
+  - 先新增本地规格 `docs/local_specs/task_detail_brand_mark_and_name_entry_v0.8.0-dev.29.md`，明确品牌图裁切比例、名称按钮可访问性和三档视觉验收口径。
+  - 先新增任务详情品牌标识与项目名称入口断言，确认旧实现出现 3 个预期失败后再修改生产代码。
+  - 使用现有 600×97 `logo-horizontal.png`，通过 205×97 SVG 视口只裁出左侧品牌标识；页面显示尺寸为 106×50，宽高比 2.12，不对源图做非等比拉伸。
+  - 当 `onOpenTaskDetail` 存在时，将项目名称渲染为原生按钮；点击名称与行尾文件夹按钮统一调用 `onOpenTaskDetail(task.id)`。
+  - 名称按钮增加「查看项目详情：项目名称」可访问名称、键盘焦点环、悬停品牌蓝和下划线；未提供详情回调时仍保持普通文本。
+- 当前结果：
+  - 「项目文档同步」中央标识恢复为横向图形，鸟形与无限循环箭头完整可见，不带右侧品牌文字。
+  - 点击同步任务表第一行项目名称可进入独立任务详情，原行尾文件夹入口继续保留。
+  - 1536×960、1440×900、1280×800 三档均无文档横向溢出；品牌标识始终位于映射容器内，右侧检查器未越界。
+  - 三档详情页均显示 5 条运行历史和 5 张检查器卡片；状态栏保持在窗口底部，没有新增异常留白。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过；4 个飞书文档包已检查。
+  - TDD 失败阶段：2 个测试文件中 3 个新增断言按预期失败。
+  - 任务页与详情页定向测试：通过，2 个测试文件、8 个测试。
+  - `npm --prefix apps/frontend test`：通过，30 个测试文件、87 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过，无警告。
+  - `python -m pytest`（`apps/backend`）：通过，537 个测试。
+  - `npm run dev:test`：通过；前端 `localhost:13666`、后端 `127.0.0.1:18000` 和隔离数据目录 `data/dev-test` 正常启动。
+  - `python scripts/build_installer.py`：通过；Vite 生产构建与 PyInstaller 桌面目录打包成功，生成 `dist/LarkSync/LarkSync.exe`（17.5 MB），本轮未指定 `--nsis`。
+  - Edge + Playwright 三档点击链路与视觉边界检查：通过；名称入口数量均为 1，品牌标识宽高比均为 2.12，容器内收和横向溢出检查均通过。
+  - 截图与结构化报告位于 `docs/local_specs/visual_audit/2026-07-15-task-detail-logo-name-entry/`，不进入 Git。
+
 ## v0.8.0-dev.28 (2026-07-15)
 
 - 开发原因：
