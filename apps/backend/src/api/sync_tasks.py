@@ -11,12 +11,14 @@ from src.api.sync_task_models import (
     SyncLogResponse,
     SyncTaskCreateRequest,
     SyncTaskDiagnosticsResponse,
+    SyncTaskFolderResponse,
     SyncTaskOverviewResponse,
     SyncTaskResponse,
     SyncTaskStatusResponse,
     SyncTaskUpdateRequest,
 )
 from src.core.config import ConfigManager
+from src.core.file_manager import open_directory_in_file_manager as _open_directory_in_file_manager
 from src.core.logging import get_log_file
 from src.services.docx_service import DocxService, DocxServiceError
 from src.services.log_reader import prune_log_file, read_log_entries
@@ -107,6 +109,21 @@ async def get_task_diagnostics(
         run_event_service=run_event_service,
         event_store=event_store,
     )
+
+
+@router.post("/tasks/{task_id}/open-local-folder", response_model=SyncTaskFolderResponse)
+async def open_task_local_folder(task_id: str) -> SyncTaskFolderResponse:
+    item = await service.get_task(task_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Task not found")
+    folder = Path(item.local_path)
+    try:
+        _open_directory_in_file_manager(folder)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"打开目录失败: {exc}") from exc
+    return SyncTaskFolderResponse(path=item.local_path)
 
 
 @router.post("/tasks", response_model=SyncTaskResponse)

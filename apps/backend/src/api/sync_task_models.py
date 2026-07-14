@@ -72,6 +72,10 @@ class SyncTaskResponse(BaseModel):
         return cls(**item.__dict__)
 
 
+class SyncTaskFolderResponse(BaseModel):
+    path: str
+
+
 class MarkdownReplaceRequest(BaseModel):
     document_id: str = Field(..., description="文档 token")
     markdown_path: str = Field(..., description="Markdown 文件路径")

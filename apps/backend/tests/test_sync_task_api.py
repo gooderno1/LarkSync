@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 import src.api.sync_tasks as sync_tasks_api
@@ -59,6 +61,27 @@ def _build_run(run_id: str = "run-1") -> SyncRunItem:
         created_at=10.0,
         updated_at=20.0,
     )
+
+
+@pytest.mark.asyncio
+async def test_open_task_local_folder_uses_configured_task_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = _build_task()
+    opened: list[Path] = []
+
+    class FakeService:
+        async def get_task(self, task_id: str):
+            assert task_id == task.id
+            return task
+
+    monkeypatch.setattr(sync_tasks_api, "service", FakeService())
+    monkeypatch.setattr(sync_tasks_api, "_open_directory_in_file_manager", opened.append)
+
+    response = await sync_tasks_api.open_task_local_folder(task.id)
+
+    assert response.path == task.local_path
+    assert opened == [Path(task.local_path)]
 
 
 @pytest.mark.asyncio

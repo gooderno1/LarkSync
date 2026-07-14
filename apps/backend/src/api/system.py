@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from loguru import logger
 from src.api.watcher import watcher_manager
 from src.core.config import ConfigManager
 from src.core.device import current_device_id
+from src.core.file_manager import open_directory_in_file_manager as _open_directory_in_file_manager
 from src.core.paths import data_dir, bundle_root
 from src.db.session import dispose_engines
 from src.services import AuthService
@@ -139,19 +139,6 @@ def _select_folder() -> str | None:
         except Exception:
             pass
     return path or None
-
-
-def _open_directory_in_file_manager(path: Path) -> None:
-    target = path.resolve()
-    if not target.is_dir():
-        raise FileNotFoundError(f"目录不存在: {target}")
-    if sys.platform == "win32":
-        os.startfile(str(target))
-        return
-    if sys.platform == "darwin":
-        subprocess.Popen(["/usr/bin/open", str(target)], close_fds=True)
-        return
-    subprocess.Popen(["xdg-open", str(target)], close_fds=True)
 
 
 def _resolve_download_directory(service: UpdateService, raw_path: str | None) -> Path:

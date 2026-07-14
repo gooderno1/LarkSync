@@ -107,6 +107,7 @@ vi.mock("../hooks/useTasks", () => ({
     runTask: vi.fn(),
     toggleTask: vi.fn(),
     deleteTask: vi.fn(),
+    updateTaskSettings: vi.fn(),
     resetLinks: vi.fn(),
     resettingLinks: false,
   }),
@@ -135,26 +136,35 @@ vi.mock("../components/ui/confirm-dialog", () => ({
 }));
 
 describe("TaskDetailPage smoke", () => {
-  it("renders the redesigned detail hierarchy with one continuous inspector", () => {
+  it("restores the original standalone detail hierarchy", () => {
     const html = renderToStaticMarkup(<TaskDetailPage taskId="task-1" onBack={vi.fn()} />);
 
     expect(html).toContain("项目文档同步");
+    expect(html).toContain("同步任务");
+    expect(html).toContain("任务详情");
     expect(html).toContain("当前运行");
     expect(html).toContain("运行历史");
-    expect(html).toContain("需要关注");
-    expect(html).toContain("任务控制");
-    expect(html).toContain("同步策略");
-    expect(html).toContain("维护操作");
-    expect(html).toContain("返回列表管理策略");
+    expect(html).toContain("问题摘要");
+    expect(html).toContain("任务操作");
+    expect(html).toContain("策略摘要");
+    expect(html).toContain("忽略目录");
+    expect(html).toContain("危险操作");
+    expect(html).toContain("编辑策略");
+    expect(html).toContain("打开目录");
+    expect(html).toContain('data-task-detail-identity="true"');
+    expect(html).toContain('data-task-detail-path-map="true"');
+    expect(html).toContain('data-task-detail-current-run="true"');
+    expect(html).toContain('data-task-detail-history="true"');
     expect(html).toContain('data-task-detail-inspector="true"');
     expect((html.match(/data-task-detail-inspector=/g) || [])).toHaveLength(1);
+    expect((html.match(/data-task-detail-inspector-card=/g) || [])).toHaveLength(5);
     expect(html).toContain('role="switch"');
     expect(html).toContain('aria-checked="true"');
     expect(html).toContain('data-run-metrics="true"');
     expect(html).toContain("grid-cols-[minmax(0,1fr)_300px]");
     expect(html).toContain("w-[300px]");
-    expect(html).not.toContain("编辑策略");
-    expect(html).not.toContain("危险操作");
+    expect(html).not.toContain("返回列表管理策略");
+    expect(html).not.toContain("维护操作");
     expect(html).not.toContain("grid-cols-[minmax(0,1fr)_112px_minmax(0,1fr)]");
     expect(html).not.toContain("min-[1920px]");
     expect(html).not.toContain("min-[1760px]:grid-cols-4");
@@ -166,6 +176,17 @@ describe("TaskDetailPage smoke", () => {
     expect(html).not.toContain("min-[1440px]:grid-cols-[minmax(0,1fr)_112px_minmax(0,1fr)]");
     expect(html).not.toContain("min-[1180px]:grid-cols-[minmax(760px,1fr)_300px]");
     expect(html).not.toContain("lg:flex");
+  });
+
+  it("renders the task-page showcase detail instead of a missing-task state", () => {
+    const html = renderToStaticMarkup(<TaskDetailPage taskId="task_001" onBack={vi.fn()} showcase />);
+
+    expect(html).toContain("项目文档同步");
+    expect(html).toContain("68%");
+    expect(html).toContain("12,458");
+    expect(html).toContain("run_20250512_102214_fa3c");
+    expect((html.match(/data-run-history-row=/g) || [])).toHaveLength(5);
+    expect(html).not.toContain("未找到任务");
   });
 
   it("distinguishes an active run from the latest completed run", () => {
