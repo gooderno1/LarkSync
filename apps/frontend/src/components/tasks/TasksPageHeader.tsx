@@ -1,10 +1,6 @@
-import { IconPlus, IconRefresh, IconSearch } from "../Icons";
+import { IconPlus, IconSearch } from "../Icons";
 
 type TasksPageHeaderProps = {
-  showTestToggle: boolean;
-  hideTestTasks: boolean;
-  onToggleTestTasks: () => void;
-  onRefresh: () => void;
   onCreate: () => void;
   searchQuery?: string;
   onSearchQueryChange?: (value: string) => void;
@@ -17,10 +13,6 @@ type TasksPageHeaderProps = {
 };
 
 export function TasksPageHeader({
-  showTestToggle,
-  hideTestTasks,
-  onToggleTestTasks,
-  onRefresh,
   onCreate,
   searchQuery = "",
   onSearchQueryChange,
@@ -32,18 +24,15 @@ export function TasksPageHeader({
   onHealthFilterChange,
 }: TasksPageHeaderProps) {
   return (
-    <header className="min-w-0 space-y-4">
-      <div className="min-w-0">
-        <h1 className="text-xl font-semibold text-[#102033]">同步任务</h1>
-        <p className="mt-1 text-sm text-[#52657A]">管理本地目录与飞书云端目录的同步关系。</p>
-      </div>
+    <header className="min-w-0">
+      <h1 className="text-xl font-semibold text-[#102033]">同步任务</h1>
 
       <div
-        className="flex min-w-0 flex-wrap items-center justify-between gap-3"
+        className="mt-4 flex min-w-0 flex-wrap items-center justify-between gap-4"
         data-task-filter-toolbar="true"
       >
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-          <label className="relative block h-9 w-full min-w-[220px] max-w-[280px]">
+          <label className="relative block h-9 w-[230px] shrink-0">
             <span className="sr-only">搜索任务</span>
             <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6b7f96]" />
             <input
@@ -85,25 +74,10 @@ export function TasksPageHeader({
             <option value="error">错误</option>
           </select>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {showTestToggle ? (
-            <button
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#c9d8ec] bg-white px-4 text-xs font-medium text-[#334762] hover:bg-[#f6faff]"
-              onClick={onToggleTestTasks}
-              type="button"
-            >
-              {hideTestTasks ? "显示测试任务" : "隐藏测试任务"}
-            </button>
-          ) : null}
+        <div className="flex shrink-0 items-center">
           <button
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#c9d8ec] bg-white px-4 text-xs font-medium text-[#3370ff] hover:bg-[#eef5ff]"
-            onClick={onRefresh}
-            type="button"
-          >
-            <IconRefresh className="h-3.5 w-3.5" /> 刷新
-          </button>
-          <button
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#3370ff] px-4 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.2)] hover:bg-[#1d4ed8]"
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#3370ff] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.2)] hover:bg-[#1d4ed8]"
+            data-task-primary-action="true"
             onClick={onCreate}
             type="button"
           >

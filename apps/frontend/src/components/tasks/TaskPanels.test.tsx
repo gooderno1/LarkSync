@@ -32,10 +32,6 @@ describe("task panels smoke", () => {
     const html = renderToStaticMarkup(
       <>
         <TasksPageHeader
-          showTestToggle
-          hideTestTasks
-          onToggleTestTasks={vi.fn()}
-          onRefresh={vi.fn()}
           onCreate={vi.fn()}
         />
         <TasksEmptyState hasAnyTasks={false} hideTestTasks testTaskCount={0} />
@@ -48,6 +44,10 @@ describe("task panels smoke", () => {
     expect(html).toContain("全部模式");
     expect(html).toContain("全部健康");
     expect(html).toContain('data-task-filter-toolbar="true"');
+    expect(html).toContain('data-task-primary-action="true"');
+    expect(html).not.toContain("管理本地目录与飞书云端目录的同步关系。");
+    expect(html).not.toContain("刷新");
+    expect(html).not.toContain("显示测试任务");
     expect(html).not.toContain("items-end justify-between");
     expect(html).toContain("暂无同步任务");
     expect(html).toContain("border-[#c9d8ec]");

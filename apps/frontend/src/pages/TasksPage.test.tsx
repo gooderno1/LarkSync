@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TasksPage } from "./TasksPage";
 import type { SyncTask, SyncTaskStatus } from "../types";
+import { shouldUseTaskPageShowcase } from "../lib/taskPageShowcase";
 
 const taskMockState = vi.hoisted(() => ({
   tasks: [] as SyncTask[],
@@ -49,8 +50,14 @@ describe("TasksPage smoke", () => {
     taskMockState.statusMap = {};
   });
 
+  it("defaults to the stable design showcase only in development", () => {
+    expect(shouldUseTaskPageShowcase("", true)).toBe(true);
+    expect(shouldUseTaskPageShowcase("?ui-data=live", true)).toBe(false);
+    expect(shouldUseTaskPageShowcase("", false)).toBe(false);
+  });
+
   it("renders task management shell and empty state", () => {
-    const html = renderToStaticMarkup(<TasksPage />);
+    const html = renderToStaticMarkup(<TasksPage showcase={false} />);
 
     expect(html).toContain("同步任务");
     expect(html).toContain("搜索任务");
@@ -108,13 +115,15 @@ describe("TasksPage smoke", () => {
       },
     };
 
-    const html = renderToStaticMarkup(<TasksPage onOpenTaskDetail={vi.fn()} />);
+    const html = renderToStaticMarkup(<TasksPage showcase={false} onOpenTaskDetail={vi.fn()} />);
 
     expect(html).toContain("<table");
     expect(html).toContain("min-w-[1120px]");
     expect(html).toContain("tasks-clarity");
-    expect(html).toContain("space-y-4");
-    expect(html).toContain("px-4 py-3");
+    expect(html).toContain('data-task-table="true"');
+    expect(html).toContain('data-task-row="true"');
+    expect(html).toContain("h-[76px]");
+    expect(html).toContain("px-3.5");
     expect(html).not.toContain("min-[1320px]:min-w-[1180px]");
     expect(html).not.toContain("min-[1320px]:table-cell");
     expect(html).toContain("任务名称");
@@ -161,11 +170,32 @@ describe("TasksPage smoke", () => {
       },
     ];
 
-    const html = renderToStaticMarkup(<TasksPage onOpenTaskDetail={vi.fn()} />);
+    const html = renderToStaticMarkup(<TasksPage showcase={false} onOpenTaskDetail={vi.fn()} />);
 
     expect(html).toContain("尚未运行");
     expect(html).not.toContain(">自动<");
     expect(html.match(/已停用/g)).toHaveLength(2);
     expect(html).toContain('aria-checked="false"');
+  });
+
+  it("renders the original-design eight-row showcase with varied states and modes", () => {
+    const html = renderToStaticMarkup(<TasksPage showcase onOpenTaskDetail={vi.fn()} />);
+
+    expect(html).toContain('data-task-page-mode="showcase"');
+    expect(html.match(/data-task-row="true"/g)).toHaveLength(8);
+    expect(html).toContain("项目文档同步");
+    expect(html).toContain("设计资源库");
+    expect(html).toContain("历史资料只读");
+    expect(html).toContain("同步中");
+    expect(html).toContain("空闲");
+    expect(html).toContain("错误");
+    expect(html).toContain("已停用");
+    expect(html).toContain('data-task-mode="bidirectional"');
+    expect(html).toContain('data-task-mode="upload_only"');
+    expect(html).toContain('data-task-mode="download_only"');
+    expect(html).toContain("20 条/页");
+    expect(html).toContain("演示数据 · 共 8 个任务");
+    expect(html).not.toContain("管理本地目录与飞书云端目录的同步关系。");
+    expect(html.match(/新建任务/g)).toHaveLength(1);
   });
 });
