@@ -208,6 +208,14 @@ export const IconActivity = (p: P) => (
   </svg>
 );
 
+export const IconMoreHorizontal = (p: P) => (
+  <svg {...base} {...p}>
+    <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
+    <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const IconPauseCircle = (p: P) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...p}>
     <circle cx="12" cy="12" r="8.5" />

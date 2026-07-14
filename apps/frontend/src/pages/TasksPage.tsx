@@ -10,9 +10,8 @@ import { TasksEmptyState } from "../components/tasks/TasksEmptyState";
 import { TasksPageHeader } from "../components/tasks/TasksPageHeader";
 import { StatusPill } from "../components/StatusPill";
 import {
-  IconChevronDown,
-  IconChevronRight,
   IconFolder,
+  IconMoreHorizontal,
   IconPlay,
   IconTrash,
   ModeIcon,
@@ -23,7 +22,6 @@ import {
   stateLabels,
   stateTones,
   syncModeSupportsUpload,
-  updateModeLabels,
 } from "../lib/constants";
 import { computeTaskProgress } from "../lib/progress";
 import {
@@ -186,7 +184,7 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
   };
 
   return (
-    <section className="animate-fade-up min-w-0 space-y-4">
+    <section className="tasks-clarity animate-fade-up min-w-0 space-y-4">
       <TasksPageHeader
         showTestToggle={showTestToggle}
         hideTestTasks={hideTestTasks}
@@ -245,25 +243,21 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
           )
         ) : (
           <div className="overflow-hidden rounded-lg border border-[#d7e4f5] bg-white shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-            <div className="flex min-w-0 items-center justify-between gap-3 border-b border-[#edf3fb] px-4 py-3 text-xs text-[#52657A]">
-              <span>共 {displayTasks.length} 个任务</span>
-              {hasActiveFilters ? <span>已应用筛选</span> : null}
-            </div>
             <div className="min-w-0 overflow-x-auto">
               <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
                 <thead className="border-b border-[#d7e4f5] bg-[#f8fbff] text-xs text-[#52657a]">
                   <tr>
                     <th className="w-[14%] px-4 py-3 font-medium">任务名称</th>
-                    <th className="w-[15%] px-4 py-3 font-medium">本地目录</th>
-                    <th className="w-[14%] px-4 py-3 font-medium">云端目录</th>
-                    <th className="w-[8%] px-4 py-3 font-medium">同步模式</th>
-                    <th className="w-[9%] px-4 py-3 font-medium">状态 / 健康</th>
-                    <th className="w-[12%] px-4 py-3 font-medium">最近运行</th>
+                    <th className="w-[13%] px-4 py-3 font-medium">本地目录</th>
+                    <th className="w-[13%] px-4 py-3 font-medium">云端目录</th>
+                    <th className="w-[9%] px-3 py-3 font-medium">同步模式</th>
+                    <th className="w-[10%] px-4 py-3 font-medium">状态 / 健康</th>
+                    <th className="w-[11%] px-4 py-3 font-medium">最近运行</th>
                     <th className="w-[4%] px-3 py-3 text-center font-medium">队列</th>
                     <th className="w-[4%] px-3 py-3 text-center font-medium">删除</th>
                     <th className="w-[4%] px-3 py-3 text-center font-medium">失败</th>
                     <th className="w-[4%] px-3 py-3 text-center font-medium">冲突</th>
-                    <th className="w-[12%] px-4 py-3 text-right font-medium">操作</th>
+                    <th className="w-[14%] px-4 py-3 text-right font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#edf3fb]">
@@ -281,6 +275,7 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                       "safe") as "off" | "safe" | "strict";
                     const effectiveDeleteGrace = localDeleteGraceMap[task.id] ?? String(task.delete_grace_minutes ?? 30);
                     const stateKey = taskStateKey(task, st);
+                    const stateLabel = stateLabels[stateKey] || stateKey;
                     const health = deriveTaskHealth({
                       enabled: task.enabled,
                       state: st?.state,
@@ -321,23 +316,25 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                           <td className="truncate px-4 py-3 text-xs" title={task.cloud_folder_token}>
                             {summarizePath(cloudPath, 3, 44)}
                           </td>
-                          <td className="px-4 py-3">
-                            <span className="inline-flex items-center gap-1.5 rounded-md border border-[#bfd8ff] bg-[#eef5ff] px-2 py-1 text-xs font-semibold text-[#3370ff]">
-                              <ModeIcon mode={task.sync_mode} className="h-3.5 w-3.5" />
-                              {modeLabels[task.sync_mode] || task.sync_mode}
+                          <td className="px-3 py-3">
+                            <span className="inline-flex whitespace-nowrap items-center gap-1 rounded-md border border-[#bfd8ff] bg-[#eef5ff] px-1.5 py-1 text-xs font-semibold text-[#3370ff]">
+                              <ModeIcon mode={effectiveSyncMode} className="h-3.5 w-3.5" />
+                              {modeLabels[effectiveSyncMode] || effectiveSyncMode}
                             </span>
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex flex-col items-start gap-1.5">
-                              <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} dot={stateKey === "running"} />
-                              <span className={`text-xs ${health.tone === "danger" ? "text-[#be123c]" : health.tone === "warning" ? "text-[#b45309]" : health.tone === "success" ? "text-[#047857]" : "text-[#52657A]"}`}>
-                                {health.label}
-                              </span>
+                              <StatusPill label={stateLabel} tone={stateTones[stateKey] || "neutral"} dot={stateKey === "running"} />
+                              {health.label !== stateLabel ? (
+                                <span className={`text-xs ${health.tone === "danger" ? "text-[#be123c]" : health.tone === "warning" ? "text-[#b45309]" : health.tone === "success" ? "text-[#047857]" : "text-[#52657A]"}`}>
+                                  {health.label}
+                                </span>
+                              ) : null}
                             </div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="min-w-0 text-xs">
-                              <p className="truncate text-[#334762]">{lastSyncTime ? formatTimestamp(lastSyncTime) : "--"}</p>
+                              <p className="truncate text-[#334762]">{lastSyncTime ? formatTimestamp(lastSyncTime) : "尚未运行"}</p>
                               {progress !== null ? (
                                 <div className="mt-2 flex items-center gap-2">
                                   <span className="w-8 text-[#52657A]">{progress}%</span>
@@ -345,9 +342,7 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                                     <span className="block h-full rounded-full bg-[#3370ff]" style={{ width: `${progress}%` }} />
                                   </span>
                                 </div>
-                              ) : (
-                                <p className="mt-1 text-[#6b7f96]">{updateModeLabels[task.update_mode || "auto"]}</p>
-                              )}
+                              ) : null}
                             </div>
                           </td>
                           <td className="px-3 py-3 text-center"><TaskCountCell value={counts.queued} tone={counts.queued > 0 ? "warning" : "neutral"} /></td>
@@ -355,18 +350,21 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                           <td className="px-3 py-3 text-center"><TaskCountCell value={counts.failed} tone={counts.failed > 0 ? "danger" : "neutral"} /></td>
                           <td className="px-3 py-3 text-center"><TaskCountCell value={counts.conflict} tone={counts.conflict > 0 ? "danger" : "neutral"} /></td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1">
                               {onOpenTaskDetail ? (
                                 <button
-                                  className="rounded-lg border border-[#c9d8ec] px-2.5 py-1.5 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]"
+                                  aria-label="查看任务详情"
+                                  className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-[#c9d8ec] text-[#3370ff] hover:bg-[#eef5ff]"
                                   onClick={() => onOpenTaskDetail(task.id)}
+                                  title="查看任务详情"
                                   type="button"
                                 >
-                                  详情
+                                  <IconFolder className="h-3.5 w-3.5" />
                                 </button>
                               ) : null}
                               <button
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#bfd8ff] text-[#3370ff] hover:bg-[#eef5ff] disabled:opacity-50"
+                                aria-label={health.isRunning ? "同步中" : "立即同步"}
+                                className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-full border border-[#bfd8ff] text-[#3370ff] hover:bg-[#eef5ff] disabled:opacity-50"
                                 onClick={() => {
                                   runTask(task);
                                   toast("同步已触发", "info");
@@ -379,22 +377,27 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                               </button>
                               <button
                                 aria-label={task.enabled ? "停用任务" : "启用任务"}
-                                className={`h-6 w-11 rounded-full p-0.5 transition ${task.enabled ? "bg-[#3370ff]" : "bg-[#c9d8ec]"}`}
+                                aria-checked={task.enabled}
+                                className={`relative h-5 w-10 shrink-0 rounded-full border p-0.5 shadow-inner transition ${task.enabled ? "border-[#3370ff] bg-[#3370ff]" : "border-[#afc1d5] bg-[#c9d8ec]"}`}
                                 onClick={() => {
                                   toggleTask(task);
                                   toast(task.enabled ? "已停用" : "已启用", "info");
                                 }}
+                                role="switch"
+                                title={task.enabled ? "停用任务" : "启用任务"}
                                 type="button"
                               >
-                                <span className={`block h-5 w-5 rounded-full bg-white transition ${task.enabled ? "translate-x-5" : ""}`} />
+                                <span className={`block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${task.enabled ? "translate-x-5" : "translate-x-0"}`} />
                               </button>
                               <button
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#c9d8ec] text-[#52657A] hover:bg-[#f6faff] hover:text-[#3370ff]"
+                                aria-expanded={isExpanded}
+                                aria-label={isExpanded ? "收起任务设置" : "展开任务设置"}
+                                className={`inline-flex h-[30px] w-[30px] items-center justify-center rounded-lg border transition ${isExpanded ? "border-[#3370ff] bg-[#eef5ff] text-[#3370ff]" : "border-[#c9d8ec] text-[#52657A] hover:bg-[#f6faff] hover:text-[#3370ff]"}`}
                                 onClick={() => setExpanded((prev) => ({ ...prev, [task.id]: !prev[task.id] }))}
                                 type="button"
-                                title={isExpanded ? "收起策略" : "展开策略"}
+                                title={isExpanded ? "收起任务设置" : "展开任务设置"}
                               >
-                                {isExpanded ? <IconChevronDown className="h-3.5 w-3.5" /> : <IconChevronRight className="h-3.5 w-3.5" />}
+                                <IconMoreHorizontal className="h-4 w-4" />
                               </button>
                             </div>
                           </td>
@@ -568,6 +571,15 @@ export function TasksPage({ onOpenTaskDetail }: TasksPageProps) {
                   })}
                 </tbody>
               </table>
+            </div>
+            <div
+              className="flex min-w-0 items-center justify-between gap-3 border-t border-[#edf3fb] px-4 py-3 text-xs font-medium text-[#52657A]"
+              data-task-table-footer="true"
+            >
+              <span>
+                {hasActiveFilters ? `显示 ${displayTasks.length} / 共 ${visibleTasksBeforeFilters.length} 个任务` : `共 ${displayTasks.length} 个任务`}
+              </span>
+              {hasActiveFilters ? <span className="text-[#3370ff]">已应用筛选</span> : null}
             </div>
           </div>
         )}

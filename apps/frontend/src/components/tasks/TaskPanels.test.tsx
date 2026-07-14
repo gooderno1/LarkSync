@@ -47,6 +47,8 @@ describe("task panels smoke", () => {
     expect(html).toContain("全部状态");
     expect(html).toContain("全部模式");
     expect(html).toContain("全部健康");
+    expect(html).toContain('data-task-filter-toolbar="true"');
+    expect(html).not.toContain("items-end justify-between");
     expect(html).toContain("暂无同步任务");
     expect(html).toContain("border-[#c9d8ec]");
     expect(html).not.toContain("bg-zinc-900/60");

@@ -115,6 +115,7 @@ describe("TasksPage smoke", () => {
 
     expect(html).toContain("<table");
     expect(html).toContain("min-w-[1120px]");
+    expect(html).toContain("tasks-clarity");
     expect(html).toContain("space-y-4");
     expect(html).toContain("px-4 py-3");
     expect(html).not.toContain("min-[1320px]:min-w-[1180px]");
@@ -126,7 +127,46 @@ describe("TasksPage smoke", () => {
     expect(html).toContain("知识库同步");
     expect(html).toContain("双向同步");
     expect(html).toContain("同步中");
-    expect(html).toContain("展开策略");
+    expect(html).toContain('aria-label="查看任务详情"');
+    expect(html).toContain('role="switch"');
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain("展开任务设置");
+    expect(html).toContain("whitespace-nowrap");
+    expect(html).not.toContain("展开策略");
     expect(html).not.toContain("任务卡片");
+
+    const tableEnd = html.indexOf("</table>");
+    const footer = html.indexOf('data-task-table-footer="true"');
+    expect(tableEnd).toBeGreaterThan(-1);
+    expect(footer).toBeGreaterThan(tableEnd);
+  });
+
+  it("uses truthful empty recent-run copy and avoids duplicate paused health labels", () => {
+    taskMockState.tasks = [
+      {
+        id: "task-never-run",
+        name: "尚未运行任务",
+        local_path: "D:/Workspace/LarkSync/New",
+        cloud_folder_token: "fld_token_new",
+        cloud_folder_name: "新建目录",
+        base_path: null,
+        sync_mode: "download_only",
+        update_mode: "auto",
+        md_sync_mode: "download_only",
+        delete_policy: "safe",
+        delete_grace_minutes: 30,
+        enabled: false,
+        created_at: 1710000000,
+        updated_at: 1710000000,
+        last_run_at: null,
+      },
+    ];
+
+    const html = renderToStaticMarkup(<TasksPage onOpenTaskDetail={vi.fn()} />);
+
+    expect(html).toContain("尚未运行");
+    expect(html).not.toContain(">自动<");
+    expect(html.match(/已停用/g)).toHaveLength(2);
+    expect(html).toContain('aria-checked="false"');
   });
 });
