@@ -26,6 +26,7 @@ import {
   IconCopy,
   IconPlay,
   IconRefresh,
+  IconSearch,
 } from "../components/Icons";
 import { cn } from "../lib/utils";
 import type { SyncLogEntry, SyncTaskRunSummary, Tone } from "../types";
@@ -111,17 +112,11 @@ function ActivityIssuesLivePage() {
   const {
     selectedTaskId,
     setSelectedRunId,
-    taskPickerQuery,
-    setTaskPickerQuery,
-    showAllTasks,
-    setShowAllTasks,
-    hiddenTaskCount,
-    focusedTaskCount,
-    overviewQuery,
     taskPickerOptions,
     selectTask,
     selectedTask,
     selectedStatus,
+    selectedStateKey,
     recentRuns,
     activeRunId,
     selectedRun,
@@ -131,6 +126,7 @@ function ActivityIssuesLivePage() {
     setDetailTab,
   } = useLogCenterTaskDiagnostics(true);
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null);
+  const [runQuery, setRunQuery] = useState("");
 
   useEffect(() => {
     setDetailTab("problems");
@@ -161,6 +157,10 @@ function ActivityIssuesLivePage() {
     () => buildEventIssueGroups(issueSourceEntries, { includeInformational: false }),
     [issueSourceEntries]
   );
+  const visibleRecentRuns = useMemo(
+    () => recentRuns.filter((run) => run.run_id.toLowerCase().includes(runQuery.trim().toLowerCase())),
+    [recentRuns, runQuery]
+  );
   const selectedEvent = useMemo(() => {
     if (selectedEventKey) {
       const found = timelineEntries.find((entry, index) => `${entry.taskId}-${entry.timestamp}-${index}` === selectedEventKey);
@@ -189,11 +189,30 @@ function ActivityIssuesLivePage() {
   };
 
   return (
-    <section className="animate-fade-up min-w-0 space-y-4">
-      <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
+    <section className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-4 animate-fade-up">
+      <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_440px_auto] items-end gap-5">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-[#102033]">活动与问题</h1>
           <p className="mt-1 text-sm text-[#52657A]">诊断运行问题，快速定位并解决同步异常。</p>
+        </div>
+        <div data-activity-context="true" data-activity-task-selector="true" className="min-w-0">
+          <p className="mb-1.5 text-xs font-semibold text-[#52657a]">任务选择</p>
+          <div className="grid grid-cols-[minmax(0,1fr)_118px] gap-2">
+            <select
+              aria-label="选择诊断任务"
+              className="h-9 min-w-0 rounded-lg border border-[#bfd3ee] bg-white px-3 text-xs font-semibold text-[#102033] outline-none focus:border-[#3370ff]"
+              value={selectedTaskId ?? ""}
+              onChange={(event) => {
+                selectTask(event.target.value);
+                setSelectedEventKey(null);
+              }}
+            >
+              {taskPickerOptions.map((overview) => <option key={overview.task.id} value={overview.task.id}>{overview.task.name || "未命名任务"}</option>)}
+            </select>
+            <div className="flex h-9 items-center justify-center rounded-lg border border-[#bfd3ee] bg-white">
+              <StatusPill label={stateLabels[selectedStateKey] || selectedStateKey} tone={stateTones[selectedStateKey] || "neutral"} />
+            </div>
+          </div>
         </div>
         <button
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#c9d8ec] bg-white px-4 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]"
@@ -201,72 +220,17 @@ function ActivityIssuesLivePage() {
           type="button"
         >
           <IconRefresh className="h-3.5 w-3.5" />
-          刷新
+          刷新诊断
         </button>
-      </div>
+      </header>
 
-      <div data-activity-context="true" className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-        <div className="grid grid-cols-[176px_220px_minmax(0,1fr)_auto] items-center gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[#102033]">任务上下文</h2>
-            <p className="mt-1 text-xs text-[#6b7f96]">
-              {hiddenTaskCount > 0 ? `${showAllTasks ? focusedTaskCount + hiddenTaskCount : focusedTaskCount} 个任务可选` : "选择任务查看诊断"}
-            </p>
-          </div>
-          <div>
-            <input
-              className="h-9 w-full rounded-lg border border-[#c9d8ec] bg-white px-3 text-sm text-[#102033] outline-none placeholder:text-[#9fb2c8] focus:border-[#3370ff]"
-              placeholder="搜索任务"
-              value={taskPickerQuery}
-              onChange={(event) => setTaskPickerQuery(event.target.value)}
-            />
-          </div>
-          <div className="flex min-w-0 gap-2 overflow-x-auto pb-1 log-scroll-area">
-              {overviewQuery.isLoading && taskPickerOptions.length === 0 ? (
-                [1, 2, 3].map((item) => <div key={item} className="h-10 w-40 shrink-0 animate-pulse rounded-lg bg-[#eef5ff]" />)
-              ) : taskPickerOptions.length === 0 ? (
-                <span className="text-sm text-[#6b7f96]">暂无任务。</span>
-              ) : (
-                taskPickerOptions.map((overview) => {
-                  const task = overview.task;
-                  const stateKey = !task.enabled ? "paused" : overview.status?.state || "idle";
-                  return (
-                    <button
-                      key={task.id}
-                      className={cn(
-                        "flex h-10 min-w-[168px] shrink-0 items-center justify-between gap-2 rounded-lg border px-3 text-left transition",
-                        selectedTaskId === task.id
-                          ? "border-[#3370ff]/40 bg-[#eef5ff]"
-                          : "border-[#d7e4f5] bg-white hover:border-[#b8c9df] hover:bg-[#f6faff]"
-                      )}
-                      onClick={() => {
-                        selectTask(task.id);
-                        setSelectedEventKey(null);
-                      }}
-                      type="button"
-                    >
-                      <p className="min-w-0 truncate text-sm font-semibold text-[#102033]">{task.name || "未命名任务"}</p>
-                      <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
-                    </button>
-                  );
-                })
-              )}
-          </div>
-          {hiddenTaskCount > 0 ? (
-            <button
-              className="h-9 rounded-lg border border-[#c9d8ec] px-3 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]"
-              onClick={() => setShowAllTasks((value) => !value)}
-              type="button"
-            >
-              {showAllTasks ? "只看有动作" : `显示全部（${hiddenTaskCount}）`}
-            </button>
-          ) : <span className="text-xs text-[#6b7f96]">{selectedTask ? shortPath(selectedTask.local_path, 26) : "未选择任务"}</span>}
-        </div>
-      </div>
-
-      <div data-diagnostic-workspace="true" className="grid grid-cols-[272px_minmax(0,1fr)_336px] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_14px_34px_rgba(51,112,255,0.06)]">
-        <div className="min-w-0 border-r border-[#d7e4f5] bg-[#fbfdff]">
+      <div data-diagnostic-workspace="true" className="grid min-h-0 grid-cols-[276px_minmax(0,1fr)_416px] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_14px_34px_rgba(51,112,255,0.06)]">
+        <div className="min-h-0 min-w-0 overflow-y-auto border-r border-[#d7e4f5] bg-[#fbfdff]">
           <LightPanel title="运行历史" hint="选择一次运行查看对应事件。" className="rounded-none border-0 bg-transparent shadow-none">
+            <label data-activity-run-search="true" className="relative mb-3 block">
+              <IconSearch className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[#8aa0b8]" />
+              <input className="h-9 w-full rounded-lg border border-[#c9d8ec] bg-white pl-9 pr-3 text-xs text-[#102033] outline-none placeholder:text-[#8aa0b8] focus:border-[#3370ff]" placeholder="搜索运行 ID" value={runQuery} onChange={(event) => setRunQuery(event.target.value)} />
+            </label>
             <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1 log-scroll-area">
               {!selectedTask ? (
                 <div className="rounded-xl border border-dashed border-[#c9d8ec] px-4 py-8 text-center text-sm text-[#6b7f96]">
@@ -277,7 +241,7 @@ function ActivityIssuesLivePage() {
                   暂无运行历史。
                 </div>
               ) : (
-                recentRuns.slice(0, 10).map((run) => (
+                visibleRecentRuns.slice(0, 10).map((run) => (
                   <RunItem
                     key={run.run_id}
                     run={run}
@@ -293,7 +257,7 @@ function ActivityIssuesLivePage() {
           </LightPanel>
         </div>
 
-        <main className="min-w-0 border-r border-[#d7e4f5]">
+        <main className="min-h-0 min-w-0 overflow-y-auto border-r border-[#d7e4f5]">
           <LightPanel
             title="问题概览"
             hint={selectedRun ? `当前运行：${compactRunId(selectedRun.run_id)}` : "按问题类型汇总当前任务或当前运行。"}
@@ -367,7 +331,7 @@ function ActivityIssuesLivePage() {
           </LightPanel>
         </main>
 
-        <aside className="min-w-0 bg-[#fbfdff]">
+        <aside data-activity-diagnosis="true" className="min-h-0 min-w-0 overflow-y-auto bg-[#fbfdff]">
           <LightPanel title="事件诊断" hint="查看原因、影响和推荐动作。" className="rounded-none border-0 border-b border-[#d7e4f5] bg-transparent shadow-none">
             {!selectedEvent || !selectedProblem ? (
               <div className="rounded-xl border border-dashed border-[#c9d8ec] px-4 py-10 text-center">
@@ -389,8 +353,9 @@ function ActivityIssuesLivePage() {
                   <p className="text-xs font-semibold text-[#52657a]">建议动作</p>
                   <p className="mt-2 text-xs leading-5 text-[#334762]">{selectedProblem.recommendedAction}</p>
                 </div>
-                <div className="rounded-xl border border-[#d7e4f5] bg-white p-3">
-                  <p className="text-xs font-semibold text-[#52657a]">原始事件</p>
+                <div data-activity-error-detail="true" className="rounded-xl border border-[#fecdd3] bg-[#fff7f8] p-3">
+                  <p className="text-xs font-semibold text-[#102033]">错误详情</p>
+                  <p className="mt-2 text-[11px] text-[#6b7f96]">错误码：{selectedEvent.status}</p>
                   <p className="mt-2 break-words font-mono text-xs leading-5 text-[#334762]">{selectedEvent.path || "无路径"}</p>
                   {selectedEvent.message ? <p className="mt-2 break-words text-xs leading-5 text-[#52657a]">{selectedEvent.message}</p> : null}
                 </div>

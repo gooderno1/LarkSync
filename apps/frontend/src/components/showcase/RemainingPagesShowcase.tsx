@@ -12,8 +12,8 @@ import {
   IconFileText,
   IconFolder,
   IconMaintenance,
-  IconPlay,
   IconRefresh,
+  IconSearch,
   IconShieldCheck,
 } from "../Icons";
 import { cn } from "../../lib/utils";
@@ -76,111 +76,113 @@ const activityTasks = [
 ];
 
 const activityRuns = [
-  { id: "run-0714-1741", time: "今天 17:41", state: "存在问题", tone: "red" as Tone, stats: "上 12 · 下 8 · 失败 2" },
-  { id: "run-0714-1620", time: "今天 16:20", state: "已完成", tone: "green" as Tone, stats: "上 6 · 下 14 · 失败 0" },
-  { id: "run-0714-1432", time: "今天 14:32", state: "已完成", tone: "green" as Tone, stats: "上 4 · 下 3 · 失败 0" },
-  { id: "run-0714-1105", time: "今天 11:05", state: "已取消", tone: "gray" as Tone, stats: "上 1 · 下 0 · 取消 1" },
-  { id: "run-0713-2318", time: "昨天 23:18", state: "存在冲突", tone: "amber" as Tone, stats: "上 18 · 下 21 · 冲突 1" },
-  { id: "run-0713-2012", time: "昨天 20:12", state: "已完成", tone: "green" as Tone, stats: "上 9 · 下 11 · 失败 0" },
-  { id: "run-0713-1745", time: "昨天 17:45", state: "已完成", tone: "green" as Tone, stats: "上 3 · 下 7 · 失败 0" },
+  { id: "run-0714-1741", time: "今天 17:41", state: "存在问题", tone: "red" as Tone, duration: "00:01:34", counts: [2, 1, 20, 0] },
+  { id: "run-0714-1620", time: "今天 16:20", state: "已完成", tone: "green" as Tone, duration: "00:03:21", counts: [0, 0, 20, 0] },
+  { id: "run-0714-1432", time: "今天 14:32", state: "已完成", tone: "green" as Tone, duration: "00:02:18", counts: [0, 0, 7, 0] },
+  { id: "run-0714-1105", time: "今天 11:05", state: "已取消", tone: "gray" as Tone, duration: "00:00:42", counts: [0, 1, 1, 0] },
+  { id: "run-0713-2318", time: "昨天 23:18", state: "存在冲突", tone: "amber" as Tone, duration: "00:04:02", counts: [1, 0, 39, 0] },
+  { id: "run-0713-2012", time: "昨天 20:12", state: "已完成", tone: "green" as Tone, duration: "00:02:46", counts: [0, 0, 20, 0] },
+  { id: "run-0713-1745", time: "昨天 17:45", state: "已完成", tone: "green" as Tone, duration: "00:01:58", counts: [0, 0, 10, 0] },
 ];
 
 const activityEvents = [
-  { id: "evt-1", time: "17:41:26", title: "季度方案.md", path: "市场活动/2026/季度方案.md", label: "文档写入失败", tone: "red" as Tone, summary: "飞书文档写入权限不足，当前文件尚未同步到云端。", cause: "应用缺少 docx:document 写入权限，或当前文档未授权给应用。", action: "检查飞书应用权限并重新授权，然后重试当前任务。" },
-  { id: "evt-2", time: "17:41:10", title: "品牌手册.md", path: "品牌资产/品牌手册.md", label: "本地与云端冲突", tone: "amber" as Tone, summary: "本地和云端在上次同步后均发生修改。", cause: "两个版本的内容哈希均偏离上次同步基线。", action: "进入冲突处理，对比两侧版本后选择保留内容。" },
-  { id: "evt-3", time: "17:40:52", title: "旧版海报.png", path: "市场活动/素材/旧版海报.png", label: "待删除", tone: "amber" as Tone, summary: "文件进入安全删除宽限期，尚未执行删除。", cause: "任务启用了安全删除策略，删除动作延迟 24 小时。", action: "确认文件不再需要；若为误删，可在宽限期内恢复。" },
-  { id: "evt-4", time: "17:40:31", title: "活动预算.xlsx", path: "市场活动/预算/活动预算.xlsx", label: "文件被占用", tone: "red" as Tone, summary: "本地文件正被 WPS 占用，无法写入最新云端版本。", cause: "Windows 返回共享冲突，写入重试已达到上限。", action: "关闭占用文件的应用后，重新运行同步任务。" },
-  { id: "evt-5", time: "17:39:48", title: "发布排期.md", path: "市场活动/计划/发布排期.md", label: "任务已取消", tone: "gray" as Tone, summary: "用户在扫描阶段暂停了任务，本次运行已安全结束。", cause: "任务收到手动停止信号。", action: "确认本地文件状态后，按需重新启动任务。" },
-  { id: "evt-6", time: "17:39:22", title: "合作方清单.md", path: "市场活动/合作/合作方清单.md", label: "云端目标失效", tone: "red" as Tone, summary: "原云端文档已被移动或删除，现有映射无法继续使用。", cause: "飞书接口返回目标不存在。", action: "确认云端位置；必要时重置该任务的同步映射。" },
-  { id: "evt-7", time: "17:38:57", title: "新品发布会.md", path: "市场活动/发布/新品发布会.md", label: "镜像目录无权限", tone: "red" as Tone, summary: "增强 Markdown 镜像目录无法创建，文档回写已暂停。", cause: "应用对目标云端目录没有创建子目录的权限。", action: "向应用开放目标目录编辑权限，或改用仅下载模式。" },
-  { id: "evt-8", time: "17:38:16", title: "媒体名单.csv", path: "市场活动/媒体/媒体名单.csv", label: "格式待确认", tone: "blue" as Tone, summary: "非 Markdown 文件准备走上传覆盖流程，等待确认目标映射。", cause: "历史映射缺少最新云端版本标识。", action: "确认目标文件后重新建立映射，再继续上传。" },
+  { id: "evt-1", time: "17:41:26", title: "季度方案.md", path: "市场活动/2026/季度方案.md", label: "文档写入失败", stage: "上传阶段", code: "E_DOC_PERMISSION_DENIED", size: "128.6 KB", tone: "red" as Tone, summary: "飞书文档写入权限不足，当前文件尚未同步到云端。", cause: "应用缺少 docx:document 写入权限，或当前文档未授权给应用。", action: "检查飞书应用权限并重新授权，然后重试当前任务。", detail: "Permission denied after upload request.\nRequired scope: docx:document:write\nRequest ID: req_7f2a9c18" },
+  { id: "evt-2", time: "17:41:10", title: "品牌手册.md", path: "品牌资产/品牌手册.md", label: "本地与云端冲突", stage: "冲突检测", code: "E_CONTENT_CONFLICT", size: "8.4 MB", tone: "amber" as Tone, summary: "本地和云端在上次同步后均发生修改。", cause: "两个版本的内容哈希均偏离上次同步基线。", action: "进入冲突处理，对比两侧版本后选择保留内容。", detail: "Local and cloud revisions diverged.\nBaseline revision: rev_9a31\nConflict copy has been preserved." },
+  { id: "evt-3", time: "17:40:52", title: "旧版海报.png", path: "市场活动/素材/旧版海报.png", label: "待删除", stage: "安全删除", code: "DELETE_PENDING", size: "2.1 MB", tone: "amber" as Tone, summary: "文件进入安全删除宽限期，尚未执行删除。", cause: "任务启用了安全删除策略，删除动作延迟 24 小时。", action: "确认文件不再需要；若为误删，可在宽限期内恢复。", detail: "Deletion grace period: 24h\nScheduled at: tomorrow 17:40\nNo file has been removed yet." },
+  { id: "evt-4", time: "17:40:31", title: "活动预算.xlsx", path: "市场活动/预算/活动预算.xlsx", label: "文件被占用", stage: "下载阶段", code: "E_FILE_LOCKED", size: "642.3 KB", tone: "red" as Tone, summary: "本地文件正被 WPS 占用，无法写入最新云端版本。", cause: "Windows 返回共享冲突，写入重试已达到上限。", action: "关闭占用文件的应用后，重新运行同步任务。", detail: "Sharing violation on local target.\nRetry attempts: 3/3\nProcess hint: wps.exe" },
+  { id: "evt-5", time: "17:39:48", title: "发布排期.md", path: "市场活动/计划/发布排期.md", label: "任务已取消", stage: "扫描阶段", code: "RUN_CANCELLED", size: "12.4 KB", tone: "gray" as Tone, summary: "用户在扫描阶段暂停了任务，本次运行已安全结束。", cause: "任务收到手动停止信号。", action: "确认本地文件状态后，按需重新启动任务。", detail: "Cancellation acknowledged.\nPending writes: 0\nLocal state remains unchanged." },
 ];
 
 export function ActivityIssuesShowcasePage() {
   const [selectedTask, setSelectedTask] = useState(activityTasks[0].id);
   const [selectedRun, setSelectedRun] = useState(activityRuns[0].id);
   const [selectedEvent, setSelectedEvent] = useState(activityEvents[0].id);
+  const [timelineTone, setTimelineTone] = useState("全部");
   const event = activityEvents.find((item) => item.id === selectedEvent) ?? activityEvents[0];
+  const selectedTaskInfo = activityTasks.find((task) => task.id === selectedTask) ?? activityTasks[0];
+  const summaryCards = [
+    { value: "1", label: "冲突文件", hint: "需要处理", tone: "red" as Tone },
+    { value: "2", label: "失败文件", hint: "本次运行", tone: "amber" as Tone },
+    { value: "0", label: "权限问题", hint: "需要授权", tone: "amber" as Tone },
+    { value: "1", label: "通知", hint: "系统通知", tone: "blue" as Tone },
+  ];
 
   return (
     <section data-showcase-page="activity" className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4 animate-fade-up">
-      <PageHeader
-        title="活动与问题"
-        description="从任务运行到具体文件，集中诊断同步异常并完成处理。"
-        action={<button className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#bfd3ee] bg-white px-4 text-xs font-semibold text-[#3370ff]"><IconRefresh className="h-3.5 w-3.5" />刷新诊断</button>}
-      />
-
-      <div data-workspace-fill="true" className="grid min-h-0 grid-rows-[68px_minmax(0,1fr)] overflow-hidden rounded-xl border border-[#cdddf0] bg-white shadow-[0_16px_40px_rgba(51,112,255,0.08)]">
-        <div className="grid grid-cols-[176px_minmax(0,1fr)_auto] items-center gap-4 border-b border-[#dce7f4] bg-[#fbfdff] px-4">
-          <div>
-            <p className="text-sm font-semibold text-[#102033]">任务上下文</p>
-            <p className="mt-1 text-xs text-[#6b7f96]">4 个任务 · 2 个需关注</p>
-          </div>
-          <div className="flex min-w-0 gap-2 overflow-x-auto py-2">
-            {activityTasks.map((task) => (
-              <button key={task.id} onClick={() => setSelectedTask(task.id)} className={cn("flex h-10 min-w-[180px] items-center justify-between rounded-lg border px-3 text-left", selectedTask === task.id ? "border-[#7ba7ff] bg-[#eef5ff]" : "border-[#d7e4f5] bg-white")}>
-                <span className="truncate text-xs font-semibold text-[#102033]">{task.name}</span><Pill tone={task.tone}>{task.state}</Pill>
-              </button>
-            ))}
-          </div>
-          <span className="truncate font-mono text-xs text-[#52657a]">{activityTasks.find((task) => task.id === selectedTask)?.path}</span>
+      <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_440px_auto] items-end gap-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3"><h1 className="text-xl font-semibold text-[#102033]">活动与问题</h1><DemoBadge /></div>
+          <p className="mt-1 text-sm text-[#52657a]">诊断运行问题，快速定位并解决同步异常。</p>
         </div>
+        <div data-activity-task-selector="true" className="min-w-0">
+          <p className="mb-1.5 text-xs font-semibold text-[#52657a]">任务选择</p>
+          <div className="grid grid-cols-[minmax(0,1fr)_118px] gap-2">
+            <label className="relative min-w-0">
+              <select value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)} className="h-9 w-full appearance-none rounded-lg border border-[#bfd3ee] bg-white pl-3 pr-8 text-xs font-semibold text-[#102033] outline-none focus:border-[#3370ff]">
+                {activityTasks.map((task) => <option key={task.id} value={task.id}>{task.name}</option>)}
+              </select>
+              <IconArrowDown className="pointer-events-none absolute right-2.5 top-2.5 h-4 w-4 text-[#6b7f96]" />
+            </label>
+            <div className="flex h-9 items-center justify-center rounded-lg border border-[#bfd3ee] bg-white"><Pill tone={selectedTaskInfo.tone}>{selectedTaskInfo.state}</Pill></div>
+          </div>
+        </div>
+        <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#bfd3ee] bg-white px-4 text-xs font-semibold text-[#3370ff]"><IconRefresh className="h-3.5 w-3.5" />刷新诊断</button>
+      </header>
 
-        <div className="grid min-h-0 grid-cols-[272px_minmax(0,1fr)_336px]">
-          <aside data-visibility-region="activity-runs" className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-r border-[#dce7f4] bg-[#fbfdff] p-4">
-            <PanelHeading title="运行历史" hint="最近 24 小时共运行 5 次" />
-            <div className="showcase-scroll-region mt-3 min-h-0 space-y-2 overflow-y-auto pb-3 pr-1">
+      <div data-workspace-fill="true" className="grid min-h-0 grid-cols-[276px_minmax(0,1fr)_416px] overflow-hidden rounded-xl border border-[#cdddf0] bg-white shadow-[0_16px_40px_rgba(51,112,255,0.08)]">
+          <aside data-visibility-region="activity-runs" className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden border-r border-[#dce7f4] bg-[#fbfdff] p-4">
+            <PanelHeading title="运行历史" hint="选择一次运行查看完整事件" />
+            <label data-activity-run-search="true" className="relative mt-3 block">
+              <IconSearch className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-[#8aa0b8]" />
+              <input className="h-9 w-full rounded-lg border border-[#c9d8ec] bg-white pl-9 pr-3 text-xs text-[#102033] outline-none placeholder:text-[#8aa0b8] focus:border-[#3370ff]" placeholder="搜索运行 ID" />
+            </label>
+            <div className="showcase-scroll-region mt-3 min-h-0 space-y-1 overflow-y-auto pb-3 pr-1">
               {activityRuns.slice(0, 5).map((run) => (
-                <button type="button" data-demo-run={run.id} data-visibility-card="activity-run" key={run.id} onClick={() => setSelectedRun(run.id)} className={cn("w-full rounded-lg border p-2.5 text-left", selectedRun === run.id ? "border-[#7ba7ff] bg-[#eef5ff]" : "border-[#d7e4f5] bg-white")}>
-                  <div className="flex items-start justify-between gap-2"><div><p className="font-mono text-xs font-semibold text-[#102033]">{run.id}</p><p className="mt-1 text-[11px] text-[#6b7f96]">{run.time}</p></div><Pill tone={run.tone}>{run.state}</Pill></div>
-                  <p className="mt-1.5 text-[11px] text-[#52657a]">{run.stats}</p>
+                <button type="button" data-demo-run={run.id} data-visibility-card="activity-run" key={run.id} onClick={() => setSelectedRun(run.id)} className={cn("w-full rounded-lg border p-2 text-left", selectedRun === run.id ? "border-[#7ba7ff] bg-[#eef5ff]" : "border-[#d7e4f5] bg-white")}>
+                  <div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate font-mono text-xs font-semibold text-[#102033]">{run.id}</p><p className="mt-1 text-[11px] text-[#6b7f96]">{run.time}</p></div><span className="text-[#7f94ab]">›</span></div>
+                  <div className="mt-1 flex items-center gap-2"><Pill tone={run.tone}>{run.state}</Pill><span className="text-[11px] text-[#52657a]">{run.duration}</span></div>
+                  <div className="mt-1 grid grid-cols-4 gap-1 text-center text-[10px] text-[#52657a]">{run.counts.map((count, index) => <span key={index} className={cn(index === 0 && count > 0 ? "text-[#be123c]" : index === 1 && count > 0 ? "text-[#b45309]" : "text-[#52657a]")}>● {count}</span>)}</div>
                 </button>
               ))}
             </div>
-            <div className="border-t border-[#dce7f4] pt-3">
-              <p className="mb-2 text-center text-[10px] font-medium text-[#52657a]">另有 2 次历史运行</p>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                {[['20', '传输'], ['2', '失败'], ['1', '冲突']].map(([value, label]) => <div key={label}><p className="text-sm font-semibold text-[#102033]">{value}</p><p className="text-[10px] text-[#6b7f96]">{label}</p></div>)}
-              </div>
-            </div>
+            <button type="button" className="mt-2 h-9 border-t border-[#dce7f4] pt-2 text-xs font-semibold text-[#3370ff]">显示全部事件</button>
           </aside>
 
-          <main className="grid min-h-0 grid-rows-[150px_minmax(0,1fr)] border-r border-[#dce7f4]">
+          <main className="grid min-h-0 grid-rows-[196px_minmax(0,1fr)] border-r border-[#dce7f4]">
             <section className="border-b border-[#dce7f4] p-4">
-              <PanelHeading title="问题概览" hint="运行 run-0714-1741 · 6 个问题事件" />
+              <PanelHeading title="问题摘要" hint="当前运行中的异常分类与处理口径" />
               <div className="mt-3 grid grid-cols-4 gap-3">
-                {[['2', '同步失败', 'red'], ['1', '版本冲突', 'amber'], ['1', '待删除', 'amber'], ['2', '需人工检查', 'blue']].map(([value, label, tone]) => (
-                  <div key={label} className={cn("rounded-lg border p-3", toneClasses[tone as Tone])}><p className="text-xl font-semibold">{value}</p><p className="mt-1 text-xs font-semibold">{label}</p></div>
-                ))}
+                {summaryCards.map((item) => <button type="button" data-activity-summary={item.label} key={item.label} className={cn("rounded-lg border p-3 text-left", toneClasses[item.tone])}><p className="text-xs font-semibold">{item.label}</p><p className="mt-1 text-2xl font-semibold">{item.value}</p><p className="mt-1 text-[10px] opacity-80">{item.hint}</p><span className="mt-2 block text-[11px] font-semibold text-[#3370ff]">查看详情 ›</span></button>)}
               </div>
             </section>
-            <section data-visibility-region="activity-events" className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-4">
-              <PanelHeading title="事件时间线" hint="按发生时间显示需要关注的文件事件" action={<span className="text-xs font-medium text-[#3370ff]">6 条事件</span>} />
-              <div className="showcase-scroll-region mt-3 min-h-0 space-y-2 overflow-y-auto pb-3 pr-1">
-                {activityEvents.slice(0, 6).map((item) => (
-                  <button type="button" data-demo-event={item.id} data-visibility-card="activity-event" key={item.id} onClick={() => setSelectedEvent(item.id)} className={cn("grid w-full grid-cols-[58px_minmax(0,1fr)_auto] items-start gap-3 rounded-lg border px-3 py-2.5 text-left", selectedEvent === item.id ? "border-[#7ba7ff] bg-[#eef5ff]" : "border-[#d7e4f5] bg-white")}>
-                    <span className="font-mono text-[11px] text-[#6b7f96]">{item.time}</span>
-                    <span className="min-w-0"><span className="block truncate text-xs font-semibold text-[#102033]">{item.title}</span><span className="mt-1 block truncate text-[11px] text-[#6b7f96]">{item.path}</span></span>
-                    <Pill tone={item.tone}>{item.label}</Pill>
+            <section data-visibility-region="activity-events" className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden px-4 pb-3 pt-4">
+              <PanelHeading title="事件时间线" hint="按发生时间显示同步阶段与文件细节" />
+              <div data-activity-timeline-filters="true" className="mt-3 flex items-center justify-between gap-3 border-b border-[#dce7f4] pb-3">
+                <div className="flex gap-1.5">{["全部", "错误", "警告", "信息"].map((item) => <button key={item} onClick={() => setTimelineTone(item)} type="button" className={cn("h-7 rounded-md border px-3 text-[11px] font-semibold", timelineTone === item ? "border-[#9ec2ff] bg-[#eef5ff] text-[#2456d6]" : "border-[#d7e4f5] bg-white text-[#52657a]")}>{item}</button>)}</div>
+                <button type="button" className="h-7 rounded-md border border-[#d7e4f5] bg-white px-3 text-[11px] font-semibold text-[#52657a]">全部事件 ⌄</button>
+              </div>
+              <div className="showcase-scroll-region relative min-h-0 overflow-y-auto pb-2 pr-1 pt-2 before:absolute before:bottom-3 before:left-[75px] before:top-3 before:w-px before:bg-[#d7e4f5]">
+                {activityEvents.map((item) => (
+                  <button type="button" data-demo-event={item.id} data-visibility-card="activity-event" key={item.id} onClick={() => setSelectedEvent(item.id)} className={cn("relative grid w-full grid-cols-[62px_18px_minmax(0,1fr)] gap-2 px-1 py-1 text-left", selectedEvent === item.id && "bg-[#f6faff]")}>
+                    <span className="pt-0.5 font-mono text-[11px] text-[#6b7f96]">{item.time}</span><span className={cn("relative z-10 mt-0.5 h-3 w-3 rounded-full border-2 border-white", item.tone === "red" ? "bg-[#ef4444]" : item.tone === "amber" ? "bg-[#f59e0b]" : item.tone === "green" ? "bg-[#10b981]" : "bg-[#3370ff]")} />
+                    <span className="min-w-0"><span className="flex items-center justify-between gap-2"><strong className="truncate text-xs text-[#102033]">{item.label}：{item.title}</strong><Pill tone={item.tone}>{item.stage}</Pill></span><span className="mt-1 block truncate text-[11px] text-[#52657a]">{item.path}</span><span className="mt-1 block text-[10px] text-[#7f94ab]">{item.code} · {item.size}</span></span>
                   </button>
                 ))}
               </div>
-              <div className="border-t border-[#dce7f4] pt-2 text-center text-[10px] font-medium text-[#52657a]">另有 2 条事件 · 可在真实数据模式查看全部</div>
+              <div className="border-t border-[#dce7f4] pt-2 text-center text-[10px] font-medium text-[#52657a]">共 24 条事件 · 当前显示 5 条关键事件</div>
             </section>
           </main>
 
-          <aside className="min-h-0 overflow-y-auto bg-[#fbfdff] p-4">
-            <PanelHeading title="事件诊断" hint={`${event.time} · ${event.title}`} />
-            <div className="mt-4"><Pill tone={event.tone}>{event.label}</Pill><h3 className="mt-3 text-base font-semibold text-[#102033]">{event.summary}</h3></div>
-            <div className="mt-4 space-y-3">
-              <div className="rounded-lg border border-[#d7e4f5] bg-white p-3"><p className="text-xs font-semibold text-[#52657a]">原因</p><p className="mt-2 text-xs leading-5 text-[#334762]">{event.cause}</p></div>
-              <div className="rounded-lg border border-[#d7e4f5] bg-white p-3"><p className="text-xs font-semibold text-[#52657a]">建议动作</p><p className="mt-2 text-xs leading-5 text-[#334762]">{event.action}</p></div>
-              <div className="rounded-lg border border-[#d7e4f5] bg-white p-3"><p className="text-xs font-semibold text-[#52657a]">原始路径</p><p className="mt-2 break-all font-mono text-[11px] leading-5 text-[#52657a]">D:/Work/Marketing/{event.path}</p></div>
+          <aside data-activity-diagnosis="true" className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-[#fbfdff]">
+            <div className="flex items-start justify-between border-b border-[#dce7f4] px-4 py-3"><div><p className="text-sm font-semibold text-[#102033]">{event.label}：{event.title}</p><p className="mt-1 text-[11px] text-[#6b7f96]">事件时间：今天 {event.time}</p></div><button type="button" aria-label="关闭事件诊断" className="text-lg leading-none text-[#6b7f96]">×</button></div>
+            <div className="showcase-scroll-region min-h-0 overflow-y-auto p-4">
+              <section><p className="text-xs font-semibold text-[#102033]">基础信息</p><dl className="mt-3 grid grid-cols-[76px_minmax(0,1fr)] gap-y-2 text-[11px]"><dt className="text-[#6b7f96]">运行 ID</dt><dd className="font-mono text-[#334762]">{selectedRun}</dd><dt className="text-[#6b7f96]">任务名称</dt><dd className="font-semibold text-[#334762]">{selectedTaskInfo.name}</dd><dt className="text-[#6b7f96]">事件阶段</dt><dd className="text-[#334762]">{event.stage}</dd><dt className="text-[#6b7f96]">文件路径</dt><dd className="break-all font-mono text-[#334762]">D:/Work/Marketing/{event.path}</dd><dt className="text-[#6b7f96]">文件大小</dt><dd className="text-[#334762]">{event.size}</dd><dt className="text-[#6b7f96]">错误码</dt><dd className="font-mono font-semibold text-[#be123c]">{event.code}</dd></dl></section>
+              <section data-activity-error-detail="true" className="mt-4"><p className="text-xs font-semibold text-[#102033]">错误详情</p><pre className="mt-2 whitespace-pre-wrap break-all rounded-lg border border-[#fecdd3] bg-[#fff7f8] p-3 font-mono text-[10px] leading-4 text-[#7f1d1d]">{event.detail}</pre></section>
+              <section className="mt-4 border-t border-[#dce7f4] pt-4"><p className="text-xs font-semibold text-[#102033]">原因分析</p><p className="mt-2 text-[11px] leading-5 text-[#52657a]">{event.cause}</p></section>
+              <section className="mt-4 border-t border-[#dce7f4] pt-4"><p className="text-xs font-semibold text-[#102033]">建议动作</p><ol className="mt-2 space-y-1.5 text-[11px] leading-5 text-[#52657a]"><li>1. {event.action}</li><li>2. 检查任务目录与目标文档的访问权限。</li><li>3. 确认网络连接稳定后重新执行同步。</li><li>4. 问题持续时复制错误详情用于诊断。</li></ol></section>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2"><button className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#3370ff] text-xs font-semibold text-white"><IconPlay className="h-3.5 w-3.5" />重试任务</button><button className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#bfd3ee] bg-white text-xs font-semibold text-[#3370ff]"><IconCopy className="h-3.5 w-3.5" />复制详情</button></div>
-            <div className="mt-4 rounded-lg border border-[#d7e4f5] bg-white p-3"><p className="text-xs font-semibold text-[#102033]">关联运行</p><dl className="mt-3 grid grid-cols-2 gap-y-2 text-[11px]"><dt className="text-[#6b7f96]">运行 ID</dt><dd className="text-right font-mono text-[#334762]">run-0714-1741</dd><dt className="text-[#6b7f96]">同步模式</dt><dd className="text-right font-semibold text-[#334762]">双向同步</dd><dt className="text-[#6b7f96]">删除策略</dt><dd className="text-right font-semibold text-[#334762]">安全删除</dd><dt className="text-[#6b7f96]">处理优先级</dt><dd className="text-right font-semibold text-[#be123c]">高</dd></dl></div>
+            <div data-activity-diagnosis-actions="true" className="grid grid-cols-2 gap-3 border-t border-[#dce7f4] bg-white p-4"><button className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#bfd3ee] bg-white text-xs font-semibold text-[#3370ff]"><IconCopy className="h-3.5 w-3.5" />复制错误</button><button className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#3370ff] text-xs font-semibold text-white"><IconRefresh className="h-3.5 w-3.5" />重试任务</button></div>
           </aside>
-        </div>
       </div>
     </section>
   );

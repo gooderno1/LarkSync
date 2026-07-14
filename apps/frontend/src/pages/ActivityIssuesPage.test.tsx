@@ -150,13 +150,16 @@ describe("ActivityIssuesPage smoke", () => {
     const html = renderToStaticMarkup(<ActivityIssuesPage />);
 
     expect(html).toContain("问题概览");
-    expect(html).toContain("任务上下文");
+    expect(html).toContain("任务选择");
     expect(html).toContain("运行历史");
     expect(html).toContain("事件时间线");
     expect(html).toContain("事件诊断");
     expect(html).toContain('data-activity-context="true"');
     expect(html).toContain('data-diagnostic-workspace="true"');
-    expect(html).toContain("grid-cols-[272px_minmax(0,1fr)_336px]");
+    expect(html).toContain('data-activity-task-selector="true"');
+    expect(html).toContain('data-activity-run-search="true"');
+    expect(html).toContain('data-activity-error-detail="true"');
+    expect(html).toContain("grid-cols-[276px_minmax(0,1fr)_416px]");
     expect(html).toContain("grid-cols-2");
     expect(html).not.toContain("grid-cols-[280px_minmax(0,1fr)_400px]");
     expect(html).not.toContain("grid grid-cols-4 gap-4");
