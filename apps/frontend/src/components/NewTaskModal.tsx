@@ -5,17 +5,21 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { apiFetch } from "../lib/api";
-import { buildCreateTaskPayload, resolveManualCloudSelection } from "../lib/newTaskWizard";
+import {
+  buildCreateTaskPayload,
+  getWizardMaxAccessibleStep,
+  resolveManualCloudSelection,
+} from "../lib/newTaskWizard";
 import { useDriveTree } from "../hooks/useDriveTree";
 import { useAuth } from "../hooks/useAuth";
 import { syncModeSupportsUpload } from "../lib/constants";
 import { useToast } from "./ui/toast";
-import { cn } from "../lib/utils";
 import type { CloudSelection } from "../types";
 import { NewTaskCloudStep } from "./tasks/NewTaskCloudStep";
 import { NewTaskLocalStep } from "./tasks/NewTaskLocalStep";
 import { NewTaskStrategyStep } from "./tasks/NewTaskStrategyStep";
 import { NewTaskWizardStepIndicator } from "./tasks/NewTaskWizardStepIndicator";
+import { NewTaskWizardSummary } from "./tasks/NewTaskWizardSummary";
 
 type Props = {
   open: boolean;
@@ -37,9 +41,9 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
   const [manualCloudInput, setManualCloudInput] = useState("");
   const [manualCloudName, setManualCloudName] = useState("");
   const [manualCloudError, setManualCloudError] = useState<string | null>(null);
-  const [taskSyncMode, setTaskSyncMode] = useState("bidirectional");
+  const [taskSyncMode, setTaskSyncMode] = useState("download_only");
   const [taskUpdateMode, setTaskUpdateMode] = useState("auto");
-  const [taskMdSyncMode, setTaskMdSyncMode] = useState<"enhanced" | "download_only" | "doc_only">("enhanced");
+  const [taskMdSyncMode, setTaskMdSyncMode] = useState<"enhanced" | "download_only" | "doc_only">("download_only");
   const [taskDeletePolicy, setTaskDeletePolicy] = useState<"off" | "safe" | "strict">("safe");
   const [taskDeleteGraceMinutes, setTaskDeleteGraceMinutes] = useState("30");
   const [taskEnabled, setTaskEnabled] = useState(true);
@@ -48,6 +52,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const taskUploadEnabled = syncModeSupportsUpload(taskSyncMode);
+  const maxAccessibleStep = getWizardMaxAccessibleStep(taskLocalPath, taskCloudToken);
 
   const pickLocalFolder = () => {
     setFolderPickLoading(true);
@@ -130,9 +135,9 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
     setManualCloudInput("");
     setManualCloudName("");
     setManualCloudError(null);
-    setTaskSyncMode("bidirectional");
+    setTaskSyncMode("download_only");
     setTaskUpdateMode("auto");
-    setTaskMdSyncMode("enhanced");
+    setTaskMdSyncMode("download_only");
     setTaskDeletePolicy("safe");
     setTaskDeleteGraceMinutes("30");
     setTaskEnabled(true);
@@ -144,181 +149,132 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
 
   const inputCls = "h-9 w-full rounded-lg border border-[#c9d8ec] bg-white px-3 text-sm text-[#334762] outline-none placeholder:text-[#9fb2c8] focus:border-[#3370ff] focus:ring-2 focus:ring-[#3370ff]/10 disabled:bg-[#edf3fb] disabled:text-[#9fb2c8]";
 
+  const strategyProps = {
+    inputCls,
+    taskName,
+    taskLocalPath,
+    selectedCloud,
+    taskSyncMode,
+    taskUpdateMode,
+    taskMdSyncMode,
+    taskDeletePolicy,
+    taskDeleteGraceMinutes,
+    taskEnabled,
+    error,
+    onTaskSyncModeChange: setTaskSyncMode,
+    onTaskUpdateModeChange: setTaskUpdateMode,
+    onTaskMdSyncModeChange: setTaskMdSyncMode,
+    onTaskDeletePolicyChange: setTaskDeletePolicy,
+    onTaskDeleteGraceMinutesChange: setTaskDeleteGraceMinutes,
+    onTaskEnabledChange: setTaskEnabled,
+  };
+  const stepCopy = [
+    ["选择本地目录", "确定本地内容保存的位置，并可为任务命名。"],
+    ["选择云端目录", "选择需要同步的飞书目录，也可使用共享链接。"],
+    ["同步模式", "决定内容流向；首次使用默认选择更安全的仅下载。"],
+    ["删除与忽略", "明确删除是否联动，并确认任务创建后的状态。"],
+    ["确认创建", "最后核对目录、策略和风险等级。"],
+  ][step - 1];
+
   const modal = (
     <div className="fixed inset-0 z-50 bg-[#102033]/35 backdrop-blur-sm">
-        <div className="flex min-h-full items-center justify-center overflow-y-auto px-4 py-6">
-        <div className="max-h-[94vh] w-[1460px] max-w-[calc(100vw-32px)] overflow-auto rounded-lg border border-[#d7e4f5] bg-white shadow-[0_24px_80px_rgba(16,32,51,0.18)]">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#edf3fb] px-6 py-4">
-          <div>
-            <h2 className="text-lg font-semibold text-[#102033]">新建同步任务</h2>
-            <p className="mt-0.5 text-xs text-[#6b7f96]">按步骤配置本地目录、云端目录和同步策略。</p>
+      <div className="flex min-h-full items-center justify-center overflow-y-auto px-4 py-6">
+        <div className="flex max-h-[90vh] w-[1120px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_24px_80px_rgba(16,32,51,0.18)]">
+          <div className="flex items-center justify-between border-b border-[#edf3fb] px-6 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-[#102033]">新建同步任务</h2>
+              <p className="mt-0.5 text-xs text-[#52657a]">分五步完成配置，每一步只处理一类决策。</p>
+            </div>
+            <button aria-label="关闭新建任务" className="rounded-lg border border-[#d7e4f5] p-2 text-[#52657a] transition hover:bg-[#eef5ff] hover:text-[#3370ff]" onClick={resetAndClose} type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+            </button>
           </div>
-          <button className="rounded-lg border border-[#d7e4f5] p-2 text-[#6b7f96] transition hover:bg-[#eef5ff] hover:text-[#3370ff]" onClick={resetAndClose} type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4"><path d="M18 6L6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
 
-        <NewTaskWizardStepIndicator
-          step={step}
-          taskLocalPath={taskLocalPath}
-          taskCloudToken={taskCloudToken}
-          onSelectStep={setStep}
-        />
+          <NewTaskWizardStepIndicator
+            step={step}
+            taskLocalPath={taskLocalPath}
+            taskCloudToken={taskCloudToken}
+            maxAccessibleStep={maxAccessibleStep}
+            onSelectStep={(nextStep) => setStep(Math.min(nextStep, maxAccessibleStep))}
+          />
 
-        {/* Content */}
-        <div className="bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-5 py-4">
-          <div className="grid min-w-[1240px] grid-cols-[1.05fr_1.05fr_1fr_1.05fr_.9fr] items-stretch gap-3">
-            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 1 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
-              <h3 className="mb-3 text-sm font-semibold text-[#102033]">选择本地目录</h3>
-              <NewTaskLocalStep
-              inputCls={inputCls}
-              taskName={taskName}
-              taskLocalPath={taskLocalPath}
-              taskBasePath={taskBasePath}
-              folderPickLoading={folderPickLoading}
-              folderPickError={folderPickError}
-              onTaskNameChange={setTaskName}
-              onTaskLocalPathChange={setTaskLocalPath}
-              onTaskBasePathChange={setTaskBasePath}
-              onPickLocalFolder={pickLocalFolder}
-            />
-            </section>
-
-            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 2 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
-              <h3 className="mb-3 text-sm font-semibold text-[#102033]">选择云端目录</h3>
-              <NewTaskCloudStep
-              inputCls={inputCls}
-              tree={tree}
-              treeLoading={treeLoading}
-              treeError={treeError}
-              taskCloudToken={taskCloudToken}
-              selectedCloud={selectedCloud}
-              manualCloudInput={manualCloudInput}
-              manualCloudName={manualCloudName}
-              manualCloudError={manualCloudError}
-              onRefreshTree={refreshTree}
-              onSelectCloudFolder={selectCloudFolder}
-              onManualCloudInputChange={(value) => {
-                setManualCloudInput(value);
-                setManualCloudError(null);
-              }}
-              onManualCloudNameChange={setManualCloudName}
-              onApplyManualCloud={applyManualCloud}
-            />
-            </section>
-
-            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 3 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
-              <h3 className="mb-3 text-sm font-semibold text-[#102033]">同步模式</h3>
-              <NewTaskStrategyStep
-              view="mode"
-              inputCls={inputCls}
-              taskName={taskName}
-              taskLocalPath={taskLocalPath}
-              selectedCloud={selectedCloud}
-              taskSyncMode={taskSyncMode}
-              taskUpdateMode={taskUpdateMode}
-              taskMdSyncMode={taskMdSyncMode}
-              taskDeletePolicy={taskDeletePolicy}
-              taskDeleteGraceMinutes={taskDeleteGraceMinutes}
-              taskEnabled={taskEnabled}
-              error={error}
-              onTaskSyncModeChange={setTaskSyncMode}
-              onTaskUpdateModeChange={setTaskUpdateMode}
-              onTaskMdSyncModeChange={setTaskMdSyncMode}
-              onTaskDeletePolicyChange={setTaskDeletePolicy}
-              onTaskDeleteGraceMinutesChange={setTaskDeleteGraceMinutes}
-              onTaskEnabledChange={setTaskEnabled}
-            />
-            </section>
-
-            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 4 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
-              <h3 className="mb-3 text-sm font-semibold text-[#102033]">删除与忽略</h3>
-              <NewTaskStrategyStep
-              view="rules"
-              inputCls={inputCls}
-              taskName={taskName}
-              taskLocalPath={taskLocalPath}
-              selectedCloud={selectedCloud}
-              taskSyncMode={taskSyncMode}
-              taskUpdateMode={taskUpdateMode}
-              taskMdSyncMode={taskMdSyncMode}
-              taskDeletePolicy={taskDeletePolicy}
-              taskDeleteGraceMinutes={taskDeleteGraceMinutes}
-              taskEnabled={taskEnabled}
-              error={error}
-              onTaskSyncModeChange={setTaskSyncMode}
-              onTaskUpdateModeChange={setTaskUpdateMode}
-              onTaskMdSyncModeChange={setTaskMdSyncMode}
-              onTaskDeletePolicyChange={setTaskDeletePolicy}
-              onTaskDeleteGraceMinutesChange={setTaskDeleteGraceMinutes}
-              onTaskEnabledChange={setTaskEnabled}
-            />
-            </section>
-
-            <section className={cn("min-w-0 rounded-lg border bg-white p-3", step === 5 ? "border-[#3370ff] shadow-[0_10px_28px_rgba(51,112,255,0.12)]" : "border-[#d7e4f5]")}>
-              <h3 className="mb-3 text-sm font-semibold text-[#102033]">风险摘要</h3>
-              <NewTaskStrategyStep
-                view="confirm"
-                inputCls={inputCls}
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-6 py-5">
+            <div className="mb-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#3370ff]">第 {step} 步，共 5 步</p>
+              <h3 className="mt-1 text-lg font-semibold text-[#102033]">{stepCopy[0]}</h3>
+              <p className="mt-1 text-sm text-[#52657a]">{stepCopy[1]}</p>
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_280px] items-start gap-5">
+              <section className="min-h-[360px] min-w-0 rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_10px_28px_rgba(51,112,255,0.06)]">
+                {step === 1 ? (
+                  <NewTaskLocalStep
+                    inputCls={inputCls}
+                    taskName={taskName}
+                    taskLocalPath={taskLocalPath}
+                    taskBasePath={taskBasePath}
+                    folderPickLoading={folderPickLoading}
+                    folderPickError={folderPickError}
+                    onTaskNameChange={setTaskName}
+                    onTaskLocalPathChange={setTaskLocalPath}
+                    onTaskBasePathChange={setTaskBasePath}
+                    onPickLocalFolder={pickLocalFolder}
+                  />
+                ) : null}
+                {step === 2 ? (
+                  <NewTaskCloudStep
+                    inputCls={inputCls}
+                    tree={tree}
+                    treeLoading={treeLoading}
+                    treeError={treeError}
+                    taskCloudToken={taskCloudToken}
+                    selectedCloud={selectedCloud}
+                    manualCloudInput={manualCloudInput}
+                    manualCloudName={manualCloudName}
+                    manualCloudError={manualCloudError}
+                    onRefreshTree={refreshTree}
+                    onSelectCloudFolder={selectCloudFolder}
+                    onManualCloudInputChange={(value) => { setManualCloudInput(value); setManualCloudError(null); }}
+                    onManualCloudNameChange={setManualCloudName}
+                    onApplyManualCloud={applyManualCloud}
+                  />
+                ) : null}
+                {step === 3 ? <NewTaskStrategyStep view="mode" {...strategyProps} /> : null}
+                {step === 4 ? <NewTaskStrategyStep view="rules" {...strategyProps} /> : null}
+                {step === 5 ? <NewTaskStrategyStep view="confirm" {...strategyProps} /> : null}
+              </section>
+              <NewTaskWizardSummary
                 taskName={taskName}
                 taskLocalPath={taskLocalPath}
-                selectedCloud={selectedCloud}
+                cloudPath={selectedCloud?.path || ""}
                 taskSyncMode={taskSyncMode}
-                taskUpdateMode={taskUpdateMode}
-                taskMdSyncMode={taskMdSyncMode}
                 taskDeletePolicy={taskDeletePolicy}
-                taskDeleteGraceMinutes={taskDeleteGraceMinutes}
                 taskEnabled={taskEnabled}
-                error={error}
-                onTaskSyncModeChange={setTaskSyncMode}
-                onTaskUpdateModeChange={setTaskUpdateMode}
-                onTaskMdSyncModeChange={setTaskMdSyncMode}
-                onTaskDeletePolicyChange={setTaskDeletePolicy}
-                onTaskDeleteGraceMinutesChange={setTaskDeleteGraceMinutes}
-                onTaskEnabledChange={setTaskEnabled}
               />
-              <aside className="mt-3 rounded-lg border border-[#10b981]/25 bg-[#ecfdf5] p-3">
-                <h4 className="text-sm font-semibold text-[#047857]">{taskDeletePolicy === "strict" ? "中风险" : "低风险"}</h4>
-                <div className="mt-3 space-y-3 text-xs leading-5 text-[#786043]">
-                  <p>安全删除不会直接删除云端文件。</p>
-                  <p>隐藏目录和缓存路径默认不参与同步。</p>
-                </div>
-              </aside>
-            </section>
+            </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-[#edf3fb] bg-white px-6 py-4">
-          <button className="rounded-lg border border-[#c9d8ec] px-4 py-2 text-sm font-medium text-[#334762] transition hover:bg-[#f6faff]" onClick={resetAndClose} type="button">
-            取消
-          </button>
-          <button
-            className="rounded-lg border border-[#c9d8ec] px-4 py-2 text-sm font-medium text-[#334762] transition hover:bg-[#f6faff] disabled:opacity-40"
-            onClick={() => setStep((s) => Math.max(1, s - 1))}
-            disabled={step === 1}
-            type="button"
-          >
-            上一步
-          </button>
-          <button
-            className="rounded-lg bg-[#3370ff] px-5 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.2)] transition hover:bg-[#1d4ed8] disabled:opacity-40"
-            onClick={() => setStep((s) => Math.min(5, s + 1))}
-            disabled={step === 5 || (step === 1 ? !taskLocalPath.trim() : step === 2 ? !taskCloudToken.trim() : false)}
-            type="button"
-          >
-            下一步
-          </button>
-          <button
-            className="rounded-lg bg-[#3370ff] px-6 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.2)] transition hover:bg-[#1d4ed8] disabled:opacity-40"
-            onClick={handleCreate}
-            disabled={creating || step !== 5 || !taskLocalPath.trim() || !taskCloudToken.trim()}
-            type="button"
-          >
-            {creating ? "创建中..." : "创建任务"}
-          </button>
-        </div>
+          <div className="flex items-center justify-between border-t border-[#edf3fb] bg-white px-6 py-4">
+            <button className="rounded-lg px-3 py-2 text-sm font-medium text-[#52657a] transition hover:bg-[#f6faff]" onClick={resetAndClose} type="button">取消</button>
+            <div className="flex items-center gap-3">
+              {step > 1 ? (
+                <button className="rounded-lg border border-[#c9d8ec] px-4 py-2 text-sm font-medium text-[#334762] transition hover:bg-[#f6faff]" onClick={() => setStep((current) => current - 1)} type="button">上一步</button>
+              ) : null}
+              {step < 5 ? (
+                <button
+                  className="rounded-lg bg-[#3370ff] px-5 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.2)] transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => setStep((current) => Math.min(5, current + 1))}
+                  disabled={step === 1 ? !taskLocalPath.trim() : step === 2 ? !taskCloudToken.trim() : false}
+                  type="button"
+                >
+                  下一步
+                </button>
+              ) : (
+                <button className="rounded-lg bg-[#3370ff] px-6 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.2)] transition hover:bg-[#1d4ed8] disabled:opacity-40" onClick={handleCreate} disabled={creating || !taskLocalPath.trim() || !taskCloudToken.trim()} type="button">
+                  {creating ? "创建中..." : "创建任务"}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

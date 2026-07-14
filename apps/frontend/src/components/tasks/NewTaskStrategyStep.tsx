@@ -59,14 +59,14 @@ export function NewTaskStrategyStep({
         <label className="mb-2 block text-xs font-medium text-[#52657a]">同步模式</label>
         <div className="grid grid-cols-3 gap-2">
           {[
-            { value: "bidirectional", label: "双向同步", Icon: IconArrowRightLeft },
-            { value: "download_only", label: "仅下载", Icon: IconArrowDown },
-            { value: "upload_only", label: "仅上传", Icon: IconArrowUp },
-          ].map(({ value, label, Icon }) => (
+            { value: "download_only", label: "仅下载", desc: "推荐首次使用", Icon: IconArrowDown },
+            { value: "bidirectional", label: "双向同步", desc: "本地与云端互相更新", Icon: IconArrowRightLeft },
+            { value: "upload_only", label: "仅上传", desc: "以本地内容为输入", Icon: IconArrowUp },
+          ].map(({ value, label, desc, Icon }) => (
             <button
               key={value}
               className={cn(
-                "flex flex-col items-center gap-1.5 rounded-xl border p-3.5 transition",
+                "flex min-h-[112px] flex-col items-start gap-2 rounded-xl border p-4 text-left transition",
                 taskSyncMode === value
                   ? "border-[#3370ff]/45 bg-[#eef5ff] text-[#3370ff]"
                   : "border-[#d7e4f5] bg-white text-[#6b7f96] hover:border-[#bfd8ff] hover:bg-[#f6faff]"
@@ -75,12 +75,15 @@ export function NewTaskStrategyStep({
                 onTaskSyncModeChange(value);
                 if (value === "download_only") {
                   onTaskMdSyncModeChange("download_only");
+                } else if (taskMdSyncMode === "download_only") {
+                  onTaskMdSyncModeChange("enhanced");
                 }
               }}
               type="button"
             >
               <Icon className="h-5 w-5" />
-              <span className="text-xs font-medium">{label}</span>
+              <span className="text-sm font-semibold">{label}</span>
+              <span className="text-xs leading-5 text-[#6b7f96]">{desc}</span>
             </button>
           ))}
         </div>
@@ -174,20 +177,34 @@ export function NewTaskStrategyStep({
 
       {view === "all" || view === "rules" ? (
         <>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-[#52657a]">删除同步策略</label>
-          <select
-            className={inputCls}
-            value={taskDeletePolicy}
-            onChange={(e) => onTaskDeletePolicyChange(e.target.value as "off" | "safe" | "strict")}
-          >
-            <option value="off">关闭（不联动）</option>
-            <option value="safe">安全模式（宽限后）</option>
-            <option value="strict">严格模式（立即）</option>
-          </select>
+      <div>
+        <label className="mb-2 block text-xs font-medium text-[#52657a]">删除同步策略</label>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { value: "off", label: "关闭联动", desc: "删除不传递，最保守" },
+            { value: "safe", label: "安全删除", desc: "宽限期后再执行" },
+            { value: "strict", label: "严格删除", desc: "立即联动，需谨慎" },
+          ].map(({ value, label, desc }) => (
+            <button
+              key={value}
+              className={cn(
+                "rounded-xl border p-3 text-left transition",
+                taskDeletePolicy === value
+                  ? value === "strict"
+                    ? "border-[#f43f5e]/45 bg-[#fff1f2] text-[#be123c]"
+                    : "border-[#3370ff]/45 bg-[#eef5ff] text-[#3370ff]"
+                  : "border-[#d7e4f5] bg-white text-[#334762] hover:border-[#bfd8ff] hover:bg-[#f6faff]",
+              )}
+              onClick={() => onTaskDeletePolicyChange(value as "off" | "safe" | "strict")}
+              type="button"
+            >
+              <p className="text-xs font-semibold">{label}</p>
+              <p className="mt-1 text-[11px] leading-4 text-[#6b7f96]">{desc}</p>
+            </button>
+          ))}
         </div>
-        <div>
+        {taskDeletePolicy === "safe" ? (
+          <div className="mt-3 max-w-[260px]">
           <label className="mb-1.5 block text-xs font-medium text-[#52657a]">删除宽限（分钟）</label>
           <input
             className={inputCls}
@@ -196,20 +213,27 @@ export function NewTaskStrategyStep({
             step="1"
             value={taskDeleteGraceMinutes}
             onChange={(e) => onTaskDeleteGraceMinutesChange(e.target.value)}
-            disabled={taskDeletePolicy === "strict"}
           />
-        </div>
+          </div>
+        ) : null}
       </div>
 
-      <label className="flex items-center gap-2.5 text-sm text-[#334762]">
-        <input
-          type="checkbox"
-          checked={taskEnabled}
-          onChange={(e) => onTaskEnabledChange(e.target.checked)}
-          className="h-4 w-4 accent-[#3370ff]"
-        />
-        创建后立即启用
-      </label>
+      <div className="flex items-center justify-between rounded-lg border border-[#d7e4f5] bg-white px-3 py-3">
+        <div>
+          <p className="text-sm font-medium text-[#334762]">创建后立即启用</p>
+          <p className="mt-0.5 text-[11px] text-[#6b7f96]">关闭时仅保存配置，不会自动执行同步。</p>
+        </div>
+        <button
+          aria-checked={taskEnabled}
+          aria-label="创建后立即启用"
+          className={cn("h-6 w-11 rounded-full p-0.5 transition", taskEnabled ? "bg-[#3370ff]" : "bg-[#c9d8ec]")}
+          onClick={() => onTaskEnabledChange(!taskEnabled)}
+          role="switch"
+          type="button"
+        >
+          <span className={cn("block h-5 w-5 rounded-full bg-white transition", taskEnabled && "translate-x-5")} />
+        </button>
+      </div>
         <div className="rounded-lg border border-[#d7e4f5] bg-[#f8fbff] p-3 text-xs leading-5 text-[#52657a]">
           默认忽略隐藏路径、缓存目录和临时文件；任务创建后可在设置中追加任务级忽略目录。
         </div>

@@ -15,6 +15,26 @@ export type NewTaskPayloadInput = {
   taskEnabled: boolean;
 };
 
+export type NewTaskRiskLevel = {
+  label: "低风险" | "中风险" | "高风险";
+  tone: "safe" | "warning" | "danger";
+};
+
+export function getWizardMaxAccessibleStep(localPath: string, cloudToken: string): number {
+  if (!localPath.trim()) return 1;
+  if (!cloudToken.trim()) return 2;
+  return 5;
+}
+
+export function getNewTaskRiskLevel(
+  syncMode: string,
+  deletePolicy: "off" | "safe" | "strict",
+): NewTaskRiskLevel {
+  if (deletePolicy === "strict") return { label: "高风险", tone: "danger" };
+  if (syncMode !== "download_only") return { label: "中风险", tone: "warning" };
+  return { label: "低风险", tone: "safe" };
+}
+
 export function extractCloudFolderToken(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;

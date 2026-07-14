@@ -24,6 +24,7 @@ describe("new task wizard panels smoke", () => {
           step={2}
           taskLocalPath="C:/docs"
           taskCloudToken="folder"
+          maxAccessibleStep={5}
           onSelectStep={vi.fn()}
         />
         <NewTaskLocalStep
@@ -63,6 +64,8 @@ describe("new task wizard panels smoke", () => {
     expect(html).toContain("删除与忽略");
     expect(html).toContain("确认");
     expect(html).toContain("共享链接");
+    expect(html).toContain("高级路径设置");
+    expect(html).toContain('aria-current="step"');
     expect(html).toContain("bg-[#f8fbff]");
     expect(html).not.toContain("border-zinc-800");
     expect(html).not.toContain("text-zinc-500");
@@ -94,6 +97,11 @@ describe("new task wizard panels smoke", () => {
     expect(html).toContain("同步模式");
     expect(html).toContain("任务摘要");
     expect(html).toContain("增强 MD 上传");
+    expect(html).toContain("关闭联动");
+    expect(html).toContain("安全删除");
+    expect(html).toContain("严格删除");
+    expect(html).toContain('role="switch"');
+    expect(html).toContain('aria-checked="true"');
     expect(html).toContain("border-[#d7e4f5]");
     expect(html).not.toContain("bg-zinc-950/50");
   });
@@ -120,5 +128,19 @@ describe("new task wizard panels smoke", () => {
 
     expect(html).toContain("docx:document");
     expect(html).toContain("docx:document.block:convert");
+  });
+
+  it("disables inaccessible future steps", () => {
+    const html = renderToStaticMarkup(
+      <NewTaskWizardStepIndicator
+        step={1}
+        taskLocalPath=""
+        taskCloudToken=""
+        maxAccessibleStep={1}
+        onSelectStep={vi.fn()}
+      />,
+    );
+
+    expect((html.match(/disabled=""/g) || [])).toHaveLength(4);
   });
 });

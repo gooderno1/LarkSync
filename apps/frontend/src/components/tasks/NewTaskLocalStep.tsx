@@ -64,17 +64,21 @@ export function NewTaskLocalStep({
           </div>
         ) : null}
       </div>
-      <div>
-        <label className="mb-1.5 block text-xs font-medium text-[#52657a]">
-          Base Path <span className="text-[#9fb2c8]">（可选，默认同本地目录）</span>
-        </label>
-        <input
-          className={inputCls}
-          placeholder="用于计算相对路径"
-          value={taskBasePath}
-          onChange={(e) => onTaskBasePathChange(e.target.value)}
-        />
-      </div>
+      <details className="rounded-lg border border-[#d7e4f5] bg-[#f8fbff] p-3">
+        <summary className="cursor-pointer text-xs font-semibold text-[#3370ff]">高级路径设置</summary>
+        <div className="mt-3">
+          <label className="mb-1.5 block text-xs font-medium text-[#52657a]">
+            Base Path <span className="text-[#9fb2c8]">（可选，默认同本地目录）</span>
+          </label>
+          <input
+            className={inputCls}
+            placeholder="用于计算相对路径"
+            value={taskBasePath}
+            onChange={(e) => onTaskBasePathChange(e.target.value)}
+          />
+          <p className="mt-2 text-[11px] leading-5 text-[#6b7f96]">仅在需要从更上层目录计算相对路径时调整。</p>
+        </div>
+      </details>
     </div>
   );
 }

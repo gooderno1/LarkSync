@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { TaskDetailPage } from "./TaskDetailPage";
+import { getRunPanelHeading, TaskDetailPage } from "./TaskDetailPage";
 
 const task = {
   id: "task-1",
@@ -135,20 +135,27 @@ vi.mock("../components/ui/confirm-dialog", () => ({
 }));
 
 describe("TaskDetailPage smoke", () => {
-  it("renders v3 task detail layout with a fixed inspector rail", () => {
+  it("renders the redesigned detail hierarchy with one continuous inspector", () => {
     const html = renderToStaticMarkup(<TaskDetailPage taskId="task-1" onBack={vi.fn()} />);
 
-    expect(html).toContain("任务详情");
+    expect(html).toContain("项目文档同步");
     expect(html).toContain("当前运行");
     expect(html).toContain("运行历史");
-    expect(html).toContain("问题摘要");
-    expect(html).toContain("任务操作");
-    expect(html).toContain("策略摘要");
-    expect(html).toContain("危险操作");
+    expect(html).toContain("需要关注");
+    expect(html).toContain("任务控制");
+    expect(html).toContain("同步策略");
+    expect(html).toContain("维护操作");
+    expect(html).toContain("返回列表管理策略");
+    expect(html).toContain('data-task-detail-inspector="true"');
+    expect((html.match(/data-task-detail-inspector=/g) || [])).toHaveLength(1);
+    expect(html).toContain('role="switch"');
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain('data-run-metrics="true"');
     expect(html).toContain("grid-cols-[minmax(0,1fr)_300px]");
-    expect(html).toContain("grid-cols-[minmax(0,1fr)_112px_minmax(0,1fr)]");
     expect(html).toContain("w-[300px]");
-    expect(html).toContain("grid-cols-4");
+    expect(html).not.toContain("编辑策略");
+    expect(html).not.toContain("危险操作");
+    expect(html).not.toContain("grid-cols-[minmax(0,1fr)_112px_minmax(0,1fr)]");
     expect(html).not.toContain("min-[1920px]");
     expect(html).not.toContain("min-[1760px]:grid-cols-4");
     expect(html).not.toContain("min-[1760px]:grid-cols-[minmax(0,1fr)_300px]");
@@ -159,5 +166,11 @@ describe("TaskDetailPage smoke", () => {
     expect(html).not.toContain("min-[1440px]:grid-cols-[minmax(0,1fr)_112px_minmax(0,1fr)]");
     expect(html).not.toContain("min-[1180px]:grid-cols-[minmax(760px,1fr)_300px]");
     expect(html).not.toContain("lg:flex");
+  });
+
+  it("distinguishes an active run from the latest completed run", () => {
+    expect(getRunPanelHeading("running", true)).toBe("当前运行");
+    expect(getRunPanelHeading("success", true)).toBe("最近一次运行");
+    expect(getRunPanelHeading("idle", false)).toBe("运行状态");
   });
 });

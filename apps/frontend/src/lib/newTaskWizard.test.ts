@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildCreateTaskPayload,
   extractCloudFolderToken,
+  getNewTaskRiskLevel,
+  getWizardMaxAccessibleStep,
   resolveManualCloudSelection,
 } from "./newTaskWizard";
 
@@ -49,5 +51,20 @@ describe("newTaskWizard", () => {
       delete_grace_minutes: 0,
       enabled: true,
     });
+  });
+
+  it("gates future steps until required directories are selected", () => {
+    expect(getWizardMaxAccessibleStep("", "")).toBe(1);
+    expect(getWizardMaxAccessibleStep("C:/docs", "")).toBe(2);
+    expect(getWizardMaxAccessibleStep("C:/docs", "folder_token")).toBe(5);
+  });
+
+  it("classifies strict deletion and upload-capable modes as elevated risk", () => {
+    expect(getNewTaskRiskLevel("download_only", "safe")).toEqual({
+      label: "低风险",
+      tone: "safe",
+    });
+    expect(getNewTaskRiskLevel("bidirectional", "safe").label).toBe("中风险");
+    expect(getNewTaskRiskLevel("download_only", "strict").label).toBe("高风险");
   });
 });

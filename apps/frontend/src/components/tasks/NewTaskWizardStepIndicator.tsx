@@ -5,6 +5,7 @@ type NewTaskWizardStepIndicatorProps = {
   step: number;
   taskLocalPath: string;
   taskCloudToken: string;
+  maxAccessibleStep: number;
   onSelectStep: (step: number) => void;
 };
 
@@ -12,6 +13,7 @@ export function NewTaskWizardStepIndicator({
   step,
   taskLocalPath,
   taskCloudToken,
+  maxAccessibleStep,
   onSelectStep,
 }: NewTaskWizardStepIndicatorProps) {
   const stepMeta = [
@@ -27,11 +29,13 @@ export function NewTaskWizardStepIndicator({
       {stepMeta.map((item) => {
         const isActive = step === item.num;
         const isPast = step > item.num;
+        const isDisabled = item.num > maxAccessibleStep;
         return (
           <button
             key={item.num}
+            aria-current={isActive ? "step" : undefined}
             className={cn(
-              "flex flex-1 items-center justify-center gap-2 px-2 py-3 text-xs font-medium transition",
+              "flex flex-1 items-center justify-center gap-2 px-2 py-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45",
               isActive
                 ? "border-b-2 border-[#3370ff] bg-[#eef5ff] text-[#3370ff]"
                 : isPast
@@ -39,6 +43,7 @@ export function NewTaskWizardStepIndicator({
                   : "text-[#6b7f96]"
             )}
             onClick={() => onSelectStep(item.num)}
+            disabled={isDisabled}
             type="button"
           >
             <span
