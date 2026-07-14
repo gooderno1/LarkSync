@@ -55,7 +55,7 @@ vi.mock("../hooks/useConfig", () => ({
 
 vi.mock("../hooks/useTasks", () => ({
   useTasks: () => ({
-    tasks: [],
+    tasks: [{ id: "task-hidden", name: "默认不展示的危险任务", local_path: "D:/Hidden" }],
     resetLinks: vi.fn(),
     resettingLinks: false,
   }),
@@ -77,6 +77,10 @@ describe("MaintenancePage smoke", () => {
     expect(html).toContain("日志保留");
     expect(html).toContain("重置同步映射");
     expect(html).toContain("安装与交接");
+    expect(html).toContain("选择任务重置");
+    expect(html).toContain('data-maintenance-workspace="true"');
+    expect(html.match(/检查更新/g)).toHaveLength(1);
+    expect(html).not.toContain("默认不展示的危险任务");
     expect(html).toContain("安装器已启动");
     expect(html).toContain("req-123");
     expect(html).toContain("pid=1234");

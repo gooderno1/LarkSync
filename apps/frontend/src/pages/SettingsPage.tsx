@@ -241,8 +241,9 @@ export function SettingsPage() {
         </button>
       </div>
 
-      <div className="rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-        <div className="grid grid-cols-[140px_minmax(0,1fr)_auto] items-center gap-4">
+      <div data-settings-context="true" className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
+        <div className="border-r border-[#d7e4f5] p-4">
+          <div className="grid grid-cols-[112px_minmax(0,1fr)_auto] items-center gap-4">
           <h2 className="text-base font-semibold text-[#102033]">飞书账号</h2>
           <div className="flex min-w-0 items-center gap-4">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ecfdf5] text-[#10b981]">
@@ -263,15 +264,16 @@ export function SettingsPage() {
             <IconLogout className="h-3.5 w-3.5" />
             {connected ? "登出设备" : "重新授权"}
           </button>
+          </div>
         </div>
+        <SettingsGeneralPanel
+          embedded
+          inputCls={inputCls}
+          deviceDisplayName={deviceDisplayName}
+          setDeviceDisplayName={setDeviceDisplayName}
+          deviceId={deviceId}
+        />
       </div>
-
-      <SettingsGeneralPanel
-        inputCls={inputCls}
-        deviceDisplayName={deviceDisplayName}
-        setDeviceDisplayName={setDeviceDisplayName}
-        deviceId={deviceId}
-      />
 
       <SettingsSyncStrategyPanel
         syncMode={syncMode}
@@ -294,6 +296,7 @@ export function SettingsPage() {
         saving={saving}
         deletePolicy={deletePolicy}
         setDeletePolicy={setDeletePolicy}
+        showSaveAction={false}
       />
 
       <SettingsIgnoredDirectoriesPanel
@@ -332,6 +335,7 @@ export function SettingsPage() {
         tokenStore={tokenStore}
         setTokenStore={setTokenStore}
         inputCls={inputCls}
+        showSaveAction={false}
       />
 
     </section>

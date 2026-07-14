@@ -70,6 +70,10 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain("OAuth 配置");
     expect(html).toContain("同步策略");
     expect(html).toContain("本地忽略目录");
+    expect(html).toContain('data-settings-context="true"');
+    expect(html.match(/保存设置/g)).toHaveLength(1);
+    expect(html).not.toContain("保存策略");
+    expect(html).not.toContain("保存配置");
     expect(html.indexOf("飞书账号")).toBeLessThan(html.indexOf("当前设备"));
     expect(html.indexOf("当前设备")).toBeLessThan(html.indexOf("默认同步策略"));
     expect(html.indexOf("默认同步策略")).toBeLessThan(html.indexOf("忽略规则"));

@@ -24,6 +24,7 @@ type SettingsSyncStrategyPanelProps = {
   saving: boolean;
   deletePolicy?: "off" | "safe" | "strict";
   setDeletePolicy?: (value: "off" | "safe" | "strict") => void;
+  showSaveAction?: boolean;
 };
 
 const fieldClass =
@@ -50,6 +51,7 @@ export function SettingsSyncStrategyPanel({
   saving,
   deletePolicy = "safe",
   setDeletePolicy = () => undefined,
+  showSaveAction = true,
 }: SettingsSyncStrategyPanelProps) {
   const [showSchedule, setShowSchedule] = useState(false);
 
@@ -216,14 +218,16 @@ export function SettingsSyncStrategyPanel({
           <span className="px-2">·</span>
           {downloadEnabled ? `下行 ${formatIntervalLabel(downloadValue || "1", downloadUnit, downloadTime)}` : "下行关闭"}
         </p>
-        <button
-          className="h-8 rounded-lg bg-[#3370FF] px-4 text-xs font-semibold text-white transition hover:bg-[#2456d6] disabled:opacity-50"
-          onClick={handleSave}
-          disabled={saving}
-          type="button"
-        >
-          {saving ? "保存中..." : "保存策略"}
-        </button>
+        {showSaveAction ? (
+          <button
+            className="h-8 rounded-lg bg-[#3370FF] px-4 text-xs font-semibold text-white transition hover:bg-[#2456d6] disabled:opacity-50"
+            onClick={handleSave}
+            disabled={saving}
+            type="button"
+          >
+            {saving ? "保存中..." : "保存策略"}
+          </button>
+        ) : <span className="text-[11px] font-medium text-[#3370ff]">由页面右上角统一保存</span>}
       </div>
     </div>
   );

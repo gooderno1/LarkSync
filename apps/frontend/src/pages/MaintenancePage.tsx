@@ -123,6 +123,7 @@ export function MaintenancePage() {
   const [syncLogWarnSizeMb, setSyncLogWarnSizeMb] = useState("200");
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
   const [updateCheckIntervalHours, setUpdateCheckIntervalHours] = useState("24");
+  const [showResetMappings, setShowResetMappings] = useState(false);
 
   useEffect(() => {
     if (!config) return;
@@ -236,22 +237,16 @@ export function MaintenancePage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-5">
-        <div className="rounded-lg border border-[#d7e6ff] bg-white p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+      <div
+        data-maintenance-workspace="true"
+        className="grid grid-cols-[minmax(0,1fr)_360px] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
+      >
+        <div className="min-w-0 p-5">
+          <div>
             <div>
               <h2 className="text-lg font-semibold text-[#102033]">更新流程</h2>
               <p className="mt-1 text-xs text-[#52657A]">检查、下载并安装 LarkSync Windows 更新包。</p>
             </div>
-            <button
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#bfd8ff] px-4 text-sm font-medium text-[#3370FF] hover:bg-[#eef5ff]"
-              onClick={handleCheckUpdate}
-              disabled={checking}
-              type="button"
-            >
-              <IconRefresh className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} />
-              {checking ? "检查中" : "检查更新"}
-            </button>
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-4">
@@ -360,8 +355,8 @@ export function MaintenancePage() {
           </div>
         </div>
 
-        <aside className="space-y-5">
-          <div className="rounded-lg border border-[#d7e6ff] bg-white p-5">
+        <aside className="space-y-5 border-l border-[#e4edf8] bg-[#fbfdff] p-5">
+          <div>
             <h2 className="text-lg font-semibold text-[#102033]">日志保留</h2>
             <div className="mt-4 grid gap-3">
               <label className="text-xs font-medium text-[#52657A]">
@@ -390,32 +385,42 @@ export function MaintenancePage() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-[#fecdd3] bg-[#fff8f9] p-5">
+          <div className="rounded-lg border border-[#fecdd3] bg-[#fff8f9] p-4">
             <div className="flex items-center gap-2">
               <IconMaintenance className="h-5 w-5 text-[#F43F5E]" />
               <h2 className="text-lg font-semibold text-[#102033]">重置同步映射</h2>
             </div>
             <p className="mt-2 text-xs leading-5 text-[#52657A]">只清除映射关系，不删除本地或飞书文件。下次运行会重新扫描并建立映射。</p>
-            <div className="mt-4 max-h-[260px] space-y-2 overflow-auto pr-1">
-              {tasks.length === 0 ? (
-                <p className="rounded-lg border border-[#d7e6ff] bg-white px-3 py-3 text-sm text-[#52657A]">暂无同步任务。</p>
-              ) : (
-                tasks.map((task) => (
-                  <div key={task.id} className="rounded-lg border border-[#fecdd3] bg-white px-3 py-3">
-                    <p className="truncate text-sm font-medium text-[#102033]">{task.name || "未命名任务"}</p>
-                    <p className="mt-1 truncate font-mono text-[11px] text-[#52657A]">{task.local_path}</p>
-                    <button
-                      className="mt-2 h-8 rounded-lg border border-[#F43F5E]/40 px-3 text-xs font-semibold text-[#E11D48] hover:bg-[#fff1f2] disabled:opacity-50"
-                      disabled={resettingLinks}
-                      onClick={() => void handleResetTask(task.id, task.name || task.id)}
-                      type="button"
-                    >
-                      重置映射
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
+            <button
+              aria-expanded={showResetMappings}
+              className="mt-4 h-9 w-full rounded-lg border border-[#f43f5e]/35 bg-white text-xs font-semibold text-[#e11d48] hover:bg-[#fff1f2]"
+              onClick={() => setShowResetMappings((value) => !value)}
+              type="button"
+            >
+              {showResetMappings ? "收起任务列表" : "选择任务重置"}
+            </button>
+            {showResetMappings ? (
+              <div className="mt-3 max-h-[260px] space-y-2 overflow-auto pr-1">
+                {tasks.length === 0 ? (
+                  <p className="rounded-lg border border-[#d7e6ff] bg-white px-3 py-3 text-sm text-[#52657A]">暂无同步任务。</p>
+                ) : (
+                  tasks.map((task) => (
+                    <div key={task.id} className="rounded-lg border border-[#fecdd3] bg-white px-3 py-3">
+                      <p className="truncate text-sm font-medium text-[#102033]">{task.name || "未命名任务"}</p>
+                      <p className="mt-1 truncate font-mono text-[11px] text-[#52657A]">{task.local_path}</p>
+                      <button
+                        className="mt-2 h-8 rounded-lg border border-[#F43F5E]/40 px-3 text-xs font-semibold text-[#E11D48] hover:bg-[#fff1f2] disabled:opacity-50"
+                        disabled={resettingLinks}
+                        onClick={() => void handleResetTask(task.id, task.name || task.id)}
+                        type="button"
+                      >
+                        重置映射
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : null}
           </div>
         </aside>
       </div>

@@ -190,21 +190,23 @@ export function ConflictResolutionPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-[280px_minmax(0,1fr)_320px] gap-4">
+      {!conflictLoading && unresolved.length === 0 ? (
+        <section data-conflict-empty="true" className="flex min-h-[470px] items-center justify-center rounded-xl border border-[#bdebdc] bg-[linear-gradient(145deg,#ffffff_0%,#f2fbf8_100%)] px-8 text-center shadow-[0_18px_46px_rgba(16,185,129,0.08)]">
+          <div className="max-w-lg">
+            <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl border border-[#10b981]/20 bg-[#ecfdf5] text-[#047857]">
+              <IconConflicts className="h-8 w-8" />
+            </span>
+            <h2 className="mt-5 text-xl font-semibold text-[#102033]">当前没有待处理冲突</h2>
+            <p className="mt-2 text-sm leading-6 text-[#52657a]">本地与云端没有需要人工选择版本的文件。后续检测到冲突时，会在这里展示双方内容和覆盖影响。</p>
+            {conflictError ? <p className="mt-4 rounded-lg border border-[#f43f5e]/30 bg-[#fff1f2] px-3 py-2 text-xs text-[#be123c]">{conflictError}</p> : null}
+          </div>
+        </section>
+      ) : (
+      <div data-conflict-workspace="true" className="grid grid-cols-[260px_minmax(0,1fr)_300px] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_14px_34px_rgba(51,112,255,0.06)]">
         <Panel
           title="冲突队列"
           hint="选择一条冲突查看本地和云端版本。"
-          action={
-            <button
-              className="inline-flex items-center gap-2 rounded-lg border border-[#c9d8ec] px-3 py-1.5 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff] disabled:opacity-50"
-              disabled={conflictLoading}
-              onClick={refreshConflicts}
-              type="button"
-            >
-              <IconRefresh className="h-3.5 w-3.5" />
-              刷新
-            </button>
-          }
+          className="rounded-none border-0 border-r border-[#d7e4f5] bg-[#fbfdff] shadow-none"
         >
           {conflictError ? <p className="mb-3 rounded-lg border border-[#f43f5e]/30 bg-[#fff1f2] px-3 py-2 text-xs text-[#be123c]">{conflictError}</p> : null}
           <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1 log-scroll-area">
@@ -229,10 +231,11 @@ export function ConflictResolutionPage() {
           </div>
         </Panel>
 
-        <main className="min-w-0 space-y-4">
+        <main className="min-w-0 border-r border-[#d7e4f5]">
           <Panel
             title="版本对比"
             hint={selectedConflict ? "数据方向明确后再提交处理，避免覆盖错误版本。" : "请选择一条冲突。"}
+            className="rounded-none border-0 border-b border-[#d7e4f5] shadow-none"
           >
             {!selectedConflict ? (
               <div className="rounded-xl border border-dashed border-[#c9d8ec] px-5 py-16 text-center">
@@ -258,7 +261,7 @@ export function ConflictResolutionPage() {
           </Panel>
 
           {selectedConflict ? (
-            <Panel title="元数据" hint="用于判断版本来源和变更范围。">
+            <Panel title="影响说明" hint="确认路径、版本和覆盖范围后再执行。" className="rounded-none border-0 shadow-none">
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-xl border border-[#edf3fb] bg-[#f6faff] p-3">
                   <dt className="text-xs text-[#6b7f96]">本地路径</dt>
@@ -281,8 +284,8 @@ export function ConflictResolutionPage() {
           ) : null}
         </main>
 
-        <aside className="min-w-0 space-y-4">
-          <Panel title="处理状态" hint="冲突处理会串行提交，任务忙时自动等待重试。">
+        <aside className="min-w-0 bg-[#fbfdff]">
+          <Panel title="处理状态" hint="冲突处理串行提交，任务忙时自动等待。" className="rounded-none border-0 border-b border-[#d7e4f5] bg-transparent shadow-none">
             {!selectedConflict || !selectedMeta ? (
               <div className="rounded-xl border border-dashed border-[#c9d8ec] px-4 py-10 text-center">
                 <IconActivity className="mx-auto h-10 w-10 text-[#9fb2c8]" />
@@ -309,7 +312,7 @@ export function ConflictResolutionPage() {
             )}
           </Panel>
 
-          <Panel title="版本选择">
+          <Panel title="版本选择" className="rounded-none border-0 border-b border-[#d7e4f5] bg-transparent shadow-none">
             <div className="space-y-2">
               <button
                 className="w-full rounded-lg bg-[#3370ff] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1d4ed8] disabled:opacity-50"
@@ -319,6 +322,7 @@ export function ConflictResolutionPage() {
               >
                 使用云端
               </button>
+              <p className="text-[11px] leading-4 text-[#6b7f96]">云端内容覆盖本地主文件；本地差异由冲突副本保全。</p>
               <button
                 className="w-full rounded-lg border border-[#c9d8ec] px-4 py-2.5 text-sm font-semibold text-[#3370ff] hover:bg-[#eef5ff] disabled:opacity-50"
                 disabled={disableResolution}
@@ -327,6 +331,7 @@ export function ConflictResolutionPage() {
               >
                 使用本地
               </button>
+              <p className="text-[11px] leading-4 text-[#6b7f96]">本地内容写入当前云端文档，会改变协作版本。</p>
               <button
                 className="w-full cursor-not-allowed rounded-lg border border-[#f59e0b]/35 bg-[#fffbeb] px-4 py-2.5 text-sm font-semibold text-[#b45309] opacity-70"
                 disabled
@@ -339,7 +344,7 @@ export function ConflictResolutionPage() {
             </div>
           </Panel>
 
-          <Panel title="辅助操作">
+          <Panel title="辅助操作" className="rounded-none border-0 bg-transparent shadow-none">
             <div className="grid gap-2">
               <button
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#c9d8ec] px-3 py-2 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff] disabled:opacity-50"
@@ -363,6 +368,7 @@ export function ConflictResolutionPage() {
           </Panel>
         </aside>
       </div>
+      )}
     </section>
   );
 }

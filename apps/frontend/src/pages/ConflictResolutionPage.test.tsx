@@ -59,8 +59,11 @@ describe("ConflictResolutionPage smoke", () => {
     expect(html).toContain("使用本地");
     expect(html).toContain("保留双方");
     expect(html).toContain("后端尚未提供 keep_both");
-    expect(html).toContain("grid-cols-[280px_minmax(0,1fr)_320px]");
+    expect(html).toContain("影响说明");
+    expect(html).toContain('data-conflict-workspace="true"');
+    expect(html).toContain("grid-cols-[260px_minmax(0,1fr)_300px]");
     expect(html).toContain("grid-cols-2");
+    expect(html).not.toContain("grid-cols-[280px_minmax(0,1fr)_320px]");
     expect(html).not.toContain("grid grid-cols-4 gap-4");
     expect(html).not.toContain("min-[1760px]");
     expect(html).not.toContain("min-[1440px]");

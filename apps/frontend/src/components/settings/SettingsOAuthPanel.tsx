@@ -19,6 +19,7 @@ type SettingsOAuthPanelProps = {
   tokenStore: string;
   setTokenStore: (value: string) => void;
   inputCls: string;
+  showSaveAction?: boolean;
 };
 
 export function SettingsOAuthPanel({
@@ -40,6 +41,7 @@ export function SettingsOAuthPanel({
   tokenStore,
   setTokenStore,
   inputCls,
+  showSaveAction = true,
 }: SettingsOAuthPanelProps) {
   return (
     <div className="rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
@@ -89,9 +91,11 @@ export function SettingsOAuthPanel({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button className="h-8 rounded-lg bg-[#3370FF] px-4 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50" onClick={handleSave} disabled={saving} type="button">
-          {saving ? "保存中..." : "保存配置"}
-        </button>
+        {showSaveAction ? (
+          <button className="h-8 rounded-lg bg-[#3370FF] px-4 text-xs font-semibold text-white transition hover:bg-[#3370FF]/80 disabled:opacity-50" onClick={handleSave} disabled={saving} type="button">
+            {saving ? "保存中..." : "保存配置"}
+          </button>
+        ) : null}
         <button className="h-8 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs font-medium text-[#52677f] transition hover:border-[#3370FF]/40 hover:bg-[#f2f7ff] hover:text-[#2456d6]" onClick={toggleAdvanced} type="button">
           {showAdvanced ? "收起高级设置" : "高级设置"}
         </button>

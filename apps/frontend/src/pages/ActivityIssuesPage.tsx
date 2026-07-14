@@ -203,43 +203,27 @@ export function ActivityIssuesPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-[280px_minmax(0,1fr)_400px] gap-4">
-        <div className="min-w-0 space-y-4">
-          <LightPanel
-            title="任务选择"
-            hint={hiddenTaskCount > 0 ? `${showAllTasks ? focusedTaskCount + hiddenTaskCount : focusedTaskCount} 个任务可选` : "选择任务后查看运行与问题。"}
-            action={
-              <button
-                className="rounded-lg border border-[#c9d8ec] px-3 py-1.5 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]"
-                onClick={refreshDiagnostics}
-                type="button"
-              >
-                刷新
-              </button>
-            }
-          >
+      <div data-activity-context="true" className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
+        <div className="grid grid-cols-[176px_220px_minmax(0,1fr)_auto] items-center gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-[#102033]">任务上下文</h2>
+            <p className="mt-1 text-xs text-[#6b7f96]">
+              {hiddenTaskCount > 0 ? `${showAllTasks ? focusedTaskCount + hiddenTaskCount : focusedTaskCount} 个任务可选` : "选择任务查看诊断"}
+            </p>
+          </div>
+          <div>
             <input
-              className="w-full rounded-lg border border-[#c9d8ec] bg-white px-3 py-2 text-sm text-[#102033] outline-none placeholder:text-[#9fb2c8] focus:border-[#3370ff]"
+              className="h-9 w-full rounded-lg border border-[#c9d8ec] bg-white px-3 text-sm text-[#102033] outline-none placeholder:text-[#9fb2c8] focus:border-[#3370ff]"
               placeholder="搜索任务"
               value={taskPickerQuery}
               onChange={(event) => setTaskPickerQuery(event.target.value)}
             />
-            {hiddenTaskCount > 0 ? (
-              <button
-                className="mt-2 text-xs font-semibold text-[#3370ff]"
-                onClick={() => setShowAllTasks((value) => !value)}
-                type="button"
-              >
-                {showAllTasks ? "只看有动作任务" : `显示全部任务（已隐藏 ${hiddenTaskCount}）`}
-              </button>
-            ) : null}
-            <div className="mt-3 max-h-[300px] space-y-2 overflow-y-auto pr-1 log-scroll-area">
+          </div>
+          <div className="flex min-w-0 gap-2 overflow-x-auto pb-1 log-scroll-area">
               {overviewQuery.isLoading && taskPickerOptions.length === 0 ? (
-                [1, 2, 3].map((item) => <div key={item} className="h-16 animate-pulse rounded-xl bg-[#eef5ff]" />)
+                [1, 2, 3].map((item) => <div key={item} className="h-10 w-40 shrink-0 animate-pulse rounded-lg bg-[#eef5ff]" />)
               ) : taskPickerOptions.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[#c9d8ec] px-4 py-8 text-center text-sm text-[#6b7f96]">
-                  暂无任务。
-                </div>
+                <span className="text-sm text-[#6b7f96]">暂无任务。</span>
               ) : (
                 taskPickerOptions.map((overview) => {
                   const task = overview.task;
@@ -248,7 +232,7 @@ export function ActivityIssuesPage() {
                     <button
                       key={task.id}
                       className={cn(
-                        "w-full rounded-xl border px-3 py-3 text-left transition",
+                        "flex h-10 min-w-[168px] shrink-0 items-center justify-between gap-2 rounded-lg border px-3 text-left transition",
                         selectedTaskId === task.id
                           ? "border-[#3370ff]/40 bg-[#eef5ff]"
                           : "border-[#d7e4f5] bg-white hover:border-[#b8c9df] hover:bg-[#f6faff]"
@@ -259,19 +243,28 @@ export function ActivityIssuesPage() {
                       }}
                       type="button"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="min-w-0 truncate text-sm font-semibold text-[#102033]">{task.name || "未命名任务"}</p>
-                        <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
-                      </div>
-                      <p className="mt-1 truncate text-xs text-[#6b7f96]">{shortPath(task.local_path, 38)}</p>
+                      <p className="min-w-0 truncate text-sm font-semibold text-[#102033]">{task.name || "未命名任务"}</p>
+                      <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || "neutral"} />
                     </button>
                   );
                 })
               )}
-            </div>
-          </LightPanel>
+          </div>
+          {hiddenTaskCount > 0 ? (
+            <button
+              className="h-9 rounded-lg border border-[#c9d8ec] px-3 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]"
+              onClick={() => setShowAllTasks((value) => !value)}
+              type="button"
+            >
+              {showAllTasks ? "只看有动作" : `显示全部（${hiddenTaskCount}）`}
+            </button>
+          ) : <span className="text-xs text-[#6b7f96]">{selectedTask ? shortPath(selectedTask.local_path, 26) : "未选择任务"}</span>}
+        </div>
+      </div>
 
-          <LightPanel title="运行历史" hint="选择一次运行查看对应事件。">
+      <div data-diagnostic-workspace="true" className="grid grid-cols-[272px_minmax(0,1fr)_336px] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_14px_34px_rgba(51,112,255,0.06)]">
+        <div className="min-w-0 border-r border-[#d7e4f5] bg-[#fbfdff]">
+          <LightPanel title="运行历史" hint="选择一次运行查看对应事件。" className="rounded-none border-0 bg-transparent shadow-none">
             <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1 log-scroll-area">
               {!selectedTask ? (
                 <div className="rounded-xl border border-dashed border-[#c9d8ec] px-4 py-8 text-center text-sm text-[#6b7f96]">
@@ -298,10 +291,11 @@ export function ActivityIssuesPage() {
           </LightPanel>
         </div>
 
-        <main className="min-w-0 space-y-4">
+        <main className="min-w-0 border-r border-[#d7e4f5]">
           <LightPanel
-            title="问题摘要"
+            title="问题概览"
             hint={selectedRun ? `当前运行：${compactRunId(selectedRun.run_id)}` : "按问题类型汇总当前任务或当前运行。"}
+            className="rounded-none border-0 border-b border-[#d7e4f5] shadow-none"
           >
             {issueGroups.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[#c9d8ec] px-5 py-10 text-center">
@@ -331,6 +325,7 @@ export function ActivityIssuesPage() {
             title="事件时间线"
             hint="默认只展示需要关注的事件，普通成功日志保留在系统日志与任务诊断中。"
             action={timelineQuery.isFetching ? <span className="text-xs text-[#6b7f96]">刷新中...</span> : null}
+            className="rounded-none border-0 shadow-none"
           >
             <div className="space-y-2">
               {timelineEntries.length === 0 ? (
@@ -370,8 +365,8 @@ export function ActivityIssuesPage() {
           </LightPanel>
         </main>
 
-        <aside className="min-w-0 space-y-4">
-          <LightPanel title="事件详情" hint="查看原因、建议动作和原始错误。">
+        <aside className="min-w-0 bg-[#fbfdff]">
+          <LightPanel title="事件诊断" hint="查看原因、影响和推荐动作。" className="rounded-none border-0 border-b border-[#d7e4f5] bg-transparent shadow-none">
             {!selectedEvent || !selectedProblem ? (
               <div className="rounded-xl border border-dashed border-[#c9d8ec] px-4 py-10 text-center">
                 <IconActivity className="mx-auto h-10 w-10 text-[#9fb2c8]" />
@@ -401,7 +396,7 @@ export function ActivityIssuesPage() {
             )}
           </LightPanel>
 
-          <LightPanel title="建议动作">
+          <LightPanel title="处理操作" className="rounded-none border-0 border-b border-[#d7e4f5] bg-transparent shadow-none">
             <div className="grid grid-cols-2 gap-2">
               <button
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#c9d8ec] px-3 py-2 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff] disabled:opacity-50"
@@ -435,7 +430,7 @@ export function ActivityIssuesPage() {
             </div>
           </LightPanel>
 
-          <LightPanel title="当前运行摘要">
+          <LightPanel title="本次运行" className="rounded-none border-0 bg-transparent shadow-none">
             <dl className="space-y-2 text-xs">
               <div className="flex justify-between gap-3"><dt className="text-[#6b7f96]">上传</dt><dd className="font-semibold text-[#102033]">{diagnosticCounts?.uploaded ?? 0}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-[#6b7f96]">下载</dt><dd className="font-semibold text-[#102033]">{diagnosticCounts?.downloaded ?? 0}</dd></div>
