@@ -12,10 +12,10 @@ import {
   IconCopy,
   IconExternalLink,
   IconFolder,
+  IconMonitor,
   IconPause,
   IconPlay,
   IconSettings,
-  ModeIcon,
 } from "../components/Icons";
 import { useConflicts } from "../hooks/useConflicts";
 import { useTasks } from "../hooks/useTasks";
@@ -64,16 +64,62 @@ const liveStats: TaskDetailShowcaseStats = {
   runSizes: {},
 };
 
-function LarkSyncBrandMark() {
+function SyncRelationshipGlyph() {
   return (
     <svg
-      aria-label="LarkSync 同步标识"
-      className="mx-2 h-[50px] w-[106px] shrink-0"
-      data-sync-brand-mark="true"
+      aria-label="本地与云端双向同步"
+      className="h-[52px] w-[104px] shrink-0"
+      data-sync-relationship-glyph="true"
       role="img"
-      viewBox="0 0 205 97"
+      viewBox="0 0 112 56"
     >
-      <image height="97" href="/logo-horizontal.png" preserveAspectRatio="xMinYMid meet" width="600" />
+      <defs>
+        <marker id="task-sync-blue-arrow" markerHeight="8" markerUnits="userSpaceOnUse" markerWidth="8" orient="auto" refX="6" refY="4">
+          <path d="M0 0 8 4 0 8Z" fill="#1688e8" />
+        </marker>
+        <marker id="task-sync-green-arrow" markerHeight="8" markerUnits="userSpaceOnUse" markerWidth="8" orient="auto" refX="6" refY="4">
+          <path d="M0 0 8 4 0 8Z" fill="#14b8a6" />
+        </marker>
+      </defs>
+      <path
+        d="M57 17C49 9 42 6 33 6 19 6 9 16 9 28s10 22 23 22c13 0 19-10 25-20"
+        fill="none"
+        markerEnd="url(#task-sync-blue-arrow)"
+        stroke="#1688e8"
+        strokeLinecap="round"
+        strokeWidth="8"
+      />
+      <path
+        d="M55 39c8 8 15 11 24 11 14 0 24-10 24-22S93 6 80 6C67 6 61 16 55 26"
+        fill="none"
+        markerEnd="url(#task-sync-green-arrow)"
+        stroke="#14b8a6"
+        strokeLinecap="round"
+        strokeWidth="8"
+      />
+    </svg>
+  );
+}
+
+function SyncConnector({ direction }: { direction: "left" | "right" }) {
+  const isLeft = direction === "left";
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-2.5 w-full"
+      data-sync-connector={direction}
+      preserveAspectRatio="none"
+      viewBox="0 0 32 10"
+    >
+      <path
+        d={isLeft ? "M31 5H5M9 1 4 5l5 4" : "M1 5h26M23 1l5 4-5 4"}
+        fill="none"
+        stroke={isLeft ? "#3370ff" : "#10b981"}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
   );
 }
@@ -437,19 +483,24 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
             </div>
             <div data-task-detail-path-map="true" className="grid h-[170px] grid-cols-[minmax(0,1fr)_190px_minmax(0,1fr)] items-center border-t border-[#d7e4f5] px-6">
               <div className="min-w-0">
-                <div className="flex items-center gap-2"><IconFolder className="h-5 w-5 text-[#3370ff]" /><h3 className="text-sm font-semibold text-[#102033]">本地目录</h3></div>
+                <div className="flex items-center gap-2"><IconMonitor className="h-5 w-5 text-[#3370ff]" data-local-endpoint-icon="monitor" /><h3 className="text-sm font-semibold text-[#102033]">本地目录</h3></div>
                 <p className="mt-3 truncate font-mono text-xs text-[#334762]" title={task.local_path}>{shortPath(task.local_path, 72)}</p>
                 <p className="mt-2 text-xs text-[#52657a]">{stats.localFiles}</p>
                 <button className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-[#bfd3ee] px-3 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]" onClick={() => void handleOpenLocalFolder()} type="button"><IconExternalLink className="h-3.5 w-3.5" />打开目录</button>
               </div>
-              <div className="flex flex-col items-center text-center">
-                <div className="relative flex w-full items-center justify-center">
-                  <span className="h-px flex-1 bg-[#3370ff]" /><span className="-ml-1 border-y-[4px] border-r-[7px] border-y-transparent border-r-[#3370ff]" />
-                  <LarkSyncBrandMark />
-                  <span className="-mr-1 border-y-[4px] border-l-[7px] border-y-transparent border-l-[#10b981]" /><span className="h-px flex-1 bg-[#10b981]" />
+              <div className="flex flex-col items-center text-center" data-sync-relationship="true">
+                <div className="grid w-full grid-cols-[minmax(0,1fr)_104px_minmax(0,1fr)] items-center gap-2">
+                  <SyncConnector direction="left" />
+                  <SyncRelationshipGlyph />
+                  <SyncConnector direction="right" />
                 </div>
-                <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-[#334762]"><ModeIcon mode={task.sync_mode} className="h-3.5 w-3.5 text-[#3370ff]" />{modeLabels[task.sync_mode] || task.sync_mode}</div>
-                <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-[#047857]"><IconCircleCheck className="h-3.5 w-3.5" />映射正常</p>
+                <div className="mt-1.5 text-xs font-semibold text-[#334762]" data-sync-mode-label="true">{modeLabels[task.sync_mode] || task.sync_mode}</div>
+                <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#047857]" data-sync-health="true">
+                  <span className="grid h-3.5 w-3.5 place-items-center rounded-full bg-[#10b981] text-white">
+                    <svg aria-hidden="true" className="h-2.5 w-2.5" fill="none" viewBox="0 0 12 12"><path d="m2.5 6 2.1 2.1 4.9-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
+                  </span>
+                  映射正常
+                </p>
               </div>
               <div className="min-w-0 pl-6">
                 <div className="flex items-center gap-2"><IconCloud className="h-5 w-5 text-[#3370ff]" /><h3 className="text-sm font-semibold text-[#102033]">云端目录</h3></div>

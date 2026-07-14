@@ -1,5 +1,35 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.30 (2026-07-15)
+
+- 开发原因：
+  - 用户放大任务详情同步关系区后指出仍有瑕疵；v0.8.0-dev.29 虽修正了图片宽高比，但错误地把带飞鸟的品牌 Logo 当成了同步关系图标。
+  - 品牌 Logo 内部循环箭头与外部左右方向线重复，本地端点仍使用文件夹图标，同步模式前还存在多余方向图标。
+- 实现方式：
+  - 新增本地规格 `docs/local_specs/task_detail_sync_relationship_correction_v0.8.0-dev.30.md`，重新以 `06-task-detail-light-v3.png` 为唯一视觉基线。
+  - 在 v0.8.0-dev.29 本地规格顶部增加纠偏声明，废止其中“裁切横版品牌图作为中央标识”的规则；项目名称详情入口规则继续有效。
+  - 先更新任务详情测试，使旧实现因缺少电脑端点、双环 SVG、对称连接线和独立状态层级而失败，再修改生产代码。
+  - 新增通用 `IconMonitor`；本地目录使用电脑端点图标，右侧继续使用云端图标。
+  - 使用 `112×56` 视口的代码内 SVG 绘制蓝色左环与青绿色右环；不再引用 `favicon.png` 或 `logo-horizontal.png`。
+  - 左右连接线改为相同网格列内的独立 SVG，箭头从中央指向两侧；连接线与双环之间固定 8px 间距。
+  - 移除“双向同步”前的重复方向图标；“映射正常”改为绿色实心圆形检查标识。
+- 当前结果：
+  - 同步关系区恢复为“电脑端点—双环同步符号—云端端点”，不再出现飞鸟或品牌文字。
+  - 1536×960、1440×900、1280×800 三档中，双环、同步模式和健康状态的水平中心误差均为 0px。
+  - 三档左右连接线宽度分别为 32.8px、30.8px、27.3px，同档误差均为 0px。
+  - 三档品牌图片节点数均为 0，本地电脑端点可见，任务详情无横向溢出。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过；4 个飞书文档包已检查。
+  - TDD 失败阶段：任务详情新增结构断言按预期失败。
+  - 任务详情定向测试：通过，1 个测试文件、3 个测试。
+  - `npm --prefix apps/frontend test`：通过，30 个测试文件、87 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过，无警告。
+  - `python -m pytest`（`apps/backend`）：通过，537 个测试。
+  - `python scripts/build_installer.py`：通过；Vite 生产构建与 PyInstaller 桌面目录打包成功，生成 `dist/LarkSync/LarkSync.exe`（17.5 MB），本轮未指定 `--nsis`。
+  - Edge + Playwright 三档局部截图与几何检查：通过；控制台错误为 0。
+  - 截图与报告位于 `docs/local_specs/visual_audit/2026-07-15-task-detail-sync-relationship/`，不进入 Git。
+
 ## v0.8.0-dev.29 (2026-07-15)
 
 - 开发原因：

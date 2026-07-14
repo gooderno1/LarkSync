@@ -150,6 +150,14 @@ export const IconFolder = (p: P) => (
   </svg>
 );
 
+export const IconMonitor = (p: P) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="4.5" width="18" height="12" rx="1.5" />
+    <path d="M12 16.5V20" />
+    <path d="M8 20h8" />
+  </svg>
+);
+
 export const IconCloud = (p: P) => (
   <svg {...base} {...p}>
     <path d="M7 18a4 4 0 0 1 .5-8 6 6 0 0 1 11.2 1.7A3.5 3.5 0 1 1 18 18H7z" />
