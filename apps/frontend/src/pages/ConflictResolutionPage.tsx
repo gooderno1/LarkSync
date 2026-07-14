@@ -19,6 +19,8 @@ import {
 } from "../components/Icons";
 import { cn } from "../lib/utils";
 import type { ConflictItem, ConflictResolutionAction } from "../types";
+import { ConflictResolutionShowcasePage } from "../components/showcase/RemainingPagesShowcase";
+import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
 
 function Panel({
   title,
@@ -121,7 +123,7 @@ function VersionPreview({
   );
 }
 
-export function ConflictResolutionPage() {
+function ConflictResolutionLivePage() {
   const { conflicts, conflictLoading, conflictError, refreshConflicts, resolveConflictAsync } = useConflicts(true);
   const { toast } = useToast();
   const {
@@ -371,4 +373,8 @@ export function ConflictResolutionPage() {
       )}
     </section>
   );
+}
+
+export function ConflictResolutionPage() {
+  return useRemainingPagesShowcase() ? <ConflictResolutionShowcasePage /> : <ConflictResolutionLivePage />;
 }

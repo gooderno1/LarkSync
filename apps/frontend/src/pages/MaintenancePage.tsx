@@ -6,6 +6,8 @@ import type { UpdateInstallHandoff, UpdateStatus } from "../hooks/useUpdate";
 import { confirm } from "../components/ui/confirm-dialog";
 import { useToast } from "../components/ui/toast";
 import { IconFolder, IconMaintenance, IconRefresh } from "../components/Icons";
+import { MaintenanceShowcasePage } from "../components/showcase/RemainingPagesShowcase";
+import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
 
 function formatAssetSize(size?: number): string {
   if (!size || size <= 0) return "—";
@@ -103,7 +105,7 @@ function installStepClassName(tone: InstallStepTone): string {
   return "border-[#d7e6ff] bg-white text-[#52657A]";
 }
 
-export function MaintenancePage() {
+function MaintenanceLivePage() {
   const {
     status,
     checkUpdate,
@@ -426,4 +428,8 @@ export function MaintenancePage() {
       </div>
     </section>
   );
+}
+
+export function MaintenancePage() {
+  return useRemainingPagesShowcase() ? <MaintenanceShowcasePage /> : <MaintenanceLivePage />;
 }

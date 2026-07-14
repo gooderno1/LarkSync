@@ -14,8 +14,10 @@ import { SettingsSyncStrategyPanel } from "../components/settings/SettingsSyncSt
 import { SettingsGeneralPanel } from "../components/settings/SettingsGeneralPanel";
 import { SettingsIgnoredDirectoriesPanel } from "../components/settings/SettingsIgnoredDirectoriesPanel";
 import { IconCircleCheck, IconLogout } from "../components/Icons";
+import { SettingsShowcasePage } from "../components/showcase/RemainingPagesShowcase";
+import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
 
-export function SettingsPage() {
+function SettingsLivePage() {
   const { config, configLoading, saveConfig, saving, saveError } = useConfig();
   const { tasks, updateIgnoredSubpaths, updatingIgnoredSubpaths } = useTasks();
   const { connected, driveOk, accountName, deviceId, logout } = useAuth();
@@ -340,4 +342,8 @@ export function SettingsPage() {
 
     </section>
   );
+}
+
+export function SettingsPage() {
+  return useRemainingPagesShowcase() ? <SettingsShowcasePage /> : <SettingsLivePage />;
 }

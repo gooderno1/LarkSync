@@ -29,6 +29,8 @@ import {
 } from "../components/Icons";
 import { cn } from "../lib/utils";
 import type { SyncLogEntry, SyncTaskRunSummary, Tone } from "../types";
+import { ActivityIssuesShowcasePage } from "../components/showcase/RemainingPagesShowcase";
+import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
 
 const ISSUE_STATUSES = ["delete_pending", "delete_failed", "failed", "conflict", "cancelled"];
 const EMPTY_TIMELINE_ENTRIES: SyncLogEntry[] = [];
@@ -103,7 +105,7 @@ function RunItem({
   );
 }
 
-export function ActivityIssuesPage() {
+function ActivityIssuesLivePage() {
   const { runTask } = useTasks();
   const { toast } = useToast();
   const {
@@ -443,4 +445,8 @@ export function ActivityIssuesPage() {
       </div>
     </section>
   );
+}
+
+export function ActivityIssuesPage() {
+  return useRemainingPagesShowcase() ? <ActivityIssuesShowcasePage /> : <ActivityIssuesLivePage />;
 }
