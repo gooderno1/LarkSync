@@ -108,6 +108,8 @@ def test_run_desktop_window_creates_expected_window(monkeypatch) -> None:
     assert events[0][2]["width"] == 1280
     assert events[0][2]["height"] == 820
     assert events[0][2]["min_size"] == (1080, 720)
+    assert events[0][2]["frameless"] is False
+    assert events[0][2]["easy_drag"] is False
     assert events[1] == ("start", (), {"debug": False, "gui": "edgechromium"})
 
 

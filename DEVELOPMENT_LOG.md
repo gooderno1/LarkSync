@@ -1,5 +1,33 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.34 (2026-07-15)
+
+- 开发原因：
+  - 活动页事件时间线竖线未计入容器内边距和完整栅格宽度，彩色圆点与竖线发生水平错位。
+  - 88px 应用内顶栏与 78px 状态栏占用过多纵向空间；Windows 原生标题栏和应用内白色顶栏又缺少层级区分。
+- 实现方式：
+  - 事件点在 18px 状态列内居中；竖线中轴按 `4px 内边距 + 62px 时间列 + 8px 间距 + 9px 半列宽 = 83px` 统一定位。
+  - 应用内顶栏调整为 56px，主操作缩为 36px，背景改为 `#F7FAFF`；底部状态栏调整为 48px，继续使用纯白背景。
+  - pywebview 宿主显式保持 `frameless=False` 与 `easy_drag=False`。当前不移除 Windows 原生标题栏，以保留边缘缩放、系统菜单、贴边布局和无障碍行为。
+  - 修订本地桌面壳、四页可见性与活动页设计规格，废止 78px 状态栏旧约束，并区分基准画布逻辑高度与缩放后的物理高度。
+- 当前结果：
+  - 1536×1024 基准画布顶栏为 56px、状态栏为 48px，工作区净增加 62px。
+  - 5 个事件圆点与竖线中心偏差均为 0px。
+  - 1536、1440、1280 三档均无卡片裁切、无横向溢出，工作台底边未越过状态栏。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过；4 个飞书文档包已检查。
+  - TDD 失败阶段：顶栏/底栏新高度、原生窗口策略和时间线中轴断言均按预期失败。
+  - 前端定向测试：通过，2 个测试文件、7 个测试。
+  - `npm run dev:test`：通过；隔离前后端正常启动，页面状态接口无 404。
+  - Edge + Playwright 三档像素测量：顶栏/状态栏逻辑高度正确，圆点中心最大偏差 0px，控制台错误为 0。
+  - `npm --prefix apps/frontend test`：通过，30 个测试文件、87 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过，无 ESLint 警告。
+  - `npm --prefix apps/frontend run build`：通过；Vite 生产构建成功。
+  - `python -m pytest -q`（`apps/backend`）：通过，537 个测试。
+  - `python scripts/build_installer.py`：通过；生成 `dist/LarkSync/LarkSync.exe`（17.5 MB），本轮未指定 `--nsis`。
+  - 截图与报告位于 `docs/local_specs/visual_audit/2026-07-15-shell-density-timeline/`，不进入 Git。
+
 ## v0.8.0-dev.33 (2026-07-15)
 
 - 开发原因：

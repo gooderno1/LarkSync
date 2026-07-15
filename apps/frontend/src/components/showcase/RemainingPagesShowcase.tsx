@@ -161,10 +161,11 @@ export function ActivityIssuesShowcasePage() {
                 <div className="flex gap-1.5">{["全部", "错误", "警告", "信息"].map((item) => <button key={item} onClick={() => setTimelineTone(item)} type="button" className={cn("h-7 rounded-md border px-3 text-[11px] font-semibold", timelineTone === item ? "border-[#9ec2ff] bg-[#eef5ff] text-[#2456d6]" : "border-[#d7e4f5] bg-white text-[#52657a]")}>{item}</button>)}</div>
                 <button type="button" className="h-7 rounded-md border border-[#d7e4f5] bg-white px-3 text-[11px] font-semibold text-[#52657a]">全部事件 ⌄</button>
               </div>
-              <div className="showcase-scroll-region relative min-h-0 overflow-y-auto pb-2 pr-1 pt-2 before:absolute before:bottom-3 before:left-[75px] before:top-3 before:w-px before:bg-[#d7e4f5]">
+              <div className="showcase-scroll-region relative min-h-0 overflow-y-auto pb-2 pr-1 pt-2">
+                <span data-activity-timeline-line="true" aria-hidden="true" className="pointer-events-none absolute bottom-3 left-[83px] top-3 w-px -translate-x-1/2 bg-[#d7e4f5]" />
                 {activityEvents.map((item) => (
                   <button type="button" data-demo-event={item.id} data-visibility-card="activity-event" key={item.id} onClick={() => setSelectedEvent(item.id)} className={cn("relative grid w-full grid-cols-[62px_18px_minmax(0,1fr)] gap-2 px-1 py-1 text-left", selectedEvent === item.id && "bg-[#f6faff]")}>
-                    <span className="pt-0.5 font-mono text-[11px] text-[#6b7f96]">{item.time}</span><span className={cn("relative z-10 mt-0.5 h-3 w-3 rounded-full border-2 border-white", item.tone === "red" ? "bg-[#ef4444]" : item.tone === "amber" ? "bg-[#f59e0b]" : item.tone === "green" ? "bg-[#10b981]" : "bg-[#3370ff]")} />
+                    <span className="pt-0.5 font-mono text-[11px] text-[#6b7f96]">{item.time}</span><span data-activity-timeline-dot={item.id} className={cn("relative z-10 mt-0.5 h-3 w-3 justify-self-center rounded-full border-2 border-white", item.tone === "red" ? "bg-[#ef4444]" : item.tone === "amber" ? "bg-[#f59e0b]" : item.tone === "green" ? "bg-[#10b981]" : "bg-[#3370ff]")} />
                     <span className="min-w-0"><span className="flex items-center justify-between gap-2"><strong className="truncate text-xs text-[#102033]">{item.label}：{item.title}</strong><Pill tone={item.tone}>{item.stage}</Pill></span><span className="mt-1 block truncate text-[11px] text-[#52657a]">{item.path}</span><span className="mt-1 block text-[10px] text-[#7f94ab]">{item.code} · {item.size}</span></span>
                   </button>
                 ))}

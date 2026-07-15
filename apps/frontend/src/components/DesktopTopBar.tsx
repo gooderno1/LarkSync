@@ -20,7 +20,7 @@ const topBarStatusDot: Record<TopBarStatusTone, string> = {
 
 function TopBarStatus({ label, tone }: { label: string; tone: TopBarStatusTone }) {
   return (
-    <span className="inline-flex h-8 items-center gap-2 whitespace-nowrap text-sm font-medium text-[#1f3763]">
+    <span className="inline-flex h-7 items-center gap-2 whitespace-nowrap text-sm font-medium text-[#1f3763]">
       <span className={`h-2.5 w-2.5 rounded-full ${topBarStatusDot[tone]}`} aria-hidden="true" />
       <span>{label}</span>
     </span>
@@ -71,7 +71,11 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
   };
 
   return (
-    <header className="relative z-30 flex h-[88px] flex-none items-center justify-between gap-4 border-b border-[#c6d7e9] bg-white pb-0 pl-9 pr-8 pt-2">
+    <header
+      data-desktop-topbar="true"
+      data-window-chrome="native"
+      className="relative z-30 flex h-[56px] flex-none items-center justify-between gap-4 border-b border-[#c6d7e9] bg-[#f7faff] pl-9 pr-8"
+    >
       <div
         className="flex min-w-0 items-center gap-6 text-sm text-[#334762]"
         aria-label={`${desktopStatus.auth.connected ? "飞书已连接" : "飞书未连接"}，${desktopStatus.tasks.running} 个任务运行中，${pendingCount} 个待处理`}
@@ -80,7 +84,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
           label={desktopStatus.runtime.backend_running ? "后端运行中" : "后端异常"}
           tone={desktopStatus.runtime.backend_running ? "success" : "danger"}
         />
-        <span className="h-5 w-px bg-[#c6d7e9]" aria-hidden="true" />
+        <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
         <TopBarStatus
           label="WebSocket 已连接"
           tone="info"
@@ -89,7 +93,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
 
       <div className="flex w-[430px] min-w-0 shrink-0 items-center">
         <button
-          className="inline-flex h-10 w-[128px] items-center justify-center gap-2 rounded-lg bg-[#3370FF] px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.22)] transition hover:bg-[#2563eb]"
+          className="inline-flex h-9 w-[128px] items-center justify-center gap-2 rounded-lg bg-[#3370FF] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(51,112,255,0.2)] transition hover:bg-[#2563eb]"
           onClick={handleRunAll}
           type="button"
           title="立即同步"
@@ -98,7 +102,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
           <span>立即同步</span>
         </button>
         <button
-          className="ml-5 inline-flex h-10 w-[116px] items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-[#bfd8ff] bg-white px-3 text-sm font-medium text-[#3370FF] transition hover:bg-[#eef5ff]"
+          className="ml-5 inline-flex h-9 w-[116px] items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-[#bfd8ff] bg-white px-3 text-sm font-medium text-[#3370FF] transition hover:bg-[#eef5ff]"
           onClick={() => onNavigate("tasks")}
           type="button"
           title="前往同步任务页管理任务启停"
@@ -110,13 +114,13 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
           <button
             aria-expanded={accountMenuOpen}
             aria-haspopup="menu"
-            className="flex h-10 w-full min-w-0 items-center justify-start gap-2 rounded-lg px-1.5 text-[#334762] transition hover:bg-[#eef5ff]"
+            className="flex h-9 w-full min-w-0 items-center justify-start gap-2 rounded-lg px-1.5 text-[#334762] transition hover:bg-[#eef5ff]"
             data-account-menu-trigger="true"
             onClick={() => setAccountMenuOpen((current) => !current)}
             title="打开账户菜单"
             type="button"
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#dfe9f7] text-xs font-bold text-[#334762]">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#dfe9f7] text-xs font-bold text-[#334762]">
               {(accountName || "飞").trim().slice(0, 1).toUpperCase()}
             </span>
             <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{accountName || "飞书账号"}</span>
@@ -126,7 +130,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
           <div
             aria-hidden={!accountMenuOpen}
             aria-label="账户菜单"
-            className={`absolute right-0 top-[48px] w-[244px] rounded-lg border border-[#c6d7e9] bg-white p-2 shadow-[0_18px_50px_rgba(16,32,51,0.18)] transition ${accountMenuOpen ? "visible translate-y-0 opacity-100" : "pointer-events-none invisible -translate-y-1 opacity-0"}`}
+            className={`absolute right-0 top-[42px] w-[244px] rounded-lg border border-[#c6d7e9] bg-white p-2 shadow-[0_18px_50px_rgba(16,32,51,0.18)] transition ${accountMenuOpen ? "visible translate-y-0 opacity-100" : "pointer-events-none invisible -translate-y-1 opacity-0"}`}
             data-account-menu="true"
             role="menu"
           >

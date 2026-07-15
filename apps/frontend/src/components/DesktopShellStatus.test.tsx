@@ -117,11 +117,16 @@ describe("desktop shell status", () => {
     expect(html).not.toContain("折叠侧边栏");
     expect(html).not.toContain("«");
     expect(html).toContain("pl-9 pr-8");
+    expect(html).toContain('data-desktop-topbar="true"');
+    expect(html).toContain('data-window-chrome="native"');
+    expect(html).toContain("h-[56px]");
+    expect(html).toContain("bg-[#f7faff]");
     expect(html).toContain("w-[430px]");
     expect(html).toContain("w-[128px]");
     expect(html).toContain("w-[116px]");
     expect(html).toContain("任务启停");
     expect(html).toContain('data-desktop-statusbar="true"');
+    expect(html).toContain("h-[48px]");
     expect(html).toContain("bg-white");
     expect(html).toContain('data-account-menu-trigger="true"');
     expect(html).toContain('aria-haspopup="menu"');
@@ -130,6 +135,8 @@ describe("desktop shell status", () => {
     expect(html).toContain("更新与维护");
     expect(html).toContain("bg-[#f9fbfd]");
     expect(html).not.toContain('data-desktop-statusbar="true" class="h-[78px] shrink-0 border-t border-[#dce6f2] bg-[#fdfdfd]');
+    expect(html).not.toContain("h-[88px]");
+    expect(html).not.toContain("h-[78px]");
     expect(html).not.toContain("□");
     expect(html).not.toContain("×");
     expect(html).not.toContain("w-[72px]");

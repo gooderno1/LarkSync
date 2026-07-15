@@ -210,6 +210,10 @@ def run_desktop_window(
         "height": height,
         "min_size": (min_width, min_height),
         "confirm_close": False,
+        # Keep the Windows system frame until custom chrome also restores
+        # edge resizing, snap layouts, the system menu, and accessibility.
+        "frameless": False,
+        "easy_drag": False,
     }
     try:
         webview.create_window(title, url, **window_kwargs)

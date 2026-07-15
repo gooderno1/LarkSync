@@ -24,6 +24,10 @@ describe("remaining desktop pages showcase", () => {
     expect(html).toContain("grid-cols-[276px_minmax(0,1fr)_416px]");
     expect(html.match(/data-activity-summary=/g)).toHaveLength(4);
     expect(html).toContain('data-activity-timeline-filters="true"');
+    expect(html).toContain('data-activity-timeline-line="true"');
+    expect(html).toContain("left-[83px]");
+    expect(html.match(/data-activity-timeline-dot=/g)).toHaveLength(5);
+    expect(html).toContain("justify-self-center");
     expect(html).toContain('data-activity-error-detail="true"');
     expect(html).toContain('data-activity-diagnosis-actions="true"');
     expect(html.match(/data-demo-run=/g)).toHaveLength(5);
