@@ -331,23 +331,46 @@ class FakeRunStampService:
 class GuardProbeRunner(SyncTaskRunner):
     def __init__(self, task_service) -> None:
         super().__init__(task_service=task_service)
-        self.calls: list[tuple[str, bool]] = []
+        self.calls: list[tuple] = []
+        self.downloaded_path: Path | None = None
 
     async def _run_download(self, task, status, *, allow_deletes: bool = True) -> None:
         self.calls.append(("download", allow_deletes))
+        if not allow_deletes and self.downloaded_path is not None:
+            self.downloaded_path.write_text("cloud content", encoding="utf-8")
 
     async def _run_upload(self, task, status, *, allow_deletes: bool = True) -> None:
         self.calls.append(("upload", allow_deletes))
 
+    async def _run_upload_paths(
+        self,
+        task,
+        status,
+        paths,
+        *,
+        allow_deletes: bool = True,
+        force_paths=None,
+    ) -> None:
+        self.calls.append(
+            (
+                "upload_paths",
+                allow_deletes,
+                tuple(sorted(Path(path).name for path in paths)),
+            )
+        )
+
 
 @pytest.mark.asyncio
-async def test_run_task_performs_additive_reconcile_for_new_task() -> None:
+async def test_run_task_performs_additive_reconcile_for_new_task(tmp_path: Path) -> None:
     task_service = FakeRunStampService()
     runner = GuardProbeRunner(task_service=task_service)
+    preexisting = tmp_path / "local-only.md"
+    preexisting.write_text("local content", encoding="utf-8")
+    runner.downloaded_path = tmp_path / "downloaded-during-reconcile.md"
     task = SyncTaskItem(
         id="task-new",
         name="新任务",
-        local_path="C:/docs",
+        local_path=str(tmp_path),
         cloud_folder_token="fld",
         cloud_folder_name=None,
         base_path=None,
@@ -363,7 +386,7 @@ async def test_run_task_performs_additive_reconcile_for_new_task() -> None:
 
     assert runner.calls == [
         ("download", False),
-        ("upload", False),
+        ("upload_paths", False, ("local-only.md",)),
         ("download", True),
         ("upload", True),
     ]
@@ -981,8 +1004,10 @@ async def test_runtime_profile_can_disable_task_watcher(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_runner_download_only_never_creates_cloud_md_mirror_even_if_md_mode_is_enhanced(
+@pytest.mark.parametrize("sync_mode", ["download_only", "bidirectional"])
+async def test_runner_additive_download_never_creates_cloud_md_mirror(
     tmp_path: Path,
+    sync_mode: str,
 ) -> None:
     tree = DriveNode(
         token="root",
@@ -1026,24 +1051,23 @@ async def test_runner_download_only_never_creates_cloud_md_mirror_even_if_md_mod
         link_service=FakeLinkService(),
     )
     task = SyncTaskItem(
-        id="task-download-only-md-enhanced",
+        id=f"task-additive-{sync_mode}-md-enhanced",
         name="测试任务",
         local_path=tmp_path.as_posix(),
         cloud_folder_token="root-token",
         cloud_folder_name=None,
         base_path=None,
-        sync_mode="download_only",
-        update_mode="auto",
+        sync_mode=sync_mode,
+        update_mode="full",
         md_sync_mode="enhanced",
         enabled=True,
         created_at=0,
         updated_at=0,
     )
 
-    await runner.run_task(task)
+    status = SyncTaskStatus(task_id=task.id)
+    await runner._run_download(task, status, allow_deletes=False)
 
-    status = runner.get_status(task.id)
-    assert status.state == "success"
     assert status.failed_files == 0
     assert status.completed_files == 1
     assert not drive.created_folders

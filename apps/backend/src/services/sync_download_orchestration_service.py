@@ -232,6 +232,7 @@ class SyncDownloadOrchestrationService:
                     persisted=persisted_by_path.get(str(candidate.target_path)),
                     link_map=link_map,
                     force_paths=force_paths,
+                    allow_cloud_writes=allow_deletes,
                 )
 
             if allow_deletes:
@@ -254,6 +255,7 @@ class SyncDownloadOrchestrationService:
         persisted: SyncLinkItem | None,
         link_map: dict[str, Path],
         force_paths: set[str] | None,
+        allow_cloud_writes: bool,
     ) -> None:
         node = candidate.node
         effective_token = candidate.effective_token
@@ -320,6 +322,7 @@ class SyncDownloadOrchestrationService:
                     candidate=candidate,
                     runtime=runtime,
                     link_map=link_map,
+                    allow_cloud_writes=allow_cloud_writes,
                 )
                 return
             if effective_type in self._export_extension_map:
@@ -377,6 +380,7 @@ class SyncDownloadOrchestrationService:
         candidate: DownloadCandidate,
         runtime: DownloadRuntimeServices,
         link_map: dict[str, Path],
+        allow_cloud_writes: bool,
     ) -> None:
         node = candidate.node
         effective_token = candidate.effective_token
@@ -420,7 +424,7 @@ class SyncDownloadOrchestrationService:
                 file_path=target_path,
                 user_id_type="open_id",
             )
-        if self._should_sync_md_cloud_mirror(task):
+        if allow_cloud_writes and self._should_sync_md_cloud_mirror(task):
             await self._sync_markdown_mirror_copy(
                 task=task,
                 status=status,

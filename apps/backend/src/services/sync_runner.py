@@ -749,9 +749,19 @@ class SyncTaskRunner:
             task.sync_mode,
             last_run,
         )
+        preexisting_local_files: list[Path] = []
+        if task.sync_mode == "bidirectional":
+            preexisting_local_files = list(self._iter_local_files(task))
         if task.sync_mode in {"bidirectional", "download_only"}:
             await self._run_download(task, status, allow_deletes=False)
-        if task.sync_mode in {"bidirectional", "upload_only"}:
+        if task.sync_mode == "bidirectional":
+            await self._run_upload_paths(
+                task,
+                status,
+                preexisting_local_files,
+                allow_deletes=False,
+            )
+        elif task.sync_mode == "upload_only":
             await self._run_upload(task, status, allow_deletes=False)
         self._record_event(
             status,
