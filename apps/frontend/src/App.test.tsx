@@ -109,6 +109,7 @@ describe("App smoke", () => {
     expect(html).toContain("Dashboard Page");
     expect(html).toContain("Sidebar");
     expect(html).toContain('data-desktop-scale="1.000"');
+    expect(html).toContain('--desktop-scale:1');
     expect(html).toContain("px-7 py-[23px]");
     expect(html).toContain("desktop-grid-surface");
     expect(html).toContain('data-desktop-main="true"');

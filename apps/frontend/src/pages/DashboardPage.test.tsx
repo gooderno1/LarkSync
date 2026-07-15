@@ -6,6 +6,7 @@ import {
   buildRecentRow,
   DashboardPage,
   formatDashboardRelativeTime,
+  selectDashboardRecentRows,
   shouldUseDashboardShowcase,
 } from "./DashboardPage";
 
@@ -136,11 +137,12 @@ describe("DashboardPage smoke", () => {
     const html = renderToStaticMarkup(<DashboardPage onNavigate={vi.fn()} />);
 
     expect(html).toContain("总体状态");
-    expect(html).toContain("任务运行中");
+    expect(html).toContain("今日活动");
     expect(html).toContain("正在运行");
     expect(html).toContain("最近同步");
-    expect(html).toContain("需要处理");
-    expect(html).toContain("实时连接");
+    expect(html).toContain("优先处理");
+    expect(html).toContain("任务状态");
+    expect(html).toContain("今日传输");
     expect(html).toContain("数据流入");
     expect(html).toContain("数据流出");
     expect(html).toContain('data-dashboard-running-state="idle"');
@@ -156,9 +158,21 @@ describe("DashboardPage smoke", () => {
     expect(html).toContain("w-[316px]");
     expect(html).toContain("dashboard-clarity");
     expect(html).toContain('data-dashboard-rail="aligned"');
-    expect(html).toContain("grid-rows-[146px_278px_310px]");
+    expect(html).toContain('data-dashboard-main-column="true"');
+    expect(html).toContain('data-dashboard-summary="true"');
+    expect(html).toContain('data-dashboard-panel="running"');
+    expect(html).toContain('data-dashboard-panel="recent"');
+    expect(html).toContain("h-[300px]");
+    expect(html).toContain("min-h-0 flex-1");
+    expect(html).toContain("grid-rows-[146px_300px_minmax(0,1fr)]");
+    expect(html).toContain('data-dashboard-transfer="true"');
     expect(html).toContain("gap-5 pt-9");
-    expect(html).toContain("min-w-0 overflow-hidden");
+    expect(html).toContain("min-h-0 min-w-0 flex-1 overflow-hidden");
+    expect(html).toContain('data-dashboard-recent-row="true"');
+    expect(html).not.toContain("快速操作");
+    expect(html).not.toContain("任务启停");
+    expect(html).not.toContain("实时连接");
+    expect(html).not.toContain("连接延迟");
     expect(html).not.toContain("min-[1760px]:grid-cols-4");
     expect(html).not.toContain("min-[1760px]:grid-cols-[minmax(0,1fr)_300px]");
     expect(html).not.toContain("min-[1600px]:grid-cols-4");
@@ -179,7 +193,7 @@ describe("DashboardPage smoke", () => {
 
     expect(html).toContain('data-dashboard-running-state="idle"');
     expect(html).toContain("当前没有正在运行的任务");
-    expect(html).toContain("任务启停");
+    expect(html).toContain("任务状态");
     expect(html).not.toContain("12.4 MB/s");
   });
 });
@@ -189,6 +203,10 @@ describe("dashboard showcase boundary", () => {
     expect(shouldUseDashboardShowcase("?ui-demo=dashboard", true)).toBe(true);
     expect(shouldUseDashboardShowcase("", true)).toBe(false);
     expect(shouldUseDashboardShowcase("?ui-demo=dashboard", false)).toBe(false);
+  });
+
+  it("uses all seven rows released by the removed status bar", () => {
+    expect(selectDashboardRecentRows([], true)).toHaveLength(7);
   });
 });
 

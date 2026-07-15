@@ -15,7 +15,6 @@ import { shortPath } from "../lib/logCenter";
 import { modeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
 import { computeTaskProgress } from "../lib/progress";
 import { StatCard } from "../components/StatCard";
-import { StatusPill } from "../components/StatusPill";
 import {
   IconActivity,
   IconAlertCircle,
@@ -25,13 +24,9 @@ import {
   IconChevronRight,
   IconCircleCheck,
   IconClock,
-  IconConflicts,
-  IconFileSearch,
   IconFolder,
   IconGlobe,
-  IconPauseCircle,
   IconPlay,
-  IconRefresh,
   IconShieldCheck,
   IconTasks,
 } from "../components/Icons";
@@ -209,6 +204,28 @@ const SHOWCASE_RECENT_ROWS: DashboardRecentRow[] = [
     volumeLabel: "312.5 MB",
     durationLabel: "00:01:58",
   },
+  {
+    id: "showcase-recent-6",
+    timeLabel: "10:08:46",
+    taskName: "公开资料库",
+    directionSymbol: "↓",
+    statusLabel: "成功",
+    statusTone: "success",
+    path: "94",
+    volumeLabel: "141.8 MB",
+    durationLabel: "00:01:16",
+  },
+  {
+    id: "showcase-recent-7",
+    timeLabel: "10:05:27",
+    taskName: "项目文档",
+    directionSymbol: "↑",
+    statusLabel: "成功",
+    statusTone: "success",
+    path: "37",
+    volumeLabel: "42.6 MB",
+    durationLabel: "00:00:31",
+  },
 ];
 
 const SHOWCASE_REALTIME_METRICS: RealtimeMetrics = {
@@ -341,6 +358,12 @@ export function shouldUseDashboardShowcase(search: string, isDevelopment: boolea
   return new URLSearchParams(search).get("ui-demo") === "dashboard";
 }
 
+export function selectDashboardRecentRows(entries: SyncLogEntry[], showcaseMode: boolean): DashboardRecentRow[] {
+  return showcaseMode
+    ? SHOWCASE_RECENT_ROWS
+    : entries.slice(0, 7).map((entry) => buildRecentRow(entry));
+}
+
 export function formatDashboardRelativeTime(timestamp?: number | null, nowSeconds = Date.now() / 1000): string {
   if (!timestamp) return "暂无";
   const elapsed = Math.max(0, Math.floor(nowSeconds - timestamp));
@@ -409,23 +432,27 @@ function Panel({
   action,
   children,
   className = "",
+  dataKey,
+  contentClassName = "",
 }: {
   title: string;
   hint?: string;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  dataKey?: "running" | "recent";
+  contentClassName?: string;
 }) {
   return (
-    <section className={`min-w-0 overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.035)] ${className}`}>
-      <div className="mb-2.5 flex min-w-0 flex-wrap items-center justify-between gap-4">
+    <section className={`flex min-w-0 flex-col overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.035)] ${className}`} data-dashboard-panel={dataKey}>
+      <div className="mb-2.5 flex min-w-0 flex-none flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
           <h2 className="truncate text-base font-semibold text-[#102033]">{title}</h2>
           {hint ? <p className="mt-1 text-xs text-[#6b7f96]">{hint}</p> : null}
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-      {children}
+      <div className={`min-h-0 flex-1 ${contentClassName}`}>{children}</div>
     </section>
   );
 }
@@ -478,7 +505,7 @@ function RealtimeLineChart({ metrics }: { metrics: RealtimeMetrics }) {
   if (!hasTransferEvents) {
     return (
       <div
-        className="mt-2 flex h-[64px] items-center justify-center border-b border-[#dce7f3] text-xs font-medium text-[#52657a]"
+        className="mt-4 flex min-h-[124px] flex-1 items-center justify-center border-y border-[#dce7f3] text-xs font-medium text-[#52657a]"
         data-dashboard-realtime-state="empty"
       >
         暂无传输事件
@@ -492,28 +519,30 @@ function RealtimeLineChart({ metrics }: { metrics: RealtimeMetrics }) {
     return values
       .map((value, index) => {
         const x = Math.round(index * step);
-        const y = Math.round(70 - (value / max) * 58);
+        const y = Math.round(126 - (value / max) * 104);
         return `${x},${y}`;
       })
       .join(" ");
   };
 
   return (
-    <svg className="mt-2 h-[64px] w-full" viewBox="0 0 240 82" role="img" aria-label="实时连接数据流折线">
-      <path d="M0 76H240" stroke="#edf3fb" strokeWidth="1" />
-      <polyline points={toPoints(incomingSeries)} fill="none" stroke="#3370ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <polyline points={toPoints(outgoingSeries)} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      {incomingSeries.map((value, index) => {
-        const x = Math.round(index * (240 / (incomingSeries.length - 1)));
-        const y = Math.round(70 - (value / Math.max(1, ...incomingSeries, ...outgoingSeries)) * 58);
-        return <circle key={`in-${index}`} cx={x} cy={y} r="2" fill="#3370ff" />;
-      })}
-      {outgoingSeries.map((value, index) => {
-        const x = Math.round(index * (240 / (outgoingSeries.length - 1)));
-        const y = Math.round(70 - (value / Math.max(1, ...incomingSeries, ...outgoingSeries)) * 58);
-        return <circle key={`out-${index}`} cx={x} cy={y} r="2" fill="#10b981" />;
-      })}
-    </svg>
+    <div className="mt-4 min-h-[124px] flex-1 overflow-hidden">
+      <svg className="h-full w-full" viewBox="0 0 240 140" role="img" aria-label="今日传输事件趋势" preserveAspectRatio="none">
+        <path d="M0 134H240" stroke="#edf3fb" strokeWidth="1" />
+        <polyline points={toPoints(incomingSeries)} fill="none" stroke="#3370ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <polyline points={toPoints(outgoingSeries)} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {incomingSeries.map((value, index) => {
+          const x = Math.round(index * (240 / (incomingSeries.length - 1)));
+          const y = Math.round(126 - (value / Math.max(1, ...incomingSeries, ...outgoingSeries)) * 104);
+          return <circle key={`in-${index}`} cx={x} cy={y} r="2" fill="#3370ff" />;
+        })}
+        {outgoingSeries.map((value, index) => {
+          const x = Math.round(index * (240 / (outgoingSeries.length - 1)));
+          const y = Math.round(126 - (value / Math.max(1, ...incomingSeries, ...outgoingSeries)) * 104);
+          return <circle key={`out-${index}`} cx={x} cy={y} r="2" fill="#10b981" />;
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -543,9 +572,9 @@ function RunningRowIcon({ variant }: { variant?: DashboardRunningRow["iconVarian
 
 export function DashboardPage({ onNavigate }: Props) {
   const { connected } = useAuth();
-  const { tasks, taskLoading, statusMap, refreshStatus, runTask } = useTasks();
+  const { tasks, taskLoading, statusMap, runTask } = useTasks();
   const { conflicts } = useConflicts();
-  const { entries: wsEntries, status: wsStatus } = useWebSocketLog(connected);
+  const { entries: wsEntries } = useWebSocketLog(connected);
 
   const syncLogsQuery = useQuery<SyncLogResponse>({
     queryKey: ["sync-logs-dashboard"],
@@ -597,6 +626,8 @@ export function DashboardPage({ onNavigate }: Props) {
   const today = new Date();
   const enabledTasks = tasks.filter((t) => t.enabled).length;
   const runningTasks = tasks.filter((t) => statusMap[t.id]?.state === "running").length;
+  const pausedTasks = tasks.length - enabledTasks;
+  const waitingTasks = Math.max(0, enabledTasks - runningTasks);
   const todayEventCount = syncLogEntries.filter((e) => isSameDay(e.timestamp, today)).length;
   const failedEventCount = syncLogEntries.filter((e) => FAILURE_STATUSES.has(e.status)).length;
   const deletePendingCount = syncLogEntries.filter((e) => DELETE_PENDING_STATUSES.has(e.status)).length;
@@ -640,11 +671,9 @@ export function DashboardPage({ onNavigate }: Props) {
     : runningTaskList.map((task) =>
       buildRunningRow(task, statusMap[task.id], latestLogTimeByTask)
     );
-  const recentRows = showcaseMode
-    ? SHOWCASE_RECENT_ROWS
-    : syncLogEntries.slice(0, 5).map((entry) => buildRecentRow(entry));
+  const recentRows = selectDashboardRecentRows(syncLogEntries, showcaseMode);
   const realtimeMetrics = useMemo(
-    () => buildRealtimeMetrics(syncLogEntries),
+    () => buildRealtimeMetrics(syncLogEntries.filter((entry) => isSameDay(entry.timestamp, new Date()))),
     [syncLogEntries]
   );
   const attentionPreviewEntries = showcaseMode
@@ -655,8 +684,11 @@ export function DashboardPage({ onNavigate }: Props) {
   const displayHealthTone = showcaseMode ? "success" : healthTone;
   const displayHealthLabel = showcaseMode ? "健康" : healthLabel;
   const displayHealthHint = showcaseMode ? "系统运行正常" : healthHint;
+  const displayTotalTasks = showcaseMode ? 5 : tasks.length;
+  const displayEnabledTasks = showcaseMode ? 5 : enabledTasks;
   const displayRunningCount = showcaseMode ? 3 : runningTasks;
-  const displayRunningHint = showcaseMode ? "总任务 5 个" : `总任务 ${tasks.length} 个，启用 ${enabledTasks} 个`;
+  const displayWaitingTasks = showcaseMode ? 2 : waitingTasks;
+  const displayPausedTasks = showcaseMode ? 0 : pausedTasks;
   const displayLastSyncValue = showcaseMode ? "2 分钟前" : formatDashboardRelativeTime(lastSuccess?.timestamp);
   const displayLastSyncHint = showcaseMode ? "下一次：1 分钟后" : lastSuccess ? lastSuccess.taskName : `今日日志事件 ${todayEventCount} 条`;
   const displayAttentionValue = showcaseMode ? 1 : attentionCount + pendingEventCount;
@@ -664,47 +696,45 @@ export function DashboardPage({ onNavigate }: Props) {
     ? "冲突 1 个 / 问题 0 个"
     : `冲突 ${unresolvedConflicts.length} / 问题 ${failedEventCount} / 队列 ${pendingEventCount}`;
   const displayRealtimeMetrics = showcaseMode ? SHOWCASE_REALTIME_METRICS : realtimeMetrics;
-  const realtimeInboundLabel = showcaseMode ? "18.6 MB/s" : `${displayRealtimeMetrics.incomingEvents} 事件`;
-  const realtimeOutboundLabel = showcaseMode ? "12.3 MB/s" : `${displayRealtimeMetrics.outgoingEvents} 事件`;
+  const displayTodayActivityCount = showcaseMode ? 12 : todayEventCount;
+  const displayTodayActivityHint = `下载 ${displayRealtimeMetrics.incomingEvents} / 上传 ${displayRealtimeMetrics.outgoingEvents}`;
+  const taskCoverage = displayTotalTasks > 0 ? Math.round((displayEnabledTasks / displayTotalTasks) * 100) : 0;
+  const transferEventCount = displayRealtimeMetrics.incomingEvents + displayRealtimeMetrics.outgoingEvents;
   const hasConflictAttention = showcaseMode || unresolvedConflicts.length > 0;
 
-  const handleRunEnabledTasks = () => {
-    tasks.filter((task) => task.enabled).forEach((task) => runTask(task));
-    refreshStatus();
-  };
-
   return (
-    <section className="dashboard-clarity animate-fade-up min-w-0">
+    <section className="dashboard-clarity flex min-h-full min-w-0 flex-col animate-fade-up">
       {!connected ? (
-        <div className="mb-4 rounded-xl border border-[#f43f5e]/30 bg-[#fff1f2] p-4 text-sm text-[#be123c]">
+        <div className="mb-4 flex-none rounded-xl border border-[#f43f5e]/30 bg-[#fff1f2] p-4 text-sm text-[#be123c]">
           飞书账号未连接，请刷新页面以完成授权引导。
         </div>
       ) : null}
 
-      <div className="grid grid-cols-[minmax(0,1fr)_316px] gap-5">
-        <div className="min-w-0">
-          <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-4">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_316px] gap-5 overflow-hidden">
+        <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-dashboard-main-column="true">
+          <div className="flex h-9 min-w-0 flex-none flex-wrap items-center justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-lg font-semibold leading-6 text-[#102033]">同步健康</h1>
             </div>
           </div>
 
-          <div className="min-w-0 space-y-5">
-          <div className="grid grid-cols-4 gap-4">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5">
+          <div className="grid h-[146px] flex-none grid-cols-4 gap-4" data-dashboard-summary="true">
             <StatCard label="总体状态" value={displayHealthLabel} hint={displayHealthHint} tone={displayHealthTone} icon={<IconShieldCheck className="h-20 w-20" />} iconFrame="plain" />
-            <StatCard label="任务运行中" value={`${displayRunningCount}`} hint={displayRunningHint} tone={displayRunningCount > 0 ? "info" : "neutral"} icon={<IconActivity className="h-8 w-8" />} />
+            <StatCard label="今日活动" value={`${displayTodayActivityCount}`} hint={displayTodayActivityHint} tone={displayTodayActivityCount > 0 ? "info" : "neutral"} icon={<IconActivity className="h-8 w-8" />} />
             <StatCard label="最近同步" value={displayLastSyncValue} hint={displayLastSyncHint} tone="success" icon={<IconClock className="h-14 w-14 text-[#12b8c8]" />} iconFrame="plain" valueClassName="text-[21px] tracking-[-0.02em]" />
             <StatCard label="待处理项" value={`${displayAttentionValue}`} hint={displayAttentionHint} tone={displayAttentionValue > 0 ? "warning" : "success"} icon={<IconAlertCircle className="h-14 w-14" />} iconFrame="plain" />
           </div>
 
           <Panel
             title="正在运行"
-            className="h-[278px]"
+            className="h-[300px] flex-none"
+            dataKey="running"
           >
             {taskLoading ? (
               <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-[#eef5ff]" />)}</div>
             ) : tasks.length === 0 ? (
-              <div className="flex h-[190px] flex-col items-center justify-center text-center" data-dashboard-running-state="no-tasks">
+              <div className="flex h-full flex-col items-center justify-center text-center" data-dashboard-running-state="no-tasks">
                 <span className="grid h-11 w-11 place-items-center rounded-full bg-[#eef5ff] text-[#6b83a7]">
                   <IconTasks className="h-6 w-6" />
                 </span>
@@ -719,7 +749,7 @@ export function DashboardPage({ onNavigate }: Props) {
                 </button>
               </div>
             ) : runningRows.length === 0 ? (
-              <div className="flex h-[190px] flex-col items-center justify-center text-center" data-dashboard-running-state="idle">
+              <div className="flex h-full flex-col items-center justify-center text-center" data-dashboard-running-state="idle">
                 <span className="grid h-11 w-11 place-items-center rounded-full bg-[#eef5ff] text-[#3370ff]">
                   <IconActivity className="h-6 w-6" />
                 </span>
@@ -814,30 +844,32 @@ export function DashboardPage({ onNavigate }: Props) {
 
           <Panel
             title="最近同步"
-            className="h-[310px]"
+            className="min-h-0 flex-1"
+            dataKey="recent"
+            contentClassName="flex flex-col"
           >
             {recentRows.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[#c9d8ec] px-5 py-8 text-center text-sm text-[#6b7f96]">
                 暂无同步历史。
               </div>
             ) : (
-              <div className="min-w-0 overflow-hidden">
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
                 <table className="w-full table-fixed text-left text-sm">
                   <thead className="border-b border-[#d7e4f5] text-xs text-[#52657a]">
                     <tr>
-                      <th className="w-[14%] py-2 pr-4 font-medium">时间</th>
-                      <th className="w-[14%] px-4 py-2 font-medium">任务</th>
-                      <th className="w-[8%] px-4 py-2 font-medium">方向</th>
-                      <th className="w-[12%] px-4 py-2 font-medium">状态</th>
-                      <th className="w-[12%] px-4 py-2 font-medium">变更文件</th>
-                      <th className="w-[14%] px-4 py-2 font-medium">数据量</th>
-                      <th className="w-[15%] px-4 py-2 font-medium">耗时</th>
-                      <th className="w-[11%] py-2 pl-4 font-medium text-right"> </th>
+                      <th className="w-[14%] py-1.5 pr-4 font-medium">时间</th>
+                      <th className="w-[14%] px-4 py-1.5 font-medium">任务</th>
+                      <th className="w-[8%] px-4 py-1.5 font-medium">方向</th>
+                      <th className="w-[12%] px-4 py-1.5 font-medium">状态</th>
+                      <th className="w-[12%] px-4 py-1.5 font-medium">变更文件</th>
+                      <th className="w-[14%] px-4 py-1.5 font-medium">数据量</th>
+                      <th className="w-[15%] px-4 py-1.5 font-medium">耗时</th>
+                      <th className="w-[11%] py-1.5 pl-4 font-medium text-right"> </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#edf3fb]">
                     {recentRows.map((row) => (
-                      <tr key={row.id} className="text-[#334762]">
+                      <tr key={row.id} className="text-[#334762]" data-dashboard-recent-row="true">
                         <td className="py-1.5 pr-4 text-xs text-[#52657a]">{row.timeLabel}</td>
                         <td className="truncate px-4 py-1.5">{row.taskName}</td>
                         <td className="px-4 py-1.5 text-[#3370ff]">
@@ -866,7 +898,7 @@ export function DashboardPage({ onNavigate }: Props) {
               </div>
             )}
             <button
-              className="mt-2.5 flex w-full items-center justify-between text-xs font-semibold text-[#3370ff] hover:text-[#1d4ed8]"
+              className="mt-1.5 flex w-full flex-none items-center justify-between text-xs font-semibold text-[#3370ff] hover:text-[#1d4ed8]"
               onClick={() => onNavigate("activity")}
               type="button"
             >
@@ -877,10 +909,10 @@ export function DashboardPage({ onNavigate }: Props) {
           </div>
         </div>
 
-        <aside className="grid min-w-0 w-[316px] grid-rows-[146px_278px_310px] gap-5 pt-9" data-dashboard-rail="aligned">
-          <section className="h-full overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.055)]">
+        <aside className="grid h-full min-h-0 min-w-0 w-[316px] grid-rows-[146px_300px_minmax(0,1fr)] gap-5 pt-9" data-dashboard-rail="aligned">
+          <section className="flex h-full flex-col overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.055)]">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-[#102033]">需要处理</h2>
+              <h2 className="text-base font-semibold text-[#102033]">优先处理</h2>
               <span className="rounded-full bg-[#fff1f2] px-2 py-0.5 text-xs font-semibold text-[#be123c]">{displayAttentionValue}</span>
             </div>
             <div className="mt-3">
@@ -913,46 +945,46 @@ export function DashboardPage({ onNavigate }: Props) {
             </div>
           </section>
 
-          <section className="h-full overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.055)]">
-            <h2 className="text-base font-semibold text-[#102033]">快速操作</h2>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <button className="flex h-[94px] flex-col items-start justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-left text-xs font-semibold text-[#3370ff] hover:border-[#9ebce0] hover:bg-[#eef5ff]" onClick={handleRunEnabledTasks} type="button">
-                <span className="inline-flex items-center gap-2"><IconRefresh className="h-5 w-5" />立即同步</span>
-                <span className="text-[11px] font-medium leading-4 text-[#52657a]">运行全部已启用任务</span>
-              </button>
-              <button className="flex h-[94px] flex-col items-start justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-left text-xs font-semibold text-[#3370ff] hover:border-[#9ebce0] hover:bg-[#eef5ff]" onClick={() => onNavigate("tasks")} type="button">
-                <span className="inline-flex items-center gap-2"><IconPauseCircle className="h-5 w-5" />任务启停</span>
-                <span className="text-[11px] font-medium leading-4 text-[#52657a]">管理启用与暂停状态</span>
-              </button>
-              <button className="flex h-[94px] flex-col items-start justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-left text-xs font-semibold text-[#3370ff] hover:border-[#9ebce0] hover:bg-[#eef5ff]" onClick={() => onNavigate("conflicts")} type="button">
-                <span className="inline-flex items-center gap-2"><IconConflicts className="h-5 w-5" />处理冲突</span>
-                <span className="text-[11px] font-medium leading-4 text-[#52657a]">打开未解决冲突队列</span>
-              </button>
-              <button className="flex h-[94px] flex-col items-start justify-center gap-2 rounded-md border border-[#c9d8ec] px-3 text-left text-xs font-semibold text-[#3370ff] hover:border-[#9ebce0] hover:bg-[#eef5ff]" onClick={() => onNavigate("activity")} type="button">
-                <span className="inline-flex items-center gap-2"><IconFileSearch className="h-5 w-5" />查看问题</span>
-                <span className="text-[11px] font-medium leading-4 text-[#52657a]">查看失败与待处理事件</span>
-              </button>
+          <section className="h-full overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.055)]" data-dashboard-task-status="true">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-[#102033]">任务状态</h2>
+              <span className="text-xs font-medium text-[#52657a]">共 {displayTotalTasks} 个</span>
+            </div>
+            <div className="mt-4 rounded-lg border border-[#d7e4f5] bg-[#f8fbff] p-3.5">
+              <div className="flex items-center justify-between text-xs font-medium text-[#52657a]">
+                <span>启用覆盖率</span>
+                <span className="font-semibold text-[#3370ff]">{taskCoverage}%</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#dce8f8]">
+                <div className="h-full rounded-full bg-[#3370ff]" style={{ width: `${taskCoverage}%` }} />
+              </div>
+              <p className="mt-2 text-[11px] text-[#52657a]">{displayEnabledTasks} 个启用，{displayPausedTasks} 个暂停</p>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs">
+              <div className="flex h-10 items-center justify-between rounded-lg border border-[#d7e4f5] px-3"><span className="inline-flex items-center gap-2 font-medium text-[#52657a]"><span className="h-2 w-2 rounded-full bg-[#3370ff]" />正在运行</span><strong className="text-[#102033]">{displayRunningCount}</strong></div>
+              <div className="flex h-10 items-center justify-between rounded-lg border border-[#d7e4f5] px-3"><span className="inline-flex items-center gap-2 font-medium text-[#52657a]"><span className="h-2 w-2 rounded-full bg-[#10b981]" />等待运行</span><strong className="text-[#102033]">{displayWaitingTasks}</strong></div>
+              <div className="flex h-10 items-center justify-between rounded-lg border border-[#d7e4f5] px-3"><span className="inline-flex items-center gap-2 font-medium text-[#52657a]"><span className="h-2 w-2 rounded-full bg-[#94a3b8]" />已暂停</span><strong className="text-[#102033]">{displayPausedTasks}</strong></div>
             </div>
           </section>
 
-          <section className="h-full overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.055)]">
+          <section className="flex h-full flex-col overflow-hidden rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_8px_24px_rgba(51,112,255,0.055)]" data-dashboard-transfer="true">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-[#102033]">实时连接</h2>
-              <StatusPill label={wsStatus === "connected" ? "良好" : "重连中"} tone={wsStatus === "connected" ? "success" : "warning"} dot />
+              <h2 className="text-base font-semibold text-[#102033]">今日传输</h2>
+              <span className="rounded-full bg-[#eef5ff] px-2.5 py-1 text-xs font-semibold text-[#3370ff]">{transferEventCount} 个事件</span>
             </div>
-            <div className="mt-2.5 text-sm text-[#52657a]">
-              <div className="flex h-9 items-center justify-between gap-3 border-b border-[#edf3fb]"><span>连接延迟</span><span>{displayRealtimeMetrics.latencyMs == null ? "未采集" : `${displayRealtimeMetrics.latencyMs} ms`}</span></div>
-              <div className="flex h-9 items-center justify-between gap-3 border-b border-[#edf3fb]">
+            <div className="mt-3 text-sm text-[#52657a]">
+              <div className="flex h-10 items-center justify-between gap-3 border-b border-[#edf3fb]"><span>传输事件</span><span>{transferEventCount}</span></div>
+              <div className="flex h-10 items-center justify-between gap-3 border-b border-[#edf3fb]">
                 <span className="inline-flex items-center gap-1.5" data-dashboard-flow-direction="incoming"><IconArrowDown className="h-3.5 w-3.5 text-[#3370ff]" />数据流入</span>
-                <span>{realtimeInboundLabel}</span>
+                <span>{displayRealtimeMetrics.incomingEvents} 事件</span>
               </div>
-              <div className="flex h-9 items-center justify-between gap-3">
+              <div className="flex h-10 items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-1.5" data-dashboard-flow-direction="outgoing"><IconArrowUp className="h-3.5 w-3.5 text-[#10b981]" />数据流出</span>
-                <span>{realtimeOutboundLabel}</span>
+                <span>{displayRealtimeMetrics.outgoingEvents} 事件</span>
               </div>
             </div>
             <RealtimeLineChart metrics={displayRealtimeMetrics} />
-            <div className="mt-3 flex items-center justify-between border-t border-[#edf3fb] pt-3 text-xs font-medium text-[#52657a]">
+            <div className="mt-3 flex flex-none items-center justify-between border-t border-[#edf3fb] pt-3 text-xs font-medium text-[#52657a]">
               <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#3370ff]" /> 流入</span>
               <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#10b981]" /> 流出</span>
             </div>

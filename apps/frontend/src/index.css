@@ -89,6 +89,10 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.dashboard-clarity {
+  height: calc(100vh / var(--desktop-scale, 1) - 98px);
+}
+
 .dashboard-clarity [class*="text-[#6b7f96]"],
 .dashboard-clarity [class*="text-[#6b83a7]"],
 .dashboard-clarity [class*="text-[#8a9bb0]"],

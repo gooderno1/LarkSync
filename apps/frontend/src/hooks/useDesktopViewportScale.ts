@@ -37,11 +37,12 @@ export function useDesktopViewportScale() {
     height: "100vh",
   };
 
-  const canvasStyle: CSSProperties = {
+  const canvasStyle: CSSProperties & { "--desktop-scale": number } = {
     width: `calc(100vw / ${scale})`,
     height: `calc(100vh / ${scale})`,
     transform: `scale(${scale})`,
     transformOrigin: "top left",
+    "--desktop-scale": scale,
   };
 
   return {
