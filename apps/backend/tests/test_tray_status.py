@@ -96,7 +96,7 @@ def test_tray_status_conflict_count(
     assert status_after["unresolved_conflicts"] == 0
 
 
-def test_tray_status_counts_running_and_errors(
+def test_tray_status_ignores_stale_running_state_for_disabled_tasks(
     tray_client: TestClient, tmp_path: Path, monkeypatch
 ) -> None:
     import src.main as main
@@ -135,7 +135,7 @@ def test_tray_status_counts_running_and_errors(
     status = tray_client.get("/tray/status").json()
     assert status["tasks_total"] == 2
     assert status["tasks_paused"] == 2
-    assert status["tasks_running"] == 1
+    assert status["tasks_running"] == 0
     assert status["last_error"] == "boom"
 
 
@@ -176,6 +176,8 @@ def test_desktop_status_aggregates_shell_state(
     body = response.json()
     assert body["runtime"]["backend_running"] is True
     assert body["runtime"]["data_dir"].endswith("data")
+    assert body["runtime"]["profile"] == "production"
+    assert body["runtime"]["cloud_write_policy"] == "normal"
     assert body["auth"]["connected"] is False
     assert body["auth"]["device_id"]
     assert body["tasks"]["total"] == 1

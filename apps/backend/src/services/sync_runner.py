@@ -26,6 +26,7 @@ from src.services.file_downloader import FileDownloader
 from src.services.file_hash import calculate_file_hash
 from src.services.file_uploader import FileUploader
 from src.services.file_writer import FileWriter
+from src.services.feishu_client import activate_cloud_root_scope, reset_cloud_root_scope
 from src.services.markdown_blocks import hash_block, split_markdown_blocks
 from src.services.path_sanitizer import sanitize_filename, sanitize_path_segment
 from src.services.import_task_service import ImportTaskService
@@ -148,6 +149,7 @@ class SyncTaskRunner:
         run_service: SyncRunService | None = None,
         task_service: object | None = None,
         conflict_service: ConflictService | None = None,
+        config_manager: ConfigManager | None = None,
         import_poll_attempts: int = 60,
         import_poll_interval: float = 1.0,
         export_poll_attempts: int = 20,
@@ -171,6 +173,7 @@ class SyncTaskRunner:
         self._run_service = run_service or SyncRunService()
         self._task_service = task_service
         self._conflict_service = conflict_service or ConflictService()
+        self._config_manager = config_manager or ConfigManager.get()
         self._import_poll_attempts = max(1, import_poll_attempts)
         self._import_poll_interval = max(0.0, import_poll_interval)
         self._export_poll_attempts = max(1, export_poll_attempts)
@@ -397,14 +400,26 @@ class SyncTaskRunner:
             task.local_path,
             task.cloud_folder_token,
         )
-        self._tasks[task.id] = asyncio.create_task(self.run_task(task))
+        cloud_scope = activate_cloud_root_scope(task.cloud_folder_token)
+        try:
+            self._tasks[task.id] = asyncio.create_task(self.run_task(task))
+        finally:
+            reset_cloud_root_scope(cloud_scope)
         return status
 
-    def cancel_task(self, task_id: str) -> None:
+    def cancel_task(self, task_id: str, *, preserve_pending_restart: bool = False) -> None:
         task = self._tasks.get(task_id)
         if task and not task.done():
             task.cancel()
+        status = self._statuses.get(task_id)
+        if status and status.state == "running":
+            status.state = "cancelled"
+            status.last_error = "任务已取消"
+            status.finished_at = time.time()
         self._running_tasks.discard(task_id)
+        if not preserve_pending_restart:
+            self._pending_uploads.pop(task_id, None)
+            self._pending_restarts.pop(task_id, None)
         self._stop_watcher(task_id)
 
     def restart_task(self, task: SyncTaskItem, *, reason: str | None = None) -> SyncTaskStatus:
@@ -421,7 +436,7 @@ class SyncTaskRunner:
             task.id,
             reason or "配置已更新",
         )
-        self.cancel_task(task.id)
+        self.cancel_task(task.id, preserve_pending_restart=True)
         return status
 
     def queue_local_change(
@@ -485,6 +500,7 @@ class SyncTaskRunner:
             trigger_source="conflict_resolution",
         )
         await self._persist_run_started(task, status)
+        cloud_scope = activate_cloud_root_scope(task.cloud_folder_token)
         try:
             await executor(status)
             status.state = "failed" if status.failed_files > 0 else "success"
@@ -515,6 +531,7 @@ class SyncTaskRunner:
             )
             await self._finalize_run_status(task, status)
             self._running_tasks.discard(task.id)
+            reset_cloud_root_scope(cloud_scope)
 
     async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
         # 首次调度时，全量扫描本地目录，将没有 SyncLink 的文件加入待上传队列
@@ -549,6 +566,7 @@ class SyncTaskRunner:
             trigger_source="scheduled_upload",
         )
         await self._persist_run_started(task, status)
+        cloud_scope = activate_cloud_root_scope(task.cloud_folder_token)
         try:
             await self._run_additive_reconciliation_if_needed(task, status)
             await self._run_upload_paths(task, status, ready_paths)
@@ -575,6 +593,7 @@ class SyncTaskRunner:
             )
             await self._finalize_run_status(task, status)
             self._running_tasks.discard(task.id)
+            reset_cloud_root_scope(cloud_scope)
 
     async def run_scheduled_download(self, task: SyncTaskItem) -> None:
         if task.id in self._running_tasks:
@@ -589,6 +608,7 @@ class SyncTaskRunner:
             trigger_source="scheduled_download",
         )
         await self._persist_run_started(task, status)
+        cloud_scope = activate_cloud_root_scope(task.cloud_folder_token)
         try:
             await self._run_additive_reconciliation_if_needed(task, status)
             await self._run_download(task, status)
@@ -615,6 +635,7 @@ class SyncTaskRunner:
             )
             await self._finalize_run_status(task, status)
             self._running_tasks.discard(task.id)
+            reset_cloud_root_scope(cloud_scope)
 
     def _reset_status(
         self,
@@ -1978,6 +1999,9 @@ class SyncTaskRunner:
         )
 
     def _ensure_watcher(self, task: SyncTaskItem) -> None:
+        if self._config_manager.config.effective_disable_watcher:
+            logger.debug("运行配置已禁用目录监听: task_id={}", task.id)
+            return
         if task.id in self._watchers:
             return
         if self._loop is None:

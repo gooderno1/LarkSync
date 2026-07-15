@@ -66,6 +66,10 @@ class DesktopRuntimeStatus(BaseModel):
     data_dir: str
     database_url: str
     packaged: bool
+    profile: str
+    cloud_write_policy: str
+    scheduler_disabled: bool
+    watcher_disabled: bool
 
 
 class DesktopAuthStatus(BaseModel):
@@ -171,6 +175,7 @@ async def build_desktop_status(request: Request) -> DesktopStatusResponse:
 
     statuses = runner.list_statuses() if runner is not None else {}
     tasks = await task_service.list_tasks() if task_service is not None else []
+    enabled_task_ids = {task.id for task in tasks if task.enabled}
     conflicts = (
         await conflict_service.list_conflicts(include_resolved=False)
         if conflict_service is not None
@@ -195,6 +200,10 @@ async def build_desktop_status(request: Request) -> DesktopStatusResponse:
             data_dir=str(data_dir()),
             database_url=config.database_url,
             packaged=_runtime_packaged(),
+            profile=config.runtime_profile.value,
+            cloud_write_policy=config.effective_cloud_write_policy.value,
+            scheduler_disabled=config.effective_disable_scheduler,
+            watcher_disabled=config.effective_disable_watcher,
         ),
         auth=DesktopAuthStatus(
             connected=token is not None,
@@ -208,7 +217,11 @@ async def build_desktop_status(request: Request) -> DesktopStatusResponse:
             total=len(tasks),
             enabled=sum(1 for task in tasks if task.enabled),
             paused=sum(1 for task in tasks if not task.enabled),
-            running=sum(1 for status in statuses.values() if status.state == "running"),
+            running=sum(
+                1
+                for task_id, status in statuses.items()
+                if task_id in enabled_task_ids and status.state == "running"
+            ),
             failed=sum(1 for status in statuses.values() if status.state == "failed"),
             last_error=errors[0] if errors else None,
             last_sync_time=last_sync,

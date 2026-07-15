@@ -174,20 +174,21 @@ def _load_hook_module(module_name: str, hook_filename: str) -> object:
     return module
 
 
-def test_custom_pydantic_hook_excludes_v1_namespace() -> None:
+def test_custom_pydantic_hook_keeps_fastapi_v1_runtime_probe() -> None:
     module = _load_hook_module("larksync_hook_pydantic", "hook-pydantic.py")
 
     hiddenimports = getattr(module, "hiddenimports")
     excludedimports = getattr(module, "excludedimports")
-    assert "pydantic.v1" not in hiddenimports
-    assert all(not name.startswith("pydantic.v1.") for name in hiddenimports)
-    assert excludedimports == ["pydantic.v1"]
+    assert "pydantic.v1" in hiddenimports
+    assert "pydantic.v1.fields" in hiddenimports
+    assert excludedimports == []
 
 
-def test_custom_fastapi_compat_hook_excludes_pydantic_v1() -> None:
+def test_custom_fastapi_compat_hook_keeps_pydantic_v1_probe() -> None:
     module = _load_hook_module("larksync_hook_fastapi_compat", "hook-fastapi._compat.shared.py")
 
-    assert getattr(module, "excludedimports") == ["pydantic.v1"]
+    assert getattr(module, "hiddenimports") == ["pydantic.v1"]
+    assert getattr(module, "excludedimports") == []
 
 
 def test_build_dmg_uses_root_app_bundle_when_present(monkeypatch, tmp_path: Path) -> None:

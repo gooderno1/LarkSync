@@ -1,5 +1,42 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.37 (2026-07-15)
+
+- 开发原因：
+  - 当前机器持续运行正式版 `v0.7.29`，后续 v0.8 开发必须避免复用正式端口、数据目录、实例锁和 keyring 刷新链路。
+  - 开发测试数据中出现“任务已停用但桌面壳仍显示 1 个正在运行”，根因是取消动作只移除协程和 watcher，没有同步收口内存状态。
+  - 仓库缺少一致 SQLite 快照、真实只读云端写保护、请求审计和主动全局限流，无法安全进入真实数据回归。
+- 实现方式：
+  - `cancel_task()` 立即把 `running` 转为 `cancelled`，写入 `finished_at`，并清理 pending upload、非重启型 pending restart、watcher 和运行集合；应用启动后把数据库遗留 `running` 运行记录标记为中断。
+  - 桌面聚合与 Dashboard 统一只统计“任务启用且状态为 running”的任务；停用任务的历史状态不再污染顶栏、侧栏、托盘和运行列表。
+  - 新增 `production / synthetic_test / snapshot_test / live_readonly / live_bidirectional` 五类强类型运行配置档，以及 watcher、scheduler、云端写策略和根目录 allowlist 配置。
+  - 非生产配置启动时检查后端端口、实例锁、显式数据目录和 Token Store；共享 keyring 的真实数据配置检测到正式版 8000 仍在运行时拒绝启动。
+  - `snapshot_test` 禁止所有飞书访问并在后端拒绝本地写 API；`live_readonly` 仅放行 GET、HEAD、OPTIONS 及元数据批查、Docx block convert、导出任务三类语义只读 POST；`live_bidirectional` 的任务根目录必须命中 allowlist，写请求还必须带当前任务根作用域。
+  - 飞书 Client 新增全局异步令牌桶，默认速率为每秒 8 个请求、突发容量 8；原有 429、500、502、503、504 与飞书频控错误码指数退避继续生效。
+  - 可选请求审计仅记录时间、Profile、HTTP 方法、endpoint path、HTTP 状态和飞书错误码；排除 Authorization、App Secret、请求正文和 URL 查询参数。
+  - 新增 `export_test_snapshot.py`，使用 SQLite online backup 获取一致快照；全部任务强制停用，本地路径重映射到快照 workspace，云端 Token 使用带随机盐的稳定 SHA-256 伪名，owner open_id 与冲突正文预览被移除。
+  - 新增 `validate_test_profile.py`、快照 manifest JSON Schema 和 `benchmark_snapshot.py`；默认查询门为 p95 不超过 250 ms、Python 峰值内存不超过 256 MB。
+  - Vite 构建将桌面页面、React、TanStack Query 和其他依赖拆为独立 chunk；最大 JS chunk 从约 502 kB 降到约 262 kB。
+  - 打包 smoke 发现并修复两项启动缺陷：PyInstaller hook 不再排除 FastAPI 路由注册阶段需要的 `pydantic.v1` 探测模块；窗口子系统启动后端时关闭 Uvicorn 默认控制台日志配置，避免 `sys.stderr=None` 触发 `isatty()` 崩溃。
+  - 打包入口新增 `bootstrap-error.log` 兜底；仅在主日志系统初始化前发生异常时记录完整 traceback，便于诊断窗口版静默退出。
+- 当前结果：
+  - 合成测试和脱敏快照测试可在正式版运行期间使用独立环境，不读取正式 keyring，也不访问飞书云端。
+  - 真实只读与专用双向测试的安全约束已由启动检查、任务检查和 FeishuClient 请求边界共同强制，不依赖 UI 提示。
+  - 快照 manifest 记录 schema version、各表记录数、完整性结果和全部脱敏规则；校验器会拒绝启用任务、遗留 running 和逃逸 workspace 的任务路径。
+  - 桌面侧栏常驻显示“合成测试 / 快照测试 / 真实只读 / 专用双向”，快照模式的顶部同步操作被禁用。
+- 验证方式：
+  - 后端全量 pytest：561 项通过；覆盖状态取消与恢复、运行环境校验、云端读写策略、令牌桶接入、审计脱敏、SQLite 快照、基准报告、打包入口与 PyInstaller hook。
+  - 前端 Vitest：30 个文件、89 项测试通过。
+  - 前端 ESLint、TypeScript typecheck 和 Vite production build：通过；5 个 JS chunk 均低于 500 kB。
+  - 快照单测样例：1 个启用任务被改为停用；1 条 running 被改为 cancelled；正式路径全部落到 snapshot workspace；Token 与冲突正文均完成脱敏。
+  - `python scripts/build_installer.py --nsis`：通过；最终安装包 `LarkSync-Setup-v0.8.0-dev.37.exe` 为 71,477,169 bytes，SHA-256 为 `699710842FE0E82B817016934E7DBF70584DAB35AE5BD082BF9002872CE283CC`。
+  - 目录版打包 smoke：在 18400、独立数据目录、`synthetic_test`、`deny`、scheduler/watcher 关闭的条件下成功返回桌面状态，并通过 `/system/shutdown` 正常退出。
+  - 正式版复核：8000 `/health=ok`，8 个任务、0 个运行中、0 个未解决冲突；构建和 smoke 期间未停止或升级正式版。
+- 遗留问题：
+  - Level 2 真实云端只读回归必须先完整退出正式版并确认实际正式数据目录；本轮未触碰正在运行的 `v0.7.29`。
+  - Level 3 专用双向回归需要用户明确确认专用飞书测试根目录 Token；没有该 Token 时禁止发起任何真实写测试。
+  - 10,000 文件、100 MB 文件和 24 小时稳定性基准需要专用数据集与维护窗口；当前已交付可重复的快照查询基准工具，但尚未伪造真实云端结论。
+
 ## v0.8.0-dev.36 (2026-07-15)
 
 - 开发原因：

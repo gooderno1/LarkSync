@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 
 from loguru import logger
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -231,6 +231,28 @@ class SyncRunService:
         except SQLAlchemyError:
             logger.exception("运行摘要读取失败: run_id={}", run_id)
             return None
+
+    async def interrupt_running_runs(self, *, finished_at: float | None = None) -> int:
+        """把上个进程遗留的 running 运行标记为已中断。"""
+        now = time.time() if finished_at is None else float(finished_at)
+        try:
+            async with self._session_maker() as session:
+                result = await session.execute(
+                    update(SyncRun)
+                    .where(SyncRun.state == "running")
+                    .values(
+                        state="cancelled",
+                        finished_at=now,
+                        last_event_at=now,
+                        last_error="应用上次退出时任务仍在运行，已标记为中断",
+                        updated_at=now,
+                    )
+                )
+                await session.commit()
+                return int(result.rowcount or 0)
+        except SQLAlchemyError:
+            logger.exception("恢复遗留运行状态失败")
+            return 0
 
     async def list_by_task(self, task_id: str, *, limit: int = 50) -> list[SyncRunItem]:
         stmt = (

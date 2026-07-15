@@ -895,6 +895,7 @@ async def _exercise_restart_task_restarts_running_task_with_latest_config(tmp_pa
 
     runner.start_task(task)
     await asyncio.sleep(0)
+    runner._pending_uploads[task.id] = {str(tmp_path / "queued.md"): time.time()}
     runner.restart_task(
         SyncTaskItem(
             **{
@@ -910,10 +911,73 @@ async def _exercise_restart_task_restarts_running_task_with_latest_config(tmp_pa
     await asyncio.sleep(0)
 
     assert seen_ignored_subpaths == [[], ["GENESIS"]]
+    assert str(tmp_path / "queued.md") in runner._pending_uploads[task.id]
 
 
 def test_restart_task_restarts_running_task_with_latest_config(tmp_path: Path) -> None:
     asyncio.run(_exercise_restart_task_restarts_running_task_with_latest_config(tmp_path))
+
+
+def test_cancel_task_immediately_marks_running_status_cancelled() -> None:
+    runner = SyncTaskRunner()
+    status = SyncTaskStatus(
+        task_id="task-cancel-immediate",
+        state="running",
+        started_at=time.time() - 1,
+    )
+    runner._statuses[status.task_id] = status
+    runner._running_tasks.add(status.task_id)
+    runner._pending_uploads[status.task_id] = {"D:/Docs/a.md": time.time()}
+    runner._pending_restarts[status.task_id] = SyncTaskItem(
+        id=status.task_id,
+        name="待取消任务",
+        local_path="D:/Docs",
+        cloud_folder_token="folder-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=False,
+        created_at=0,
+        updated_at=0,
+    )
+
+    runner.cancel_task(status.task_id)
+
+    assert status.state == "cancelled"
+    assert status.last_error == "任务已取消"
+    assert status.finished_at is not None
+    assert status.task_id not in runner._running_tasks
+    assert status.task_id not in runner._pending_uploads
+    assert status.task_id not in runner._pending_restarts
+
+
+@pytest.mark.asyncio
+async def test_runtime_profile_can_disable_task_watcher(tmp_path: Path) -> None:
+    config_manager = type(
+        "ConfigManagerStub",
+        (),
+        {"config": type("ConfigStub", (), {"effective_disable_watcher": True})()},
+    )()
+    runner = SyncTaskRunner(config_manager=config_manager)
+    runner._loop = asyncio.get_running_loop()
+    task = SyncTaskItem(
+        id="watcher-disabled",
+        name="快照任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="folder-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    runner.ensure_watcher(task)
+
+    assert runner._watchers == {}
 
 
 @pytest.mark.asyncio

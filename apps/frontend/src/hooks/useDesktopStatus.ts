@@ -9,6 +9,10 @@ export type DesktopStatus = {
     data_dir: string;
     database_url: string;
     packaged: boolean;
+    profile: "production" | "synthetic_test" | "snapshot_test" | "live_readonly" | "live_bidirectional";
+    cloud_write_policy: "deny" | "allowlisted" | "normal";
+    scheduler_disabled: boolean;
+    watcher_disabled: boolean;
   };
   auth: {
     connected: boolean;
@@ -47,6 +51,10 @@ export const desktopStatusPlaceholder: DesktopStatus = {
     data_dir: "",
     database_url: "",
     packaged: false,
+    profile: "production",
+    cloud_write_policy: "normal",
+    scheduler_disabled: false,
+    watcher_disabled: false,
   },
   auth: {
     connected: false,

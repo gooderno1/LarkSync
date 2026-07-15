@@ -8,12 +8,14 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const defaultDataDir = resolve(repoRoot, "data", "dev-test");
 
 const dataDir = process.env.LARKSYNC_DATA_DIR ?? defaultDataDir;
+const runtimeProfile = process.env.LARKSYNC_RUNTIME_PROFILE ?? "synthetic_test";
 mkdirSync(dataDir, { recursive: true });
 const backendClientHost = process.env.LARKSYNC_BACKEND_CLIENT_HOST ?? "127.0.0.1";
 const backendPort = process.env.LARKSYNC_BACKEND_PORT ?? await selectBackendPort({
   host: backendClientHost,
   preferredPort: 18000,
   expectedDataDir: dataDir,
+  expectedProfile: runtimeProfile,
 });
 
 const env = {
@@ -24,6 +26,8 @@ const env = {
   LARKSYNC_VITE_DEV_PORT: process.env.LARKSYNC_VITE_DEV_PORT ?? "13666",
   LARKSYNC_LOCK_PORT: process.env.LARKSYNC_LOCK_PORT ?? "48911",
   LARKSYNC_DATA_DIR: dataDir,
+  LARKSYNC_RUNTIME_PROFILE: runtimeProfile,
+  LARKSYNC_CLOUD_WRITE_POLICY: process.env.LARKSYNC_CLOUD_WRITE_POLICY ?? "deny",
   LARKSYNC_TOKEN_STORE: process.env.LARKSYNC_TOKEN_STORE ?? "file",
   LARKSYNC_TOKEN_FILE: process.env.LARKSYNC_TOKEN_FILE ?? join(dataDir, "token_store.json"),
 };
@@ -48,18 +52,22 @@ child.on("exit", (code, signal) => {
   process.exit(code ?? 0);
 });
 
-async function selectBackendPort({ host, preferredPort, expectedDataDir }) {
+async function selectBackendPort({ host, preferredPort, expectedDataDir, expectedProfile }) {
   for (let port = preferredPort; port < preferredPort + 20; port += 1) {
     if (!(await isPortOpen(host, port))) {
       return String(port);
     }
 
     const status = await readDesktopStatus(host, port);
-    if (status && samePath(status.runtime?.data_dir, expectedDataDir)) {
+    if (
+      status
+      && samePath(status.runtime?.data_dir, expectedDataDir)
+      && status.runtime?.profile === expectedProfile
+    ) {
       return String(port);
     }
 
-    console.warn(`  后端端口 ${port} 已被占用或数据目录不匹配，尝试 ${port + 1}`);
+    console.warn(`  后端端口 ${port} 已被占用，或数据目录/Profile 不匹配，尝试 ${port + 1}`);
   }
   throw new Error(`No free backend port found from ${preferredPort} to ${preferredPort + 19}`);
 }

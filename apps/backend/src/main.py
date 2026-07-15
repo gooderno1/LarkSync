@@ -32,16 +32,23 @@ from src.api.sync_tasks import (
 )
 from src.api.watcher import watcher_manager
 from src.core.logging import init_logging
+from src.core.config import AppConfig, ConfigManager, RuntimeProfile
 from src.core.paths import bundle_root
 from src.db.session import init_db
 from src.services.conflict_service import ConflictService
 from src.services.sync_log_maintenance_service import SyncLogMaintenanceService
+from src.services.sync_run_service import SyncRunService
 from src.services.sync_scheduler import SyncScheduler
 from src.services.update_scheduler import UpdateScheduler
 from src.api.system import build_desktop_status, desktop_status_to_tray_status
 
 InitDbFn = Callable[[], Awaitable[Any]]
 InitLoggingFn = Callable[[], None]
+RecoverRunsFn = Callable[[], Awaitable[int]]
+
+
+async def _recover_interrupted_runs() -> int:
+    return await SyncRunService().interrupt_running_runs()
 
 
 def _as_bool_env(name: str, default: bool = False) -> bool:
@@ -54,6 +61,14 @@ def _as_bool_env(name: str, default: bool = False) -> bool:
 def _expose_error_detail() -> bool:
     # 默认关闭错误详情回显，避免将内部异常直接暴露给客户端。
     return _as_bool_env("LARKSYNC_DEBUG_ERRORS", default=False)
+
+
+def _runtime_mutation_denied(config: AppConfig, method: str, path: str) -> bool:
+    if config.runtime_profile is not RuntimeProfile.snapshot_test:
+        return False
+    if method.strip().upper() in {"GET", "HEAD", "OPTIONS"}:
+        return False
+    return path != "/system/shutdown"
 
 
 sync_scheduler = SyncScheduler(runner=sync_runner, task_service=sync_task_service)
@@ -95,6 +110,7 @@ def _build_lifespan(
     update_scheduler_instance: UpdateScheduler,
     watcher_manager_instance,
     init_db_fn: InitDbFn,
+    recover_runs_fn: RecoverRunsFn,
     init_logging_fn: InitLoggingFn,
 ):
     @asynccontextmanager
@@ -102,6 +118,9 @@ def _build_lifespan(
         init_logging_fn()
         watcher_manager_instance.set_loop(asyncio.get_running_loop())
         await init_db_fn()
+        recovered_runs = await recover_runs_fn()
+        if recovered_runs:
+            logger.warning("已恢复 {} 条上次退出时遗留的运行记录", recovered_runs)
         await log_maintenance_service_instance.start()
         await sync_scheduler_instance.start()
         await update_scheduler_instance.start()
@@ -167,6 +186,7 @@ def create_app(
     update_scheduler_instance=update_scheduler,
     watcher_manager_instance=watcher_manager,
     init_db_fn: InitDbFn = init_db,
+    recover_runs_fn: RecoverRunsFn = _recover_interrupted_runs,
     init_logging_fn: InitLoggingFn = init_logging,
 ) -> FastAPI:
     app = FastAPI(
@@ -177,6 +197,7 @@ def create_app(
             update_scheduler_instance=update_scheduler_instance,
             watcher_manager_instance=watcher_manager_instance,
             init_db_fn=init_db_fn,
+            recover_runs_fn=recover_runs_fn,
             init_logging_fn=init_logging_fn,
         ),
     )
@@ -205,6 +226,16 @@ def create_app(
                 "path": str(request.url.path),
             },
         )
+
+    @app.middleware("http")
+    async def enforce_runtime_profile(request: Request, call_next):
+        config = ConfigManager.get().config
+        if _runtime_mutation_denied(config, request.method, request.url.path):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "snapshot mode is read-only"},
+            )
+        return await call_next(request)
 
     @app.middleware("http")
     async def log_requests(request: Request, call_next):

@@ -43,6 +43,9 @@ class SyncScheduler:
     async def start(self) -> None:
         if self._upload_task or self._download_task:
             return
+        if getattr(self._config_manager.config, "effective_disable_scheduler", False):
+            logger.warning("当前运行配置已禁用同步调度器")
+            return
         self._stop_event.clear()
         await self._ensure_watchers()
         self._upload_task = asyncio.create_task(self._upload_loop())

@@ -85,6 +85,13 @@ type DashboardRunningRow = {
   task?: SyncTask;
 };
 
+export function selectRunningTasks(
+  tasks: SyncTask[],
+  statusMap: Record<string, SyncTaskStatus>
+): SyncTask[] {
+  return tasks.filter((task) => task.enabled && statusMap[task.id]?.state === "running");
+}
+
 type DashboardRecentRow = {
   id: string;
   timeLabel: string;
@@ -625,7 +632,7 @@ export function DashboardPage({ onNavigate }: Props) {
   const unresolvedConflicts = conflicts.filter((c) => !c.resolved);
   const today = new Date();
   const enabledTasks = tasks.filter((t) => t.enabled).length;
-  const runningTasks = tasks.filter((t) => statusMap[t.id]?.state === "running").length;
+  const runningTasks = selectRunningTasks(tasks, statusMap).length;
   const pausedTasks = tasks.length - enabledTasks;
   const waitingTasks = Math.max(0, enabledTasks - runningTasks);
   const todayEventCount = syncLogEntries.filter((e) => isSameDay(e.timestamp, today)).length;
@@ -659,7 +666,7 @@ export function DashboardPage({ onNavigate }: Props) {
     FAILURE_STATUSES.has(entry.status) || DELETE_PENDING_STATUSES.has(entry.status) || QUEUED_SYNC_STATUSES.has(entry.status)
   );
   const runningTaskList = useMemo(
-    () => tasks.filter((task) => statusMap[task.id]?.state === "running"),
+    () => selectRunningTasks(tasks, statusMap),
     [tasks, statusMap]
   );
   const showcaseMode = shouldUseDashboardShowcase(

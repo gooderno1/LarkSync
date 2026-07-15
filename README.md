@@ -5,7 +5,7 @@
 </p>
 
 本地优先的飞书文档同步工具：把飞书云文档稳定同步到本地 Markdown / 文件系统，同时保留继续在飞书协作的工作方式。
-当前开发版本：`v0.8.0-dev.36`（2026-07-15）；最新稳定版：`v0.7.29`。核心运行形态正在从托盘常驻 + Web 管理面板迁移为 Windows 桌面壳 + 托盘常驻。
+当前开发版本：`v0.8.0-dev.37`（2026-07-15）；最新稳定版：`v0.7.29`。核心运行形态正在从托盘常驻 + Web 管理面板迁移为 Windows 桌面壳 + 托盘常驻。
 
 ## 快速入口
 
@@ -15,6 +15,7 @@
 | 首次安装和创建任务 | [快速开始](docs/QUICK_START.md) |
 | 配置飞书开放平台 | [OAuth 配置指南](docs/OAUTH_GUIDE.md) |
 | 了解数据边界 | [安全与隐私说明](docs/SECURITY_AND_PRIVACY.md) |
+| 在正式版旁安全测试 v0.8 | [真实数据安全测试指南](docs/REAL_DATA_TESTING.md) |
 | 遇到问题 | [反馈与排障指南](docs/FEEDBACK.md) / [FAQ](docs/FAQ.md) |
 
 ## 适合谁
@@ -57,10 +58,13 @@
 - Windows 桌面壳已接入统一浅色科技风导航与命令栏，以及总览工作台、表格化同步任务页、独立任务详情页、活动与问题、冲突处理、设置和更新维护入口。
 - OAuth token 本地保存，支持自动续期；详见 [安全与隐私说明](docs/SECURITY_AND_PRIVACY.md)。
 - 内置 CLI 和 OpenClaw Skill 模板，适合 Agent / 自动化工作流读取本地飞书缓存。
+- 新增 `production`、`synthetic_test`、`snapshot_test`、`live_readonly`、`live_bidirectional` 五类运行配置档；测试配置使用独立端口、实例锁、数据目录和 Token Store，桌面侧栏常驻显示非生产环境标识。
+- 新增正式数据库 SQLite online backup 脱敏快照、快照配置校验和只读查询基准脚本；快照会停用全部任务、终止遗留 `running`、重映射本地路径、伪名化云端 Token，并且不导出 keyring 凭据。
+- 飞书请求统一经过全局令牌桶和 429/5xx 指数退避；真实只读配置按 endpoint 语义拒绝云端写入，专用双向配置要求任务根目录命中 allowlist，并可输出不含 Authorization、请求正文和 URL 查询参数的 JSONL 请求审计。
 
 ## 当前边界
 
-- 非 Markdown 文件的覆盖更新接口尚未完全接入。
+- 非 Markdown 文件已支持“先上传新文件、再清理旧的同名云端副本”；该流程不能保持旧文件 Token 不变，若旧副本清理失败会保留最新映射并记录警告，需要在专用测试目录完成真实回归后再扩大使用范围。
 - 在线文档内嵌 `sheet` 优先转 Markdown 表格；权限不足、接口异常或超限时会回退为 `sheet_token` 占位。
 - 文档内附件块若字段结构与当前样例不同，需要提供 docx blocks JSON 样例后继续完善解析。
 - 双向同步会修改云端或本地内容。首次试用请使用测试目录或 `download_only` 模式。

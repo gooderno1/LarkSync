@@ -1,4 +1,4 @@
-# FastAPI 0.128.0 在 _compat.shared 中保留了面向 pydantic.v1 的运行时兼容探测。
-# LarkSync 全量使用 Pydantic v2，这里显式告诉 PyInstaller 忽略该导入，避免
-# Python 3.14+ 构建时把未使用的 v1 兼容层纳入分析并触发上游告警。
-excludedimports = ["pydantic.v1"]
+# FastAPI 在路由注册阶段会执行 pydantic.v1 兼容探测，即使业务模型全部使用 v2。
+# 必须保留该运行时导入，否则窗口版后端会在日志系统初始化前退出。
+hiddenimports = ["pydantic.v1"]
+excludedimports = []

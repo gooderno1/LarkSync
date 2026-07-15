@@ -122,3 +122,48 @@ async def test_sync_run_service_lists_latest_by_tasks(tmp_path) -> None:
     latest = await service.list_latest_by_tasks(["task-1", "task-2"])
     assert latest["task-1"].run_id == "run-new"
     assert latest["task-2"].run_id == "run-other"
+
+
+@pytest.mark.asyncio
+async def test_interrupt_running_runs_closes_only_orphaned_runs(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'recovery.db').as_posix()}"
+    await init_db(db_url)
+    service = SyncRunService(session_maker=get_session_maker(db_url))
+    await service.start_run(
+        run_id="orphaned-run",
+        task_id="task-a",
+        trigger_source="manual",
+        started_at=10.0,
+    )
+    await service.finish_run(
+        run_id="completed-run",
+        task_id="task-b",
+        trigger_source="manual",
+        state="success",
+        started_at=20.0,
+        finished_at=21.0,
+        last_event_at=21.0,
+        total_files=1,
+        completed_files=1,
+        failed_files=0,
+        skipped_files=0,
+        uploaded_files=0,
+        downloaded_files=1,
+        deleted_files=0,
+        conflict_files=0,
+        delete_pending_files=0,
+        delete_failed_files=0,
+        last_error=None,
+    )
+
+    recovered = await service.interrupt_running_runs(finished_at=30.0)
+
+    assert recovered == 1
+    orphaned = await service.get_run("orphaned-run")
+    completed = await service.get_run("completed-run")
+    assert orphaned is not None
+    assert orphaned.state == "cancelled"
+    assert orphaned.finished_at == 30.0
+    assert orphaned.last_error == "应用上次退出时任务仍在运行，已标记为中断"
+    assert completed is not None
+    assert completed.state == "success"

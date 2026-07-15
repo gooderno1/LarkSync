@@ -58,6 +58,8 @@ from apps.tray.autostart import is_autostart_enabled, repair_autostart_if_needed
 from apps.tray import notifier
 from apps.tray import windows_install_helper
 from src.core.paths import update_data_dir, update_logs_dir
+from src.core.config import ConfigManager, RuntimeProfile
+from src.core.runtime_safety import validate_runtime_environment
 from src.services.update_service import extract_installer_version as _extract_release_installer_version
 
 
@@ -1108,6 +1110,26 @@ def main() -> None:
                 debug=args.debug_window,
             )
         )
+
+    runtime_config = ConfigManager.get().config
+    lock_port = _int_env("LARKSYNC_LOCK_PORT", 48901)
+    production_backend_running = (
+        runtime_config.runtime_profile is not RuntimeProfile.production
+        and _is_port_active(8000, host="127.0.0.1")
+    )
+    startup_issues = validate_runtime_environment(
+        runtime_config,
+        backend_port=_int_env("LARKSYNC_BACKEND_PORT", 8000),
+        lock_port=lock_port,
+        runtime_data_dir=_data_dir(),
+        explicit_data_dir=bool((os.getenv("LARKSYNC_DATA_DIR") or "").strip()),
+        production_backend_running=production_backend_running,
+    )
+    if startup_issues:
+        print("LarkSync 运行配置安全检查失败：")
+        for issue in startup_issues:
+            print(f"- {issue}")
+        return
 
     if not _acquire_lock():
         print("LarkSync 已在运行中，请勿重复启动。")

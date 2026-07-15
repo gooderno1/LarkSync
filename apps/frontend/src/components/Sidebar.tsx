@@ -43,8 +43,16 @@ const systemItems: SidebarItem[] = [
   { id: "maintenance", label: "更新与维护", icon: IconDownloadTray },
 ];
 
+const runtimeProfileLabels: Record<string, string> = {
+  synthetic_test: "合成测试",
+  snapshot_test: "快照测试",
+  live_readonly: "真实只读",
+  live_bidirectional: "专用双向",
+};
+
 export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarProps) {
   const { status } = useDesktopStatus();
+  const runtimeProfileLabel = runtimeProfileLabels[status.runtime.profile];
 
   const renderNavItems = (items: SidebarItem[], compact = false) => items.map((item) => {
     const Icon = item.icon;
@@ -91,6 +99,14 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
             draggable={false}
           />
         </div>
+        {runtimeProfileLabel ? (
+          <div
+            className="mx-3 mt-1 rounded-md border border-[#f6c453] bg-[#fff8df] px-2.5 py-1.5 text-center text-[11px] font-semibold text-[#8a5a00]"
+            data-runtime-profile={status.runtime.profile}
+          >
+            {runtimeProfileLabel}
+          </div>
+        ) : null}
 
         <section data-sidebar-section="workspace" className="mt-5">
           <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7f94ab]">工作区</p>

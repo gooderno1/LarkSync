@@ -8,6 +8,22 @@ const backendWsTarget = backendTarget.replace(/^http/, "ws");
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalized = id.replaceAll("\\", "/");
+          if (normalized.includes("/src/pages/")) return "desktop-pages";
+          if (normalized.includes("/node_modules/react/") || normalized.includes("/node_modules/react-dom/")) {
+            return "react-vendor";
+          }
+          if (normalized.includes("/node_modules/@tanstack/")) return "query-vendor";
+          if (normalized.includes("/node_modules/")) return "vendor";
+          return undefined;
+        },
+      },
+    },
+  },
   define: {
     "import.meta.env.VITE_LARKSYNC_BACKEND_PORT": JSON.stringify(
       process.env.LARKSYNC_BACKEND_PORT ?? "8000"

@@ -20,6 +20,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
   const enabledTasks = useMemo(() => tasks.filter((task) => task.enabled), [tasks]);
   const accountName = desktopStatus.auth.account_name;
   const pendingCount = desktopStatus.conflicts.unresolved + Math.max(0, desktopStatus.tasks.failed || 0);
+  const runtimeMutationsDisabled = desktopStatus.runtime.profile === "snapshot_test";
 
   useEffect(() => {
     const closeOnOutsideClick = (event: PointerEvent) => {
@@ -44,6 +45,10 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
   };
 
   const handleRunAll = () => {
+    if (runtimeMutationsDisabled) {
+      toast("快照测试模式禁止执行同步", "warning");
+      return;
+    }
     if (enabledTasks.length === 0) {
       toast("暂无启用任务", "warning");
       return;
@@ -75,6 +80,8 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
         <button
           className="inline-flex h-9 w-[128px] items-center justify-center gap-2 rounded-lg bg-[#3370FF] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(51,112,255,0.2)] transition hover:bg-[#2563eb]"
           onClick={handleRunAll}
+          disabled={runtimeMutationsDisabled}
+          data-runtime-mutations={runtimeMutationsDisabled ? "disabled" : "enabled"}
           type="button"
           title="立即同步"
         >

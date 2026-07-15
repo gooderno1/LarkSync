@@ -3,6 +3,7 @@ import asyncio
 from fastapi.testclient import TestClient
 
 import src.main as main
+from src.core.config import AppConfig, RuntimeProfile
 
 
 class _DummyRunner:
@@ -54,11 +55,24 @@ def test_health_check() -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_snapshot_profile_blocks_local_mutation_routes() -> None:
+    config = AppConfig(runtime_profile=RuntimeProfile.snapshot_test)
+
+    assert main._runtime_mutation_denied(config, "POST", "/sync/tasks/task-1/run") is True
+    assert main._runtime_mutation_denied(config, "PATCH", "/config") is True
+    assert main._runtime_mutation_denied(config, "GET", "/sync/tasks") is False
+    assert main._runtime_mutation_denied(config, "POST", "/system/shutdown") is False
+
+
 def test_create_app_lifespan_starts_and_stops_services() -> None:
     events: list[str] = []
 
     async def fake_init_db() -> None:
         events.append("db:init")
+
+    async def fake_recover_runs() -> int:
+        events.append("runs:recover")
+        return 2
 
     def fake_init_logging() -> None:
         events.append("logging:init")
@@ -72,6 +86,7 @@ def test_create_app_lifespan_starts_and_stops_services() -> None:
         update_scheduler_instance=_DummyAsyncService("update_scheduler", events),
         watcher_manager_instance=_DummyWatcherManager(events),
         init_db_fn=fake_init_db,
+        recover_runs_fn=fake_recover_runs,
         init_logging_fn=fake_init_logging,
     )
 
@@ -83,6 +98,7 @@ def test_create_app_lifespan_starts_and_stops_services() -> None:
     assert events[1].startswith("watcher:set_loop:")
     assert events[2:] == [
         "db:init",
+        "runs:recover",
         "log_maintenance:start",
         "sync_scheduler:start",
         "update_scheduler:start",

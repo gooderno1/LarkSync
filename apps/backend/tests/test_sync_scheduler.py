@@ -107,3 +107,21 @@ async def test_upload_scheduler_runs_tasks_independently() -> None:
 
     assert "task-slow" in runner.upload_calls
     assert "task-fast" in runner.upload_calls
+
+
+@pytest.mark.asyncio
+async def test_scheduler_does_not_start_when_runtime_profile_disables_it() -> None:
+    runner = FakeRunner()
+    config_manager = SimpleNamespace(
+        config=SimpleNamespace(effective_disable_scheduler=True)
+    )
+    scheduler = SyncScheduler(
+        runner=runner,
+        task_service=FakeTaskService([]),
+        config_manager=config_manager,
+    )
+
+    await scheduler.start()
+
+    assert scheduler._upload_task is None
+    assert scheduler._download_task is None

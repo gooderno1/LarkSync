@@ -20,6 +20,7 @@ from src.api.sync_task_models import (
 from src.core.config import ConfigManager
 from src.core.file_manager import open_directory_in_file_manager as _open_directory_in_file_manager
 from src.core.logging import get_log_file
+from src.core.runtime_safety import validate_task_runtime
 from src.services.docx_service import DocxService, DocxServiceError
 from src.services.log_reader import prune_log_file, read_log_entries
 from src.services.sync_event_store import SyncEventStore
@@ -45,6 +46,22 @@ runner = SyncTaskRunner(task_service=service)
 event_store = SyncEventStore()
 run_event_service = SyncRunEventService()
 run_service = SyncRunService()
+
+
+def _enforce_task_runtime(
+    *,
+    sync_mode: str,
+    cloud_folder_token: str,
+    delete_policy: str | None,
+) -> None:
+    issues = validate_task_runtime(
+        ConfigManager.get().config,
+        sync_mode=sync_mode,
+        cloud_folder_token=cloud_folder_token,
+        delete_policy=delete_policy,
+    )
+    if issues:
+        raise HTTPException(status_code=403, detail="；".join(issues))
 
 def _task_update_requires_restart(payload: SyncTaskUpdateRequest) -> bool:
     return any(
@@ -128,6 +145,16 @@ async def open_task_local_folder(task_id: str) -> SyncTaskFolderResponse:
 
 @router.post("/tasks", response_model=SyncTaskResponse)
 async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
+    config = ConfigManager.get().config
+    _enforce_task_runtime(
+        sync_mode=payload.sync_mode.value,
+        cloud_folder_token=payload.cloud_folder_token,
+        delete_policy=(
+            payload.delete_policy.value
+            if payload.delete_policy
+            else config.delete_policy.value
+        ),
+    )
     try:
         item = await service.create_task(
             name=payload.name,
@@ -154,6 +181,19 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
 @router.patch("/tasks/{task_id}", response_model=SyncTaskResponse)
 async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskResponse:
     should_restart = _task_update_requires_restart(payload)
+    current = await service.get_task(task_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Task not found")
+    config = ConfigManager.get().config
+    _enforce_task_runtime(
+        sync_mode=payload.sync_mode.value if payload.sync_mode else current.sync_mode,
+        cloud_folder_token=payload.cloud_folder_token or current.cloud_folder_token,
+        delete_policy=(
+            payload.delete_policy.value
+            if payload.delete_policy
+            else current.delete_policy or config.delete_policy.value
+        ),
+    )
     try:
         item = await service.update_task(
             task_id,
@@ -223,6 +263,12 @@ async def run_task(task_id: str) -> SyncTaskStatusResponse:
     item = await service.get_task(task_id)
     if not item:
         raise HTTPException(status_code=404, detail="Task not found")
+    config = ConfigManager.get().config
+    _enforce_task_runtime(
+        sync_mode=item.sync_mode,
+        cloud_folder_token=item.cloud_folder_token,
+        delete_policy=item.delete_policy or config.delete_policy.value,
+    )
     status = runner.start_task(item)
     return SyncTaskStatusResponse.from_status(status)
 

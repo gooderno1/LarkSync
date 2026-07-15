@@ -6,6 +6,7 @@ import {
   buildRecentRow,
   DashboardPage,
   formatDashboardRelativeTime,
+  selectRunningTasks,
   selectDashboardRecentRows,
   shouldUseDashboardShowcase,
 } from "./DashboardPage";
@@ -207,6 +208,62 @@ describe("dashboard showcase boundary", () => {
 
   it("uses all seven rows released by the removed status bar", () => {
     expect(selectDashboardRecentRows([], true)).toHaveLength(7);
+  });
+});
+
+describe("selectRunningTasks", () => {
+  it("ignores stale running status retained by a disabled task", () => {
+    const tasks = [
+      {
+        id: "enabled-task",
+        name: "启用任务",
+        local_path: "D:/Docs/enabled",
+        cloud_folder_token: "fld_enabled",
+        cloud_folder_name: "启用任务",
+        base_path: null,
+        sync_mode: "download_only" as const,
+        update_mode: "auto" as const,
+        md_sync_mode: "enhanced" as const,
+        ignored_subpaths: [],
+        enabled: true,
+        created_at: 1,
+        updated_at: 1,
+        last_run_at: null,
+      },
+      {
+        id: "disabled-task",
+        name: "停用任务",
+        local_path: "D:/Docs/disabled",
+        cloud_folder_token: "fld_disabled",
+        cloud_folder_name: "停用任务",
+        base_path: null,
+        sync_mode: "download_only" as const,
+        update_mode: "auto" as const,
+        md_sync_mode: "enhanced" as const,
+        ignored_subpaths: [],
+        enabled: false,
+        created_at: 1,
+        updated_at: 1,
+        last_run_at: null,
+      },
+    ];
+    const status = {
+      task_id: "disabled-task",
+      state: "running" as const,
+      total_files: 0,
+      completed_files: 0,
+      failed_files: 0,
+      skipped_files: 0,
+      uploaded_files: 0,
+      downloaded_files: 0,
+      deleted_files: 0,
+      conflict_files: 0,
+      delete_pending_files: 0,
+      delete_failed_files: 0,
+      last_files: [],
+    };
+
+    expect(selectRunningTasks(tasks, { "disabled-task": status })).toEqual([]);
   });
 });
 

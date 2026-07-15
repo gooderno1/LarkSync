@@ -11,6 +11,10 @@ const desktopStatus = vi.hoisted(() => ({
     data_dir: "D:/LarkSync/data",
     database_url: "sqlite+aiosqlite:///D:/LarkSync/data/larksync.db",
     packaged: false,
+    profile: "snapshot_test",
+    cloud_write_policy: "deny",
+    scheduler_disabled: true,
+    watcher_disabled: true,
   },
   auth: {
     connected: true,
@@ -94,6 +98,8 @@ describe("desktop shell status", () => {
     expect(html).toContain("后端服务");
     expect(html).toContain("最近同步");
     expect(html).toContain("v0.8.0-dev.1");
+    expect(html).toContain("快照测试");
+    expect(html).toContain('data-runtime-mutations="disabled"');
     expect(html).not.toContain("LarkSync.Backend.dev");
     expect(html).not.toContain("端口");
     expect(html).not.toContain("WebSocket");

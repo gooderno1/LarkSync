@@ -30,6 +30,20 @@ class DeletePolicy(str, Enum):
     strict = "strict"
 
 
+class RuntimeProfile(str, Enum):
+    production = "production"
+    synthetic_test = "synthetic_test"
+    snapshot_test = "snapshot_test"
+    live_readonly = "live_readonly"
+    live_bidirectional = "live_bidirectional"
+
+
+class CloudWritePolicy(str, Enum):
+    deny = "deny"
+    allowlisted = "allowlisted"
+    normal = "normal"
+
+
 def _default_config_path() -> Path:
     return data_dir() / "config.json"
 
@@ -87,6 +101,14 @@ def _default_scopes() -> list[str]:
 
 
 class AppConfig(BaseModel):
+    runtime_profile: RuntimeProfile = RuntimeProfile.production
+    disable_watcher: bool = False
+    disable_scheduler: bool = False
+    cloud_write_policy: CloudWritePolicy = CloudWritePolicy.normal
+    allowed_cloud_roots: list[str] = Field(default_factory=list)
+    feishu_rate_per_second: float = Field(default=8.0, gt=0)
+    feishu_rate_burst: int = Field(default=8, ge=1)
+    cloud_audit_log: str | None = None
     database_url: str = Field(default_factory=_default_database_url)
     sync_mode: SyncMode = SyncMode.bidirectional
     ignore_hidden_cache_paths: bool = True
@@ -115,6 +137,39 @@ class AppConfig(BaseModel):
     auth_redirect_uri: str = ""
     auth_scopes: list[str] = Field(default_factory=_default_scopes)
     token_store: str = "keyring"
+
+    @property
+    def effective_disable_watcher(self) -> bool:
+        return self.disable_watcher or self.runtime_profile in {
+            RuntimeProfile.snapshot_test,
+            RuntimeProfile.live_readonly,
+        }
+
+    @property
+    def effective_disable_scheduler(self) -> bool:
+        return self.disable_scheduler or self.runtime_profile in {
+            RuntimeProfile.snapshot_test,
+            RuntimeProfile.live_readonly,
+        }
+
+    @property
+    def cloud_access_allowed(self) -> bool:
+        return self.runtime_profile not in {
+            RuntimeProfile.synthetic_test,
+            RuntimeProfile.snapshot_test,
+        }
+
+    @property
+    def effective_cloud_write_policy(self) -> CloudWritePolicy:
+        if self.runtime_profile in {
+            RuntimeProfile.synthetic_test,
+            RuntimeProfile.snapshot_test,
+            RuntimeProfile.live_readonly,
+        }:
+            return CloudWritePolicy.deny
+        if self.runtime_profile is RuntimeProfile.live_bidirectional:
+            return CloudWritePolicy.allowlisted
+        return self.cloud_write_policy
 
 
 class ConfigManager:
@@ -159,6 +214,46 @@ class ConfigManager:
         data: dict[str, object] = {}
         if self._config_path.exists():
             data = json.loads(self._config_path.read_text(encoding="utf-8"))
+
+        env_runtime_profile = os.getenv("LARKSYNC_RUNTIME_PROFILE")
+        if env_runtime_profile:
+            data["runtime_profile"] = env_runtime_profile.strip()
+
+        for key, env_name in {
+            "disable_watcher": "LARKSYNC_DISABLE_WATCHER",
+            "disable_scheduler": "LARKSYNC_DISABLE_SCHEDULER",
+        }.items():
+            env_value = os.getenv(env_name)
+            if env_value:
+                data[key] = env_value.strip().lower() in {"1", "true", "yes", "on"}
+
+        env_cloud_write_policy = os.getenv("LARKSYNC_CLOUD_WRITE_POLICY")
+        if env_cloud_write_policy:
+            data["cloud_write_policy"] = env_cloud_write_policy.strip()
+
+        env_allowed_cloud_roots = os.getenv("LARKSYNC_ALLOWED_CLOUD_ROOTS")
+        if env_allowed_cloud_roots is not None:
+            data["allowed_cloud_roots"] = [
+                token.strip()
+                for token in env_allowed_cloud_roots.split(",")
+                if token.strip()
+            ]
+
+        env_feishu_rate = os.getenv("LARKSYNC_FEISHU_RATE_PER_SECOND")
+        if env_feishu_rate:
+            try:
+                data["feishu_rate_per_second"] = float(env_feishu_rate)
+            except ValueError:
+                pass
+        env_feishu_burst = os.getenv("LARKSYNC_FEISHU_RATE_BURST")
+        if env_feishu_burst:
+            try:
+                data["feishu_rate_burst"] = int(env_feishu_burst)
+            except ValueError:
+                pass
+        env_cloud_audit_log = os.getenv("LARKSYNC_CLOUD_AUDIT_LOG")
+        if env_cloud_audit_log:
+            data["cloud_audit_log"] = env_cloud_audit_log.strip()
 
         env_db_url = os.getenv("LARKSYNC_DATABASE_URL")
         env_db_path = os.getenv("LARKSYNC_DB_PATH")
