@@ -1,5 +1,35 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.35 (2026-07-15)
+
+- 开发原因：
+  - Windows 原生标题栏与应用命令栏颜色过于接近，窗口层级不够清楚。
+  - 顶栏与底栏重复展示连接和运行状态；底栏包含端口、数据库等低频诊断字段，却长期占用所有页面的垂直空间。
+  - 侧栏只有导航，常驻空间利用率不足，运行状态和系统入口没有形成稳定的信息层级。
+- 实现方式：
+  - 保留 Windows 原生边框、贴边布局、系统菜单和无障碍能力；窗口显示后通过 DWM 设置标题背景 `#EAF2F8`、文字 `#24364F`、边线 `#B9CBE0`，WebView 宿主背景使用 `#F5FAFF`。
+  - 删除 `DesktopStatusBar` 及全局挂载；220px 侧栏拆为“工作区 / 系统”两组导航，并新增真实后端状态、飞书授权、最近同步、版本和运行方式摘要。
+  - 顶部命令栏收为 52px，只保留启用/运行/待处理任务范围、立即同步、任务管理和账号入口；端口、数据库和进程等诊断信息按需进入更新与维护页。
+  - 新增桌面壳结构测试、Windows DWM 调色测试和六路由三档视觉边界审计。
+- 当前结果：
+  - 顶部命令栏、侧栏和页面标题不再重复承担同一类信息；DOM 中不存在全局底部状态栏。
+  - 六个核心页面的主体均延伸至画布底部，侧栏运行卡完整可见，页面无横向溢出、卡片裁切或壳层遮挡。
+  - 实际 pywebview 窗口原生标题栏呈轻冷蓝灰，与应用命令栏形成可辨识但克制的层次。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`：通过；4 个飞书文档包已检查。
+  - TDD 失败阶段：侧栏分组、52px 命令栏、底栏删除和原生 DWM 配色断言均按预期失败。
+  - 前端定向测试：通过，2 个测试文件、7 个测试。
+  - 后端桌面窗口定向测试：通过，11 个测试。
+  - `npm run dev:test`：通过；隔离前后端和实际 pywebview 窗口正常启动。
+  - Edge + Playwright：6 个核心路由在 `1536x1024` 下全部通过；总览页补测 `1440x1024`、`1280x1024`，底栏数量为 0、裁切数量为 0、横向溢出为 0、控制台及网络错误为 0。
+  - 实际原生窗口截图：DWM 标题背景、文字和边线均生效，截图位于 `docs/local_specs/visual_audit/2026-07-15-unified-shell/native-window.png`，不进入 Git。
+  - `npm --prefix apps/frontend test`：通过，30 个测试文件、87 个测试。
+  - `npm --prefix apps/frontend run typecheck`：通过。
+  - `npm --prefix apps/frontend run lint`：通过，无 ESLint 警告。
+  - `npm --prefix apps/frontend run build`：通过；Vite 生产构建成功，仅保留既有的单 chunk 超过 500 kB 提示。
+  - `python -m pytest -q`（`apps/backend`）：通过，538 个测试。
+  - `python scripts/build_installer.py`：通过；生成 `dist/LarkSync/LarkSync.exe`（17.5 MB），本轮未指定 `--nsis`。
+
 ## v0.8.0-dev.34 (2026-07-15)
 
 - 开发原因：

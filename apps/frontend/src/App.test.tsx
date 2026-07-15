@@ -35,10 +35,6 @@ vi.mock("./components/DesktopTopBar", () => ({
   DesktopTopBar: () => <div>Desktop Top Bar</div>,
 }));
 
-vi.mock("./components/DesktopStatusBar", () => ({
-  DesktopStatusBar: () => <div>Desktop Status Bar</div>,
-}));
-
 vi.mock("./components/OnboardingWizard", () => ({
   OnboardingWizard: () => <div>Onboarding Wizard</div>,
 }));
@@ -109,13 +105,14 @@ describe("App smoke", () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain("Desktop Top Bar");
-    expect(html).toContain("Desktop Status Bar");
+    expect(html).not.toContain("Desktop Status Bar");
     expect(html).toContain("Dashboard Page");
     expect(html).toContain("Sidebar");
     expect(html).toContain('data-desktop-scale="1.000"');
     expect(html).toContain("px-7 py-[23px]");
     expect(html).toContain("desktop-grid-surface");
     expect(html).toContain('data-desktop-main="true"');
+    expect(html).not.toContain('data-desktop-statusbar="true"');
     expect(html).toContain("bg-white");
     expect(html).not.toContain("desktop-perspective-line");
     expect(html).not.toContain("min-[1180px]");

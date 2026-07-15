@@ -7,7 +7,6 @@ import { useAuth } from "./hooks/useAuth";
 import { useConfig } from "./hooks/useConfig";
 import { useConflicts } from "./hooks/useConflicts";
 import { Sidebar } from "./components/Sidebar";
-import { DesktopStatusBar } from "./components/DesktopStatusBar";
 import { DesktopTopBar } from "./components/DesktopTopBar";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { ActivityIssuesPage } from "./pages/ActivityIssuesPage";
@@ -170,7 +169,6 @@ export default function App() {
               {activeTab === "maintenance" ? <MaintenancePage /> : null}
             </main>
 
-            <DesktopStatusBar />
           </div>
         </div>
       </div>

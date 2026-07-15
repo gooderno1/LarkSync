@@ -82,10 +82,23 @@ def test_open_desktop_window_falls_back_when_child_exits_immediately() -> None:
 
 def test_run_desktop_window_creates_expected_window(monkeypatch) -> None:
     events: list[tuple[str, tuple, dict]] = []
+    shown_callbacks: list[object] = []
+
+    class FakeShownEvent:
+        def __iadd__(self, callback):
+            shown_callbacks.append(callback)
+            return self
+
+    class FakeWindow:
+        class Events:
+            shown = FakeShownEvent()
+
+        events = Events()
 
     class FakeWebview:
         def create_window(self, *args, **kwargs):
             events.append(("create_window", args, kwargs))
+            return FakeWindow()
 
         def start(self, **kwargs):
             events.append(("start", (), kwargs))
@@ -110,7 +123,16 @@ def test_run_desktop_window_creates_expected_window(monkeypatch) -> None:
     assert events[0][2]["min_size"] == (1080, 720)
     assert events[0][2]["frameless"] is False
     assert events[0][2]["easy_drag"] is False
+    assert events[0][2]["background_color"] == "#F5FAFF"
+    assert shown_callbacks == [desktop_window._apply_windows_titlebar_palette]
     assert events[1] == ("start", (), {"debug": False, "gui": "edgechromium"})
+
+
+def test_windows_titlebar_palette_uses_subtle_cool_contrast() -> None:
+    assert desktop_window.WINDOWS_TITLEBAR_CAPTION_COLOR == "#EAF2F8"
+    assert desktop_window.WINDOWS_TITLEBAR_TEXT_COLOR == "#24364F"
+    assert desktop_window.WINDOWS_TITLEBAR_BORDER_COLOR == "#B9CBE0"
+    assert desktop_window._colorref_from_hex("#EAF2F8") == 0x00F8F2EA
 
 
 def test_tray_default_open_uses_desktop_window(monkeypatch) -> None:

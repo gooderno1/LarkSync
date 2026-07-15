@@ -8,6 +8,7 @@ not compete with pystray's event loop.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import importlib
 import importlib.util
 import os
@@ -25,8 +26,46 @@ DEFAULT_WINDOW_WIDTH = 1280
 DEFAULT_WINDOW_HEIGHT = 820
 DEFAULT_MIN_WIDTH = 1080
 DEFAULT_MIN_HEIGHT = 720
+WINDOWS_TITLEBAR_CAPTION_COLOR = "#EAF2F8"
+WINDOWS_TITLEBAR_TEXT_COLOR = "#24364F"
+WINDOWS_TITLEBAR_BORDER_COLOR = "#B9CBE0"
+
+_DWMWA_BORDER_COLOR = 34
+_DWMWA_CAPTION_COLOR = 35
+_DWMWA_TEXT_COLOR = 36
 
 LaunchMode = Literal["webview", "browser"]
+
+
+def _colorref_from_hex(value: str) -> int:
+    """Convert an RGB hex color to the BGR COLORREF expected by DWM."""
+    normalized = value.strip().lstrip("#")
+    if len(normalized) != 6:
+        raise ValueError(f"Expected a six-digit RGB color, got {value!r}")
+    red = int(normalized[0:2], 16)
+    green = int(normalized[2:4], 16)
+    blue = int(normalized[4:6], 16)
+    return red | (green << 8) | (blue << 16)
+
+
+def _apply_windows_titlebar_palette(window: Any) -> None:
+    """Apply a subtle native caption palette while preserving system chrome."""
+    if sys.platform != "win32":
+        return
+    try:
+        native = window.native
+        hwnd = int(native.Handle.ToInt64())
+        setter = ctypes.windll.dwmapi.DwmSetWindowAttribute
+        for attribute, color in (
+            (_DWMWA_BORDER_COLOR, WINDOWS_TITLEBAR_BORDER_COLOR),
+            (_DWMWA_CAPTION_COLOR, WINDOWS_TITLEBAR_CAPTION_COLOR),
+            (_DWMWA_TEXT_COLOR, WINDOWS_TITLEBAR_TEXT_COLOR),
+        ):
+            colorref = ctypes.c_int(_colorref_from_hex(color))
+            setter(hwnd, attribute, ctypes.byref(colorref), ctypes.sizeof(colorref))
+    except (AttributeError, OSError, TypeError, ValueError):
+        # Older Windows builds may not support caption color attributes.
+        return
 
 
 @dataclass(frozen=True)
@@ -214,12 +253,15 @@ def run_desktop_window(
         # edge resizing, snap layouts, the system menu, and accessibility.
         "frameless": False,
         "easy_drag": False,
+        "background_color": "#F5FAFF",
     }
     try:
-        webview.create_window(title, url, **window_kwargs)
+        window = webview.create_window(title, url, **window_kwargs)
     except TypeError:
         window_kwargs.pop("confirm_close", None)
-        webview.create_window(title, url, **window_kwargs)
+        window = webview.create_window(title, url, **window_kwargs)
+    if sys.platform == "win32" and getattr(getattr(window, "events", None), "shown", None) is not None:
+        window.events.shown += _apply_windows_titlebar_palette
     start_kwargs: dict[str, Any] = {"debug": debug}
     if sys.platform == "win32":
         start_kwargs["gui"] = "edgechromium"

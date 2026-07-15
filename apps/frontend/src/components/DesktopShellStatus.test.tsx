@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { DesktopStatusBar } from "./DesktopStatusBar";
 import { DesktopTopBar } from "./DesktopTopBar";
 import { Sidebar } from "./Sidebar";
 
@@ -78,25 +77,27 @@ vi.mock("./ThemeToggle", () => ({
 }));
 
 describe("desktop shell status", () => {
-  it("renders top and bottom bars from the desktop status aggregate", () => {
+  it("assigns persistent status to the sidebar and sync scope to the command bar", () => {
     const html = renderToStaticMarkup(
       <>
+        <Sidebar activeTab="dashboard" onNavigate={vi.fn()} unresolvedConflicts={3} />
         <DesktopTopBar activeTab="dashboard" onNavigate={vi.fn()} />
-        <DesktopStatusBar />
       </>,
     );
 
-    expect(html).toContain("飞书已连接");
-    expect(html).toContain("2 个任务运行中");
+    expect(html).toContain("飞书连接");
+    expect(html).toContain("已连接");
+    expect(html).toContain("4 个任务已启用");
+    expect(html).toContain("2 个正在运行");
     expect(html).toContain("3 个待处理");
     expect(html).toContain("Alex");
-    expect(html).toContain("LarkSync.Backend.dev");
-    expect(html).toContain("端口");
-    expect(html).toContain("8000");
-    expect(html).toContain("WebSocket");
-    expect(html).toContain("已连接");
-    expect(html).toContain("SQLite 3");
-    expect(html).toContain("版本 v0.8.0-dev.1");
+    expect(html).toContain("后端服务");
+    expect(html).toContain("最近同步");
+    expect(html).toContain("v0.8.0-dev.1");
+    expect(html).not.toContain("LarkSync.Backend.dev");
+    expect(html).not.toContain("端口");
+    expect(html).not.toContain("WebSocket");
+    expect(html).not.toContain("SQLite 3");
   });
 
   it("keeps the desktop shell on the fixed design canvas", () => {
@@ -104,7 +105,6 @@ describe("desktop shell status", () => {
       <>
         <Sidebar activeTab="dashboard" onNavigate={vi.fn()} unresolvedConflicts={2} />
         <DesktopTopBar activeTab="dashboard" onNavigate={vi.fn()} />
-        <DesktopStatusBar />
       </>,
     );
 
@@ -117,26 +117,30 @@ describe("desktop shell status", () => {
     expect(html).not.toContain("折叠侧边栏");
     expect(html).not.toContain("«");
     expect(html).toContain("pl-9 pr-8");
+    expect(html).toContain('data-desktop-sidebar="true"');
+    expect(html).toContain('data-sidebar-section="workspace"');
+    expect(html).toContain('data-sidebar-section="system"');
+    expect(html).toContain('data-sidebar-runtime="true"');
     expect(html).toContain('data-desktop-topbar="true"');
     expect(html).toContain('data-window-chrome="native"');
-    expect(html).toContain("h-[56px]");
+    expect(html).toContain("h-[52px]");
     expect(html).toContain("bg-[#f7faff]");
     expect(html).toContain("w-[430px]");
     expect(html).toContain("w-[128px]");
     expect(html).toContain("w-[116px]");
-    expect(html).toContain("任务启停");
-    expect(html).toContain('data-desktop-statusbar="true"');
-    expect(html).toContain("h-[48px]");
+    expect(html).toContain("任务管理");
+    expect(html).not.toContain("任务启停");
+    expect(html).not.toContain('data-desktop-statusbar="true"');
     expect(html).toContain("bg-white");
     expect(html).toContain('data-account-menu-trigger="true"');
     expect(html).toContain('aria-haspopup="menu"');
     expect(html).toContain('aria-label="账户菜单"');
     expect(html).toContain("账号与授权");
     expect(html).toContain("更新与维护");
-    expect(html).toContain("bg-[#f9fbfd]");
-    expect(html).not.toContain('data-desktop-statusbar="true" class="h-[78px] shrink-0 border-t border-[#dce6f2] bg-[#fdfdfd]');
+    expect(html).toContain("bg-[#f3f7fc]");
     expect(html).not.toContain("h-[88px]");
     expect(html).not.toContain("h-[78px]");
+    expect(html).not.toContain("h-[56px]");
     expect(html).not.toContain("□");
     expect(html).not.toContain("×");
     expect(html).not.toContain("w-[72px]");

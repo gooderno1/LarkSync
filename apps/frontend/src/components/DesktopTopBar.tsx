@@ -2,30 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useDesktopStatus } from "../hooks/useDesktopStatus";
 import { useTasks } from "../hooks/useTasks";
 import { useToast } from "./ui/toast";
-import { IconChevronDown, IconDownloadTray, IconPauseCircle, IconRefresh, IconSettings } from "./Icons";
+import { IconChevronDown, IconDownloadTray, IconRefresh, IconSettings, IconSyncCircle } from "./Icons";
 import type { NavKey } from "../types";
 
 type DesktopTopBarProps = {
   activeTab: NavKey;
   onNavigate: (tab: NavKey) => void;
 };
-
-type TopBarStatusTone = "success" | "info" | "danger";
-
-const topBarStatusDot: Record<TopBarStatusTone, string> = {
-  success: "bg-[#10b981] shadow-[0_0_0_4px_rgba(16,185,129,0.08)]",
-  info: "bg-[#3370ff] shadow-[0_0_0_4px_rgba(51,112,255,0.08)]",
-  danger: "bg-[#f43f5e] shadow-[0_0_0_4px_rgba(244,63,94,0.08)]",
-};
-
-function TopBarStatus({ label, tone }: { label: string; tone: TopBarStatusTone }) {
-  return (
-    <span className="inline-flex h-7 items-center gap-2 whitespace-nowrap text-sm font-medium text-[#1f3763]">
-      <span className={`h-2.5 w-2.5 rounded-full ${topBarStatusDot[tone]}`} aria-hidden="true" />
-      <span>{label}</span>
-    </span>
-  );
-}
 
 export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
   const { status: desktopStatus, refetch: refetchDesktopStatus } = useDesktopStatus();
@@ -74,21 +57,18 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
     <header
       data-desktop-topbar="true"
       data-window-chrome="native"
-      className="relative z-30 flex h-[56px] flex-none items-center justify-between gap-4 border-b border-[#c6d7e9] bg-[#f7faff] pl-9 pr-8"
+      className="relative z-30 flex h-[52px] flex-none items-center justify-between gap-4 border-b border-[#c6d7e9] bg-[#f7faff] pl-9 pr-8"
     >
       <div
-        className="flex min-w-0 items-center gap-6 text-sm text-[#334762]"
-        aria-label={`${desktopStatus.auth.connected ? "飞书已连接" : "飞书未连接"}，${desktopStatus.tasks.running} 个任务运行中，${pendingCount} 个待处理`}
+        data-command-scope="true"
+        className="flex min-w-0 items-center gap-3 text-xs font-medium text-[#52657a]"
+        aria-label={`${desktopStatus.tasks.enabled} 个任务已启用，${desktopStatus.tasks.running} 个正在运行，${pendingCount} 个待处理`}
       >
-        <TopBarStatus
-          label={desktopStatus.runtime.backend_running ? "后端运行中" : "后端异常"}
-          tone={desktopStatus.runtime.backend_running ? "success" : "danger"}
-        />
+        <span className="whitespace-nowrap text-[#334762]">{desktopStatus.tasks.enabled} 个任务已启用</span>
         <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
-        <TopBarStatus
-          label="WebSocket 已连接"
-          tone="info"
-        />
+        <span className="whitespace-nowrap">{desktopStatus.tasks.running} 个正在运行</span>
+        <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
+        <span className={pendingCount > 0 ? "whitespace-nowrap text-[#b45309]" : "whitespace-nowrap"}>{pendingCount} 个待处理</span>
       </div>
 
       <div className="flex w-[430px] min-w-0 shrink-0 items-center">
@@ -105,10 +85,10 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
           className="ml-5 inline-flex h-9 w-[116px] items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-[#bfd8ff] bg-white px-3 text-sm font-medium text-[#3370FF] transition hover:bg-[#eef5ff]"
           onClick={() => onNavigate("tasks")}
           type="button"
-          title="前往同步任务页管理任务启停"
+          title="前往同步任务页管理任务"
         >
-          <IconPauseCircle className="h-4 w-4" />
-          <span>任务启停</span>
+          <IconSyncCircle className="h-4 w-4" />
+          <span>任务管理</span>
         </button>
         <div ref={accountMenuRef} className="relative ml-5 min-w-0 flex-1 border-l border-[#c6d7e9] pl-4">
           <button
@@ -130,7 +110,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
           <div
             aria-hidden={!accountMenuOpen}
             aria-label="账户菜单"
-            className={`absolute right-0 top-[42px] w-[244px] rounded-lg border border-[#c6d7e9] bg-white p-2 shadow-[0_18px_50px_rgba(16,32,51,0.18)] transition ${accountMenuOpen ? "visible translate-y-0 opacity-100" : "pointer-events-none invisible -translate-y-1 opacity-0"}`}
+            className={`absolute right-0 top-[40px] w-[244px] rounded-lg border border-[#c6d7e9] bg-white p-2 shadow-[0_18px_50px_rgba(16,32,51,0.18)] transition ${accountMenuOpen ? "visible translate-y-0 opacity-100" : "pointer-events-none invisible -translate-y-1 opacity-0"}`}
             data-account-menu="true"
             role="menu"
           >
@@ -154,7 +134,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
               type="button"
             >
               <IconDownloadTray className="h-4 w-4" />
-              <span><span className="block">更新与维护</span><span className="mt-0.5 block text-[11px] font-normal text-[#52657a]">版本、日志和维护工具</span></span>
+              <span><span className="block">更新与维护</span><span className="mt-0.5 block text-[11px] font-normal text-[#52657a]">前往更新设置与维护工具</span></span>
             </button>
           </div>
         </div>
