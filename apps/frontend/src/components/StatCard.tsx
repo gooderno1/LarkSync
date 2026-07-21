@@ -57,24 +57,25 @@ export function StatCard({
 }) {
   const iconFrameClassName =
     iconFrame === "plain"
-      ? cn("grid h-16 w-16 shrink-0 place-items-center", plainIconStyles[tone])
-      : cn("grid h-14 w-14 shrink-0 place-items-center rounded-full", iconStyles[tone]);
+      ? cn("grid h-14 w-14 shrink-0 place-items-center overflow-hidden [&>svg]:max-h-full [&>svg]:max-w-full", plainIconStyles[tone])
+      : cn("grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full [&>svg]:max-h-full [&>svg]:max-w-full", iconStyles[tone]);
 
   return (
     <div
       className={cn(
-        "flex min-h-[146px] items-center rounded-lg border bg-white px-5 py-5 shadow-[0_8px_22px_rgba(51,112,255,0.03)]",
-        iconFrame === "plain" ? "gap-3" : "gap-4",
+        "flex min-h-[146px] min-w-0 items-center overflow-hidden rounded-lg border bg-white px-3.5 py-4 shadow-[0_8px_22px_rgba(51,112,255,0.03)]",
+        iconFrame === "plain" ? "gap-2.5" : "gap-3",
         toneStyles[tone]
       )}
+      data-stat-card="true"
     >
-      <div className={iconFrameClassName}>{icon}</div>
-      <div className="min-w-0 flex-1">
+      <div className={iconFrameClassName} data-stat-card-icon="true">{icon}</div>
+      <div className="min-w-0 flex-1 overflow-hidden">
         <p className="truncate text-xs font-medium text-[#52657a]">{label}</p>
         <p
           className={cn(
-            "mt-2 whitespace-nowrap font-semibold leading-none",
-            "text-[24px]",
+            "mt-1.5 whitespace-nowrap font-semibold leading-none",
+            "text-[22px]",
             valueStyles[tone],
             valueClassName
           )}
@@ -83,7 +84,7 @@ export function StatCard({
           {value}
         </p>
         {hint ? (
-          <p className="mt-3 line-clamp-2 text-[11px] leading-4 text-[#6b7f96]" title={hint}>
+          <p className="mt-2 line-clamp-2 text-[11px] leading-4 text-[#6b7f96]" title={hint}>
             {hint}
           </p>
         ) : null}

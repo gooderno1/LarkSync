@@ -118,7 +118,9 @@ describe("TasksPage smoke", () => {
     const html = renderToStaticMarkup(<TasksPage showcase={false} onOpenTaskDetail={vi.fn()} />);
 
     expect(html).toContain("<table");
-    expect(html).toContain("min-w-[1120px]");
+    expect(html).toContain("min-w-[1000px]");
+    expect(html).not.toContain("min-w-[1120px]");
+    expect((html.match(/data-task-count-header="true"/g) || [])).toHaveLength(4);
     expect(html).toContain("tasks-clarity");
     expect(html).toContain('data-task-table="true"');
     expect(html).toContain('data-task-row="true"');

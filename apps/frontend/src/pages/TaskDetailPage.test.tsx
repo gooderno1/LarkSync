@@ -172,6 +172,8 @@ describe("TaskDetailPage smoke", () => {
     expect(html).toContain('data-task-detail-inspector="true"');
     expect((html.match(/data-task-detail-inspector=/g) || [])).toHaveLength(1);
     expect((html.match(/data-task-detail-inspector-card=/g) || [])).toHaveLength(5);
+    expect(html).toContain("overflow-y-auto");
+    expect(html).toContain('data-task-detail-inspector-card="danger" class="shrink-0');
     expect(html).toContain('role="switch"');
     expect(html).toContain('aria-checked="true"');
     expect(html).toContain('data-run-metrics="true"');

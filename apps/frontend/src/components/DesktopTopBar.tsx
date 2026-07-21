@@ -76,7 +76,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
         <span className={pendingCount > 0 ? "whitespace-nowrap text-[#b45309]" : "whitespace-nowrap"}>{pendingCount} 个待处理</span>
       </div>
 
-      <div className="flex w-[430px] min-w-0 shrink-0 items-center">
+      <div className="flex w-[460px] min-w-0 shrink-0 items-center">
         <button
           className="inline-flex h-9 w-[128px] items-center justify-center gap-2 rounded-lg bg-[#3370FF] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(51,112,255,0.2)] transition hover:bg-[#2563eb]"
           onClick={handleRunAll}
@@ -89,7 +89,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
           <span>立即同步</span>
         </button>
         <button
-          className="ml-5 inline-flex h-9 w-[116px] items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-[#bfd8ff] bg-white px-3 text-sm font-medium text-[#3370FF] transition hover:bg-[#eef5ff]"
+          className="ml-4 inline-flex h-9 w-[116px] items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-[#bfd8ff] bg-white px-3 text-sm font-medium text-[#3370FF] transition hover:bg-[#eef5ff]"
           onClick={() => onNavigate("tasks")}
           type="button"
           title="前往同步任务页管理任务"
@@ -97,7 +97,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
           <IconSyncCircle className="h-4 w-4" />
           <span>任务管理</span>
         </button>
-        <div ref={accountMenuRef} className="relative ml-5 min-w-0 flex-1 border-l border-[#c6d7e9] pl-4">
+        <div ref={accountMenuRef} className="relative ml-4 min-w-0 flex-1 border-l border-[#c6d7e9] pl-4">
           <button
             aria-expanded={accountMenuOpen}
             aria-haspopup="menu"

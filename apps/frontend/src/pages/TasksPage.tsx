@@ -330,7 +330,7 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
             data-task-table="true"
           >
             <div className="min-h-0 min-w-0 flex-1 overflow-x-auto">
-              <table className="h-full w-full min-w-[1120px] table-fixed text-left text-sm">
+              <table className="h-full w-full min-w-[1000px] table-fixed text-left text-sm">
                 <thead className="border-b border-[#d7e4f5] bg-[#f8fbff] text-xs text-[#52657a]">
                   <tr className="h-12">
                     <th className="w-[12%] px-3.5 font-semibold">任务名称</th>
@@ -339,10 +339,10 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
                     <th className="w-[9%] px-3.5 font-semibold">同步模式</th>
                     <th className="w-[9%] px-3.5 font-semibold">状态 / 健康</th>
                     <th className="w-[11%] px-3.5 font-semibold">最近运行</th>
-                    <th className="w-[4%] px-2 text-center font-semibold">队列</th>
-                    <th className="w-[4%] px-2 text-center font-semibold">删除</th>
-                    <th className="w-[4%] px-2 text-center font-semibold">失败</th>
-                    <th className="w-[4%] px-2 text-center font-semibold">冲突</th>
+                    <th data-task-count-header="true" className="w-[4%] whitespace-nowrap px-1 text-center font-semibold">队列</th>
+                    <th data-task-count-header="true" className="w-[4%] whitespace-nowrap px-1 text-center font-semibold">删除</th>
+                    <th data-task-count-header="true" className="w-[4%] whitespace-nowrap px-1 text-center font-semibold">失败</th>
+                    <th data-task-count-header="true" className="w-[4%] whitespace-nowrap px-1 text-center font-semibold">冲突</th>
                     <th className="w-[14%] px-3.5 text-right font-semibold">操作</th>
                   </tr>
                 </thead>
@@ -442,10 +442,10 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
                               ) : duration ? <p className="mt-1 text-[11px] text-[#6b7f96]">用时 {duration}</p> : null}
                             </div>
                           </td>
-                          <td className="px-2 py-2 text-center"><TaskCountCell value={counts.queued} tone={counts.queued > 0 ? "warning" : "neutral"} /></td>
-                          <td className="px-2 py-2 text-center"><TaskCountCell value={counts.deleteTotal} tone={counts.deleteTotal > 0 ? "warning" : "neutral"} /></td>
-                          <td className="px-2 py-2 text-center"><TaskCountCell value={counts.failed} tone={counts.failed > 0 ? "danger" : "neutral"} /></td>
-                          <td className="px-2 py-2 text-center"><TaskCountCell value={counts.conflict} tone={counts.conflict > 0 ? "danger" : "neutral"} /></td>
+                          <td className="px-1 py-2 text-center"><TaskCountCell value={counts.queued} tone={counts.queued > 0 ? "warning" : "neutral"} /></td>
+                          <td className="px-1 py-2 text-center"><TaskCountCell value={counts.deleteTotal} tone={counts.deleteTotal > 0 ? "warning" : "neutral"} /></td>
+                          <td className="px-1 py-2 text-center"><TaskCountCell value={counts.failed} tone={counts.failed > 0 ? "danger" : "neutral"} /></td>
+                          <td className="px-1 py-2 text-center"><TaskCountCell value={counts.conflict} tone={counts.conflict > 0 ? "danger" : "neutral"} /></td>
                           <td className="px-3.5 py-2">
                             <div className="flex items-center justify-end gap-1">
                               <button

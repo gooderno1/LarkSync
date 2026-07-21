@@ -17,6 +17,10 @@ describe("StatCard", () => {
     expect(html).toContain("text-[21px]");
     expect(html).toContain("whitespace-nowrap");
     expect(html).toContain("line-clamp-2");
+    expect(html).toContain('data-stat-card="true"');
+    expect(html).toContain('data-stat-card-icon="true"');
+    expect(html).toContain("overflow-hidden");
+    expect(html).toContain("px-3.5");
     expect(html).not.toContain("mt-2 truncate font-semibold");
   });
 });

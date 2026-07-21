@@ -215,7 +215,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
   const windowHost = getWindowHostStatus();
 
   return (
-    <div className="h-full bg-[linear-gradient(180deg,#f5f9ff_0%,#eef5ff_100%)] text-[#102033]">
+    <div className="grid h-full grid-rows-[64px_minmax(0,1fr)] overflow-hidden bg-[linear-gradient(180deg,#f5f9ff_0%,#eef5ff_100%)] text-[#102033]">
       <header className="flex h-16 items-center justify-between border-b border-[#d7e6ff] bg-white/88 px-6 backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-4">
           <img src="/logo-horizontal.png" alt="LarkSync" className="h-8 w-auto object-contain" draggable={false} />
@@ -231,8 +231,8 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
         </div>
       </header>
 
-      <main className="grid grid-cols-[310px_minmax(0,1fr)_360px] gap-5 px-6 py-6">
-        <aside className="min-w-0 space-y-4">
+      <main className="grid min-h-0 grid-cols-[310px_minmax(0,1fr)_360px] gap-5 overflow-hidden px-6 py-6">
+        <aside className="showcase-scroll-region min-h-0 min-w-0 space-y-4 overflow-y-auto pr-1" data-onboarding-scroll-column="status">
           <Panel
             title="启动状态"
             hint="逐项确认桌面应用卡在哪一步。"
@@ -272,7 +272,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
           </Panel>
         </aside>
 
-        <section className="min-w-0 space-y-5">
+        <section className="showcase-scroll-region min-h-0 min-w-0 space-y-5 overflow-y-auto pr-1" data-onboarding-scroll-column="authorization">
           <Panel
             title="扫码授权"
             hint="二维码承载 LarkSync 原生 OAuth 授权 URL；浏览器打开是可靠 fallback。"
@@ -378,7 +378,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
           ) : null}
         </section>
 
-        <aside className="min-w-0 space-y-4">
+        <aside className="showcase-scroll-region min-h-0 min-w-0 space-y-4 overflow-y-auto pr-1" data-onboarding-scroll-column="advanced">
           <Panel
             title="高级 OAuth 配置"
             hint={advancedOpen ? "填写飞书企业自建应用参数。" : "配置已收起，可随时修改。"}

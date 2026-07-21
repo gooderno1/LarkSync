@@ -131,7 +131,8 @@ describe("desktop shell status", () => {
     expect(html).toContain('data-window-chrome="native"');
     expect(html).toContain("h-14");
     expect(html).toContain("bg-[#f7faff]");
-    expect(html).toContain("w-[430px]");
+    expect(html).toContain("w-[460px]");
+    expect(html).not.toContain("w-[430px]");
     expect(html).toContain("w-[128px]");
     expect(html).toContain("w-[116px]");
     expect(html).toContain("任务管理");

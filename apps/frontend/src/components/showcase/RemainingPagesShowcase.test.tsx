@@ -23,6 +23,8 @@ describe("remaining desktop pages showcase", () => {
     expect(html).toContain('data-activity-run-search="true"');
     expect(html).toContain("grid-cols-[276px_minmax(0,1fr)_416px]");
     expect(html.match(/data-activity-summary=/g)).toHaveLength(4);
+    expect(html).toContain('data-activity-summary-grid="two-by-two"');
+    expect(html).toContain("grid-cols-2");
     expect(html).toContain('data-activity-timeline-filters="true"');
     expect(html).toContain('data-activity-timeline-line="true"');
     expect(html).toContain("left-[83px]");

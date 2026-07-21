@@ -173,6 +173,8 @@ describe("OnboardingWizard smoke", () => {
     expect(html).toContain("CLI 辅助授权");
     expect(html).toContain("未检测到 lark-cli");
     expect(html).toContain("grid-cols-[310px_minmax(0,1fr)_360px]");
+    expect(html).toContain("grid-rows-[64px_minmax(0,1fr)]");
+    expect((html.match(/data-onboarding-scroll-column=/g) || [])).toHaveLength(3);
     expect(html).not.toContain("min-[1440px]");
     expect(html).not.toContain("bg-zinc-900/70");
   });

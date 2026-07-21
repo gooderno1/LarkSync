@@ -500,7 +500,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
           </section>
         </div>
 
-        <aside data-task-detail-inspector="true" className="flex min-h-0 w-[300px] flex-col gap-2">
+        <aside data-task-detail-inspector="true" className="showcase-scroll-region flex min-h-0 w-[300px] flex-col gap-2 overflow-y-auto pr-1">
           <section data-task-detail-inspector-card="problems" className="shrink-0 rounded-lg border border-[#d7e4f5] bg-white p-3 shadow-[0_8px_24px_rgba(51,112,255,0.04)]">
             <div className="flex items-center justify-between"><h2 className="text-[15px] font-semibold text-[#102033]">问题摘要</h2><span className={`grid h-5 min-w-5 place-items-center rounded-full px-1 text-xs font-semibold ${problemSummary.total ? "bg-[#fee2e2] text-[#dc2626]" : "bg-[#d1fae5] text-[#047857]"}`}>{problemSummary.total}</span></div>
             {problemSummary.total ? (
@@ -542,7 +542,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
             <div className="mt-2.5 flex flex-wrap gap-1.5">{ignoredSubpaths.slice(0, 5).map((path) => <span className="rounded-md bg-[#eef5ff] px-2 py-1 font-mono text-[10px] text-[#334762]" key={path}>{summarizePath(path, 1, 18)}</span>)}</div>
           </section>
 
-          <section data-task-detail-inspector-card="danger" className="min-h-0 flex-1 overflow-hidden rounded-lg border border-[#fca5a5] bg-[#fffafa] p-3 shadow-[0_8px_24px_rgba(244,63,94,0.04)]">
+          <section data-task-detail-inspector-card="danger" className="shrink-0 rounded-lg border border-[#fca5a5] bg-[#fffafa] p-3 shadow-[0_8px_24px_rgba(244,63,94,0.04)]">
             <h2 className="text-[15px] font-semibold text-[#7f1d1d]">危险操作</h2>
             <button className="mt-2.5 inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border border-[#f87171] text-xs font-semibold text-[#dc2626] hover:bg-[#fff1f2] disabled:opacity-50" disabled={resettingLinks} onClick={() => void handleResetLinks()} type="button"><IconAlertTriangle className="h-4 w-4" />{resettingLinks ? "重置中..." : "重置映射"}</button>
             <p className="mt-2 text-[10px] leading-4 text-[#7f1d1d]">清除本机状态库中的同步映射；下次运行重新扫描，不会删除文件。</p>
