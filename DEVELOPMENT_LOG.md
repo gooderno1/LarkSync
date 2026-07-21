@@ -1,5 +1,33 @@
 # DEVELOPMENT LOG
 
+## v0.8.0-dev.39 (2026-07-21)
+
+- 开发原因：
+  - 用户覆盖安装 `v0.8.0-dev.38` 后首次打开桌面窗口出现空白，稍后页面可以自行恢复。
+  - 安装目录日志显示启动时先恢复 17 条遗留 `running` 记录，随后 8 个启用任务在同一秒开始调度；5 个任务写入 `sync_runs` 时出现 `sqlite3.OperationalError: database is locked`。
+  - 空白期间 `/tray/status` 聚合请求耗时约 90 至 104 秒；正式数据库约 1.96 GB，启动时逐文件查询同步映射会放大 SQLite 连接竞争和事件循环阻塞。
+- 实现方式：
+  - 同步调度器默认增加 1 秒启动保护期。适用范围为应用进程启动后的首轮上传和下载调度；手动同步及后续周期不增加等待。
+  - 同一 `SyncTaskRunner` 内的运行摘要开始/结束写入统一经过异步锁。不同同步任务仍可并行执行网络与文件同步，仅序列化 `sync_runs` 摘要写入。
+  - 周期上传在任务已运行时直接返回，不执行首次目录扫描；若扫描期间下行任务开始，会在进入上传前再次检查运行状态。
+  - 首次目录扫描先按 `task_id` 一次读取全部 `SyncLink`，构造规范化本地路径集合；目录遍历改用 `asyncio.to_thread()`，不再为每个候选文件单独创建数据库会话。
+  - 前端入口 HTML 内置无依赖启动画面。React 尚未下载、执行或等待 API 时显示“正在启动本地服务”，React 挂载后由正常应用界面替换。
+- 当前结果：
+  - 已复现并确认不是前端构建资源缺失；页面恢复后 `/health`、桌面状态、授权状态和 8 个正式任务均可正常读取。
+  - 新增启动保护、摘要写入串行、运行中跳过扫描、批量映射扫描和静态启动反馈测试，均已由失败转为通过。
+  - 首次扫描的数据库查询次数从“候选文件数量 N 次”降为每任务 1 次；目录遍历不再占用 FastAPI 事件循环。
+  - 当前已安装的 `v0.8.0-dev.38` 在验证结束后仍为 `production` 配置，`/health=ok`，8 个任务、0 个运行、0 个失败；打包和 smoke 未访问或修改其数据目录。
+- 验证方式：
+  - 后端相关回归：`test_sync_runner.py`、`test_sync_scheduler.py`、`test_main.py`、`test_desktop_window.py`、`test_db_session.py` 全部通过。
+  - 前端 Vitest：30 个文件、89 项测试通过。
+  - 前端 ESLint、TypeScript typecheck 与 Vite production build 通过；生产入口构建产物保留静态启动反馈。
+  - 后端全量 pytest：567 项通过。
+  - `python scripts/build_installer.py --nsis`：通过；安装包 `LarkSync-Setup-v0.8.0-dev.39.exe` 为 71,482,178 bytes，SHA-256 为 `4846B833A3533AF9E40C6841928426B42B057745714199BD49A1733A87A4DC58`。
+  - 目录版隔离 smoke：使用临时数据目录、`synthetic_test`、独立端口 `18039`、scheduler/watcher 关闭；`/health=ok`，版本为 `v0.8.0-dev.39`，`packaged=true`，生产 HTML 包含 `larksync-bootstrap`，随后通过关闭接口退出。
+- 遗留问题：
+  - 当前正式数据目录的 SQLite 文件约 1.96 GB；本次修复降低启动竞争，但不会主动删除用户历史事件。历史数据保留和数据库收缩应在备份与独立维护窗口中执行。
+  - `v0.8.0-dev.39` 仍是开发版，需先使用独立测试配置完成安装启动验证，用户确认后再发布稳定版。
+
 ## v0.8.0-dev.38 (2026-07-15)
 
 - 开发原因：

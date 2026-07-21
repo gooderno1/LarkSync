@@ -6,9 +6,44 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
     <title>LarkSync</title>
+    <style>
+      #larksync-bootstrap {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f5f9ff;
+        color: #102033;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      #larksync-bootstrap > div { text-align: center; }
+      #larksync-bootstrap strong { display: block; font-size: 24px; letter-spacing: .02em; }
+      #larksync-bootstrap p { margin: 12px 0 0; color: #52657a; font-size: 14px; }
+      #larksync-bootstrap small { display: block; margin-top: 8px; color: #8a9aae; font-size: 12px; }
+      #larksync-bootstrap i {
+        display: block;
+        width: 24px;
+        height: 24px;
+        margin: 18px auto 0;
+        border: 3px solid #cbdcff;
+        border-top-color: #3370ff;
+        border-radius: 50%;
+        animation: larksync-spin .8s linear infinite;
+      }
+      @keyframes larksync-spin { to { transform: rotate(360deg); } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="larksync-bootstrap" role="status" aria-live="polite">
+        <div>
+          <strong>LarkSync</strong>
+          <p>正在启动本地服务...</p>
+          <small>如果长时间停留，请退出托盘中的 LarkSync 后重新打开。</small>
+          <i aria-hidden="true"></i>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

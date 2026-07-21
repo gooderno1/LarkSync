@@ -27,6 +27,7 @@ class SyncScheduler:
         runner: SyncTaskRunner,
         task_service: SyncTaskService,
         config_manager: ConfigManager | None = None,
+        startup_grace_seconds: float = 1.0,
     ) -> None:
         self._runner = runner
         self._task_service = task_service
@@ -39,6 +40,7 @@ class SyncScheduler:
         self._upload_task_meta: dict[str, SyncTaskItem] = {}
         self._download_task_meta: dict[str, SyncTaskItem] = {}
         self._task_refresh_interval_seconds = 1.0
+        self._startup_grace_seconds = max(0.0, startup_grace_seconds)
 
     async def start(self) -> None:
         if self._upload_task or self._download_task:
@@ -101,6 +103,8 @@ class SyncScheduler:
                 self._runner.ensure_watcher(task)
 
     async def _upload_loop(self) -> None:
+        if await self._wait_for_stop(self._startup_grace_seconds):
+            return
         while not self._stop_event.is_set():
             try:
                 await self._reconcile_upload_workers()
@@ -112,6 +116,8 @@ class SyncScheduler:
                 break
 
     async def _download_loop(self) -> None:
+        if await self._wait_for_stop(self._startup_grace_seconds):
+            return
         while not self._stop_event.is_set():
             try:
                 await self._reconcile_download_workers()

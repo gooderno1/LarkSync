@@ -1,9 +1,21 @@
 import asyncio
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 import src.main as main
 from src.core.config import AppConfig, RuntimeProfile
+
+
+def test_frontend_index_contains_pre_react_startup_feedback() -> None:
+    project_root = Path(__file__).resolve().parents[3]
+    html = (project_root / "apps" / "frontend" / "index.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'id="larksync-bootstrap"' in html
+    assert "正在启动本地服务" in html
+    assert "如果长时间停留" in html
 
 
 class _DummyRunner:

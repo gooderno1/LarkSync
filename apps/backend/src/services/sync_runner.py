@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import difflib
 import hashlib
+import os
 import re
 import time
 import uuid
@@ -187,6 +188,7 @@ class SyncTaskRunner:
         self._pending_uploads: dict[str, dict[str, float]] = {}
         self._upload_quiet_window_seconds = 2.0
         self._running_tasks: set[str] = set()
+        self._run_summary_write_lock = asyncio.Lock()
         self._task_meta: dict[str, SyncTaskItem] = {}
         self._pending_restarts: dict[str, SyncTaskItem] = {}
         self._initial_upload_scanned: set[str] = set()
@@ -534,6 +536,9 @@ class SyncTaskRunner:
             reset_cloud_root_scope(cloud_scope)
 
     async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
+        # 双向任务启动时通常会先执行下行；此时不要再并发扫描同一目录。
+        if task.id in self._running_tasks:
+            return
         # 首次调度时，全量扫描本地目录，将没有 SyncLink 的文件加入待上传队列
         if task.id not in self._initial_upload_scanned:
             self._initial_upload_scanned.add(task.id)
@@ -541,6 +546,7 @@ class SyncTaskRunner:
 
         pending = self._pending_uploads.get(task.id) or {}
         has_pending_tombstone = await self._has_pending_tombstones(task.id)
+        # 扫描和查询期间可能已有下行任务开始，避免同一任务双向并发。
         if task.id in self._running_tasks:
             return
         ready_paths: list[Path] = []
@@ -796,12 +802,13 @@ class SyncTaskRunner:
         if not status.current_run_id or status.started_at is None:
             return
         try:
-            await self._run_service.start_run(
-                run_id=status.current_run_id,
-                task_id=task.id,
-                trigger_source=status.trigger_source or "manual",
-                started_at=status.started_at,
-            )
+            async with self._run_summary_write_lock:
+                await self._run_service.start_run(
+                    run_id=status.current_run_id,
+                    task_id=task.id,
+                    trigger_source=status.trigger_source or "manual",
+                    started_at=status.started_at,
+                )
         except Exception:
             logger.exception(
                 "创建运行摘要失败: task_id={} run_id={}",
@@ -818,26 +825,27 @@ class SyncTaskRunner:
         if status.last_files:
             last_event_at = status.last_files[-1].timestamp
         try:
-            await self._run_service.finish_run(
-                run_id=status.current_run_id,
-                task_id=task.id,
-                trigger_source=status.trigger_source or "manual",
-                state=status.state,
-                started_at=status.started_at,
-                finished_at=status.finished_at,
-                last_event_at=last_event_at,
-                total_files=status.total_files,
-                completed_files=status.completed_files,
-                failed_files=status.failed_files,
-                skipped_files=status.skipped_files,
-                uploaded_files=status.uploaded_files,
-                downloaded_files=status.downloaded_files,
-                deleted_files=status.deleted_files,
-                conflict_files=status.conflict_files,
-                delete_pending_files=status.delete_pending_files,
-                delete_failed_files=status.delete_failed_files,
-                last_error=status.last_error,
-            )
+            async with self._run_summary_write_lock:
+                await self._run_service.finish_run(
+                    run_id=status.current_run_id,
+                    task_id=task.id,
+                    trigger_source=status.trigger_source or "manual",
+                    state=status.state,
+                    started_at=status.started_at,
+                    finished_at=status.finished_at,
+                    last_event_at=last_event_at,
+                    total_files=status.total_files,
+                    completed_files=status.completed_files,
+                    failed_files=status.failed_files,
+                    skipped_files=status.skipped_files,
+                    uploaded_files=status.uploaded_files,
+                    downloaded_files=status.downloaded_files,
+                    deleted_files=status.deleted_files,
+                    conflict_files=status.conflict_files,
+                    delete_pending_files=status.delete_pending_files,
+                    delete_failed_files=status.delete_failed_files,
+                    last_error=status.last_error,
+                )
         except Exception:
             logger.exception(
                 "更新运行摘要失败: task_id={} run_id={}",
@@ -1900,19 +1908,30 @@ class SyncTaskRunner:
             return 0
 
         skip_md = not self._should_upload_markdown_doc(task)
+        links = await self._link_service.list_by_task(task.id)
+        linked_paths = {
+            os.path.normcase(os.path.normpath(link.local_path)) for link in links
+        }
 
-        queued = 0
-        for path in root.rglob("*"):
-            if not path.is_file():
-                continue
-            if self._should_ignore_path(task, path):
-                continue
-            if skip_md and path.suffix.lower() == ".md":
-                continue
-            link = await self._link_service.get_by_local_path(str(path))
-            if not link:
-                self.queue_local_change(task.id, path, changed_at=0.0)
-                queued += 1
+        def _collect_candidates() -> list[Path]:
+            candidates: list[Path] = []
+            for path in root.rglob("*"):
+                if not path.is_file():
+                    continue
+                if self._should_ignore_path(task, path):
+                    continue
+                if skip_md and path.suffix.lower() == ".md":
+                    continue
+                path_key = os.path.normcase(os.path.normpath(str(path)))
+                if path_key not in linked_paths:
+                    candidates.append(path)
+            return candidates
+
+        # 大目录遍历是阻塞 I/O，放到工作线程避免拖住 API 和桌面窗口渲染。
+        candidates = await asyncio.to_thread(_collect_candidates)
+        for path in candidates:
+            self.queue_local_change(task.id, path, changed_at=0.0)
+        queued = len(candidates)
         if queued:
             logger.info(
                 "初始扫描发现 {} 个未同步本地文件: task_id={}", queued, task.id

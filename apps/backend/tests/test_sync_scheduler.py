@@ -97,6 +97,7 @@ async def test_upload_scheduler_runs_tasks_independently() -> None:
         runner=runner,
         task_service=task_service,
         config_manager=config_manager,
+        startup_grace_seconds=0,
     )
 
     await scheduler.start()
@@ -107,6 +108,50 @@ async def test_upload_scheduler_runs_tasks_independently() -> None:
 
     assert "task-slow" in runner.upload_calls
     assert "task-fast" in runner.upload_calls
+
+
+@pytest.mark.asyncio
+async def test_scheduler_waits_for_startup_grace_before_running_tasks() -> None:
+    runner = FakeRunner()
+    task = SyncTaskItem(
+        id="task-fast",
+        name="启动保护测试",
+        local_path="F:/fast",
+        cloud_folder_token="fast-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=1.0,
+        updated_at=1.0,
+    )
+    config_manager = SimpleNamespace(
+        config=SimpleNamespace(
+            upload_interval_value=3600.0,
+            upload_interval_unit=SyncIntervalUnit.seconds,
+            upload_daily_time="01:00",
+            download_interval_value=3600.0,
+            download_interval_unit=SyncIntervalUnit.seconds,
+            download_daily_time="01:00",
+        )
+    )
+    scheduler = SyncScheduler(
+        runner=runner,
+        task_service=FakeTaskService([task]),
+        config_manager=config_manager,
+        startup_grace_seconds=0.05,
+    )
+
+    await scheduler.start()
+    try:
+        await asyncio.sleep(0.01)
+        assert runner.upload_calls == []
+        await asyncio.wait_for(runner.fast_event.wait(), timeout=0.2)
+    finally:
+        await scheduler.stop()
+
+    assert runner.upload_calls == ["task-fast"]
 
 
 @pytest.mark.asyncio

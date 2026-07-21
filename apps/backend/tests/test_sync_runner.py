@@ -1847,6 +1847,147 @@ async def test_scan_for_unlinked_files_skips_temporary_files(tmp_path: Path) -> 
     assert str(temp_path) not in pending
 
 
+@pytest.mark.asyncio
+async def test_scan_for_unlinked_files_loads_task_links_once(tmp_path: Path) -> None:
+    linked_path = tmp_path / "linked.md"
+    linked_path.write_text("# linked", encoding="utf-8")
+    unlinked_path = tmp_path / "unlinked.md"
+    unlinked_path.write_text("# unlinked", encoding="utf-8")
+
+    class CountingLinkService(FakeLinkService):
+        def __init__(self) -> None:
+            super().__init__(
+                persisted=[
+                    SyncLinkItem(
+                        local_path=str(linked_path),
+                        cloud_token="doc-token",
+                        cloud_type="docx",
+                        task_id="task-bulk-scan",
+                        updated_at=0.0,
+                    )
+                ]
+            )
+            self.list_calls = 0
+            self.get_calls = 0
+
+        async def list_by_task(self, task_id: str):
+            self.list_calls += 1
+            return await super().list_by_task(task_id)
+
+        async def get_by_local_path(self, local_path: str):
+            self.get_calls += 1
+            return await super().get_by_local_path(local_path)
+
+    link_service = CountingLinkService()
+    runner = SyncTaskRunner(link_service=link_service)
+    task = SyncTaskItem(
+        id="task-bulk-scan",
+        name="批量扫描测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    queued = await runner._scan_for_unlinked_files(task)
+
+    assert queued == 1
+    assert link_service.list_calls == 1
+    assert link_service.get_calls == 0
+    assert str(unlinked_path) in runner._pending_uploads[task.id]
+    assert str(linked_path) not in runner._pending_uploads[task.id]
+
+
+@pytest.mark.asyncio
+async def test_scheduled_upload_skips_initial_scan_while_task_is_running(
+    tmp_path: Path,
+) -> None:
+    class CountingLinkService(FakeLinkService):
+        def __init__(self) -> None:
+            super().__init__()
+            self.list_calls = 0
+
+        async def list_by_task(self, task_id: str):
+            self.list_calls += 1
+            return []
+
+    link_service = CountingLinkService()
+    runner = SyncTaskRunner(link_service=link_service)
+    task = SyncTaskItem(
+        id="task-running-scan",
+        name="运行中跳过扫描测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    runner._running_tasks.add(task.id)
+
+    await runner.run_scheduled_upload(task)
+
+    assert link_service.list_calls == 0
+    assert task.id not in runner._initial_upload_scanned
+
+
+@pytest.mark.asyncio
+async def test_run_summary_writes_are_serialized_across_tasks(tmp_path: Path) -> None:
+    class ConcurrentRunService:
+        def __init__(self) -> None:
+            self.active = 0
+            self.max_active = 0
+
+        async def start_run(self, **kwargs) -> None:
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            await asyncio.sleep(0.01)
+            self.active -= 1
+
+    run_service = ConcurrentRunService()
+    runner = SyncTaskRunner(run_service=run_service)
+    tasks = [
+        SyncTaskItem(
+            id=f"task-write-{index}",
+            name=f"摘要写入 {index}",
+            local_path=tmp_path.as_posix(),
+            cloud_folder_token=f"root-token-{index}",
+            cloud_folder_name=None,
+            base_path=None,
+            sync_mode="download_only",
+            update_mode="auto",
+            enabled=True,
+            created_at=0,
+            updated_at=0,
+        )
+        for index in range(2)
+    ]
+    statuses = [
+        SyncTaskStatus(
+            task_id=task.id,
+            state="running",
+            current_run_id=f"run-{index}",
+            started_at=1.0,
+            trigger_source="scheduled_download",
+        )
+        for index, task in enumerate(tasks)
+    ]
+
+    await asyncio.gather(
+        *(runner._persist_run_started(task, status) for task, status in zip(tasks, statuses))
+    )
+
+    assert run_service.max_active == 1
+
+
 def test_should_ignore_path_skips_embedded_figure_source_dirs(tmp_path: Path) -> None:
     runner = SyncTaskRunner(link_service=FakeLinkService())
     task = SyncTaskItem(

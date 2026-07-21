@@ -1,7 +1,7 @@
 {
   "name": "larksync-frontend",
   "private": true,
-  "version": "0.8.0-dev.38",
+  "version": "0.8.0-dev.39",
   "type": "module",
   "scripts": {
     "dev": "vite",
