@@ -135,7 +135,7 @@ export default function App() {
             <DesktopTopBar activeTab={activeTab} onNavigate={handleNavigate} />
 
             <main data-desktop-main="true" className="desktop-grid-surface min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-7 py-[23px]">
-              {connected && !driveOk && (
+              {connected && driveOk === false && (
                 <div className="mb-5 rounded-xl border border-[#f59e0b]/30 bg-[#fffbeb] px-5 py-4 text-sm text-[#92400e]">
                   <p className="font-semibold">飞书云文档权限不足</p>
                   <p className="mt-1 text-xs leading-relaxed">
@@ -153,6 +153,15 @@ export default function App() {
                   >
                     重新授权飞书
                   </a>
+                </div>
+              )}
+
+              {connected && driveOk === null && (
+                <div className="mb-5 rounded-xl border border-[#3370ff]/25 bg-[#eff6ff] px-5 py-4 text-sm text-[#1e4f91]">
+                  <p className="font-semibold">飞书云文档权限检查暂时不可用</p>
+                  <p className="mt-1 text-xs leading-relaxed">
+                    本地仍保留当前登录信息，可能是飞书接口超时或临时网络波动。系统会自动重试；在检查得出明确结果前，无需重新授权。
+                  </p>
                 </div>
               )}
 

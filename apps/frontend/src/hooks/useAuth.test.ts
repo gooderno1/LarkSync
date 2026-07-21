@@ -8,7 +8,13 @@ describe("useAuth helpers", () => {
     expect(getAuthStatusRefetchInterval({ connected: false })).toBe(2500);
   });
 
-  it("stops polling after the account is connected", () => {
-    expect(getAuthStatusRefetchInterval({ connected: true })).toBe(false);
+  it("keeps polling when the account is connected but drive probe is indeterminate", () => {
+    expect(getAuthStatusRefetchInterval({ connected: true })).toBe(5000);
+    expect(getAuthStatusRefetchInterval({ connected: true, drive_ok: null })).toBe(5000);
+  });
+
+  it("stops polling after drive permission has a definite result", () => {
+    expect(getAuthStatusRefetchInterval({ connected: true, drive_ok: true })).toBe(false);
+    expect(getAuthStatusRefetchInterval({ connected: true, drive_ok: false })).toBe(false);
   });
 });

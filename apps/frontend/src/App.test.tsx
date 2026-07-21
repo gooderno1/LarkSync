@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App, { getNavKeyFromHash } from "./App";
 
-const authState = vi.hoisted(() => ({
+const authState = vi.hoisted((): { connected: boolean; driveOk: boolean | null; loading: boolean } => ({
   connected: false,
   driveOk: false,
   loading: false,
@@ -96,6 +96,18 @@ describe("App smoke", () => {
 
     expect(html).toContain("docx:document");
     expect(html).toContain("docx:document.block:convert");
+  });
+
+  it("keeps the existing authorization when the drive check is temporarily unavailable", () => {
+    authState.connected = true;
+    authState.driveOk = null;
+
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain("权限检查暂时不可用");
+    expect(html).toContain("无需重新授权");
+    expect(html).not.toContain("飞书云文档权限不足");
+    expect(html).not.toContain("重新授权飞书");
   });
 
   it("renders the desktop shell around the dashboard", () => {

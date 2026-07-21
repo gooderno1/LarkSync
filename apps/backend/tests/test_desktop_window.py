@@ -9,6 +9,24 @@ from apps.tray import desktop_window
 from apps.tray import tray_app
 
 
+def test_default_window_size_matches_normal_desktop_readability_target() -> None:
+    assert desktop_window.DEFAULT_WINDOW_WIDTH == 1360
+    assert desktop_window.DEFAULT_WINDOW_HEIGHT == 900
+    assert desktop_window.DEFAULT_MIN_WIDTH == 1080
+    assert desktop_window.DEFAULT_MIN_HEIGHT == 720
+
+
+def test_tray_internal_window_parser_uses_desktop_defaults(monkeypatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["larksync"])
+
+    args = tray_app._parse_args()
+
+    assert args.width == desktop_window.DEFAULT_WINDOW_WIDTH
+    assert args.height == desktop_window.DEFAULT_WINDOW_HEIGHT
+    assert args.min_width == desktop_window.DEFAULT_MIN_WIDTH
+    assert args.min_height == desktop_window.DEFAULT_MIN_HEIGHT
+
+
 def test_open_desktop_window_falls_back_to_browser_when_webview_missing() -> None:
     opened: list[str] = []
 

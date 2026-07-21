@@ -68,6 +68,26 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/*
+ * Codex Companion 在常规桌面窗口中以 1:1 显示 12–16px 正文，仅保留少量
+ * 10–11px 辅助信息。LarkSync 将高频小字号整体提升一级，避免高 DPI 屏幕
+ * 上的正文和状态标签显得过小。
+ */
+.text-\[10px\] {
+  font-size: 11px;
+  line-height: 1rem;
+}
+
+.text-\[11px\] {
+  font-size: 12px;
+  line-height: 1rem;
+}
+
+.text-xs {
+  font-size: 13px;
+  line-height: 1.125rem;
+}
+
 .desktop-grid-surface {
   background-color: #ffffff;
   background-image: linear-gradient(180deg, #f8fbff 0%, #fbfdff calc(100% - 56px), #ffffff 100%);

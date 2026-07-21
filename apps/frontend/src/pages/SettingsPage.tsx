@@ -254,7 +254,9 @@ function SettingsLivePage() {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[#102033]">{connected ? "飞书已连接" : "飞书未连接"}</p>
               <p className="mt-1 truncate text-xs text-[#6b7f96]">
-                {connected ? `${accountName || "当前账号"} · ${driveOk ? "云空间权限正常" : "请检查云空间权限"}` : "请在高级 OAuth 中完成授权"}
+                {connected
+                  ? `${accountName || "当前账号"} · ${driveOk === true ? "云空间权限正常" : driveOk === false ? "请检查云空间权限" : "权限检查暂不可用，正在重试"}`
+                  : "请在高级 OAuth 中完成授权"}
               </p>
             </div>
           </div>

@@ -16,6 +16,7 @@ from src.services.update_service import UpdateService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 state_store = AuthStateStore()
+DRIVE_PERMISSION_CHECK_TIMEOUT_SECONDS = 5.0
 
 
 @router.get("/login")
@@ -112,7 +113,9 @@ async def status():
             result["drive_ok"] = await _check_drive_permission(access_token)
         except Exception as exc:
             logger.debug("权限检查异常: {}", exc)
-            result["drive_ok"] = False
+            result["drive_ok"] = None
+        if result["drive_ok"] is None:
+            result["drive_check_error"] = "云文档权限检查暂不可用，请稍后重试"
     return result
 
 
@@ -121,11 +124,11 @@ async def cli_status() -> LarkCliAuthStatus:
     return await asyncio.to_thread(get_lark_cli_auth_status)
 
 
-async def _check_drive_permission(access_token: str) -> bool:
+async def _check_drive_permission(access_token: str) -> bool | None:
     """尝试调用飞书 Drive 元数据接口验证 token 是否有 drive 权限。"""
     url = "https://open.feishu.cn/open-apis/drive/explorer/v2/root_folder/meta"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=DRIVE_PERMISSION_CHECK_TIMEOUT_SECONDS) as client:
             resp = await client.get(
                 url, headers={"Authorization": f"Bearer {access_token}"}
             )
@@ -138,7 +141,9 @@ async def _check_drive_permission(access_token: str) -> bool:
             return False
     except Exception as exc:
         logger.warning("Drive 权限检查请求异常: {}", exc)
-        return False
+        # 网络异常、请求超时和响应解析失败不代表授权失效。返回未知状态，
+        # 由前端保留现有授权并重试；只有飞书明确返回非零 code 才判定缺权。
+        return None
 
 
 @router.post("/logout")

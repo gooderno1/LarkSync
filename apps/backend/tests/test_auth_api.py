@@ -52,6 +52,55 @@ async def test_status_fills_account_name_when_missing(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_status_keeps_connection_when_drive_probe_is_temporarily_unavailable(monkeypatch) -> None:
+    class DummyAuthService:
+        def get_cached_token(self) -> TokenData:
+            return TokenData(
+                access_token="token",
+                refresh_token="refresh",
+                expires_at=123.0,
+                open_id="ou-test",
+                account_name="测试用户",
+            )
+
+        async def get_valid_access_token(self) -> str:
+            return "token"
+
+    async def fake_check_drive_permission(_access_token: str) -> None:
+        return None
+
+    monkeypatch.setattr(auth_api, "AuthService", DummyAuthService)
+    monkeypatch.setattr(auth_api, "current_device_id", lambda: "dev-test")
+    monkeypatch.setattr(auth_api, "_check_drive_permission", fake_check_drive_permission)
+
+    payload = await auth_api.status()
+
+    assert payload["connected"] is True
+    assert payload["drive_ok"] is None
+    assert payload["drive_check_error"] == "云文档权限检查暂不可用，请稍后重试"
+
+
+@pytest.mark.asyncio
+async def test_drive_probe_does_not_treat_timeout_as_missing_permission(monkeypatch) -> None:
+    class DummyClient:
+        def __init__(self, *, timeout: float) -> None:
+            assert timeout == auth_api.DRIVE_PERMISSION_CHECK_TIMEOUT_SECONDS
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, *_args, **_kwargs):
+            raise auth_api.httpx.ReadTimeout("temporary timeout")
+
+    monkeypatch.setattr(auth_api.httpx, "AsyncClient", DummyClient)
+
+    assert await auth_api._check_drive_permission("token") is None
+
+
+@pytest.mark.asyncio
 async def test_callback_triggers_update_check_on_login(monkeypatch) -> None:
     class DummyAuthService:
         async def exchange_code(self, _code: str) -> TokenData:

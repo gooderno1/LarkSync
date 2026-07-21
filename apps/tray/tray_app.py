@@ -52,7 +52,15 @@ from apps.tray.config import (
     _is_port_active,
 )
 from apps.tray.backend_manager import BackendManager
-from apps.tray.desktop_window import DesktopWindowLaunchResult, open_browser_dashboard, open_desktop_window
+from apps.tray.desktop_window import (
+    DEFAULT_MIN_HEIGHT,
+    DEFAULT_MIN_WIDTH,
+    DEFAULT_WINDOW_HEIGHT,
+    DEFAULT_WINDOW_WIDTH,
+    DesktopWindowLaunchResult,
+    open_browser_dashboard,
+    open_desktop_window,
+)
 from apps.tray.icon_generator import generate_icons, get_icon_path
 from apps.tray.autostart import is_autostart_enabled, repair_autostart_if_needed, toggle_autostart
 from apps.tray import notifier
@@ -1078,10 +1086,10 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--url", help=argparse.SUPPRESS)
     parser.add_argument("--title", default="LarkSync", help=argparse.SUPPRESS)
-    parser.add_argument("--width", type=int, default=1280, help=argparse.SUPPRESS)
-    parser.add_argument("--height", type=int, default=820, help=argparse.SUPPRESS)
-    parser.add_argument("--min-width", type=int, default=1080, help=argparse.SUPPRESS)
-    parser.add_argument("--min-height", type=int, default=720, help=argparse.SUPPRESS)
+    parser.add_argument("--width", type=int, default=DEFAULT_WINDOW_WIDTH, help=argparse.SUPPRESS)
+    parser.add_argument("--height", type=int, default=DEFAULT_WINDOW_HEIGHT, help=argparse.SUPPRESS)
+    parser.add_argument("--min-width", type=int, default=DEFAULT_MIN_WIDTH, help=argparse.SUPPRESS)
+    parser.add_argument("--min-height", type=int, default=DEFAULT_MIN_HEIGHT, help=argparse.SUPPRESS)
     parser.add_argument("--debug-window", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--dev",

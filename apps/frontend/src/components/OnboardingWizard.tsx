@@ -167,8 +167,8 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
   }, [authorizeUrl]);
 
   const authState =
-    connected && driveOk ? "ready" :
-      connected && !driveOk ? "permission" :
+    connected && driveOk === true ? "ready" :
+      connected && driveOk === false ? "permission" :
         oauthConfigured ? "authorize" : "configure";
 
   const handleSaveOAuth = async () => {
@@ -264,7 +264,11 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
               <StatusRow label="运行模式" value={desktopStatus.runtime.packaged ? "安装版" : "开发模式"} tone="info" />
               <StatusRow label="OAuth 应用" value={oauthConfigured ? "已配置" : "待配置"} tone={oauthConfigured ? "success" : "warning"} />
               <StatusRow label="授权连接" value={connected ? "已连接" : "待授权"} tone={connected ? "success" : "warning"} />
-              <StatusRow label="云文档权限" value={connected ? (driveOk ? "可用" : "需修复") : "授权后检查"} tone={connected && !driveOk ? "danger" : connected ? "success" : "neutral"} />
+              <StatusRow
+                label="云文档权限"
+                value={connected ? (driveOk === true ? "可用" : driveOk === false ? "需修复" : "检查中") : "授权后检查"}
+                tone={connected && driveOk === false ? "danger" : connected && driveOk === true ? "success" : "neutral"}
+              />
               <StatusRow label="当前设备" value={deviceId || "待识别"} tone="info" mono />
               <StatusRow label="数据目录" value={shortRuntimePath(desktopStatus.runtime.data_dir || "待识别")} tone="neutral" mono />
             </div>
@@ -280,7 +284,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
               {REQUIRED_PERMISSIONS.map((scope) => (
                 <div key={scope} className="flex items-center justify-between gap-3 rounded-lg border border-[#edf3fb] bg-[#f8fbff] px-3 py-2">
                   <span className="truncate font-mono text-xs text-[#52657a]">{scope}</span>
-                  <span className={cn("h-2 w-2 shrink-0 rounded-full", connected && driveOk ? "bg-[#10b981]" : "bg-[#f59e0b]")} />
+                  <span className={cn("h-2 w-2 shrink-0 rounded-full", connected && driveOk === true ? "bg-[#10b981]" : "bg-[#f59e0b]")} />
                 </div>
               ))}
             </div>
@@ -375,13 +379,18 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
                 <div className="grid grid-cols-3 gap-3">
                   <StepCard title="1. 配置应用" state={oauthConfigured ? "完成" : "待处理"} done={oauthConfigured} />
                   <StepCard title="2. 扫码授权" state={connected ? "完成" : "等待"} done={connected} />
-                  <StepCard title="3. 权限校验" state={connected ? (driveOk ? "通过" : "需修复") : "等待"} done={connected && driveOk} danger={connected && !driveOk} />
+                  <StepCard
+                    title="3. 权限校验"
+                    state={connected ? (driveOk === true ? "通过" : driveOk === false ? "需修复" : "检查中") : "等待"}
+                    done={connected && driveOk === true}
+                    danger={connected && driveOk === false}
+                  />
                 </div>
               </div>
             </div>
           </Panel>
 
-          {connected && driveOk ? (
+          {connected && driveOk === true ? (
             <Panel title="授权完成">
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#10b981]/25 bg-[#ecfdf5] p-4">
                 <div>

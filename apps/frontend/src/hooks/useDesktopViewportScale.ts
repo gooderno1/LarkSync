@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 
-export const DESKTOP_DESIGN_WIDTH = 1536;
-export const DESKTOP_DESIGN_HEIGHT = 1024;
+export const DESKTOP_DESIGN_WIDTH = 1360;
+export const DESKTOP_DESIGN_HEIGHT = 900;
 export const DESKTOP_MIN_SCALE = 1080 / DESKTOP_DESIGN_WIDTH;
+
+export function calculateDesktopViewportScale(width: number, height: number): number {
+  const scale = Math.min(width / DESKTOP_DESIGN_WIDTH, height / DESKTOP_DESIGN_HEIGHT);
+  if (!Number.isFinite(scale) || scale <= 0) return 1;
+  return Math.min(1, Math.max(DESKTOP_MIN_SCALE, scale));
+}
 
 function readViewportScale(): number {
   if (typeof window === "undefined") return 1;
   const width = Number(window.innerWidth) || DESKTOP_DESIGN_WIDTH;
   const height = Number(window.innerHeight) || DESKTOP_DESIGN_HEIGHT;
-  const scale = Math.min(width / DESKTOP_DESIGN_WIDTH, height / DESKTOP_DESIGN_HEIGHT);
-  if (!Number.isFinite(scale) || scale <= 0) return 1;
-  return Math.max(DESKTOP_MIN_SCALE, scale);
+  return calculateDesktopViewportScale(width, height);
 }
 
 export function useDesktopViewportScale() {
