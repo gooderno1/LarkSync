@@ -187,7 +187,7 @@ async def build_desktop_status(request: Request) -> DesktopStatusResponse:
         default=None,
     )
     try:
-        token = AuthService().get_cached_token()
+        token = await asyncio.to_thread(AuthService().get_cached_token)
     except Exception as exc:
         logger.debug("读取桌面状态 token 缓存失败: {}", exc)
         token = None

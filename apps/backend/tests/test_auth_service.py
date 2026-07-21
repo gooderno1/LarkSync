@@ -21,6 +21,7 @@ class FakeAsyncClient:
         self._exc = exc
         self._get_response = get_response
         self._get_exc = get_exc
+        self.get_calls = 0
 
     async def __aenter__(self):
         return self
@@ -34,6 +35,7 @@ class FakeAsyncClient:
         return self._response
 
     async def get(self, url: str, headers: dict[str, str] | None = None):
+        self.get_calls += 1
         if self._get_exc:
             raise self._get_exc
         return self._get_response
@@ -376,7 +378,7 @@ async def test_get_valid_access_token_serializes_concurrent_refresh() -> None:
 
 
 @pytest.mark.asyncio
-async def test_exchange_code_fills_open_id_via_user_info() -> None:
+async def test_exchange_code_does_not_block_redirect_on_user_info() -> None:
     config = AppConfig(
         auth_authorize_url="https://example.com/oauth/authorize",
         auth_token_url="https://example.com/oauth/token",
@@ -416,8 +418,9 @@ async def test_exchange_code_fills_open_id_via_user_info() -> None:
     service = AuthService(config=config, token_store=store, http_client=client)
 
     token = await service.exchange_code("code-123")
-    assert token.open_id == "ou-test-user"
-    assert token.account_name == "测试用户"
+    assert token.open_id is None
+    assert token.account_name is None
+    assert client.get_calls == 0
 
 
 @pytest.mark.asyncio

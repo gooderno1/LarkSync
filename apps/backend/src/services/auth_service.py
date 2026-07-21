@@ -136,12 +136,13 @@ class AuthService:
             open_id=resolved_open_id,
             account_name=resolved_account_name,
         )
-        self._token_store.set(updated)
+        await asyncio.to_thread(self._token_store.set, updated)
         return updated
 
     async def _request_token(self, payload: dict[str, str]) -> TokenData:
         token_url = self._require_config(self._config.auth_token_url, "auth_token_url")
-        previous = self._token_store.get()
+        previous = await asyncio.to_thread(self._token_store.get)
+        request_started = time.perf_counter()
 
         async with self._get_client() as client:
             try:
@@ -157,6 +158,10 @@ class AuthService:
             except ValueError as exc:
                 snippet = response.text[:200]
                 raise AuthError(f"Token 响应不是 JSON：{snippet}") from exc
+        logger.info(
+            "OAuth token 交换完成: elapsed_ms={:.1f}",
+            (time.perf_counter() - request_started) * 1000,
+        )
 
         # 记录响应结构（脱敏）用于调试
         self._log_token_response(data)
@@ -176,13 +181,6 @@ class AuthService:
         ):
             resolved_refresh_token = previous.refresh_token
             logger.warning("Token 响应缺少 refresh_token，继续保留当前 refresh_token")
-        if not resolved_open_id or not resolved_account_name:
-            profile = await self._fetch_user_profile(token.access_token)
-            if not resolved_open_id:
-                resolved_open_id = profile.open_id
-            if not resolved_account_name:
-                resolved_account_name = profile.account_name
-
         stored = TokenData(
             access_token=token.access_token,
             refresh_token=resolved_refresh_token,
@@ -190,7 +188,12 @@ class AuthService:
             open_id=resolved_open_id,
             account_name=resolved_account_name,
         )
-        self._token_store.set(stored)
+        persist_started = time.perf_counter()
+        await asyncio.to_thread(self._token_store.set, stored)
+        logger.info(
+            "OAuth token 安全存储完成: elapsed_ms={:.1f}",
+            (time.perf_counter() - persist_started) * 1000,
+        )
         return stored
 
     async def _refresh_unlocked(self, current: TokenData | None) -> TokenData:

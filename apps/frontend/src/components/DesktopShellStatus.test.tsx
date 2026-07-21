@@ -114,7 +114,7 @@ describe("desktop shell status", () => {
       </>,
     );
 
-    expect(html).toContain("w-[220px]");
+    expect(html).toContain("w-[228px]");
     expect(html).toContain("/logo-horizontal.png");
     expect(html).toContain("活动与问题");
     expect(html).toContain('data-sidebar-badge="conflicts"');
@@ -129,7 +129,7 @@ describe("desktop shell status", () => {
     expect(html).toContain('data-sidebar-runtime="true"');
     expect(html).toContain('data-desktop-topbar="true"');
     expect(html).toContain('data-window-chrome="native"');
-    expect(html).toContain("h-[52px]");
+    expect(html).toContain("h-14");
     expect(html).toContain("bg-[#f7faff]");
     expect(html).toContain("w-[430px]");
     expect(html).toContain("w-[128px]");

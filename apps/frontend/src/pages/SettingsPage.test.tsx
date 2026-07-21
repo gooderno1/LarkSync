@@ -44,7 +44,6 @@ vi.mock("../hooks/useTasks", () => ({
 vi.mock("../hooks/useAuth", () => ({
   useAuth: () => ({
     connected: true,
-    driveOk: true,
     accountName: "张三",
     deviceId: "4d6c2e1f-8b12-4eac-9b56",
     logout: vi.fn(),

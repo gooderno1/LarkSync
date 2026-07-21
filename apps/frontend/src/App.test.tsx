@@ -4,9 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App, { getNavKeyFromHash } from "./App";
 
-const authState = vi.hoisted((): { connected: boolean; driveOk: boolean | null; loading: boolean } => ({
+const authState = vi.hoisted((): { connected: boolean; loading: boolean } => ({
   connected: false,
-  driveOk: false,
   loading: false,
 }));
 
@@ -81,38 +80,24 @@ describe("App smoke", () => {
 
   it("renders onboarding when OAuth is configured but account is not connected", () => {
     authState.connected = false;
-    authState.driveOk = false;
 
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain("Onboarding Wizard");
   });
 
-  it("renders updated scope hint when doc permissions are unavailable", () => {
+  it("uses a binary local authorization state without permission-check banners", () => {
     authState.connected = true;
-    authState.driveOk = false;
 
     const html = renderToStaticMarkup(<App />);
 
-    expect(html).toContain("docx:document");
-    expect(html).toContain("docx:document.block:convert");
-  });
-
-  it("keeps the existing authorization when the drive check is temporarily unavailable", () => {
-    authState.connected = true;
-    authState.driveOk = null;
-
-    const html = renderToStaticMarkup(<App />);
-
-    expect(html).toContain("权限检查暂时不可用");
-    expect(html).toContain("无需重新授权");
     expect(html).not.toContain("飞书云文档权限不足");
     expect(html).not.toContain("重新授权飞书");
+    expect(html).toContain("Dashboard Page");
   });
 
   it("renders the desktop shell around the dashboard", () => {
     authState.connected = true;
-    authState.driveOk = true;
 
     const html = renderToStaticMarkup(<App />);
 
@@ -122,7 +107,7 @@ describe("App smoke", () => {
     expect(html).toContain("Sidebar");
     expect(html).toContain('data-desktop-scale="1.000"');
     expect(html).toContain('--desktop-scale:1');
-    expect(html).toContain("px-7 py-[23px]");
+    expect(html).toContain("px-8 py-6");
     expect(html).toContain("desktop-grid-surface");
     expect(html).toContain('data-desktop-main="true"');
     expect(html).not.toContain('data-desktop-statusbar="true"');
@@ -134,7 +119,6 @@ describe("App smoke", () => {
 
   it("opens the page requested by the desktop window hash", () => {
     authState.connected = true;
-    authState.driveOk = true;
     vi.stubGlobal("window", {
       location: { hash: "#settings" },
       history: { replaceState: vi.fn() },

@@ -27,7 +27,9 @@ class SyncScheduler:
         runner: SyncTaskRunner,
         task_service: SyncTaskService,
         config_manager: ConfigManager | None = None,
-        startup_grace_seconds: float = 1.0,
+        startup_grace_seconds: float = 12.0,
+        worker_stagger_seconds: float = 0.75,
+        max_concurrent_scheduled_runs: int = 2,
     ) -> None:
         self._runner = runner
         self._task_service = task_service
@@ -41,6 +43,8 @@ class SyncScheduler:
         self._download_task_meta: dict[str, SyncTaskItem] = {}
         self._task_refresh_interval_seconds = 1.0
         self._startup_grace_seconds = max(0.0, startup_grace_seconds)
+        self._worker_stagger_seconds = max(0.0, worker_stagger_seconds)
+        self._run_semaphore = asyncio.Semaphore(max(1, max_concurrent_scheduled_runs))
 
     async def start(self) -> None:
         if self._upload_task or self._download_task:
@@ -141,12 +145,12 @@ class SyncScheduler:
                 pass
             self._upload_workers.pop(task_id, None)
         self._upload_task_meta = eligible
-        for task in eligible.values():
+        for index, task in enumerate(sorted(eligible.values(), key=lambda item: item.created_at)):
             self._runner.ensure_watcher(task)
             if task.id in self._upload_workers:
                 continue
             self._upload_workers[task.id] = asyncio.create_task(
-                self._run_upload_worker(task.id)
+                self._run_upload_worker(task.id, initial_delay=index * self._worker_stagger_seconds)
             )
 
     async def _reconcile_download_workers(self) -> None:
@@ -162,14 +166,16 @@ class SyncScheduler:
                 pass
             self._download_workers.pop(task_id, None)
         self._download_task_meta = eligible
-        for task in eligible.values():
+        for index, task in enumerate(sorted(eligible.values(), key=lambda item: item.created_at)):
             if task.id in self._download_workers:
                 continue
             self._download_workers[task.id] = asyncio.create_task(
-                self._run_download_worker(task.id)
+                self._run_download_worker(task.id, initial_delay=index * self._worker_stagger_seconds)
             )
 
-    async def _run_upload_worker(self, task_id: str) -> None:
+    async def _run_upload_worker(self, task_id: str, *, initial_delay: float = 0.0) -> None:
+        if initial_delay > 0 and await self._wait_for_stop(initial_delay):
+            return
         schedule_key: tuple[object, ...] | None = None
         last_daily_run: datetime | None = None
         while not self._stop_event.is_set():
@@ -190,7 +196,8 @@ class SyncScheduler:
                 SyncIntervalUnit.seconds,
                 SyncIntervalUnit.hours,
             }:
-                await self._runner.run_scheduled_upload(task)
+                async with self._run_semaphore:
+                    await self._runner.run_scheduled_upload(task)
                 interval_seconds = _interval_to_seconds(
                     snapshot.upload_interval_value, snapshot.upload_interval_unit
                 )
@@ -214,10 +221,13 @@ class SyncScheduler:
             task = self._upload_task_meta.get(task_id)
             if task is None or not _should_upload(task):
                 return
-            await self._runner.run_scheduled_upload(task)
+            async with self._run_semaphore:
+                await self._runner.run_scheduled_upload(task)
             last_daily_run = next_run
 
-    async def _run_download_worker(self, task_id: str) -> None:
+    async def _run_download_worker(self, task_id: str, *, initial_delay: float = 0.0) -> None:
+        if initial_delay > 0 and await self._wait_for_stop(initial_delay):
+            return
         schedule_key: tuple[object, ...] | None = None
         last_daily_run: datetime | None = None
         while not self._stop_event.is_set():
@@ -237,7 +247,8 @@ class SyncScheduler:
                 SyncIntervalUnit.seconds,
                 SyncIntervalUnit.hours,
             }:
-                await self._runner.run_scheduled_download(task)
+                async with self._run_semaphore:
+                    await self._runner.run_scheduled_download(task)
                 interval_seconds = _interval_to_seconds(
                     snapshot.download_interval_value, snapshot.download_interval_unit
                 )
@@ -261,7 +272,8 @@ class SyncScheduler:
             task = self._download_task_meta.get(task_id)
             if task is None or not _should_download(task):
                 return
-            await self._runner.run_scheduled_download(task)
+            async with self._run_semaphore:
+                await self._runner.run_scheduled_download(task)
             last_daily_run = next_run
 
     async def _wait_for_stop(self, timeout: float) -> bool:

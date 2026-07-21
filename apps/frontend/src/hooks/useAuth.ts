@@ -8,8 +8,6 @@ import { apiFetch } from "../lib/api";
 type AuthStatus = {
   connected: boolean;
   expires_at?: number | null;
-  drive_ok?: boolean | null;
-  drive_check_error?: string | null;
   open_id?: string | null;
   account_name?: string | null;
   device_id?: string | null;
@@ -17,7 +15,7 @@ type AuthStatus = {
 
 export function getAuthStatusRefetchInterval(data?: AuthStatus | null): number | false {
   if (!data?.connected) return 2_500;
-  return data.drive_ok == null ? 5_000 : false;
+  return false;
 }
 
 export function useAuth() {
@@ -44,8 +42,6 @@ export function useAuth() {
 
   return {
     connected: data?.connected ?? false,
-    driveOk: data?.drive_ok ?? null,
-    driveCheckError: data?.drive_check_error ?? null,
     expiresAt: data?.expires_at ?? null,
     openId: data?.open_id ?? null,
     accountName: data?.account_name ?? null,

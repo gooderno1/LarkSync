@@ -98,6 +98,7 @@ async def test_upload_scheduler_runs_tasks_independently() -> None:
         task_service=task_service,
         config_manager=config_manager,
         startup_grace_seconds=0,
+        worker_stagger_seconds=0,
     )
 
     await scheduler.start()

@@ -68,13 +68,6 @@ type LarkCliAuthStatus = {
 
 type StatusTone = "success" | "warning" | "danger" | "info" | "neutral";
 
-const REQUIRED_PERMISSIONS = [
-  "drive:drive",
-  "docx:document",
-  "docx:document:readonly",
-  "docx:document.block:convert",
-];
-
 function getRedirectUri(): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return `${origin}/auth/callback`;
@@ -86,7 +79,7 @@ function getLoginRedirect(): string {
 
 export function OnboardingWizard({ oauthConfigured, connected }: Props) {
   const { config, saveConfig, saving } = useConfig();
-  const { driveOk, accountName, deviceId } = useAuth();
+  const { accountName, deviceId } = useAuth();
   const {
     status: desktopStatus,
     error: desktopStatusError,
@@ -166,10 +159,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
     };
   }, [authorizeUrl]);
 
-  const authState =
-    connected && driveOk === true ? "ready" :
-      connected && driveOk === false ? "permission" :
-        oauthConfigured ? "authorize" : "configure";
+  const authState = connected ? "ready" : oauthConfigured ? "authorize" : "configure";
 
   const handleSaveOAuth = async () => {
     if (!clientId.trim()) {
@@ -232,7 +222,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
           <div className="h-6 w-px bg-[#d7e6ff]" />
           <div className="min-w-0">
             <h1 className="truncate text-lg font-semibold text-[#102033]">连接飞书工作区</h1>
-            <p className="truncate text-xs text-[#6b7f96]">配置 OAuth、扫码授权并检查云文档权限</p>
+            <p className="truncate text-xs text-[#6b7f96]">配置 OAuth 并完成飞书账号授权</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -264,11 +254,6 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
               <StatusRow label="运行模式" value={desktopStatus.runtime.packaged ? "安装版" : "开发模式"} tone="info" />
               <StatusRow label="OAuth 应用" value={oauthConfigured ? "已配置" : "待配置"} tone={oauthConfigured ? "success" : "warning"} />
               <StatusRow label="授权连接" value={connected ? "已连接" : "待授权"} tone={connected ? "success" : "warning"} />
-              <StatusRow
-                label="云文档权限"
-                value={connected ? (driveOk === true ? "可用" : driveOk === false ? "需修复" : "检查中") : "授权后检查"}
-                tone={connected && driveOk === false ? "danger" : connected && driveOk === true ? "success" : "neutral"}
-              />
               <StatusRow label="当前设备" value={deviceId || "待识别"} tone="info" mono />
               <StatusRow label="数据目录" value={shortRuntimePath(desktopStatus.runtime.data_dir || "待识别")} tone="neutral" mono />
             </div>
@@ -277,17 +262,6 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
                 桌面诊断读取失败：{desktopStatusError}
               </p>
             ) : null}
-          </Panel>
-
-          <Panel title="权限检查" hint="连接后会校验 Drive/Docx 权限。">
-            <div className="space-y-2">
-              {REQUIRED_PERMISSIONS.map((scope) => (
-                <div key={scope} className="flex items-center justify-between gap-3 rounded-lg border border-[#edf3fb] bg-[#f8fbff] px-3 py-2">
-                  <span className="truncate font-mono text-xs text-[#52657a]">{scope}</span>
-                  <span className={cn("h-2 w-2 shrink-0 rounded-full", connected && driveOk === true ? "bg-[#10b981]" : "bg-[#f59e0b]")} />
-                </div>
-              ))}
-            </div>
           </Panel>
 
           <Panel title="当前结论">
@@ -379,18 +353,13 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
                 <div className="grid grid-cols-3 gap-3">
                   <StepCard title="1. 配置应用" state={oauthConfigured ? "完成" : "待处理"} done={oauthConfigured} />
                   <StepCard title="2. 扫码授权" state={connected ? "完成" : "等待"} done={connected} />
-                  <StepCard
-                    title="3. 权限校验"
-                    state={connected ? (driveOk === true ? "通过" : driveOk === false ? "需修复" : "检查中") : "等待"}
-                    done={connected && driveOk === true}
-                    danger={connected && driveOk === false}
-                  />
+                  <StepCard title="3. 进入工作台" state={connected ? "就绪" : "等待"} done={connected} />
                 </div>
               </div>
             </div>
           </Panel>
 
-          {connected && driveOk === true ? (
+          {connected ? (
             <Panel title="授权完成">
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-[#10b981]/25 bg-[#ecfdf5] p-4">
                 <div>
@@ -753,30 +722,26 @@ function getLarkCliTone(
   return status.can_assist_oauth ? "success" : "warning";
 }
 
-function getStateTitle(state: "ready" | "permission" | "authorize" | "configure"): string {
+function getStateTitle(state: "ready" | "authorize" | "configure"): string {
   if (state === "ready") return "授权完成";
-  if (state === "permission") return "权限需要修复";
   if (state === "authorize") return "等待飞书授权";
   return "需要配置飞书应用";
 }
 
-function getStateHint(state: "ready" | "permission" | "authorize" | "configure"): string {
-  if (state === "ready") return "当前账号和云文档权限均可用，可以进入桌面工作台。";
-  if (state === "permission") return "已连接账号，但 Drive/Docx 权限检查未通过。请确认应用权限已添加并发布，然后重新授权。";
+function getStateHint(state: "ready" | "authorize" | "configure"): string {
+  if (state === "ready") return "当前账号已在本机完成授权，可以进入桌面工作台。";
   if (state === "authorize") return "OAuth 配置已保存。请扫码或在本机浏览器打开授权链接完成连接。";
   return "请先填写飞书企业自建应用的 App ID、App Secret，并复制 Redirect URI 到飞书后台。";
 }
 
-function getStateBadge(state: "ready" | "permission" | "authorize" | "configure"): string {
+function getStateBadge(state: "ready" | "authorize" | "configure"): string {
   if (state === "ready") return "可进入总览";
-  if (state === "permission") return "权限不足";
   if (state === "authorize") return "待授权";
   return "待配置";
 }
 
-function getStateTone(state: "ready" | "permission" | "authorize" | "configure"): StatusTone {
+function getStateTone(state: "ready" | "authorize" | "configure"): StatusTone {
   if (state === "ready") return "success";
-  if (state === "permission") return "danger";
   if (state === "authorize") return "info";
   return "warning";
 }

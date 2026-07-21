@@ -7,7 +7,6 @@ const mockState = vi.hoisted(() => ({
   config: {} as Record<string, unknown>,
   auth: {
     loading: false,
-    driveOk: false,
     accountName: null as string | null,
     deviceId: "dev-test",
   },
@@ -122,7 +121,6 @@ describe("OnboardingWizard smoke", () => {
     mockState.config = {};
     mockState.auth = {
       loading: false,
-      driveOk: false,
       accountName: null,
       deviceId: "dev-test",
     };

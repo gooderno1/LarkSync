@@ -70,7 +70,7 @@ export default function App() {
   }, []);
 
   /* ---------- 连接与配置状态检测 ---------- */
-  const { connected, driveOk, loading: authLoading } = useAuth();
+  const { connected, loading: authLoading } = useAuth();
   const { config, configLoading } = useConfig();
   const { conflicts } = useConflicts();
   const unresolvedConflicts = conflicts.filter((c) => !c.resolved).length;
@@ -134,37 +134,7 @@ export default function App() {
           <div className="flex min-w-0 flex-1 flex-col">
             <DesktopTopBar activeTab={activeTab} onNavigate={handleNavigate} />
 
-            <main data-desktop-main="true" className="desktop-grid-surface min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-7 py-[23px]">
-              {connected && driveOk === false && (
-                <div className="mb-5 rounded-xl border border-[#f59e0b]/30 bg-[#fffbeb] px-5 py-4 text-sm text-[#92400e]">
-                  <p className="font-semibold">飞书云文档权限不足</p>
-                  <p className="mt-1 text-xs leading-relaxed">
-                    当前授权令牌缺少{" "}
-                    <code className="rounded border border-[#fcd34d] bg-white px-1 py-0.5 text-[#102033]">drive:drive</code>
-                    、{" "}
-                    <code className="rounded border border-[#fcd34d] bg-white px-1 py-0.5 text-[#102033]">docx:document</code>
-                    、{" "}
-                    <code className="rounded border border-[#fcd34d] bg-white px-1 py-0.5 text-[#102033]">docx:document.block:convert</code>{" "}
-                    等新版文档权限。请在飞书开发者后台确认权限已添加，并前往「版本管理与发布」发布应用，然后重新授权。
-                  </p>
-                  <a
-                    href="/auth/login?redirect=/"
-                    className="mt-2.5 inline-block rounded-lg border border-[#f59e0b]/40 bg-white px-4 py-1.5 text-xs font-semibold text-[#92400e] transition hover:bg-[#fef3c7]"
-                  >
-                    重新授权飞书
-                  </a>
-                </div>
-              )}
-
-              {connected && driveOk === null && (
-                <div className="mb-5 rounded-xl border border-[#3370ff]/25 bg-[#eff6ff] px-5 py-4 text-sm text-[#1e4f91]">
-                  <p className="font-semibold">飞书云文档权限检查暂时不可用</p>
-                  <p className="mt-1 text-xs leading-relaxed">
-                    本地仍保留当前登录信息，可能是飞书接口超时或临时网络波动。系统会自动重试；在检查得出明确结果前，无需重新授权。
-                  </p>
-                </div>
-              )}
-
+            <main data-desktop-main="true" className="desktop-grid-surface min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-8 py-6">
               {activeTab === "dashboard" ? <DashboardPage onNavigate={handleNavigate} /> : null}
               {activeTab === "tasks" && selectedTaskId ? (
                 <TaskDetailPage taskId={selectedTaskId} onBack={() => setSelectedTaskId(null)} />

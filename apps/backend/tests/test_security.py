@@ -72,6 +72,29 @@ def test_keyring_roundtrip_open_id(monkeypatch) -> None:
     assert loaded.account_name == "测试用户"
 
 
+def test_keyring_store_reads_windows_credentials_only_once(monkeypatch) -> None:
+    values = {
+        ("larksync", "access_token"): "access",
+        ("larksync", "refresh_token"): "refresh",
+        ("larksync", "expires_at"): "123",
+    }
+    calls: list[str] = []
+
+    def fake_get_password(service: str, key: str):
+        calls.append(key)
+        return values.get((service, key))
+
+    monkeypatch.setattr(security.keyring, "get_password", fake_get_password)
+    token_store = KeyringTokenStore()
+
+    assert token_store.get() is not None
+    first_call_count = len(calls)
+    assert token_store.get() is not None
+
+    assert first_call_count > 0
+    assert len(calls) == first_call_count
+
+
 def test_file_token_store_roundtrip(tmp_path) -> None:
     token_file = tmp_path / "tokens.json"
     store = FileTokenStore(path=token_file)

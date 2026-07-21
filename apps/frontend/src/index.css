@@ -5,8 +5,6 @@
 /*  主题切换：仅通过 CSS 变量 + data-theme，零 !important                */
 /* ================================================================== */
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -29,6 +27,16 @@
   --danger: #f43f5e;
   --overlay: rgba(0, 0, 0, 0.6);
   --input-bg: #09090b;      /* zinc-950 */
+  --ui-font-sans: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  --ui-font-mono: "Cascadia Code", "JetBrains Mono", "SF Mono", monospace;
+  --ui-body-size: 14px;
+  --ui-body-line: 20px;
+  --ui-caption-size: 13px;
+  --ui-caption-line: 20px;
+  --ui-micro-size: 11px;
+  --ui-micro-line: 16px;
+  --ui-meta-size: 12px;
+  --ui-meta-line: 18px;
 }
 
 /* ---- Light theme ---- */
@@ -60,7 +68,9 @@
 
 body {
   margin: 0;
-  font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-body-size);
+  line-height: var(--ui-body-line);
   background-color: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -68,24 +78,20 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/*
- * Codex Companion 在常规桌面窗口中以 1:1 显示 12–16px 正文，仅保留少量
- * 10–11px 辅助信息。LarkSync 将高频小字号整体提升一级，避免高 DPI 屏幕
- * 上的正文和状态标签显得过小。
- */
+/* 桌面端采用 11/12/13/14px 四级信息密度，并为每一级配套行高。 */
 .text-\[10px\] {
-  font-size: 11px;
-  line-height: 1rem;
+  font-size: var(--ui-micro-size);
+  line-height: var(--ui-micro-line);
 }
 
 .text-\[11px\] {
-  font-size: 12px;
-  line-height: 1rem;
+  font-size: var(--ui-meta-size);
+  line-height: var(--ui-meta-line);
 }
 
 .text-xs {
-  font-size: 13px;
-  line-height: 1.125rem;
+  font-size: var(--ui-caption-size);
+  line-height: var(--ui-caption-line);
 }
 
 .desktop-grid-surface {
@@ -149,7 +155,7 @@ body {
 code,
 pre,
 .font-mono {
-  font-family: "JetBrains Mono", "SF Mono", "Cascadia Code", monospace;
+  font-family: var(--ui-font-mono);
 }
 
 /* ---- Light theme overrides for Tailwind utility classes ---- */

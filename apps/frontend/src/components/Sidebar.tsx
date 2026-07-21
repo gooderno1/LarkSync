@@ -89,7 +89,7 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
   });
 
   return (
-    <aside data-desktop-sidebar="true" className="flex h-full w-[220px] flex-none flex-col justify-between border-r border-[#bfd0e2] bg-[#f3f7fc] px-4 pb-4 pt-5">
+    <aside data-desktop-sidebar="true" className="flex h-full w-[228px] flex-none flex-col justify-between border-r border-[#bfd0e2] bg-[#f3f7fc] px-4 pb-4 pt-5">
       <div>
         <div className="flex h-14 items-center justify-start px-3">
           <img
@@ -109,30 +109,30 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
         ) : null}
 
         <section data-sidebar-section="workspace" className="mt-5">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7f94ab]">工作区</p>
+          <p className="px-3 text-[11px] font-semibold leading-4 uppercase tracking-[0.14em] text-[#71869d]">工作区</p>
           <nav className="mt-2 grid gap-2">{renderNavItems(workspaceItems)}</nav>
         </section>
       </div>
 
       <div className="space-y-3">
         <section data-sidebar-section="system">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7f94ab]">系统</p>
+          <p className="px-3 text-[11px] font-semibold leading-4 uppercase tracking-[0.14em] text-[#71869d]">系统</p>
           <nav className="mt-1 grid gap-1">{renderNavItems(systemItems, true)}</nav>
         </section>
 
-        <section data-sidebar-runtime="true" className="rounded-xl border border-[#c9d8e8] bg-white/80 p-3 shadow-[0_8px_24px_rgba(51,112,255,0.05)]">
+        <section data-sidebar-runtime="true" className="rounded-xl border border-[#c9d8e8] bg-white/80 p-3.5 shadow-[0_8px_24px_rgba(51,112,255,0.05)]">
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-[#102033]">运行概况</p>
             <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", status.runtime.backend_running && status.auth.connected ? "bg-[#ecfdf5] text-[#047857]" : "bg-[#fff1f2] text-[#be123c]")}>{status.runtime.backend_running && status.auth.connected ? "正常" : "需处理"}</span>
           </div>
-          <div className="mt-2.5 space-y-2 text-[11px] text-[#52657a]">
+          <div className="mt-3 space-y-2.5 text-xs leading-[18px] text-[#52657a]">
             <div className="flex items-center justify-between gap-2"><span className="inline-flex items-center gap-2"><IconActivity className="h-3.5 w-3.5 text-[#3370ff]" />后端服务</span><span className={status.runtime.backend_running ? "text-[#047857]" : "text-[#be123c]"}>{status.runtime.backend_running ? "运行中" : "异常"}</span></div>
             <div className="flex items-center justify-between gap-2"><span className="inline-flex items-center gap-2"><IconCloud className="h-3.5 w-3.5 text-[#3370ff]" />飞书连接</span><span className={status.auth.connected ? "text-[#047857]" : "text-[#b45309]"}>{status.auth.connected ? "已连接" : "未连接"}</span></div>
             <div className="flex items-center justify-between gap-2 border-t border-[#dce7f3] pt-2"><span className="inline-flex items-center gap-2"><IconClock className="h-3.5 w-3.5 text-[#7f94ab]" />最近同步</span><span className="font-mono text-[#334762]">{status.tasks.last_sync_time ? formatShortTime(status.tasks.last_sync_time) : "暂无"}</span></div>
           </div>
         </section>
 
-        <div className="flex items-center justify-between px-1 text-[10px] font-medium text-[#7f94ab]">
+        <div className="flex items-center justify-between px-1 text-[11px] leading-4 font-medium text-[#71869d]">
           <span>{status.update.current_version}</span>
           <span>本地运行</span>
         </div>

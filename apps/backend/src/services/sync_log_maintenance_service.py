@@ -28,6 +28,7 @@ class SyncLogMaintenanceService:
         run_event_service: SyncRunEventService,
         event_store: SyncEventStore,
         config_manager: ConfigManager | None = None,
+        startup_grace_seconds: float = 20.0,
     ) -> None:
         self._run_event_service = run_event_service
         self._event_store = event_store
@@ -39,6 +40,7 @@ class SyncLogMaintenanceService:
         self._idle_interval_seconds = 30.0
         self._prune_interval_seconds = 900.0
         self._last_prune_started_at: float | None = None
+        self._startup_grace_seconds = max(0.0, startup_grace_seconds)
 
     async def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -83,7 +85,8 @@ class SyncLogMaintenanceService:
                 retention_days=retention_days,
                 min_interval_seconds=0,
             )
-            pruned_jsonl_events = self._event_store.prune(
+            pruned_jsonl_events = await asyncio.to_thread(
+                self._event_store.prune,
                 retention_days=retention_days,
                 min_interval_seconds=0,
             )
@@ -96,6 +99,8 @@ class SyncLogMaintenanceService:
         )
 
     async def _run(self) -> None:
+        if await self._wait_for_stop(self._startup_grace_seconds):
+            return
         while not self._stop_event.is_set():
             tick: SyncLogMaintenanceTick | None = None
             try:

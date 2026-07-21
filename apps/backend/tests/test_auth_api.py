@@ -8,7 +8,9 @@ from src.services.lark_cli_auth_service import LarkCliAuthStatus
 
 
 @pytest.mark.asyncio
-async def test_status_fills_account_name_when_missing(monkeypatch) -> None:
+async def test_status_is_a_local_binary_check_without_remote_work(monkeypatch) -> None:
+    calls: list[str] = []
+
     class DummyAuthService:
         def __init__(self) -> None:
             self._token = TokenData(
@@ -23,81 +25,39 @@ async def test_status_fills_account_name_when_missing(monkeypatch) -> None:
             return self._token
 
         async def ensure_cached_identity(self) -> TokenData | None:
-            self._token = TokenData(
-                access_token="token",
-                refresh_token="refresh",
-                expires_at=123.0,
-                open_id="ou-test",
-                account_name="测试用户",
-            )
-            return self._token
+            calls.append("identity")
+            raise AssertionError("状态检查不应请求用户信息")
 
         async def get_valid_access_token(self) -> str:
-            return "token"
+            calls.append("refresh")
+            raise AssertionError("状态检查不应刷新 token")
 
     monkeypatch.setattr(auth_api, "AuthService", DummyAuthService)
     monkeypatch.setattr(auth_api, "current_device_id", lambda: "dev-test")
-
-    async def fake_check_drive_permission(_access_token: str) -> bool:
-        return True
-
-    monkeypatch.setattr(auth_api, "_check_drive_permission", fake_check_drive_permission)
 
     payload = await auth_api.status()
     assert payload["connected"] is True
     assert payload["open_id"] == "ou-test"
-    assert payload["account_name"] == "测试用户"
+    assert payload["account_name"] is None
     assert payload["device_id"] == "dev-test"
-    assert payload["drive_ok"] is True
+    assert "drive_ok" not in payload
+    assert "drive_check_error" not in payload
+    assert calls == []
 
 
 @pytest.mark.asyncio
-async def test_status_keeps_connection_when_drive_probe_is_temporarily_unavailable(monkeypatch) -> None:
+async def test_status_reports_unauthorized_only_when_local_token_is_missing(monkeypatch) -> None:
     class DummyAuthService:
-        def get_cached_token(self) -> TokenData:
-            return TokenData(
-                access_token="token",
-                refresh_token="refresh",
-                expires_at=123.0,
-                open_id="ou-test",
-                account_name="测试用户",
-            )
-
-        async def get_valid_access_token(self) -> str:
-            return "token"
-
-    async def fake_check_drive_permission(_access_token: str) -> None:
-        return None
+        def get_cached_token(self) -> None:
+            return None
 
     monkeypatch.setattr(auth_api, "AuthService", DummyAuthService)
     monkeypatch.setattr(auth_api, "current_device_id", lambda: "dev-test")
-    monkeypatch.setattr(auth_api, "_check_drive_permission", fake_check_drive_permission)
 
     payload = await auth_api.status()
 
-    assert payload["connected"] is True
-    assert payload["drive_ok"] is None
-    assert payload["drive_check_error"] == "云文档权限检查暂不可用，请稍后重试"
-
-
-@pytest.mark.asyncio
-async def test_drive_probe_does_not_treat_timeout_as_missing_permission(monkeypatch) -> None:
-    class DummyClient:
-        def __init__(self, *, timeout: float) -> None:
-            assert timeout == auth_api.DRIVE_PERMISSION_CHECK_TIMEOUT_SECONDS
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def get(self, *_args, **_kwargs):
-            raise auth_api.httpx.ReadTimeout("temporary timeout")
-
-    monkeypatch.setattr(auth_api.httpx, "AsyncClient", DummyClient)
-
-    assert await auth_api._check_drive_permission("token") is None
+    assert payload["connected"] is False
+    assert payload["expires_at"] is None
 
 
 @pytest.mark.asyncio
@@ -112,13 +72,17 @@ async def test_callback_triggers_update_check_on_login(monkeypatch) -> None:
                 account_name="测试用户",
             )
 
-    called = {"value": False}
+    called = {"update": False, "identity": False}
 
     def fake_schedule(_request: Request) -> None:
-        called["value"] = True
+        called["update"] = True
+
+    def fake_identity_schedule(_auth_service: DummyAuthService) -> None:
+        called["identity"] = True
 
     monkeypatch.setattr(auth_api, "AuthService", DummyAuthService)
     monkeypatch.setattr(auth_api, "_schedule_login_update_check", fake_schedule)
+    monkeypatch.setattr(auth_api, "_schedule_identity_hydration", fake_identity_schedule)
 
     request = Request(
         {
@@ -133,7 +97,7 @@ async def test_callback_triggers_update_check_on_login(monkeypatch) -> None:
     payload = await auth_api.callback(request=request, code="abc", state=None)
 
     assert payload["connected"] is True
-    assert called["value"] is True
+    assert called == {"update": True, "identity": True}
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from typing import Optional
 
 import keyring
@@ -51,8 +52,21 @@ class KeyringTokenStore(TokenStore):
     # 旧版合并存储 key（兼容迁移）
     _KEY_LEGACY = "oauth_tokens"
 
+    def __init__(self) -> None:
+        self._cache_lock = RLock()
+        self._cache_loaded = False
+        self._cached_token: Optional[TokenData] = None
+
     def get(self) -> Optional[TokenData]:
-        # 优先读取拆分格式
+        with self._cache_lock:
+            if self._cache_loaded:
+                return self._cached_token
+            self._cached_token = self._read_from_keyring()
+            self._cache_loaded = True
+            return self._cached_token
+
+    def _read_from_keyring(self) -> Optional[TokenData]:
+        # 优先读取拆分格式。Windows 凭据管理器属于同步系统调用，只允许首次加载。
         access_token = keyring.get_password(self._service, self._KEY_ACCESS)
         if access_token:
             refresh_raw = keyring.get_password(self._service, self._KEY_REFRESH) or ""
@@ -68,7 +82,6 @@ class KeyringTokenStore(TokenStore):
                 open_id=open_id_raw.strip() if open_id_raw else None,
                 account_name=account_name_raw.strip() if account_name_raw else None,
             )
-        # 回退：读取旧版合并格式
         raw = keyring.get_password(self._service, self._KEY_LEGACY)
         if not raw:
             return None
@@ -82,46 +95,47 @@ class KeyringTokenStore(TokenStore):
         )
 
     def set(self, token: TokenData) -> None:
-        keyring.set_password(self._service, self._KEY_ACCESS, token.access_token)
-        keyring.set_password(
-            self._service, self._KEY_REFRESH, token.refresh_token or "_empty_"
-        )
-        expires_str = str(token.expires_at) if token.expires_at is not None else ""
-        if expires_str:
-            keyring.set_password(self._service, self._KEY_EXPIRES, expires_str)
-        if token.open_id:
-            keyring.set_password(self._service, self._KEY_OPEN_ID, token.open_id)
-        else:
-            try:
-                keyring.delete_password(self._service, self._KEY_OPEN_ID)
-            except keyring.errors.PasswordDeleteError:
-                pass
-        if token.account_name:
-            keyring.set_password(self._service, self._KEY_ACCOUNT_NAME, token.account_name)
-        else:
-            try:
-                keyring.delete_password(self._service, self._KEY_ACCOUNT_NAME)
-            except keyring.errors.PasswordDeleteError:
-                pass
-        # 清除旧版合并记录（避免数据不一致）
+        with self._cache_lock:
+            keyring.set_password(self._service, self._KEY_ACCESS, token.access_token)
+            keyring.set_password(
+                self._service, self._KEY_REFRESH, token.refresh_token or "_empty_"
+            )
+            expires_str = str(token.expires_at) if token.expires_at is not None else ""
+            if expires_str:
+                keyring.set_password(self._service, self._KEY_EXPIRES, expires_str)
+            else:
+                self._delete_key(self._KEY_EXPIRES)
+            if token.open_id:
+                keyring.set_password(self._service, self._KEY_OPEN_ID, token.open_id)
+            else:
+                self._delete_key(self._KEY_OPEN_ID)
+            if token.account_name:
+                keyring.set_password(self._service, self._KEY_ACCOUNT_NAME, token.account_name)
+            else:
+                self._delete_key(self._KEY_ACCOUNT_NAME)
+            self._delete_key(self._KEY_LEGACY)
+            self._cached_token = token
+            self._cache_loaded = True
+
+    def _delete_key(self, key: str) -> None:
         try:
-            keyring.delete_password(self._service, self._KEY_LEGACY)
+            keyring.delete_password(self._service, key)
         except keyring.errors.PasswordDeleteError:
             pass
 
     def clear(self) -> None:
-        for key in (
-            self._KEY_ACCESS,
-            self._KEY_REFRESH,
-            self._KEY_EXPIRES,
-            self._KEY_OPEN_ID,
-            self._KEY_ACCOUNT_NAME,
-            self._KEY_LEGACY,
-        ):
-            try:
-                keyring.delete_password(self._service, key)
-            except keyring.errors.PasswordDeleteError:
-                pass
+        with self._cache_lock:
+            for key in (
+                self._KEY_ACCESS,
+                self._KEY_REFRESH,
+                self._KEY_EXPIRES,
+                self._KEY_OPEN_ID,
+                self._KEY_ACCOUNT_NAME,
+                self._KEY_LEGACY,
+            ):
+                self._delete_key(key)
+            self._cached_token = None
+            self._cache_loaded = True
 
 
 class MemoryTokenStore(TokenStore):
@@ -215,11 +229,17 @@ class FileTokenStore(TokenStore):
             pass
 
 
+_shared_keyring_store: KeyringTokenStore | None = None
+
+
 def get_token_store() -> TokenStore:
+    global _shared_keyring_store
     config = ConfigManager.get().config
     store = os.getenv("LARKSYNC_TOKEN_STORE", config.token_store).lower()
     if store == "memory":
         return MemoryTokenStore()
     if store == "file":
         return FileTokenStore()
-    return KeyringTokenStore()
+    if _shared_keyring_store is None:
+        _shared_keyring_store = KeyringTokenStore()
+    return _shared_keyring_store

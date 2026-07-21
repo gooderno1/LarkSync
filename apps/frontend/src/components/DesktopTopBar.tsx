@@ -62,11 +62,11 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
     <header
       data-desktop-topbar="true"
       data-window-chrome="native"
-      className="relative z-30 flex h-[52px] flex-none items-center justify-between gap-4 border-b border-[#c6d7e9] bg-[#f7faff] pl-9 pr-8"
+      className="relative z-30 flex h-14 flex-none items-center justify-between gap-4 border-b border-[#c6d7e9] bg-[#f7faff] pl-9 pr-8"
     >
       <div
         data-command-scope="true"
-        className="flex min-w-0 items-center gap-3 text-xs font-medium text-[#52657a]"
+        className="flex min-w-0 items-center gap-3 text-[13px] leading-5 font-medium text-[#52657a]"
         aria-label={`${desktopStatus.tasks.enabled} 个任务已启用，${desktopStatus.tasks.running} 个正在运行，${pendingCount} 个待处理`}
       >
         <span className="whitespace-nowrap text-[#334762]">{desktopStatus.tasks.enabled} 个任务已启用</span>

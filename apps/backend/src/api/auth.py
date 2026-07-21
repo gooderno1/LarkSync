@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from urllib.parse import parse_qs, urlparse
 
-import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from loguru import logger
@@ -16,7 +15,6 @@ from src.services.update_service import UpdateService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 state_store = AuthStateStore()
-DRIVE_PERMISSION_CHECK_TIMEOUT_SECONDS = 5.0
 
 
 @router.get("/login")
@@ -80,6 +78,7 @@ async def callback(
             detail=f"OAuth 回调处理异常: {type(exc).__name__}: {exc}",
         ) from exc
 
+    _schedule_identity_hydration(auth_service)
     _schedule_login_update_check(request)
 
     if redirect_target:
@@ -93,12 +92,9 @@ async def callback(
 @router.get("/status")
 async def status():
     auth_service = AuthService()
-    token = auth_service.get_cached_token()
-    if token is not None and (not token.open_id or not token.account_name):
-        try:
-            token = await auth_service.ensure_cached_identity()
-        except Exception as exc:
-            logger.debug("补齐身份信息失败: {}", exc)
+    # 启动页只回答“已授权/未授权”。不刷新 token、不请求飞书、不探测权限。
+    # 首次读取 Windows 凭据管理器放到工作线程，避免阻塞整个 API 事件循环。
+    token = await asyncio.to_thread(auth_service.get_cached_token)
     result: dict[str, object] = {
         "connected": token is not None,
         "expires_at": token.expires_at if token else None,
@@ -106,16 +102,6 @@ async def status():
         "account_name": token.account_name if token else None,
         "device_id": current_device_id(),
     }
-    # 如果已连接，尝试验证 drive 权限是否可用
-    if token is not None:
-        try:
-            access_token = await auth_service.get_valid_access_token()
-            result["drive_ok"] = await _check_drive_permission(access_token)
-        except Exception as exc:
-            logger.debug("权限检查异常: {}", exc)
-            result["drive_ok"] = None
-        if result["drive_ok"] is None:
-            result["drive_check_error"] = "云文档权限检查暂不可用，请稍后重试"
     return result
 
 
@@ -124,33 +110,11 @@ async def cli_status() -> LarkCliAuthStatus:
     return await asyncio.to_thread(get_lark_cli_auth_status)
 
 
-async def _check_drive_permission(access_token: str) -> bool | None:
-    """尝试调用飞书 Drive 元数据接口验证 token 是否有 drive 权限。"""
-    url = "https://open.feishu.cn/open-apis/drive/explorer/v2/root_folder/meta"
-    try:
-        async with httpx.AsyncClient(timeout=DRIVE_PERMISSION_CHECK_TIMEOUT_SECONDS) as client:
-            resp = await client.get(
-                url, headers={"Authorization": f"Bearer {access_token}"}
-            )
-            payload = resp.json()
-            code = payload.get("code", -1)
-            if code == 0:
-                return True
-            msg = payload.get("msg", "")
-            logger.warning("Drive 权限检查失败 code={}: {}", code, msg)
-            return False
-    except Exception as exc:
-        logger.warning("Drive 权限检查请求异常: {}", exc)
-        # 网络异常、请求超时和响应解析失败不代表授权失效。返回未知状态，
-        # 由前端保留现有授权并重试；只有飞书明确返回非零 code 才判定缺权。
-        return None
-
-
 @router.post("/logout")
 async def logout():
     auth_service = AuthService()
     store = auth_service._token_store
-    store.clear()
+    await asyncio.to_thread(store.clear)
     return {"connected": False}
 
 
@@ -186,6 +150,8 @@ def _authorize_url_has_local_callback(authorize_url: str) -> bool:
 
 def _schedule_login_update_check(request: Request) -> None:
     async def _check_once() -> None:
+        # 登录跳转优先；更新检查不与回调后的首屏请求竞争网络和事件循环。
+        await asyncio.sleep(5)
         scheduler = getattr(request.app.state, "update_scheduler", None)
         service = scheduler.service if scheduler is not None else UpdateService()
         try:
@@ -194,3 +160,15 @@ def _schedule_login_update_check(request: Request) -> None:
             logger.debug("登录后更新检查失败: {}", exc)
 
     asyncio.create_task(_check_once())
+
+
+def _schedule_identity_hydration(auth_service: AuthService) -> None:
+    async def _hydrate_once() -> None:
+        # 昵称只影响展示，不应延长 OAuth 回调。首屏稳定后再异步补齐。
+        await asyncio.sleep(2)
+        try:
+            await auth_service.ensure_cached_identity()
+        except Exception as exc:
+            logger.debug("登录后补齐身份信息失败: {}", exc)
+
+    asyncio.create_task(_hydrate_once())
