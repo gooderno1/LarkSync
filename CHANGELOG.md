@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-07-22] v0.8.4 release: v0.8.4 activity detection and problem lifecycle
 [2026-07-22] v0.8.4-dev.1 fix(activity-problems): 修复活动页任务切换关闭事件查询和默认选中空运行；无变化检测压缩为任务级检查状态并默认排除历史空运行；问题按同任务、同对象、同操作族的后续成功事实自动结案，后续失败重新打开，delete_pending 退出问题队列
 
 [2026-07-22] v0.8.3 release: v0.8.3 activity management and unified problem center
