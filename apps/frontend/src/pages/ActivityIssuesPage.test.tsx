@@ -72,7 +72,8 @@ vi.mock("../hooks/useLogCenterTaskDiagnostics", () => ({
     setShowAllTasks: vi.fn(),
     hiddenTaskCount: 0,
     focusedTaskCount: 1,
-    overviewQuery: { isLoading: false },
+    overviewQuery: { isLoading: false, error: null },
+    diagnosticsQuery: { isLoading: false, error: null },
     sortedOverviews: [
       {
         task,
@@ -149,7 +150,7 @@ vi.mock("../hooks/useLogCenterTaskDiagnostics", () => ({
     setEventTimeRange: vi.fn(),
     selectedTimelineEntries: [event],
     selectedTimelineTotal: 1,
-    selectedEventsQuery: { isFetching: false },
+    selectedEventsQuery: { isFetching: false, error: null, refetch: vi.fn() },
   }),
 }));
 
@@ -169,6 +170,8 @@ describe("ActivityIssuesPage smoke", () => {
     expect(html).toContain('data-activity-management="true"');
     expect(html).toContain('data-window-layout="standard"');
     expect(html).toContain("grid-cols-[248px_minmax(720px,1fr)]");
+    expect(html.match(/aria-label="选择活动任务"/g) ?? []).toHaveLength(0);
+    expect(html.match(/aria-label="选择活动运行"/g) ?? []).toHaveLength(1);
     expect(html).not.toContain("grid-cols-[276px_minmax(0,1fr)_416px]");
     expect(html).not.toContain("日志中心");
   });

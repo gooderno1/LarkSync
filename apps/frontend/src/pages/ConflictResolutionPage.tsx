@@ -390,7 +390,7 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
   return (
     <section data-problem-center="true" data-window-layout={mode} className="flex h-full min-h-0 min-w-0 flex-col gap-3 animate-fade-up">
       <header className="flex min-w-0 items-start justify-between gap-4">
-        <div><div className="flex items-center gap-3"><h1 className="text-xl font-semibold text-[#102033]">问题中心</h1><span className="rounded-full bg-[#fff1f2] px-2.5 py-1 text-xs font-semibold text-[#be123c]">未解决 {summary?.unresolved ?? 0}</span></div><p className="mt-1 text-sm text-[#52657a]">集中查看需要关注的问题、证据和真实可执行动作。</p></div>
+        <div><div className="flex items-center gap-3"><h1 className="text-xl font-semibold text-[#102033]">问题中心</h1><span className="rounded-full bg-[#fff1f2] px-2.5 py-1 text-xs font-semibold text-[#be123c]">未解决 {summary ? summary.unresolved : "—"}</span></div><p className="mt-1 text-sm text-[#52657a]">集中查看需要关注的问题、证据和真实可执行动作。</p></div>
         <button type="button" disabled={fetching} onClick={refresh} className="h-9 rounded-lg border border-[#c9d8ec] bg-white px-4 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff] disabled:opacity-50">{fetching ? "刷新中" : "刷新"}</button>
       </header>
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#d7e4f5] bg-white p-2">

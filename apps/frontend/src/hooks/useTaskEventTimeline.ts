@@ -65,7 +65,6 @@ export function useTaskEventTimeline({
       return mapSyncLogResponse(raw);
     },
     enabled: enabled && detailTab === "events" && Boolean(selectedTaskId) && Boolean(activeRunId),
-    placeholderData: (previousData) => previousData ?? { total: 0, items: [] },
     staleTime: 5_000,
     refetchInterval: shouldPollTaskEventTimeline({
       enabled,

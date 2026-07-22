@@ -34,7 +34,7 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
     enabled,
     staleTime: 5_000,
     refetchInterval: enabled ? 10_000 : false,
-    placeholderData: [],
+    placeholderData: (previousData) => previousData,
   });
 
   const overviewItems = overviewQuery.data ?? EMPTY_OVERVIEWS;

@@ -153,7 +153,7 @@ def _service(request: Request) -> ProblemService:
 
 
 @router.get("/summary", response_model=ProblemSummaryResponse)
-async def get_problem_summary(request: Request, refresh: bool = True) -> ProblemSummaryResponse:
+async def get_problem_summary(request: Request, refresh: bool = False) -> ProblemSummaryResponse:
     problem_service = _service(request)
     if refresh:
         await problem_service.refresh_sources()
@@ -172,7 +172,7 @@ async def list_problems(
     until: float | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    refresh: bool = Query(default=True),
+    refresh: bool = Query(default=False),
 ) -> ProblemListResponse:
     problem_service = _service(request)
     if refresh:

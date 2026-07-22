@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 from types import SimpleNamespace
 
 import pytest
@@ -79,8 +80,11 @@ async def test_problem_api_lists_details_and_executes_real_task_action(tmp_path)
         transport=ASGITransport(app=app),
         base_url="http://test",
     ) as client:
-        response = await client.get("/problems", params={"refresh": "false"})
+        refresh_mock = AsyncMock(side_effect=AssertionError("GET 不应触发问题回填"))
+        problem_service.refresh_sources = refresh_mock  # type: ignore[method-assign]
+        response = await client.get("/problems")
         assert response.status_code == 200
+        refresh_mock.assert_not_awaited()
         payload = response.json()
         assert payload["total"] == 1
         problem = payload["items"][0]
@@ -104,6 +108,7 @@ async def test_problem_api_lists_details_and_executes_real_task_action(tmp_path)
         assert action_response.json()["verification_result"] == "waiting_for_later_run"
         assert runner.started == ["task-1"]
 
-        summary_response = await client.get("/problems/summary", params={"refresh": "false"})
+        summary_response = await client.get("/problems/summary")
         assert summary_response.status_code == 200
+        refresh_mock.assert_not_awaited()
         assert summary_response.json()["by_state"]["waiting"] == 1

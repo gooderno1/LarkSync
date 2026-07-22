@@ -8,7 +8,7 @@ import type {
   ProblemSummary,
 } from "../types";
 
-type ProblemFilters = {
+export type ProblemFilters = {
   state: string;
   categories: string[];
   severities: string[];
@@ -24,7 +24,7 @@ type ProblemListResponse = {
   items: ProblemItem[];
 };
 
-function buildProblemQuery(filters: ProblemFilters): string {
+export function buildProblemQuery(filters: ProblemFilters): string {
   const params = new URLSearchParams({
     state: filters.state,
     task_id: filters.taskId,
@@ -35,21 +35,16 @@ function buildProblemQuery(filters: ProblemFilters): string {
   for (const category of filters.categories) params.append("categories", category);
   for (const severity of filters.severities) params.append("severities", severity);
   if (filters.since !== null) params.set("since", String(filters.since));
+  params.set("refresh", "false");
   return `/problems?${params.toString()}`;
 }
 
 export function useProblemSummary(enabled = true) {
   const query = useQuery<ProblemSummary>({
     queryKey: ["problems-summary"],
-    queryFn: () => apiFetch<ProblemSummary>("/problems/summary"),
+    queryFn: () => apiFetch<ProblemSummary>("/problems/summary?refresh=false"),
     enabled,
-    placeholderData: {
-      total: 0,
-      unresolved: 0,
-      by_state: {},
-      by_category: {},
-      by_severity: {},
-    },
+    placeholderData: (previous) => previous,
     staleTime: 5_000,
     refetchInterval: enabled ? 10_000 : false,
   });
@@ -69,7 +64,7 @@ export function useProblems(
     queryKey: ["problems", filters],
     queryFn: () => apiFetch<ProblemListResponse>(buildProblemQuery(filters)),
     enabled,
-    placeholderData: (previous) => previous ?? { total: 0, items: [] },
+    placeholderData: (previous) => previous,
     staleTime: 5_000,
     refetchInterval: enabled ? 10_000 : false,
   });
@@ -77,13 +72,7 @@ export function useProblems(
     queryKey: ["problems-summary"],
     queryFn: () => apiFetch<ProblemSummary>("/problems/summary?refresh=false"),
     enabled,
-    placeholderData: {
-      total: 0,
-      unresolved: 0,
-      by_state: {},
-      by_category: {},
-      by_severity: {},
-    },
+    placeholderData: (previous) => previous,
     staleTime: 5_000,
     refetchInterval: enabled ? 10_000 : false,
   });
@@ -128,7 +117,7 @@ export function useProblems(
     detail: detailQuery.data?.problem.id === selectedProblemId ? detailQuery.data : null,
     loading: listQuery.isLoading,
     fetching: listQuery.isFetching || summaryQuery.isFetching,
-    error: listQuery.error?.message ?? null,
+    error: listQuery.error?.message ?? summaryQuery.error?.message ?? null,
     detailLoading: detailQuery.isLoading,
     detailError: detailQuery.error?.message ?? null,
     executeAction: actionMutation.mutateAsync,

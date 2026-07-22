@@ -151,22 +151,25 @@ def _build_lifespan(
 
 
 async def _backfill_problem_sources(app: FastAPI) -> None:
-    backfill = getattr(app.state.problem_service, "backfill_sources", None)
-    if not callable(backfill):
+    refresh = getattr(app.state.problem_service, "refresh_sources", None)
+    if not callable(refresh):
         return
-    await asyncio.sleep(0)
-    try:
-        result = await backfill(batch_size=1000)
-        if result.events_seen:
-            logger.info(
-                "统一问题历史回溯完成: events={}, conflicts={}",
-                result.events_seen,
-                result.conflicts_seen,
-            )
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        logger.exception("统一问题历史回溯失败，后续刷新将继续增量处理")
+    await asyncio.sleep(3)
+    while True:
+        try:
+            result = await refresh(event_limit=250)
+            if result.events_seen:
+                logger.debug(
+                    "统一问题增量处理: events={}, conflicts={}",
+                    result.events_seen,
+                    result.conflicts_seen,
+                )
+            await asyncio.sleep(0.25 if result.events_seen >= 250 else 10)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("统一问题增量处理失败，30 秒后重试")
+            await asyncio.sleep(30)
 
 
 def _configure_static_frontend_routes(app: FastAPI) -> None:

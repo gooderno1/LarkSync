@@ -5,7 +5,7 @@ import json
 import pytest
 from sqlalchemy import select
 
-from src.db.models import ConflictRecord, SyncRun, SyncTask
+from src.db.models import ConflictRecord, SyncMeta, SyncRun, SyncTask
 from src.db.session import get_session_maker, init_db
 from src.services.problem_service import ProblemService
 from src.services.sync_event_store import SyncEventRecord
@@ -374,3 +374,52 @@ async def test_delete_pending_is_workflow_state_not_problem(tmp_path) -> None:
 
     assert refreshed.events_seen == 0
     assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_refresh_sources_advances_a_persistent_cursor_in_bounded_batches(tmp_path) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing/demo.md",
+                message="上传失败 HTTP 503",
+                run_id="run-1",
+            ),
+            SyncEventRecord(
+                timestamp=20.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="uploaded",
+                path="D:/Work/Marketing/demo.md",
+                message="上传完成",
+                run_id="run-2",
+            ),
+        ]
+    )
+
+    first = await service.refresh_sources(event_limit=1)
+    total_open, _ = await service.list_problems(state="open", limit=20, offset=0)
+    async with session_maker() as session:
+        cursor = await session.get(SyncMeta, "problem_event_cursor_v3")
+
+    assert first.events_seen == 1
+    assert total_open == 1
+    assert cursor is not None
+    assert '"timestamp": 10.0' in (cursor.value or "")
+
+    second = await service.refresh_sources(event_limit=1)
+    total_resolved, resolved = await service.list_problems(
+        state="resolved",
+        limit=20,
+        offset=0,
+    )
+
+    assert second.events_seen == 1
+    assert total_resolved == 1
+    assert resolved[0].resolution_verification == "same_object_operation_succeeded"

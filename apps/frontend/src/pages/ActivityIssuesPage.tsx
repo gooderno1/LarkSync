@@ -283,7 +283,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
     () => parseActivityLink(typeof window === "undefined" ? "" : window.location.hash),
     [],
   );
-  const [timeRange, setTimeRange] = useState<"24h" | "7d" | "30d" | "all">("24h");
+  const [timeRange, setTimeRange] = useState<"24h" | "7d" | "30d" | "all">("all");
   const {
     selectedTaskId,
     setSelectedRunId,
@@ -310,6 +310,8 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
     selectedTimelineEntries,
     selectedTimelineTotal,
     selectedEventsQuery,
+    overviewQuery,
+    diagnosticsQuery,
   } = useLogCenterTaskDiagnostics(true);
   const [selectedEvent, setSelectedEvent] = useState<SyncLogEntry | null>(null);
   const [taskSearch, setTaskSearch] = useState("");
@@ -377,6 +379,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
       onChange={(event) => setSelectedRunId(event.target.value || null)}
       className="h-10 min-w-0 rounded-lg border border-[#c9d8ec] bg-white px-3 text-sm text-[#102033] outline-none focus:border-[#3370ff]"
     >
+      {visibleRuns.length === 0 ? <option value="">暂无真实活动运行</option> : null}
       {visibleRuns.map((run) => <option key={run.run_id} value={run.run_id}>{compactRunId(run.run_id)} · {stateLabels[run.state] || run.state}</option>)}
     </select>
   );
@@ -425,6 +428,13 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
         </div>
       ) : null}
 
+      {overviewQuery.error || diagnosticsQuery.error ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-[#fecdd3] bg-[#fff7f8] px-4 py-3 text-xs text-[#be123c]">
+          <span>活动数据读取失败：{(overviewQuery.error || diagnosticsQuery.error)?.message || "本地服务暂时不可用"}</span>
+          <button type="button" onClick={refreshDiagnostics} className="shrink-0 rounded-lg border border-[#fda4af] bg-white px-3 py-1.5 font-semibold">重试</button>
+        </div>
+      ) : null}
+
       {compact ? (
         <div className="grid grid-cols-2 gap-2">{taskSelector}{runSelector}</div>
       ) : null}
@@ -438,6 +448,8 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
             <div className="flex items-center justify-between"><h2 className="text-sm font-semibold text-[#102033]">任务列表</h2><span className="text-xs text-[#52657a]">{taskItems.length} / {sortedOverviews.length}</span></div>
             <input value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="搜索任务" className="mt-3 h-9 rounded-lg border border-[#c9d8ec] bg-white px-3 text-xs outline-none focus:border-[#3370ff]" />
             <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
+              {overviewQuery.isLoading ? <div className="h-full min-h-48 animate-pulse rounded-lg bg-[#eef5ff]" /> : null}
+              {!overviewQuery.isLoading && !overviewQuery.error && taskItems.length === 0 ? <p className="rounded-lg border border-dashed border-[#c9d8ec] p-6 text-center text-sm text-[#52657a]">暂无同步任务。</p> : null}
               {taskItems.map((overview) => <TaskRow key={overview.task.id} overview={overview} selected={overview.task.id === selectedTaskId} onSelect={() => selectTask(overview.task.id)} />)}
             </div>
           </aside>
@@ -454,7 +466,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
         ) : null}
 
         <main className="relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[#d7e4f5] bg-white">
-          {!wide && !compact ? <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-[#d7e4f5] bg-[#fbfdff] p-3">{taskSelector}{runSelector}</div> : null}
+          {!wide && !compact ? <div className="flex items-center gap-3 border-b border-[#d7e4f5] bg-[#fbfdff] p-3"><span className="shrink-0 text-xs font-semibold text-[#52657a]">当前运行</span><div className="min-w-0 flex-1">{runSelector}</div><span className="shrink-0 text-[11px] text-[#7e91a8]">仅显示有实际动作的运行</span></div> : null}
           <div className="flex flex-wrap items-center gap-2 border-b border-[#d7e4f5] px-3 py-2.5">
             <select value={eventFilter} onChange={(event) => { setEventFilter(event.target.value as EventFilter); setEventPage(1); }} className="h-9 rounded-lg border border-[#c9d8ec] bg-white px-3 text-xs text-[#102033]">
               {EVENT_FILTERS.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
@@ -463,7 +475,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
             <span className="text-xs text-[#52657a]">当前运行 {compactRunId(selectedRun?.run_id || activeRunId)} · 共 {selectedTimelineTotal} 条</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {selectedEventsQuery.isFetching && selectedTimelineEntries.length === 0 ? <div className="h-full animate-pulse rounded-lg bg-[#eef5ff]" /> : <EventList items={selectedTimelineEntries} selected={selectedEvent} compact={compact} onSelect={setSelectedEvent} />}
+            {selectedEventsQuery.isFetching && selectedTimelineEntries.length === 0 ? <div className="h-full animate-pulse rounded-lg bg-[#eef5ff]" /> : selectedEventsQuery.error ? <div className="grid h-full min-h-48 place-items-center rounded-lg border border-[#fecdd3] bg-[#fff7f8] px-6 text-center text-sm text-[#be123c]"><div><p>运行事件读取失败：{selectedEventsQuery.error.message}</p><button type="button" onClick={() => selectedEventsQuery.refetch()} className="mt-3 rounded-lg border border-[#fda4af] bg-white px-4 py-2 text-xs font-semibold">重新读取</button></div></div> : <EventList items={selectedTimelineEntries} selected={selectedEvent} compact={compact} onSelect={setSelectedEvent} />}
           </div>
           <footer className="flex min-h-10 items-center justify-between border-t border-[#d7e4f5] px-3 py-2 text-xs text-[#52657a]">
             <span>上传 {diagnosticCounts?.uploaded ?? 0} · 下载 {diagnosticCounts?.downloaded ?? 0} · 删除 {diagnosticCounts?.deleted ?? 0}</span>

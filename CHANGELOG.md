@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-07-22] v0.8.5-dev.1 fix(activity-problems): 修复标准活动页重复任务选择器、真实运行事件因问题历史扫描占用 SQLite 而显示为空、问题中心用零值占位掩盖加载或超时；问题刷新改为持久游标每批 250 条后台增量处理，页面 GET 默认只读，旧版无动作检查归档保留且默认隐藏
+
 [2026-07-22] v0.8.4 release: v0.8.4 activity detection and problem lifecycle
 [2026-07-22] v0.8.4-dev.1 fix(activity-problems): 修复活动页任务切换关闭事件查询和默认选中空运行；无变化检测压缩为任务级检查状态并默认排除历史空运行；问题按同任务、同对象、同操作族的后续成功事实自动结案，后续失败重新打开，delete_pending 退出问题队列
 

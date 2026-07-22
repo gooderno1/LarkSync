@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.db.models import (
@@ -18,6 +18,7 @@ from src.db.models import (
     ProblemOccurrence,
     ProblemRecoveryFact,
     ProblemRecord,
+    SyncMeta,
     SyncRunEvent,
     SyncTask,
 )
@@ -38,6 +39,7 @@ RECOVERY_STATUSES = {
     "linked",
     "mirrored",
 }
+PROBLEM_EVENT_CURSOR_KEY = "problem_event_cursor_v3"
 _REQUEST_ID_PATTERN = re.compile(
     r"(?i)(?:request[_ -]?id|x-tt-logid|trace[_ -]?id)\s*[:=]\s*[^\s,;]+"
 )
@@ -154,79 +156,30 @@ class ProblemService:
         async with self._session_maker() as session:
             task_rows = await session.execute(select(SyncTask.id, SyncTask.local_path))
             task_roots = {str(task_id): str(root) for task_id, root in task_rows.all()}
-            unprocessed_event = and_(
-                ProblemOccurrence.source_kind == "sync_event",
-                ProblemOccurrence.source_id == SyncRunEvent.id,
-            )
+            cursor_timestamp, cursor_event_id = await self._load_event_cursor(session)
             event_stmt = (
                 select(SyncRunEvent)
-                .outerjoin(ProblemOccurrence, unprocessed_event)
-                .where(func.lower(SyncRunEvent.status).in_(PROBLEM_STATUSES))
-                .where(ProblemOccurrence.id.is_(None))
-                .order_by(SyncRunEvent.timestamp.asc())
+                .where(SyncRunEvent.status.in_(PROBLEM_STATUSES | RECOVERY_STATUSES))
+                .where(
+                    or_(
+                        SyncRunEvent.timestamp > cursor_timestamp,
+                        (
+                            (SyncRunEvent.timestamp == cursor_timestamp)
+                            & (SyncRunEvent.id > cursor_event_id)
+                        ),
+                    )
+                )
+                .order_by(SyncRunEvent.timestamp.asc(), SyncRunEvent.id.asc())
             )
             if event_limit is not None:
                 event_stmt = event_stmt.limit(max(1, event_limit))
             event_rows = await session.execute(event_stmt)
-            problem_events = list(event_rows.scalars().all())
+            events = list(event_rows.scalars().all())
             problem_rows = await session.execute(select(ProblemRecord))
             problem_records = list(problem_rows.scalars().all())
             problems_by_fingerprint = {record.fingerprint: record for record in problem_records}
             self._backfill_lifecycle_fields(problem_records)
             await self._resolve_legacy_delete_pending(session, problem_records)
-
-            candidate_paths: dict[str, set[str]] = {}
-            for event in problem_events:
-                candidate_paths.setdefault(event.task_id, set()).add(
-                    event.path.replace("\\", "/").casefold()
-                )
-            latest_event_ids = [
-                problem.latest_event_id
-                for problem in problem_records
-                if problem.state in {"open", "in_progress", "waiting"}
-                and problem.latest_event_id
-            ]
-            if latest_event_ids:
-                latest_rows = await session.execute(
-                    select(SyncRunEvent.task_id, SyncRunEvent.path).where(
-                        SyncRunEvent.id.in_(latest_event_ids)
-                    )
-                )
-                for task_id, path in latest_rows.all():
-                    candidate_paths.setdefault(str(task_id), set()).add(
-                        str(path).replace("\\", "/").casefold()
-                    )
-
-            recovery_events: list[SyncRunEvent] = []
-            if candidate_paths:
-                path_expression = func.replace(func.lower(SyncRunEvent.path), "\\", "/")
-                candidate_filters = [
-                    and_(
-                        SyncRunEvent.task_id == task_id,
-                        path_expression.in_(sorted(paths)),
-                    )
-                    for task_id, paths in candidate_paths.items()
-                    if paths
-                ]
-                unprocessed_recovery = ProblemRecoveryFact.event_id == SyncRunEvent.id
-                recovery_stmt = (
-                    select(SyncRunEvent)
-                    .outerjoin(ProblemRecoveryFact, unprocessed_recovery)
-                    .where(func.lower(SyncRunEvent.status).in_(RECOVERY_STATUSES))
-                    .where(ProblemRecoveryFact.event_id.is_(None))
-                    .where(or_(*candidate_filters))
-                    .order_by(SyncRunEvent.timestamp.asc())
-                )
-                if event_limit is not None:
-                    recovery_stmt = recovery_stmt.limit(max(1, event_limit))
-                recovery_rows = await session.execute(recovery_stmt)
-                recovery_events = list(recovery_rows.scalars().all())
-            events = sorted(
-                [*problem_events, *recovery_events],
-                key=lambda item: (item.timestamp, 0 if item.status in PROBLEM_STATUSES else 1),
-            )
-            if event_limit is not None:
-                events = events[: max(1, event_limit)]
             conflict_rows = await session.execute(
                 select(ConflictRecord).order_by(ConflictRecord.created_at.desc()).limit(5000)
             )
@@ -248,7 +201,7 @@ class ProblemService:
                         session,
                         event,
                         task_root=task_roots.get(event.task_id),
-                        occurrence_known_absent=True,
+                        occurrence_known_absent=False,
                         problems_by_fingerprint=problems_by_fingerprint,
                     )
                 else:
@@ -264,8 +217,63 @@ class ProblemService:
                     task_roots=task_roots,
                     existing_problem_id=known_conflicts.get(conflict.id),
                 )
+            if events:
+                last_event = events[-1]
+                await self._store_event_cursor(
+                    session,
+                    timestamp=last_event.timestamp,
+                    event_id=last_event.id,
+                )
+            else:
+                latest_row = await session.execute(
+                    select(SyncRunEvent.timestamp, SyncRunEvent.id)
+                    .order_by(SyncRunEvent.timestamp.desc(), SyncRunEvent.id.desc())
+                    .limit(1)
+                )
+                latest = latest_row.one_or_none()
+                if latest and (latest.timestamp, latest.id) > (cursor_timestamp, cursor_event_id):
+                    await self._store_event_cursor(
+                        session,
+                        timestamp=float(latest.timestamp),
+                        event_id=str(latest.id),
+                    )
             await session.commit()
         return ProblemRefreshResult(events_seen=len(events), conflicts_seen=len(conflicts))
+
+    @staticmethod
+    async def _load_event_cursor(session: AsyncSession) -> tuple[float, str]:
+        record = await session.get(SyncMeta, PROBLEM_EVENT_CURSOR_KEY)
+        if not record or not record.value:
+            return 0.0, ""
+        try:
+            payload = json.loads(record.value)
+            return float(payload.get("timestamp", 0.0)), str(payload.get("event_id", ""))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return 0.0, ""
+
+    @staticmethod
+    async def _store_event_cursor(
+        session: AsyncSession,
+        *,
+        timestamp: float,
+        event_id: str,
+    ) -> None:
+        record = await session.get(SyncMeta, PROBLEM_EVENT_CURSOR_KEY)
+        value = json.dumps(
+            {"timestamp": float(timestamp), "event_id": str(event_id)},
+            ensure_ascii=False,
+        )
+        if record:
+            record.value = value
+            record.updated_at = time.time()
+            return
+        session.add(
+            SyncMeta(
+                key=PROBLEM_EVENT_CURSOR_KEY,
+                value=value,
+                updated_at=time.time(),
+            )
+        )
 
     async def list_problems(
         self,
