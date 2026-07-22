@@ -38,11 +38,13 @@ from src.services.sync_task_service import (
     SyncTaskService,
     SyncTaskValidationError,
 )
+from src.services.sync_task_check_state_service import SyncTaskCheckStateService
 from src.services.sync_tombstone_service import SyncTombstoneService
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 service = SyncTaskService()
-runner = SyncTaskRunner(task_service=service)
+check_state_service = SyncTaskCheckStateService()
+runner = SyncTaskRunner(task_service=service, check_state_service=check_state_service)
 event_store = SyncEventStore()
 run_event_service = SyncRunEventService()
 run_service = SyncRunService()
@@ -100,6 +102,7 @@ async def list_task_overview() -> list[SyncTaskOverviewResponse]:
         items=items,
         statuses=runner.list_statuses(),
         run_service=run_service,
+        check_state_service=check_state_service,
     )
 
 
@@ -125,6 +128,7 @@ async def get_task_diagnostics(
         run_service=run_service,
         run_event_service=run_event_service,
         event_store=event_store,
+        check_state=(await check_state_service.get_many([task_id])).get(task_id),
     )
 
 

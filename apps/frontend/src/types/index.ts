@@ -65,6 +65,12 @@ export type ProblemItem = {
   resolution_verification?: string | null;
   resolved_at?: number | null;
   ignored_reason?: string | null;
+  resolution_key?: string | null;
+  operation_family?: string | null;
+  actionability?: "manual_required" | "auto_recovering" | "diagnostic_only" | string;
+  resolved_by_run_id?: string | null;
+  resolved_by_event_id?: string | null;
+  last_good_at?: number | null;
   available_actions: ProblemAvailableAction[];
 };
 
@@ -177,11 +183,23 @@ export type SyncTaskOverview = {
   problem_count: number;
   counts: SyncTaskDiagnosticCounts;
   current_file?: SyncFileEvent | null;
+  check_state?: {
+    state: "idle" | "checking" | "no_change" | "changes_found" | "failed" | string;
+    trigger_source: string;
+    started_at?: number | null;
+    finished_at?: number | null;
+    last_change_at?: number | null;
+    change_count: number;
+    consecutive_no_change: number;
+    last_error?: string | null;
+  } | null;
 };
 
 export type SyncTaskRunSummary = {
   run_id: string;
   state: "idle" | "running" | "success" | "failed" | "cancelled";
+  run_kind?: "activity" | "legacy_check";
+  has_activity?: boolean;
   started_at?: number | null;
   finished_at?: number | null;
   last_event_at?: number | null;

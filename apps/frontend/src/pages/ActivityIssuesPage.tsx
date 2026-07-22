@@ -15,6 +15,7 @@ import { cn } from "../lib/utils";
 import type { SyncLogEntry, SyncTaskOverview, SyncTaskRunSummary } from "../types";
 import type { WindowLayoutMode } from "../lib/windowLayout";
 import { parseActivityLink } from "../lib/activityNavigation";
+import { getRunActivityTimestamp } from "../lib/taskDiagnosticsSelection";
 
 type Props = { layoutMode?: WindowLayoutMode };
 
@@ -287,6 +288,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
     selectedTaskId,
     setSelectedRunId,
     sortedOverviews,
+    activeOverview,
     selectTask,
     selectedStatus,
     recentRuns,
@@ -351,7 +353,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
     );
   }, [sortedOverviews, taskSearch]);
   const visibleRuns = useMemo(
-    () => recentRuns.filter((run) => rangeSince == null || (run.started_at ?? 0) >= rangeSince),
+    () => recentRuns.filter((run) => rangeSince == null || getRunActivityTimestamp(run) >= rangeSince),
     [rangeSince, recentRuns],
   );
   const successfulRuns = visibleRuns.filter((run) => run.state === "success").length;
@@ -402,6 +404,26 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
         <div className="border-l border-[#edf3fb] px-4 py-2"><span className="text-[#52657a]">{compact ? "异常" : "成功 / 失败"}</span><strong className="ml-2 text-[#102033]">{compact ? failedRuns : `${successfulRuns} / ${failedRuns}`}</strong></div>
         <div className="border-l border-[#edf3fb] px-4 py-2"><span className="text-[#52657a]">事件</span><strong className="ml-2 text-[#102033]">{selectedTimelineTotal}</strong></div>
       </div>
+
+      {activeOverview?.check_state ? (
+        <div className={cn(
+          "flex items-center justify-between gap-3 rounded-lg border px-4 py-2 text-xs",
+          activeOverview.check_state.state === "failed"
+            ? "border-[#f2b8b8] bg-[#fff5f5] text-[#9f2525]"
+            : "border-[#d7e4f5] bg-[#f8fbff] text-[#52657a]",
+        )}>
+          <span>
+            最近检查：{activeOverview.check_state.finished_at ? formatTimestamp(activeOverview.check_state.finished_at) : "进行中"}
+            {activeOverview.check_state.state === "no_change" ? " · 正常，没有发现变化" : null}
+            {activeOverview.check_state.state === "changes_found" ? ` · 发现 ${activeOverview.check_state.change_count} 项变化` : null}
+            {activeOverview.check_state.state === "checking" ? " · 正在检测" : null}
+            {activeOverview.check_state.state === "failed" ? ` · ${activeOverview.check_state.last_error || "检测失败"}` : null}
+          </span>
+          {activeOverview.check_state.consecutive_no_change > 0 ? (
+            <span className="shrink-0">连续 {activeOverview.check_state.consecutive_no_change} 次无变化</span>
+          ) : null}
+        </div>
+      ) : null}
 
       {compact ? (
         <div className="grid grid-cols-2 gap-2">{taskSelector}{runSelector}</div>

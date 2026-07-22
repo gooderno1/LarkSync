@@ -7,6 +7,7 @@ from src.api.sync_task_models import (
     SyncLogEntry,
     SyncLogResponse,
     SyncTaskDiagnosticCounts,
+    SyncTaskCheckStateResponse,
     SyncTaskDiagnosticsResponse,
     SyncTaskOverviewResponse,
     SyncTaskResponse,
@@ -21,6 +22,10 @@ from src.services.sync_run_event_service import (
 from src.services.sync_run_service import SyncRunItem, SyncRunService
 from src.services.sync_runner import SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
+from src.services.sync_task_check_state_service import (
+    SyncTaskCheckStateItem,
+    SyncTaskCheckStateService,
+)
 
 PROBLEM_STATUSES = {"failed", "delete_failed", "conflict", "cancelled"}
 TERMINAL_STATUSES = {"success", "failed", "cancelled"}
@@ -394,6 +399,8 @@ def run_summary_from_item(
     return SyncTaskRunSummaryResponse(
         run_id=item.run_id,
         state=display_state,
+        run_kind=item.run_kind,
+        has_activity=item.has_activity,
         started_at=live_status.started_at if live_status and live_status.started_at is not None else item.started_at,
         finished_at=live_status.finished_at if live_status and live_status.finished_at is not None else display_finished_at,
         last_event_at=(
@@ -486,6 +493,7 @@ def build_task_overview(
     status: SyncTaskStatus,
     records: list[SyncEventRecord],
     run_summaries: list[SyncTaskRunSummaryResponse] | None = None,
+    check_state: SyncTaskCheckStateItem | None = None,
 ) -> SyncTaskOverviewResponse:
     run_summaries = run_summaries or build_run_summaries(status=status, records=records)
     latest_run = run_summaries[0] if run_summaries else None
@@ -514,6 +522,20 @@ def build_task_overview(
         problem_count=problem_count,
         counts=counts,
         current_file=latest_run.current_file if latest_run else current_file_from_status(status),
+        check_state=(
+            SyncTaskCheckStateResponse(
+                state=check_state.state,
+                trigger_source=check_state.trigger_source,
+                started_at=check_state.started_at,
+                finished_at=check_state.finished_at,
+                last_change_at=check_state.last_change_at,
+                change_count=check_state.change_count,
+                consecutive_no_change=check_state.consecutive_no_change,
+                last_error=check_state.last_error,
+            )
+            if check_state
+            else None
+        ),
     )
 
 
@@ -522,8 +544,14 @@ async def list_task_overviews(
     items: list[SyncTaskItem],
     statuses: dict[str, SyncTaskStatus],
     run_service: SyncRunService,
+    check_state_service: SyncTaskCheckStateService | None = None,
 ) -> list[SyncTaskOverviewResponse]:
     latest_runs = await run_service.list_latest_by_tasks([item.id for item in items])
+    check_states = (
+        await check_state_service.get_many([item.id for item in items])
+        if check_state_service is not None
+        else {}
+    )
     results: list[SyncTaskOverviewResponse] = []
     for item in items:
         task_status = statuses.get(item.id) or SyncTaskStatus(task_id=item.id)
@@ -544,6 +572,7 @@ async def list_task_overviews(
                 status=task_status,
                 records=[],
                 run_summaries=run_summaries,
+                check_state=check_states.get(item.id),
             )
         )
     return results
@@ -561,6 +590,7 @@ async def build_task_diagnostics_response(
     run_service: SyncRunService,
     run_event_service: SyncRunEventService,
     event_store: SyncEventStore,
+    check_state: SyncTaskCheckStateItem | None = None,
 ) -> SyncTaskDiagnosticsResponse:
     run_summaries = await load_run_summaries(
         task_id=task_id,
@@ -621,6 +651,7 @@ async def build_task_diagnostics_response(
         status=status,
         records=selected_run_records if status.current_run_id == selected_run_id else [],
         run_summaries=run_summaries,
+        check_state=check_state,
     )
     return SyncTaskDiagnosticsResponse(
         overview=overview,

@@ -87,7 +87,6 @@ async def test_problem_api_lists_details_and_executes_real_task_action(tmp_path)
         assert problem["category"] == "upload"
         assert [item["key"] for item in problem["available_actions"]] == [
             "retry_task",
-            "open_local_folder",
         ]
 
         detail_response = await client.get(f"/problems/{problem['id']}")

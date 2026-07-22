@@ -161,6 +161,17 @@ class SyncTaskDiagnosticCounts(BaseModel):
     delete_failed: int = 0
 
 
+class SyncTaskCheckStateResponse(BaseModel):
+    state: str
+    trigger_source: str
+    started_at: float | None = None
+    finished_at: float | None = None
+    last_change_at: float | None = None
+    change_count: int = 0
+    consecutive_no_change: int = 0
+    last_error: str | None = None
+
+
 class SyncTaskOverviewResponse(BaseModel):
     task: SyncTaskResponse
     status: SyncTaskStatusResponse
@@ -169,6 +180,7 @@ class SyncTaskOverviewResponse(BaseModel):
     problem_count: int = 0
     counts: SyncTaskDiagnosticCounts
     current_file: SyncFileEventResponse | None = None
+    check_state: SyncTaskCheckStateResponse | None = None
 
 
 class SyncLogEntry(BaseModel):
@@ -185,6 +197,8 @@ class SyncLogEntry(BaseModel):
 class SyncTaskRunSummaryResponse(BaseModel):
     run_id: str
     state: str
+    run_kind: str = "activity"
+    has_activity: bool = True
     started_at: float | None = None
     finished_at: float | None = None
     last_event_at: float | None = None

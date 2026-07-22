@@ -21,6 +21,7 @@ from src.services.sync_runner import (
     _parse_mtime,
 )
 from src.services.sync_event_store import SyncEventStore
+from src.services.sync_runner_state import SyncFileEvent
 from src.services.sync_task_service import SyncTaskItem
 from src.services.watcher import FileChangeEvent
 
@@ -1986,6 +1987,103 @@ async def test_run_summary_writes_are_serialized_across_tasks(tmp_path: Path) ->
     )
 
     assert run_service.max_active == 1
+
+
+@pytest.mark.asyncio
+async def test_scheduled_download_without_changes_does_not_persist_run_or_events(
+    tmp_path: Path,
+) -> None:
+    class CapturingRunService:
+        def __init__(self) -> None:
+            self.started: list[dict] = []
+            self.finished: list[dict] = []
+
+        async def start_run(self, **kwargs) -> None:
+            self.started.append(kwargs)
+
+        async def finish_run(self, **kwargs) -> None:
+            self.finished.append(kwargs)
+
+    run_service = CapturingRunService()
+    store = SyncEventStore(tmp_path / "events.jsonl")
+    runner = SyncTaskRunner(event_store=store, run_service=run_service)
+    task = SyncTaskItem(
+        id="task-empty-check",
+        name="无变化检测",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+        last_run_at=time.time(),
+    )
+
+    async def _no_download(*args, **kwargs) -> None:
+        return None
+
+    runner._run_download = _no_download  # type: ignore[method-assign]
+
+    await runner.run_scheduled_download(task)
+
+    assert run_service.started == []
+    assert run_service.finished == []
+    assert list(store.iter_records()) == []
+
+
+@pytest.mark.asyncio
+async def test_scheduled_download_creates_run_when_first_real_activity_arrives(
+    tmp_path: Path,
+) -> None:
+    class CapturingRunService:
+        def __init__(self) -> None:
+            self.started: list[dict] = []
+            self.finished: list[dict] = []
+
+        async def start_run(self, **kwargs) -> None:
+            self.started.append(kwargs)
+
+        async def finish_run(self, **kwargs) -> None:
+            self.finished.append(kwargs)
+
+    run_service = CapturingRunService()
+    store = SyncEventStore(tmp_path / "events.jsonl")
+    runner = SyncTaskRunner(event_store=store, run_service=run_service)
+    task = SyncTaskItem(
+        id="task-active-check",
+        name="发现变化检测",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+        last_run_at=time.time(),
+    )
+
+    async def _download_with_change(task_arg, status_arg, **kwargs) -> None:
+        runner._record_event(
+            status_arg,
+            SyncFileEvent(path=str(tmp_path / "note.md"), status="downloaded"),
+            task_arg,
+        )
+
+    runner._run_download = _download_with_change  # type: ignore[method-assign]
+
+    await runner.run_scheduled_download(task)
+    await asyncio.sleep(0)
+
+    assert len(run_service.started) == 1
+    assert len(run_service.finished) == 1
+    records = list(store.iter_records())
+    assert [record.status for record in records] == ["started", "downloaded", "success"]
+    assert all(record.run_id for record in records)
 
 
 def test_should_ignore_path_skips_embedded_figure_source_dirs(tmp_path: Path) -> None:

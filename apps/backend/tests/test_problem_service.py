@@ -76,10 +76,7 @@ async def test_refresh_sources_deduplicates_occurrences_with_stable_fingerprint(
     assert items[0].severity == "high"
     assert items[0].occurrence_count == 2
     assert items[0].object_path == "videos/demo.mp4"
-    assert {action.key for action in items[0].available_actions} == {
-        "retry_task",
-        "open_local_folder",
-    }
+    assert {action.key for action in items[0].available_actions} == {"retry_task"}
 
     occurrences = await service.list_occurrences(items[0].id, limit=20, offset=0)
     assert len(occurrences) == 2
@@ -102,7 +99,7 @@ async def test_refresh_sources_deduplicates_occurrences_with_stable_fingerprint(
 
 
 @pytest.mark.asyncio
-async def test_verify_task_problem_requires_later_successful_run(tmp_path) -> None:
+async def test_verify_task_problem_requires_matching_object_success(tmp_path) -> None:
     session_maker, event_service, service = await _build_services(tmp_path)
     await _insert_task(session_maker)
     await event_service.append_batch(
@@ -143,10 +140,29 @@ async def test_verify_task_problem_requires_later_successful_run(tmp_path) -> No
         )
         await session.commit()
 
+    not_verified = await service.verify_problem(problem.id)
+    assert not_verified is not None
+    assert not_verified.state == "open"
+    assert not_verified.resolution_verification == "not_verified"
+
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=13.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="uploaded",
+                path="D:/Work/Marketing/demo.md",
+                message="上传完成",
+                run_id="run-success",
+            )
+        ]
+    )
+    await service.refresh_sources()
     verified = await service.verify_problem(problem.id)
     assert verified is not None
     assert verified.state == "resolved"
-    assert verified.resolution_verification == "later_run_succeeded"
+    assert verified.resolution_verification == "same_object_operation_succeeded"
 
 
 @pytest.mark.asyncio
@@ -242,3 +258,119 @@ async def test_conflict_source_is_materialized_once_and_tracks_source_resolution
     assert resolved is not None
     assert resolved.state == "resolved"
     assert resolved.resolution_verification == "source_resolved"
+
+
+@pytest.mark.asyncio
+async def test_same_object_success_resolves_problem_and_new_failure_reopens_it(tmp_path) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing/demo.md",
+                message="上传失败 HTTP 503",
+                run_id="run-1",
+            ),
+            SyncEventRecord(
+                timestamp=20.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="uploaded",
+                path="D:/Work/Marketing/demo.md",
+                message="上传完成",
+                run_id="run-2",
+            ),
+        ]
+    )
+
+    await service.backfill_sources(batch_size=10)
+    total, resolved_items = await service.list_problems(state="resolved", limit=20, offset=0)
+
+    assert total == 1
+    assert resolved_items[0].resolution_verification == "same_object_operation_succeeded"
+    assert resolved_items[0].resolved_by_run_id == "run-2"
+    assert resolved_items[0].last_good_at == 20.0
+
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=30.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing/demo.md",
+                message="上传失败 HTTP 503",
+                run_id="run-3",
+            )
+        ]
+    )
+    await service.refresh_sources()
+    reopened = await service.get_problem(resolved_items[0].id)
+
+    assert reopened is not None
+    assert reopened.state == "open"
+    assert reopened.resolution_verification == "reopened_by_occurrence"
+    assert reopened.resolved_by_run_id is None
+
+
+@pytest.mark.asyncio
+async def test_success_for_different_object_does_not_resolve_problem(tmp_path) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing/a.md",
+                message="上传失败 HTTP 503",
+                run_id="run-1",
+            ),
+            SyncEventRecord(
+                timestamp=20.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="uploaded",
+                path="D:/Work/Marketing/b.md",
+                message="上传完成",
+                run_id="run-2",
+            ),
+        ]
+    )
+
+    await service.backfill_sources(batch_size=10)
+    total, items = await service.list_problems(state="open", limit=20, offset=0)
+
+    assert total == 1
+    assert items[0].object_path == "a.md"
+
+
+@pytest.mark.asyncio
+async def test_delete_pending_is_workflow_state_not_problem(tmp_path) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="delete_pending",
+                path="D:/Work/Marketing/old.md",
+                message="进入安全删除宽限期",
+                run_id="run-1",
+            )
+        ]
+    )
+
+    refreshed = await service.refresh_sources()
+    total, _ = await service.list_problems(state="open", limit=20, offset=0)
+
+    assert refreshed.events_seen == 0
+    assert total == 0

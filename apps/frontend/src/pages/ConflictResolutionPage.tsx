@@ -115,6 +115,15 @@ function Diagnosis({
         <p className="mt-2 text-sm leading-6 text-[#52657a]">
           后端分类为“{problemCategoryLabel(problem.category)}”，严重级别为 {problem.severity}。该结论由 {problem.classifier_version} 产生，前端不根据错误文本重新分类。
         </p>
+        <p className="mt-2 text-xs text-[#52657a]">
+          处理方式：{problem.actionability === "manual_required" ? "需要人工处理" : problem.actionability === "auto_recovering" ? "系统自动恢复并等待同对象成功验证" : "仅提供诊断证据"}。
+        </p>
+        {problem.state === "resolved" && problem.resolved_at ? (
+          <p className="mt-3 rounded-md border border-[#bde5cc] bg-[#f2fbf5] px-3 py-2 text-xs leading-5 text-[#257044]">
+            已于 {formatTimestamp(problem.resolved_at)} 自动确认恢复
+            {problem.resolution_verification === "same_object_operation_succeeded" ? "，依据是同一对象、同一操作后续成功" : ""}。
+          </p>
+        ) : null}
       </section>
       <section>
         <h3 className="text-sm font-semibold text-[#102033]">对象与关联</h3>
@@ -394,7 +403,7 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
       <div className={cn("grid min-h-0 flex-1 gap-4", compact ? "grid-cols-1" : wide ? "grid-cols-[288px_minmax(520px,1fr)_320px]" : "grid-cols-[288px_minmax(680px,1fr)]")}>
         {queue}
         {!compact ? workbench : null}
-        {wide && selected ? <aside data-problem-actions="true" className="min-h-0 overflow-y-auto rounded-xl border border-[#d7e4f5] bg-[#fbfdff] p-4"><ProblemActions problem={selected} pending={actionPending || verifyPending} onAction={handleAction} onVerify={handleVerify} wide /><div className="mt-5 border-t border-[#d7e4f5] pt-4 text-xs text-[#52657a]"><p className="font-semibold text-[#102033]">验证规则</p><p className="mt-2 leading-5">冲突检查源记录终态；同步失败等待晚于最近发生时间的成功运行。</p><p className="mt-4 font-semibold text-[#102033]">最近动作</p><p className="mt-2">{actions[0] ? `${actions[0].action_key} · ${actions[0].result}` : "尚未执行动作"}</p></div></aside> : null}
+        {wide && selected ? <aside data-problem-actions="true" className="min-h-0 overflow-y-auto rounded-xl border border-[#d7e4f5] bg-[#fbfdff] p-4"><ProblemActions problem={selected} pending={actionPending || verifyPending} onAction={handleAction} onVerify={handleVerify} wide /><div className="mt-5 border-t border-[#d7e4f5] pt-4 text-xs text-[#52657a]"><p className="font-semibold text-[#102033]">验证规则</p><p className="mt-2 leading-5">冲突检查源记录终态；文件问题只接受同一任务、同一对象、同一操作的后续成功事实，无变化检查不能结案。</p><p className="mt-4 font-semibold text-[#102033]">最近动作</p><p className="mt-2">{actions[0] ? `${actions[0].action_key} · ${actions[0].result}` : "尚未执行动作"}</p></div></aside> : null}
       </div>
     </section>
   );

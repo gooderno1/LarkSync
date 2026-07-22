@@ -16,20 +16,27 @@ from src.db.models import (
     ConflictRecord,
     ProblemActionRecord,
     ProblemOccurrence,
+    ProblemRecoveryFact,
     ProblemRecord,
-    SyncRun,
     SyncRunEvent,
     SyncTask,
 )
 from src.db.session import get_session_maker
 
 
-CLASSIFIER_VERSION = "problem-classifier-v1"
+CLASSIFIER_VERSION = "problem-classifier-v2"
 PROBLEM_STATUSES = {
     "failed",
     "delete_failed",
-    "delete_pending",
     "cancelled",
+}
+RECOVERY_STATUSES = {
+    "uploaded",
+    "downloaded",
+    "deleted",
+    "created",
+    "linked",
+    "mirrored",
 }
 _REQUEST_ID_PATTERN = re.compile(
     r"(?i)(?:request[_ -]?id|x-tt-logid|trace[_ -]?id)\s*[:=]\s*[^\s,;]+"
@@ -69,6 +76,12 @@ class ProblemItem:
     resolution_verification: str | None
     resolved_at: float | None
     ignored_reason: str | None
+    resolution_key: str | None
+    operation_family: str | None
+    actionability: str
+    resolved_by_run_id: str | None
+    resolved_by_event_id: str | None
+    last_good_at: float | None
     available_actions: tuple[AvailableProblemAction, ...] = field(default_factory=tuple)
 
 
@@ -155,7 +168,65 @@ class ProblemService:
             if event_limit is not None:
                 event_stmt = event_stmt.limit(max(1, event_limit))
             event_rows = await session.execute(event_stmt)
-            events = list(event_rows.scalars().all())
+            problem_events = list(event_rows.scalars().all())
+            problem_rows = await session.execute(select(ProblemRecord))
+            problem_records = list(problem_rows.scalars().all())
+            problems_by_fingerprint = {record.fingerprint: record for record in problem_records}
+            self._backfill_lifecycle_fields(problem_records)
+            await self._resolve_legacy_delete_pending(session, problem_records)
+
+            candidate_paths: dict[str, set[str]] = {}
+            for event in problem_events:
+                candidate_paths.setdefault(event.task_id, set()).add(
+                    event.path.replace("\\", "/").casefold()
+                )
+            latest_event_ids = [
+                problem.latest_event_id
+                for problem in problem_records
+                if problem.state in {"open", "in_progress", "waiting"}
+                and problem.latest_event_id
+            ]
+            if latest_event_ids:
+                latest_rows = await session.execute(
+                    select(SyncRunEvent.task_id, SyncRunEvent.path).where(
+                        SyncRunEvent.id.in_(latest_event_ids)
+                    )
+                )
+                for task_id, path in latest_rows.all():
+                    candidate_paths.setdefault(str(task_id), set()).add(
+                        str(path).replace("\\", "/").casefold()
+                    )
+
+            recovery_events: list[SyncRunEvent] = []
+            if candidate_paths:
+                path_expression = func.replace(func.lower(SyncRunEvent.path), "\\", "/")
+                candidate_filters = [
+                    and_(
+                        SyncRunEvent.task_id == task_id,
+                        path_expression.in_(sorted(paths)),
+                    )
+                    for task_id, paths in candidate_paths.items()
+                    if paths
+                ]
+                unprocessed_recovery = ProblemRecoveryFact.event_id == SyncRunEvent.id
+                recovery_stmt = (
+                    select(SyncRunEvent)
+                    .outerjoin(ProblemRecoveryFact, unprocessed_recovery)
+                    .where(func.lower(SyncRunEvent.status).in_(RECOVERY_STATUSES))
+                    .where(ProblemRecoveryFact.event_id.is_(None))
+                    .where(or_(*candidate_filters))
+                    .order_by(SyncRunEvent.timestamp.asc())
+                )
+                if event_limit is not None:
+                    recovery_stmt = recovery_stmt.limit(max(1, event_limit))
+                recovery_rows = await session.execute(recovery_stmt)
+                recovery_events = list(recovery_rows.scalars().all())
+            events = sorted(
+                [*problem_events, *recovery_events],
+                key=lambda item: (item.timestamp, 0 if item.status in PROBLEM_STATUSES else 1),
+            )
+            if event_limit is not None:
+                events = events[: max(1, event_limit)]
             conflict_rows = await session.execute(
                 select(ConflictRecord).order_by(ConflictRecord.created_at.desc()).limit(5000)
             )
@@ -171,18 +242,21 @@ class ProblemService:
             for source_kind, source_id, problem_id in source_rows.all():
                 if source_kind == "conflict":
                     known_conflicts[str(source_id)] = str(problem_id)
-            problem_rows = await session.execute(select(ProblemRecord))
-            problems_by_fingerprint = {
-                record.fingerprint: record for record in problem_rows.scalars().all()
-            }
             for event in events:
-                await self._ingest_event(
-                    session,
-                    event,
-                    task_root=task_roots.get(event.task_id),
-                    occurrence_known_absent=True,
-                    problems_by_fingerprint=problems_by_fingerprint,
-                )
+                if event.status in PROBLEM_STATUSES:
+                    await self._ingest_event(
+                        session,
+                        event,
+                        task_root=task_roots.get(event.task_id),
+                        occurrence_known_absent=True,
+                        problems_by_fingerprint=problems_by_fingerprint,
+                    )
+                else:
+                    await self._ingest_recovery_event(
+                        session,
+                        event,
+                        task_root=task_roots.get(event.task_id),
+                    )
             for conflict in reversed(conflicts):
                 await self._ingest_conflict(
                     session,
@@ -408,16 +482,21 @@ class ProblemService:
                 conflict = await session.get(ConflictRecord, conflict_id) if conflict_id else None
                 resolved = bool(conflict and conflict.resolved)
                 verification = "source_resolved" if resolved else "not_verified"
-            elif problem.task_id:
-                successful_run = await session.execute(
-                    select(SyncRun.run_id)
-                    .where(SyncRun.task_id == problem.task_id)
-                    .where(SyncRun.state == "success")
-                    .where(func.coalesce(SyncRun.finished_at, SyncRun.last_event_at, 0) > problem.last_seen_at)
+            elif problem.resolution_key:
+                recovery_row = await session.execute(
+                    select(ProblemRecoveryFact)
+                    .where(ProblemRecoveryFact.resolution_key == problem.resolution_key)
+                    .where(ProblemRecoveryFact.occurred_at > problem.last_seen_at)
+                    .order_by(ProblemRecoveryFact.occurred_at.desc())
                     .limit(1)
                 )
-                resolved = successful_run.scalar_one_or_none() is not None
-                verification = "later_run_succeeded" if resolved else "not_verified"
+                recovery = recovery_row.scalar_one_or_none()
+                resolved = recovery is not None
+                if recovery is not None:
+                    verification = "same_object_operation_succeeded"
+                    problem.resolved_by_run_id = recovery.run_id
+                    problem.resolved_by_event_id = recovery.event_id
+                    problem.last_good_at = recovery.occurred_at
             problem.resolution_verification = verification
             if resolved:
                 problem.state = "resolved"
@@ -443,6 +522,12 @@ class ProblemService:
             return
         object_path, object_key = self.normalize_object_path(event.path, task_root)
         classification = self.classify_event(event.status, event.path, event.message)
+        operation_family = self.operation_family_for_problem(classification.category, event.status)
+        resolution_key = self.build_resolution_key(
+            task_id=event.task_id,
+            object_key=object_key,
+            operation_family=operation_family,
+        )
         fingerprint = self.build_fingerprint(
             source_kind="sync_event",
             task_id=event.task_id,
@@ -477,6 +562,9 @@ class ProblemService:
                 latest_run_id=event.run_id,
                 latest_event_id=event.id,
                 classifier_version=CLASSIFIER_VERSION,
+                resolution_key=resolution_key,
+                operation_family=operation_family,
+                actionability=self.actionability_for_category(classification.category),
             )
             session.add(problem)
             if problems_by_fingerprint is not None:
@@ -485,6 +573,13 @@ class ProblemService:
             problem.state = "open"
             problem.resolved_at = None
             problem.resolution_verification = "reopened_by_occurrence"
+            problem.resolved_by_run_id = None
+            problem.resolved_by_event_id = None
+            problem.last_good_at = None
+        problem.resolution_key = resolution_key
+        problem.operation_family = operation_family
+        problem.actionability = self.actionability_for_category(classification.category)
+        problem.classifier_version = CLASSIFIER_VERSION
         problem.last_seen_at = max(problem.last_seen_at, event.timestamp)
         problem.occurrence_count += 1
         problem.latest_run_id = event.run_id
@@ -510,6 +605,136 @@ class ProblemService:
                 ),
             )
         )
+
+    async def _ingest_recovery_event(
+        self,
+        session: AsyncSession,
+        event: SyncRunEvent,
+        *,
+        task_root: str | None,
+    ) -> None:
+        if await session.get(ProblemRecoveryFact, event.id):
+            return
+        operation_family = self.operation_family_for_recovery(event.status)
+        if operation_family is None:
+            return
+        _, object_key = self.normalize_object_path(event.path, task_root)
+        resolution_key = self.build_resolution_key(
+            task_id=event.task_id,
+            object_key=object_key,
+            operation_family=operation_family,
+        )
+        session.add(
+            ProblemRecoveryFact(
+                event_id=event.id,
+                task_id=event.task_id,
+                resolution_key=resolution_key,
+                operation_family=operation_family,
+                run_id=event.run_id,
+                occurred_at=event.timestamp,
+                created_at=time.time(),
+            )
+        )
+        rows = await session.execute(
+            select(ProblemRecord)
+            .where(ProblemRecord.resolution_key == resolution_key)
+            .where(ProblemRecord.state.in_(["open", "in_progress", "waiting"]))
+            .where(ProblemRecord.last_seen_at < event.timestamp)
+        )
+        for problem in rows.scalars().all():
+            problem.state = "resolved"
+            problem.resolved_at = event.timestamp
+            problem.last_good_at = event.timestamp
+            problem.resolved_by_run_id = event.run_id
+            problem.resolved_by_event_id = event.id
+            problem.resolution_verification = "same_object_operation_succeeded"
+
+    def _backfill_lifecycle_fields(self, problems: list[ProblemRecord]) -> None:
+        for problem in problems:
+            operation_family = problem.operation_family or self.operation_family_for_problem(
+                problem.category,
+                "conflict" if problem.object_kind == "conflict" else "failed",
+            )
+            problem.operation_family = operation_family
+            problem.resolution_key = problem.resolution_key or self.build_resolution_key(
+                task_id=problem.task_id or "",
+                object_key=problem.object_key,
+                operation_family=operation_family,
+            )
+            problem.actionability = self.actionability_for_category(problem.category)
+
+    async def _resolve_legacy_delete_pending(
+        self,
+        session: AsyncSession,
+        problems: list[ProblemRecord],
+    ) -> None:
+        candidates = [
+            problem
+            for problem in problems
+            if problem.category == "deletion"
+            and problem.state in {"open", "in_progress", "waiting"}
+            and problem.latest_event_id
+        ]
+        if not candidates:
+            return
+        rows = await session.execute(
+            select(SyncRunEvent.id, SyncRunEvent.status).where(
+                SyncRunEvent.id.in_([problem.latest_event_id for problem in candidates])
+            )
+        )
+        statuses = {str(event_id): str(status).strip().lower() for event_id, status in rows.all()}
+        for problem in candidates:
+            if statuses.get(str(problem.latest_event_id)) != "delete_pending":
+                continue
+            problem.state = "resolved"
+            problem.resolved_at = problem.last_seen_at
+            problem.last_good_at = problem.last_seen_at
+            problem.resolution_verification = "workflow_state_not_problem"
+            problem.actionability = "diagnostic_only"
+
+    @staticmethod
+    def operation_family_for_problem(category: str, stage: str) -> str:
+        if category == "upload":
+            return "upload"
+        if category == "download":
+            return "download"
+        if category == "conversion":
+            return "conversion"
+        if category == "deletion" or stage == "delete_failed":
+            return "delete"
+        if category == "conflict":
+            return "conflict"
+        if category == "auth_permission":
+            return "task_auth"
+        if stage == "cancelled":
+            return "task_run"
+        return "diagnostic"
+
+    @staticmethod
+    def operation_family_for_recovery(status: str) -> str | None:
+        return {
+            "uploaded": "upload",
+            "created": "upload",
+            "linked": "upload",
+            "mirrored": "upload",
+            "downloaded": "download",
+            "deleted": "delete",
+        }.get(status.strip().lower())
+
+    @staticmethod
+    def actionability_for_category(category: str) -> str:
+        if category == "conflict":
+            return "manual_required"
+        if category in {"upload", "download", "conversion", "network_remote", "local_io"}:
+            return "auto_recovering"
+        if category == "auth_permission":
+            return "manual_required"
+        return "diagnostic_only"
+
+    @staticmethod
+    def build_resolution_key(*, task_id: str, object_key: str, operation_family: str) -> str:
+        raw = "|".join((task_id.strip().lower(), object_key.strip().lower(), operation_family))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     async def _ingest_conflict(
         self,
@@ -545,6 +770,11 @@ class ProblemService:
             normalized_error_code="conflict",
             object_key=object_key,
         )
+        resolution_key = self.build_resolution_key(
+            task_id=task_id or "",
+            object_key=object_key,
+            operation_family="conflict",
+        )
         problem = (
             await session.execute(
                 select(ProblemRecord).where(ProblemRecord.fingerprint == fingerprint)
@@ -569,6 +799,10 @@ class ProblemService:
                 classifier_version=CLASSIFIER_VERSION,
                 resolution_verification="source_resolved" if conflict.resolved else None,
                 resolved_at=conflict.resolved_at if conflict.resolved else None,
+                resolution_key=resolution_key,
+                operation_family="conflict",
+                actionability="manual_required",
+                last_good_at=conflict.resolved_at if conflict.resolved else None,
             )
             session.add(problem)
             await session.flush()
@@ -735,6 +969,12 @@ class ProblemService:
             resolution_verification=record.resolution_verification,
             resolved_at=record.resolved_at,
             ignored_reason=record.ignored_reason,
+            resolution_key=record.resolution_key,
+            operation_family=record.operation_family,
+            actionability=record.actionability,
+            resolved_by_run_id=record.resolved_by_run_id,
+            resolved_by_event_id=record.resolved_by_event_id,
+            last_good_at=record.last_good_at,
             available_actions=self._available_actions(record),
         )
 
@@ -755,11 +995,11 @@ class ProblemService:
                 AvailableProblemAction("use_cloud", "使用云端", "primary", True),
                 AvailableProblemAction("use_local", "使用本地", "danger", True),
             )
-        if record.task_id and record.category not in {"deletion"}:
-            return (
-                AvailableProblemAction("retry_task", "重试任务", "primary"),
-                AvailableProblemAction("open_local_folder", "打开本地目录"),
-            )
+        if record.task_id and record.actionability == "auto_recovering":
+            actions = [AvailableProblemAction("retry_task", "重试任务", "primary")]
+            if record.category == "local_io":
+                actions.append(AvailableProblemAction("open_local_folder", "打开本地目录"))
+            return tuple(actions)
         return ()
 
 

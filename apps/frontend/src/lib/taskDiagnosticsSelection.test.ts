@@ -177,4 +177,38 @@ describe("task diagnostics selection helpers", () => {
       activeRunSummary: { run_id: "run-1" },
     });
   });
+
+  it("prefers the latest run with real activity over a newer empty check", () => {
+    const recentRuns = [
+      {
+        run_id: "check-newer",
+        state: "success",
+        problem_count: 0,
+        counts: { uploaded: 0, downloaded: 0, deleted: 0, failed: 0, conflicts: 0, delete_pending: 0, delete_failed: 0 },
+      },
+      {
+        run_id: "activity-older",
+        state: "success",
+        problem_count: 0,
+        counts: { uploaded: 1, downloaded: 0, deleted: 0, failed: 0, conflicts: 0, delete_pending: 0, delete_failed: 0 },
+      },
+    ] as never[];
+
+    expect(resolveActiveRunSelection({
+      recentRuns,
+      selectedRunId: null,
+      diagnosticsSelectedRunId: "check-newer",
+    })).toMatchObject({
+      activeRunId: "activity-older",
+      activeRunSummary: { run_id: "activity-older" },
+    });
+
+    expect(resolveActiveRunSelection({
+      recentRuns,
+      selectedRunId: "check-newer",
+      diagnosticsSelectedRunId: "check-newer",
+    })).toMatchObject({
+      activeRunId: "check-newer",
+    });
+  });
 });

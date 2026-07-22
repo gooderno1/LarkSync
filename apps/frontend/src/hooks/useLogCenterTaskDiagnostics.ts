@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { computeTaskProgress } from "../lib/progress";
@@ -121,10 +121,6 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
   const selectedRun = diagnosticsQuery.data?.selected_run ?? activeRunSummary;
   const selectedProblems = diagnosticsQuery.data?.problems || [];
 
-  useEffect(() => {
-    setDetailTab("overview");
-  }, [selectedTaskId]);
-
   const progress = computeTaskProgress(selectedStatus);
   const {
     currentFile,
@@ -179,6 +175,7 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
     selectedOverview,
     taskPickerOptions,
     diagnosticsQuery,
+    activeOverview,
     selectedTask,
     selectedStatus,
     recentRuns,

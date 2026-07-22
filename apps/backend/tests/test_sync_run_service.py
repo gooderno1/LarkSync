@@ -125,6 +125,41 @@ async def test_sync_run_service_lists_latest_by_tasks(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_empty_success_is_classified_as_check_and_hidden_by_default(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'checks.db').as_posix()}"
+    await init_db(db_url)
+    service = SyncRunService(session_maker=get_session_maker(db_url))
+
+    empty = await service.finish_run(
+        run_id="check-1",
+        task_id="task-1",
+        trigger_source="scheduled_download",
+        state="success",
+        started_at=10.0,
+        finished_at=11.0,
+        last_event_at=11.0,
+        total_files=0,
+        completed_files=0,
+        failed_files=0,
+        skipped_files=0,
+        uploaded_files=0,
+        downloaded_files=0,
+        deleted_files=0,
+        conflict_files=0,
+        delete_pending_files=0,
+        delete_failed_files=0,
+        last_error=None,
+    )
+
+    assert empty.run_kind == "legacy_check"
+    assert empty.has_activity is False
+    assert await service.list_by_task("task-1") == []
+    assert [item.run_id for item in await service.list_by_task("task-1", include_checks=True)] == [
+        "check-1"
+    ]
+
+
+@pytest.mark.asyncio
 async def test_interrupt_running_runs_closes_only_orphaned_runs(tmp_path) -> None:
     db_url = f"sqlite+aiosqlite:///{(tmp_path / 'recovery.db').as_posix()}"
     await init_db(db_url)

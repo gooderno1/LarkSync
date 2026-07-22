@@ -72,12 +72,43 @@ export function resolveActiveRunSelection(options: {
   selectedRunId: string | null;
   diagnosticsSelectedRunId?: string | null;
 }) {
+  const latestActivityRun = options.recentRuns.find(hasRunActivity);
+  const diagnosticsRun = options.recentRuns.find(
+    (run) => run.run_id === options.diagnosticsSelectedRunId,
+  );
   const activeRunId = options.selectedRunId && options.recentRuns.some((run) => run.run_id === options.selectedRunId)
     ? options.selectedRunId
-    : (options.diagnosticsSelectedRunId ?? options.recentRuns[0]?.run_id ?? null);
+    : (
+      latestActivityRun?.run_id
+      ?? (diagnosticsRun && hasRunActivity(diagnosticsRun) ? diagnosticsRun.run_id : null)
+      ?? options.recentRuns[0]?.run_id
+      ?? null
+    );
   const activeRunSummary = options.recentRuns.find((run) => run.run_id === activeRunId) || null;
   return {
     activeRunId,
     activeRunSummary,
   };
+}
+
+export function hasRunActivity(run: SyncTaskRunSummary): boolean {
+  if (run.state === "running" || run.state === "failed" || run.state === "cancelled") return true;
+  if ((run.problem_count ?? 0) > 0) return true;
+  const counts = run.counts;
+  // Older/partial DTOs do not expose counts. Preserve their explicit server selection
+  // instead of guessing that the run was empty.
+  if (!counts) return true;
+  return (
+    (counts.uploaded ?? 0)
+    + (counts.downloaded ?? 0)
+    + (counts.deleted ?? 0)
+    + (counts.failed ?? 0)
+    + (counts.conflicts ?? 0)
+    + (counts.delete_pending ?? 0)
+    + (counts.delete_failed ?? 0)
+  ) > 0;
+}
+
+export function getRunActivityTimestamp(run: SyncTaskRunSummary): number {
+  return run.last_event_at ?? run.finished_at ?? run.started_at ?? 0;
 }

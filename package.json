@@ -1,7 +1,7 @@
 {
   "name": "larksync-root",
   "private": true,
-  "version": "v0.8.3",
+  "version": "v0.8.4-dev.1",
   "scripts": {
     "dev": "python apps/tray/tray_app.py --dev",
     "dev:test": "node scripts/start_dev_test.mjs",

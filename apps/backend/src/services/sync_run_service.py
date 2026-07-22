@@ -34,6 +34,8 @@ class SyncRunItem:
     last_error: str | None
     created_at: float
     updated_at: float
+    run_kind: str = "activity"
+    has_activity: bool = True
 
 
 class SyncRunService:
@@ -49,6 +51,8 @@ class SyncRunService:
         task_id: str,
         trigger_source: str,
         started_at: float,
+        run_kind: str = "activity",
+        has_activity: bool = True,
     ) -> SyncRunItem:
         now = time.time()
         try:
@@ -60,6 +64,8 @@ class SyncRunService:
                         task_id=task_id,
                         state="running",
                         trigger_source=trigger_source,
+                        run_kind=run_kind,
+                        has_activity=has_activity,
                         started_at=started_at,
                         finished_at=None,
                         last_event_at=started_at,
@@ -82,6 +88,8 @@ class SyncRunService:
                     record.task_id = task_id
                     record.state = "running"
                     record.trigger_source = trigger_source
+                    record.run_kind = run_kind
+                    record.has_activity = has_activity
                     record.started_at = started_at
                     record.finished_at = None
                     record.last_event_at = started_at
@@ -107,6 +115,8 @@ class SyncRunService:
                 task_id=task_id,
                 state="running",
                 trigger_source=trigger_source,
+                run_kind=run_kind,
+                has_activity=has_activity,
                 started_at=started_at,
                 finished_at=None,
                 last_event_at=started_at,
@@ -146,9 +156,28 @@ class SyncRunService:
         delete_pending_files: int,
         delete_failed_files: int,
         last_error: str | None,
+        run_kind: str | None = None,
+        has_activity: bool | None = None,
     ) -> SyncRunItem:
         now = time.time()
         safe_started_at = started_at if started_at is not None else now
+        inferred_activity = (
+            state in {"running", "failed", "cancelled"}
+            or bool(last_error)
+            or sum(
+                (
+                    uploaded_files,
+                    downloaded_files,
+                    deleted_files,
+                    conflict_files,
+                    delete_pending_files,
+                    delete_failed_files,
+                    failed_files,
+                )
+            ) > 0
+        )
+        safe_has_activity = inferred_activity if has_activity is None else bool(has_activity)
+        safe_run_kind = run_kind or ("activity" if safe_has_activity else "legacy_check")
         try:
             async with self._session_maker() as session:
                 record = await session.get(SyncRun, run_id)
@@ -158,6 +187,8 @@ class SyncRunService:
                         task_id=task_id,
                         state=state,
                         trigger_source=trigger_source,
+                        run_kind=safe_run_kind,
+                        has_activity=safe_has_activity,
                         started_at=safe_started_at,
                         finished_at=finished_at,
                         last_event_at=last_event_at or finished_at or safe_started_at,
@@ -180,6 +211,8 @@ class SyncRunService:
                     record.task_id = task_id
                     record.state = state
                     record.trigger_source = trigger_source
+                    record.run_kind = safe_run_kind
+                    record.has_activity = safe_has_activity
                     record.started_at = safe_started_at
                     record.finished_at = finished_at
                     record.last_event_at = last_event_at or finished_at or safe_started_at
@@ -205,6 +238,8 @@ class SyncRunService:
                 task_id=task_id,
                 state=state,
                 trigger_source=trigger_source,
+                run_kind=safe_run_kind,
+                has_activity=safe_has_activity,
                 started_at=safe_started_at,
                 finished_at=finished_at,
                 last_event_at=last_event_at or finished_at or safe_started_at,
@@ -254,13 +289,21 @@ class SyncRunService:
             logger.exception("恢复遗留运行状态失败")
             return 0
 
-    async def list_by_task(self, task_id: str, *, limit: int = 50) -> list[SyncRunItem]:
+    async def list_by_task(
+        self,
+        task_id: str,
+        *,
+        limit: int = 50,
+        include_checks: bool = False,
+    ) -> list[SyncRunItem]:
         stmt = (
             select(SyncRun)
             .where(SyncRun.task_id == task_id)
             .order_by(SyncRun.started_at.desc(), SyncRun.updated_at.desc())
             .limit(limit)
         )
+        if not include_checks:
+            stmt = stmt.where(SyncRun.has_activity.is_(True))
         try:
             async with self._session_maker() as session:
                 result = await session.execute(stmt)
@@ -269,7 +312,12 @@ class SyncRunService:
             logger.exception("运行摘要查询失败: task_id={}", task_id)
             return []
 
-    async def list_latest_by_tasks(self, task_ids: list[str]) -> dict[str, SyncRunItem]:
+    async def list_latest_by_tasks(
+        self,
+        task_ids: list[str],
+        *,
+        include_checks: bool = False,
+    ) -> dict[str, SyncRunItem]:
         if not task_ids:
             return {}
         ranked_runs = (
@@ -278,6 +326,8 @@ class SyncRunService:
                 SyncRun.task_id,
                 SyncRun.state,
                 SyncRun.trigger_source,
+                SyncRun.run_kind,
+                SyncRun.has_activity,
                 SyncRun.started_at,
                 SyncRun.finished_at,
                 SyncRun.last_event_at,
@@ -302,6 +352,7 @@ class SyncRunService:
                 .label("row_number"),
             )
             .where(SyncRun.task_id.in_(task_ids))
+            .where(True if include_checks else SyncRun.has_activity.is_(True))
             .subquery()
         )
         stmt = (
@@ -318,6 +369,8 @@ class SyncRunService:
                         task_id=row.task_id,
                         state=row.state,
                         trigger_source=row.trigger_source,
+                        run_kind=row.run_kind,
+                        has_activity=bool(row.has_activity),
                         started_at=row.started_at,
                         finished_at=row.finished_at,
                         last_event_at=row.last_event_at,
@@ -350,6 +403,8 @@ class SyncRunService:
             task_id=record.task_id,
             state=record.state,
             trigger_source=record.trigger_source,
+            run_kind=record.run_kind,
+            has_activity=bool(record.has_activity),
             started_at=record.started_at,
             finished_at=record.finished_at,
             last_event_at=record.last_event_at,

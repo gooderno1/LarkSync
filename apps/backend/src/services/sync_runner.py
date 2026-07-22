@@ -52,6 +52,7 @@ from src.services.sync_markdown_cloud_doc_service import SyncMarkdownCloudDocSer
 from src.services.sync_markdown_upload_service import SyncMarkdownUploadService
 from src.services.sync_run_event_service import SyncRunEventService
 from src.services.sync_run_service import SyncRunService
+from src.services.sync_task_check_state_service import SyncTaskCheckStateService
 from src.services.sync_runner_state import SYNC_LOG_LIMIT, SyncFileEvent, SyncState, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
 from src.services.sync_tombstone_service import SyncTombstoneService
@@ -102,6 +103,14 @@ _MD_SYNC_MODE_VALUES = {
     _MD_SYNC_MODE_DOC_ONLY,
 }
 _STARTUP_ADD_ONLY_THRESHOLD_SECONDS = 48 * 3600
+_CHECK_ONLY_EVENT_STATUSES = {
+    "queued",
+    "reconcile_finished",
+    "reconcile_started",
+    "skipped",
+    "started",
+    "success",
+}
 
 
 def _is_temporary_local_name(name: str) -> bool:
@@ -148,6 +157,7 @@ class SyncTaskRunner:
         event_store: SyncEventStore | None = None,
         run_event_service: SyncRunEventService | None = None,
         run_service: SyncRunService | None = None,
+        check_state_service: SyncTaskCheckStateService | None = None,
         task_service: object | None = None,
         conflict_service: ConflictService | None = None,
         config_manager: ConfigManager | None = None,
@@ -172,6 +182,7 @@ class SyncTaskRunner:
         self._event_store = event_store or SyncEventStore()
         self._run_event_service = run_event_service or SyncRunEventService()
         self._run_service = run_service or SyncRunService()
+        self._check_state_service = check_state_service
         self._task_service = task_service
         self._conflict_service = conflict_service or ConflictService()
         self._config_manager = config_manager or ConfigManager.get()
@@ -334,7 +345,38 @@ class SyncTaskRunner:
         event: SyncFileEvent,
         task: SyncTaskItem | None = None,
     ) -> None:
+        if (
+            status.trigger_source == "scheduled_download"
+            and status.current_run_id is None
+        ):
+            if event.status.strip().lower() in _CHECK_ONLY_EVENT_STATUSES:
+                status.record_event(event)
+                return
+            self._activate_scheduled_activity_run(status, task)
         self._event_pipeline.record_event(status, event, task)
+
+    def _activate_scheduled_activity_run(
+        self,
+        status: SyncTaskStatus,
+        task: SyncTaskItem | None,
+    ) -> None:
+        if status.current_run_id is not None:
+            return
+        task_info = task or self._task_meta.get(status.task_id)
+        if task_info is None or status.started_at is None:
+            return
+        status.current_run_id = str(uuid.uuid4())
+        self._event_pipeline.record_event(
+            status,
+            SyncFileEvent(
+                path=task_info.local_path,
+                status="started",
+                message="定时检查发现变化，开始执行同步",
+                timestamp=status.started_at,
+            ),
+            task_info,
+        )
+        self._schedule_run_started(task_info, status)
 
     async def _flush_pending_events_now(self) -> None:
         await self._event_pipeline.flush_now()
@@ -561,6 +603,15 @@ class SyncTaskRunner:
             for path in ready_keys:
                 pending.pop(path, None)
         if not ready_paths and not has_pending_tombstone:
+            if self._check_state_service is not None:
+                now = time.time()
+                await self._check_state_service.mark_finished(
+                    task_id=task.id,
+                    trigger_source="scheduled_upload",
+                    started_at=now,
+                    finished_at=now,
+                    change_count=0,
+                )
             return
         self._running_tasks.add(task.id)
         self._task_meta[task.id] = task
@@ -572,6 +623,12 @@ class SyncTaskRunner:
             trigger_source="scheduled_upload",
         )
         await self._persist_run_started(task, status)
+        if self._check_state_service is not None and status.started_at is not None:
+            await self._check_state_service.mark_started(
+                task_id=task.id,
+                trigger_source="scheduled_upload",
+                started_at=status.started_at,
+            )
         cloud_scope = activate_cloud_root_scope(task.cloud_folder_token)
         try:
             await self._run_additive_reconciliation_if_needed(task, status)
@@ -612,8 +669,14 @@ class SyncTaskRunner:
             status,
             message="定时下载触发",
             trigger_source="scheduled_download",
+            defer_run_until_activity=True,
         )
-        await self._persist_run_started(task, status)
+        if self._check_state_service is not None and status.started_at is not None:
+            await self._check_state_service.mark_started(
+                task_id=task.id,
+                trigger_source="scheduled_download",
+                started_at=status.started_at,
+            )
         cloud_scope = activate_cloud_root_scope(task.cloud_folder_token)
         try:
             await self._run_additive_reconciliation_if_needed(task, status)
@@ -650,12 +713,13 @@ class SyncTaskRunner:
         message: str,
         *,
         trigger_source: str,
+        defer_run_until_activity: bool = False,
     ) -> None:
         status.state = "running"
         status.trigger_source = trigger_source
         status.started_at = time.time()
         status.finished_at = None
-        status.current_run_id = str(uuid.uuid4())
+        status.current_run_id = None if defer_run_until_activity else str(uuid.uuid4())
         status.total_files = 0
         status.completed_files = 0
         status.failed_files = 0
@@ -668,15 +732,16 @@ class SyncTaskRunner:
         status.delete_failed_files = 0
         status.last_error = None
         status.last_files = []
-        self._record_event(
-            status,
-            SyncFileEvent(
-                path=task.local_path,
-                status="started",
-                message=message,
-            ),
-            task,
-        )
+        if not defer_run_until_activity:
+            self._record_event(
+                status,
+                SyncFileEvent(
+                    path=task.local_path,
+                    status="started",
+                    message=message,
+                ),
+                task,
+            )
 
     async def run_task(self, task: SyncTaskItem) -> None:
         self._task_meta[task.id] = task
@@ -845,6 +910,8 @@ class SyncTaskRunner:
                     delete_pending_files=status.delete_pending_files,
                     delete_failed_files=status.delete_failed_files,
                     last_error=status.last_error,
+                    run_kind="activity",
+                    has_activity=True,
                 )
         except Exception:
             logger.exception(
@@ -858,6 +925,28 @@ class SyncTaskRunner:
     ) -> None:
         await self._flush_pending_events_now()
         await self._persist_run_finished(task, status)
+        if (
+            self._check_state_service is not None
+            and (status.trigger_source or "").startswith("scheduled_")
+            and status.finished_at is not None
+        ):
+            change_count = (
+                status.uploaded_files
+                + status.downloaded_files
+                + status.deleted_files
+                + status.conflict_files
+                + status.delete_pending_files
+                + status.delete_failed_files
+                + status.failed_files
+            )
+            await self._check_state_service.mark_finished(
+                task_id=task.id,
+                trigger_source=status.trigger_source or "scheduled_download",
+                started_at=status.started_at,
+                finished_at=status.finished_at,
+                change_count=change_count,
+                last_error=status.last_error,
+            )
         if status.state != "cancelled":
             await self._mark_task_run(task)
         status.current_run_id = None

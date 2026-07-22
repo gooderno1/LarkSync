@@ -49,6 +49,12 @@ class ProblemResponse(BaseModel):
     resolution_verification: str | None
     resolved_at: float | None
     ignored_reason: str | None
+    resolution_key: str | None
+    operation_family: str | None
+    actionability: str
+    resolved_by_run_id: str | None
+    resolved_by_event_id: str | None
+    last_good_at: float | None
     available_actions: list[ProblemAvailableActionResponse]
 
     @classmethod

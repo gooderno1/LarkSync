@@ -30,7 +30,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -328,6 +328,69 @@ async def _apply_schema_v2(conn) -> None:
     )
 
 
+async def _apply_schema_v3(conn) -> None:
+    await _ensure_column(
+        conn,
+        table="sync_runs",
+        column="run_kind",
+        column_type="TEXT",
+        default_value="activity",
+    )
+    await _ensure_column(
+        conn,
+        table="sync_runs",
+        column="has_activity",
+        column_type="INTEGER",
+        default_value=True,
+    )
+    for column, column_type, default_value in (
+        ("resolution_key", "TEXT", None),
+        ("operation_family", "TEXT", None),
+        ("actionability", "TEXT", "diagnostic_only"),
+        ("resolved_by_run_id", "TEXT", None),
+        ("resolved_by_event_id", "TEXT", None),
+        ("last_good_at", "REAL", None),
+    ):
+        await _ensure_column(
+            conn,
+            table="problems",
+            column=column,
+            column_type=column_type,
+            default_value=default_value,
+        )
+    await conn.execute(
+        text(
+            """
+            UPDATE sync_runs
+            SET has_activity = CASE
+                  WHEN state IN ('failed', 'cancelled') OR last_error IS NOT NULL THEN 1
+                  WHEN uploaded_files + downloaded_files + deleted_files + conflict_files
+                       + delete_pending_files + delete_failed_files + failed_files > 0 THEN 1
+                  ELSE 0
+                END,
+                run_kind = CASE
+                  WHEN state IN ('failed', 'cancelled') OR last_error IS NOT NULL THEN 'activity'
+                  WHEN uploaded_files + downloaded_files + deleted_files + conflict_files
+                       + delete_pending_files + delete_failed_files + failed_files > 0 THEN 'activity'
+                  ELSE 'legacy_check'
+                END
+            """
+        )
+    )
+    await _ensure_index(
+        conn,
+        table="sync_runs",
+        index_name="idx_sync_runs_task_activity_started",
+        columns_sql="task_id, has_activity, started_at DESC",
+    )
+    await _ensure_index(
+        conn,
+        table="problems",
+        index_name="idx_problems_resolution_state",
+        columns_sql="resolution_key, state, last_seen_at",
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     SchemaMigration(
         version=1,
@@ -338,6 +401,11 @@ _SCHEMA_MIGRATIONS = [
         version=2,
         description="新增统一问题、出现记录和动作记录索引",
         upgrade=_apply_schema_v2,
+    ),
+    SchemaMigration(
+        version=3,
+        description="区分检测与活动运行，并增加问题恢复事实和自动结案字段",
+        upgrade=_apply_schema_v3,
     ),
 ]
 

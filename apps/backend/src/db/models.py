@@ -113,6 +113,8 @@ class SyncRun(Base):
     task_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     state: Mapped[str] = mapped_column(String, nullable=False, default="running")
     trigger_source: Mapped[str] = mapped_column(String, nullable=False, default="manual")
+    run_kind: Mapped[str] = mapped_column(String, nullable=False, default="activity", index=True)
+    has_activity: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
     started_at: Mapped[float] = mapped_column(Float, nullable=False)
     finished_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     last_event_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
@@ -128,6 +130,21 @@ class SyncRun(Base):
     delete_failed_files: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class SyncTaskCheckState(Base):
+    __tablename__ = "sync_task_check_states"
+
+    task_id: Mapped[str] = mapped_column(String, primary_key=True)
+    state: Mapped[str] = mapped_column(String, nullable=False, default="idle", index=True)
+    trigger_source: Mapped[str] = mapped_column(String, nullable=False, default="scheduled_download")
+    started_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    finished_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    last_change_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    change_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    consecutive_no_change: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False)
 
 
@@ -178,6 +195,28 @@ class ProblemRecord(Base):
     resolution_verification: Mapped[str | None] = mapped_column(String, nullable=True)
     resolved_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     ignored_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution_key: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    operation_family: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    actionability: Mapped[str] = mapped_column(String, nullable=False, default="diagnostic_only")
+    resolved_by_run_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    resolved_by_event_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    last_good_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class ProblemRecoveryFact(Base):
+    __tablename__ = "problem_recovery_facts"
+    __table_args__ = (
+        Index("idx_problem_recovery_resolution_time", "resolution_key", "occurred_at"),
+        Index("idx_problem_recovery_task_time", "task_id", "occurred_at"),
+    )
+
+    event_id: Mapped[str] = mapped_column(String, primary_key=True)
+    task_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    resolution_key: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    operation_family: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    run_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    occurred_at: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
 
 
 class ProblemOccurrence(Base):
