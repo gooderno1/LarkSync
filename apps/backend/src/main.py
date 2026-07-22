@@ -124,6 +124,18 @@ def _build_lifespan(
         recovered_runs = await recover_runs_fn()
         if recovered_runs:
             logger.warning("已恢复 {} 条上次退出时遗留的运行记录", recovered_runs)
+        initialize_problem_cursor = getattr(
+            app.state.problem_service,
+            "initialize_live_cursor",
+            None,
+        )
+        if callable(initialize_problem_cursor):
+            try:
+                initialized = await initialize_problem_cursor()
+                if initialized:
+                    logger.info("问题实时游标已建立，历史回溯位置保留为独立断点")
+            except Exception:
+                logger.exception("问题实时游标初始化失败，已降级为后台增量处理")
         await log_maintenance_service_instance.start()
         await sync_scheduler_instance.start()
         await update_scheduler_instance.start()
@@ -154,17 +166,17 @@ async def _backfill_problem_sources(app: FastAPI) -> None:
     refresh = getattr(app.state.problem_service, "refresh_sources", None)
     if not callable(refresh):
         return
-    await asyncio.sleep(3)
+    await asyncio.sleep(5)
     while True:
         try:
-            result = await refresh(event_limit=250)
+            result = await refresh(event_limit=20)
             if result.events_seen:
                 logger.debug(
                     "统一问题增量处理: events={}, conflicts={}",
                     result.events_seen,
                     result.conflicts_seen,
                 )
-            await asyncio.sleep(0.25 if result.events_seen >= 250 else 10)
+            await asyncio.sleep(2 if result.events_seen >= 20 else 15)
         except asyncio.CancelledError:
             raise
         except Exception:

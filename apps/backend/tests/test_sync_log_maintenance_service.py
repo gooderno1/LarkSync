@@ -6,6 +6,7 @@ import pytest
 
 from src.services.sync_log_maintenance_service import SyncLogMaintenanceService
 from src.services.sync_run_event_service import SyncRunEventBackfillResult
+from src.services.sync_run_event_service import SyncRunEventBackfillState
 
 
 @pytest.mark.asyncio
@@ -82,3 +83,82 @@ async def test_jsonl_prune_does_not_block_the_event_loop() -> None:
     await asyncio.sleep(0.005)
     assert not task.done()
     await task
+
+
+@pytest.mark.asyncio
+async def test_startup_fast_forwards_redundant_jsonl_backfill_when_db_has_events() -> None:
+    class FakeRunEventService:
+        def __init__(self) -> None:
+            self.fast_forward_calls = 0
+
+        async def get_backfill_state(self, event_store):
+            return SyncRunEventBackfillState(
+                status="running",
+                offset=6_000_000,
+                log_size=1_100_000_000,
+                log_mtime_ns=123,
+                completed=False,
+            )
+
+        async def has_events(self):
+            return True
+
+        async def fast_forward_backfill(self, event_store):
+            self.fast_forward_calls += 1
+
+    run_event_service = FakeRunEventService()
+    service = SyncLogMaintenanceService(
+        run_event_service=run_event_service,
+        event_store=object(),
+        config_manager=SimpleNamespace(config=SimpleNamespace(sync_log_retention_days=0)),
+    )
+
+    fast_forwarded = await service.prepare_startup()
+
+    assert fast_forwarded is True
+    assert run_event_service.fast_forward_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_startup_keeps_jsonl_backfill_when_event_db_is_empty() -> None:
+    class FakeRunEventService:
+        def __init__(self) -> None:
+            self.fast_forward_calls = 0
+
+        async def get_backfill_state(self, event_store):
+            return SyncRunEventBackfillState("running", 0, 1000, 123, False)
+
+        async def has_events(self):
+            return False
+
+        async def fast_forward_backfill(self, event_store):
+            self.fast_forward_calls += 1
+
+    run_event_service = FakeRunEventService()
+    service = SyncLogMaintenanceService(
+        run_event_service=run_event_service,
+        event_store=object(),
+        config_manager=SimpleNamespace(config=SimpleNamespace(sync_log_retention_days=0)),
+    )
+
+    fast_forwarded = await service.prepare_startup()
+
+    assert fast_forwarded is False
+    assert run_event_service.fast_forward_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_startup_maintenance_failure_does_not_block_application_start() -> None:
+    class FakeRunEventService:
+        async def get_backfill_state(self, event_store):
+            raise RuntimeError("metadata unavailable")
+
+    service = SyncLogMaintenanceService(
+        run_event_service=FakeRunEventService(),
+        event_store=object(),
+        config_manager=SimpleNamespace(config=SimpleNamespace(sync_log_retention_days=0)),
+    )
+
+    fast_forwarded = await service.prepare_startup()
+
+    assert fast_forwarded is False

@@ -244,3 +244,29 @@ async def test_sync_run_event_service_backfill_step_does_not_advance_on_write_fa
     state = await service.get_backfill_state(store)
     assert state.offset == 0
     assert state.completed is False
+
+
+@pytest.mark.asyncio
+async def test_sync_run_event_service_can_fast_forward_redundant_jsonl_backfill(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'events-fast-forward.db').as_posix()}"
+    await init_db(db_url)
+    service = SyncRunEventService(get_session_maker(db_url))
+    store = SyncEventStore(tmp_path / "sync-events-fast-forward.jsonl")
+    store.append(
+        SyncEventRecord(
+            timestamp=1.0,
+            task_id="task-1",
+            task_name="任务 1",
+            status="uploaded",
+            path="D:/Sync/a.md",
+            message="done",
+            run_id="run-1",
+        )
+    )
+
+    await service.fast_forward_backfill(store)
+    state = await service.get_backfill_state(store)
+
+    assert state.completed is True
+    assert state.status == "completed"
+    assert state.offset == store.file_size_bytes()

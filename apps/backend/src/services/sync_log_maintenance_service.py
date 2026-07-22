@@ -36,7 +36,7 @@ class SyncLogMaintenanceService:
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._backfill_batch_size = 200
-        self._catchup_interval_seconds = 1.0
+        self._catchup_interval_seconds = 5.0
         self._idle_interval_seconds = 30.0
         self._prune_interval_seconds = 900.0
         self._last_prune_started_at: float | None = None
@@ -46,8 +46,27 @@ class SyncLogMaintenanceService:
         if self._task is not None and not self._task.done():
             return
         self._stop_event.clear()
+        await self.prepare_startup()
         self._task = asyncio.create_task(self._run())
         logger.info("日志中心后台维护服务已启动")
+
+    async def prepare_startup(self) -> bool:
+        try:
+            state = await self._run_event_service.get_backfill_state(self._event_store)
+            if state.completed:
+                return False
+            if not await self._run_event_service.has_events():
+                return False
+            await self._run_event_service.fast_forward_backfill(self._event_store)
+            logger.info(
+                "SQLite 已有事件，JSONL 冗余回填断点已对齐到文件尾: old_offset={} size={}",
+                state.offset,
+                state.log_size,
+            )
+            return True
+        except Exception:
+            logger.exception("启动阶段日志维护准备失败，已降级为后台维护")
+            return False
 
     async def stop(self) -> None:
         self._stop_event.set()

@@ -60,6 +60,15 @@ class _DummyWatcherManager:
         self._events.append(f"watcher:set_loop:{type(loop).__name__}")
 
 
+class _DummyProblemService:
+    def __init__(self, events: list[str]) -> None:
+        self._events = events
+
+    async def initialize_live_cursor(self) -> bool:
+        self._events.append("problems:initialize_cursor")
+        return True
+
+
 def test_health_check() -> None:
     client = TestClient(main.app)
     response = client.get("/health")
@@ -93,6 +102,7 @@ def test_create_app_lifespan_starts_and_stops_services() -> None:
         sync_runner_service=_DummyRunner(events),
         sync_task_service_instance=_DummyTaskService(),
         conflict_service_instance=_DummyConflictService(),
+        problem_service_instance=_DummyProblemService(events),
         sync_scheduler_instance=_DummyAsyncService("sync_scheduler", events),
         log_maintenance_service_instance=_DummyAsyncService("log_maintenance", events),
         update_scheduler_instance=_DummyAsyncService("update_scheduler", events),
@@ -111,6 +121,7 @@ def test_create_app_lifespan_starts_and_stops_services() -> None:
     assert events[2:] == [
         "db:init",
         "runs:recover",
+        "problems:initialize_cursor",
         "log_maintenance:start",
         "sync_scheduler:start",
         "update_scheduler:start",
@@ -119,3 +130,32 @@ def test_create_app_lifespan_starts_and_stops_services() -> None:
         "update_scheduler:stop",
         "runner:close",
     ]
+
+
+def test_problem_cursor_initialization_failure_does_not_block_startup() -> None:
+    events: list[str] = []
+
+    class FailingProblemService:
+        async def initialize_live_cursor(self) -> bool:
+            events.append("problems:initialize_cursor")
+            raise RuntimeError("cursor unavailable")
+
+    app = main.create_app(
+        sync_runner_service=_DummyRunner(events),
+        sync_task_service_instance=_DummyTaskService(),
+        conflict_service_instance=_DummyConflictService(),
+        problem_service_instance=FailingProblemService(),
+        sync_scheduler_instance=_DummyAsyncService("sync_scheduler", events),
+        log_maintenance_service_instance=_DummyAsyncService("log_maintenance", events),
+        update_scheduler_instance=_DummyAsyncService("update_scheduler", events),
+        watcher_manager_instance=_DummyWatcherManager(events),
+        init_db_fn=lambda: asyncio.sleep(0),
+        recover_runs_fn=lambda: asyncio.sleep(0, result=0),
+        init_logging_fn=lambda: None,
+    )
+
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+
+    assert "problems:initialize_cursor" in events
+    assert "log_maintenance:start" in events

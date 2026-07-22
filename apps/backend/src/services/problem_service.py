@@ -39,7 +39,9 @@ RECOVERY_STATUSES = {
     "linked",
     "mirrored",
 }
-PROBLEM_EVENT_CURSOR_KEY = "problem_event_cursor_v3"
+LEGACY_PROBLEM_EVENT_CURSOR_KEY = "problem_event_cursor_v3"
+PROBLEM_HISTORY_CURSOR_KEY = "problem_history_cursor_v3"
+PROBLEM_EVENT_CURSOR_KEY = "problem_event_cursor_v4"
 _REQUEST_ID_PATTERN = re.compile(
     r"(?i)(?:request[_ -]?id|x-tt-logid|trace[_ -]?id)\s*[:=]\s*[^\s,;]+"
 )
@@ -140,6 +142,37 @@ class ProblemService:
         async with self._refresh_lock:
             return await self._refresh_sources(event_limit=event_limit)
 
+    async def initialize_live_cursor(self) -> bool:
+        """建立实时消费基线；保留旧历史位置，但不在启动阶段继续重放。"""
+        async with self._refresh_lock:
+            async with self._session_maker() as session:
+                existing = await session.get(SyncMeta, PROBLEM_EVENT_CURSOR_KEY)
+                if existing is not None:
+                    return False
+                legacy = await session.get(SyncMeta, LEGACY_PROBLEM_EVENT_CURSOR_KEY)
+                history = await session.get(SyncMeta, PROBLEM_HISTORY_CURSOR_KEY)
+                if legacy is not None and history is None:
+                    session.add(
+                        SyncMeta(
+                            key=PROBLEM_HISTORY_CURSOR_KEY,
+                            value=legacy.value,
+                            updated_at=time.time(),
+                        )
+                    )
+                latest_row = await session.execute(
+                    select(SyncRunEvent.timestamp, SyncRunEvent.id)
+                    .order_by(SyncRunEvent.timestamp.desc(), SyncRunEvent.id.desc())
+                    .limit(1)
+                )
+                latest = latest_row.one_or_none()
+                await self._store_event_cursor(
+                    session,
+                    timestamp=float(latest.timestamp) if latest else 0.0,
+                    event_id=str(latest.id) if latest else "",
+                )
+                await session.commit()
+                return True
+
     async def backfill_sources(self, *, batch_size: int = 1000) -> ProblemRefreshResult:
         events_seen = 0
         conflicts_seen = 0
@@ -175,11 +208,34 @@ class ProblemService:
                 event_stmt = event_stmt.limit(max(1, event_limit))
             event_rows = await session.execute(event_stmt)
             events = list(event_rows.scalars().all())
-            problem_rows = await session.execute(select(ProblemRecord))
-            problem_records = list(problem_rows.scalars().all())
+            problem_fingerprints: set[str] = set()
+            for event in events:
+                if event.status not in PROBLEM_STATUSES:
+                    continue
+                _, object_key = self.normalize_object_path(
+                    event.path,
+                    task_roots.get(event.task_id),
+                )
+                classification = self.classify_event(event.status, event.path, event.message)
+                problem_fingerprints.add(
+                    self.build_fingerprint(
+                        source_kind="sync_event",
+                        task_id=event.task_id,
+                        category=classification.category,
+                        stage=event.status,
+                        normalized_error_code=classification.normalized_error_code,
+                        object_key=object_key,
+                    )
+                )
+            problem_records: list[ProblemRecord] = []
+            if problem_fingerprints:
+                problem_rows = await session.execute(
+                    select(ProblemRecord).where(
+                        ProblemRecord.fingerprint.in_(problem_fingerprints)
+                    )
+                )
+                problem_records = list(problem_rows.scalars().all())
             problems_by_fingerprint = {record.fingerprint: record for record in problem_records}
-            self._backfill_lifecycle_fields(problem_records)
-            await self._resolve_legacy_delete_pending(session, problem_records)
             conflict_rows = await session.execute(
                 select(ConflictRecord).order_by(ConflictRecord.created_at.desc()).limit(5000)
             )
@@ -224,19 +280,6 @@ class ProblemService:
                     timestamp=last_event.timestamp,
                     event_id=last_event.id,
                 )
-            else:
-                latest_row = await session.execute(
-                    select(SyncRunEvent.timestamp, SyncRunEvent.id)
-                    .order_by(SyncRunEvent.timestamp.desc(), SyncRunEvent.id.desc())
-                    .limit(1)
-                )
-                latest = latest_row.one_or_none()
-                if latest and (latest.timestamp, latest.id) > (cursor_timestamp, cursor_event_id):
-                    await self._store_event_cursor(
-                        session,
-                        timestamp=float(latest.timestamp),
-                        event_id=str(latest.id),
-                    )
             await session.commit()
         return ProblemRefreshResult(events_seen=len(events), conflicts_seen=len(conflicts))
 

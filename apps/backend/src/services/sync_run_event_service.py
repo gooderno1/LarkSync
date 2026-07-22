@@ -254,6 +254,16 @@ class SyncRunEventService:
             previous_offset = result.offset
         return inserted
 
+    async def fast_forward_backfill(self, event_store: SyncEventStore) -> None:
+        """保留 JSONL，但将已经冗余的自动回填断点对齐到当前文件尾。"""
+        current_size = event_store.file_size_bytes()
+        await self._set_backfill_state(
+            status="completed",
+            offset=current_size,
+            log_size=current_size,
+            log_mtime_ns=event_store.file_mtime_ns(),
+        )
+
     async def has_events(
         self,
         *,
