@@ -12,12 +12,18 @@
   - `v0.8.6` 被指定为启动后台维护性能热修复的稳定版本。
   - 从 `v0.8.5` 自动更新时，Windows 应选择 `LarkSync-Setup-v0.8.6.exe`，正式渠道不会选择开发版安装包。
   - 发布过程不安装、不启动本地构建产物，不修改当前正式数据库、同步目录或飞书数据。
+  - GitHub Latest 已指向非草稿、非预发布的 `v0.8.6`；Windows、macOS arm64 和 macOS x86_64 安装包及各自 SHA256 文件均已上传。
 - 验证方式：
   - 对应业务提交的后端全量 pytest 599 项通过；前端 ESLint、TypeScript、35 个文件共 105 项测试与 Vite 生产构建通过。
   - 本地 NSIS 预构建通过；`v0.8.6-dev.1` 安装包大小 71,617,542 bytes，SHA256 为 `8C08BB4AB302E2AC11EAD8C355B8E69BB2C9DB10DF8ED471D46F66172CA05F1D`。
   - 正式资产必须以 GitHub Actions 对 `v0.8.6` 标签重新构建的文件与 SHA256 为准，不复用开发版文件改名。
+  - 正式工作流 `29936630876` 全部通过；质量门、Windows 构建、macOS arm64 与 macOS x86_64 构建以及三平台安装启动 smoke 均成功。
+  - GitHub Release 发布时间为 `2026-07-22T16:13:25Z`，Latest 返回 `v0.8.6`；Windows 正式安装包大小 57,079,359 bytes。
+  - 使用项目更新选择函数验证 `v0.8.6 > v0.8.5`，Windows 平台正确选择 `LarkSync-Setup-v0.8.6.exe`、对应 `.sha256` 资产和 GitHub digest。
+  - 下载三平台正式安装资产并独立计算 SHA256，均与各自 `.sha256` 文件一致：Windows `15d9e544bc9c6f6d8d19f2b3f557dec0a63b0130c6048e9f1b7720e0ba42c1f0`，macOS arm64 `a7bdcbddef669735d67780c53abc16c8a9a812c9b1eb89ce8da95ac097427ae6`，macOS x86_64 `9f31638d15d433cc0466ddb08ca1dafc46a439c7a5518d2527152832fc1d533d`。
+  - 三个平台并行上传后 Release 正文一度只保留 Intel 校验值；已恢复三平台完整校验表，安装包与校验资产未受影响。
 - 遗留问题：
-  - 正式工作流、Release 资产完整性和 Latest/自动更新选择仍需在标签推送后持续跟进并记录最终结果。
+  - 用户通过 `v0.8.5` 正式版自动升级后，需要验收首次启动耗时、活动/问题页面响应和后续新问题入库；历史 v3 回放保持暂停属于本版设计行为。
 
 ## v0.8.6-dev.1 (2026-07-22)
 
