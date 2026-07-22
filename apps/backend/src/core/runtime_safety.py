@@ -5,6 +5,9 @@ from pathlib import Path
 from src.core.config import AppConfig, RuntimeProfile
 
 
+_RESERVED_PRODUCTION_BACKEND_PORTS = {18765, 8000}
+
+
 def validate_runtime_environment(
     config: AppConfig,
     *,
@@ -20,8 +23,8 @@ def validate_runtime_environment(
         return []
 
     issues: list[str] = []
-    if backend_port == 8000:
-        issues.append("非 production 配置禁止使用正式版后端端口 8000")
+    if backend_port in _RESERVED_PRODUCTION_BACKEND_PORTS:
+        issues.append(f"非 production 配置禁止使用正式版保留后端端口 {backend_port}")
     if lock_port == 48901:
         issues.append("非 production 配置禁止使用正式版实例锁端口 48901")
     if not explicit_data_dir:
@@ -37,7 +40,7 @@ def validate_runtime_environment(
         if config.token_store.strip().lower() != "keyring":
             issues.append(f"{profile.value} 必须复用系统 keyring，禁止复制 Token 文件")
         if production_backend_running:
-            issues.append("正式版 8000 仍在运行，共享 keyring 的真实数据测试配置拒绝启动")
+            issues.append("正式版仍在运行，共享 keyring 的真实数据测试配置拒绝启动")
 
     if (
         profile is RuntimeProfile.live_bidirectional

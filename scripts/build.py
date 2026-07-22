@@ -70,9 +70,9 @@ def print_summary() -> None:
     print()
     print("  启动方式（生产模式）：")
     print("    cd apps/backend")
-    print("    python -m uvicorn src.main:app --host 0.0.0.0 --port 8000")
+    print("    python -m uvicorn src.main:app --host 0.0.0.0 --port 18765")
     print()
-    print("  然后访问 http://localhost:8000 即可使用完整应用。")
+    print("  然后访问 http://localhost:18765 即可使用完整应用。")
     print()
 
 

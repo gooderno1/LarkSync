@@ -13,7 +13,7 @@ from urllib import error, request
 from urllib.parse import urlparse
 
 HELPER_SCRIPT = Path(__file__).with_name("larksync_skill_helper.py")
-DEFAULT_PORT = 8000
+DEFAULT_PORT = 18765
 DEFAULT_TIMEOUT = 1.5
 HEALTH_PATH = "/health"
 KNOWN_COMMANDS = {
@@ -337,11 +337,11 @@ def main(argv: list[str] | None = None) -> int:
         selected = select_reachable_base_url(diagnostics)
         _print_diagnostics(diagnostics)
         if not selected:
-            print("未找到可达的 LarkSync 服务地址（:8000）。请先在 Windows 侧启动 LarkSync。")
+            print(f"未找到可达的 LarkSync 服务地址（:{DEFAULT_PORT}）。请先在 Windows 侧启动 LarkSync。")
             print("排查建议：")
             print("  1) Windows 端确认 LarkSync 后端已启动。")
             print("  2) Windows 端若手动设置过 LARKSYNC_BACKEND_BIND_HOST=127.0.0.1，请移除该变量或改为 0.0.0.0 后重启 LarkSync。")
-            print("  3) 放行 Windows 防火墙 TCP 8000（WSL 网段）。")
+            print(f"  3) 放行 Windows 防火墙 TCP {DEFAULT_PORT}（WSL 网段）。")
             return 2
         print(f"自动选择可达地址: {selected}")
         final_args = _inject_base_url(final_args, selected)

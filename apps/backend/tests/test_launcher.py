@@ -48,3 +48,19 @@ def test_packaged_backend_disables_uvicorn_console_logging(
     assert captured["port"] == 18400
     assert captured["log_config"] is None
     assert captured["access_log"] is False
+
+
+def test_packaged_launcher_fast_paths_desktop_window_without_tray_import(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    fake_desktop = types.ModuleType("apps.tray.desktop_window")
+    fake_desktop.main = lambda args: calls.append(args) or 0  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "apps.tray.desktop_window", fake_desktop)
+    monkeypatch.delitem(sys.modules, "apps.tray.tray_app", raising=False)
+
+    result = launcher.entrypoint(
+        ["--desktop-window", "--url", "http://127.0.0.1:18765/", "--debug-window"]
+    )
+
+    assert result == 0
+    assert calls == [["--url", "http://127.0.0.1:18765/", "--debug-window"]]
+    assert "apps.tray.tray_app" not in sys.modules

@@ -93,11 +93,11 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 若全部候选地址不可达，优先确认 Windows 侧：
 - LarkSync 已启动；
 - 若手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改回 `0.0.0.0` 或移除该变量；
-- 防火墙已放行 WSL 网段到 TCP `8000`。
+- 防火墙已放行 WSL 网段到 TCP `18765`。
 
 安全边界：
 - 未探测到 Windows 侧可达服务时，脚本会输出诊断信息并停止，不会自动在 WSL 安装依赖或启动后端。
-- 请先在 Windows 侧启动 LarkSync（安装包版或开发模式），确认 `:8000` 可达后再重试。
+- 请先在 Windows 侧启动 LarkSync（安装包版或开发模式），确认 `:18765` 可达后再重试。
 - 注意：飞书 OAuth 首次授权仍需用户完成；授权完成后可进入日常低频同步运行。
 
 默认安全策略：

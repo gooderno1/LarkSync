@@ -23,6 +23,10 @@ sys.modules["larksync_wsl_helper"] = wsl_helper
 spec.loader.exec_module(wsl_helper)
 
 
+def test_default_probe_port_matches_desktop_backend() -> None:
+    assert wsl_helper.DEFAULT_PORT == 18765
+
+
 def test_parse_default_gateway() -> None:
     sample = "default via 172.27.80.1 dev eth0 proto dhcp src 172.27.90.2 metric 100\n"
     assert wsl_helper.parse_default_gateway(sample) == "172.27.80.1"

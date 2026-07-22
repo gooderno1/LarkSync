@@ -60,7 +60,7 @@ python scripts/larksync_cli.py bootstrap-cache --local-path "D:\\Knowledge\\Feis
 - OpenClaw 代理专用执行说明：[`OPENCLAW_AGENT_GUIDE.md`](./OPENCLAW_AGENT_GUIDE.md)
 
 ## 依赖前提
-1. Windows 侧已安装并运行 LarkSync（安装包版即可，不需要拉源码构建；后端可访问 `http://localhost:8000`）。
+1. Windows 侧已安装并运行 LarkSync（安装包版即可，不需要拉源码构建；后端可访问 `http://localhost:18765`）。
 2. 已在 LarkSync 中完成飞书 OAuth 授权。
 3. 出于安全考虑，helper 默认只允许连接本机 `localhost/127.0.0.1/::1`。
 
@@ -107,7 +107,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 ```
 
 说明：
-- 若所有候选地址都显示 `UNREACHABLE`，主因通常是 Windows 侧 LarkSync 尚未启动或未监听 8000 端口。
+- 若所有候选地址都显示 `UNREACHABLE`，主因通常是 Windows 侧 LarkSync 尚未启动或未监听 18765 端口。
 - 如果 Windows 侧不可达，脚本会输出诊断信息并停止，不会在 WSL 自动安装依赖或自动拉起后端。
 - 请先在 Windows 侧启动 LarkSync，再重新执行 `check` / `bootstrap-cache`。
 - Windows 版 LarkSync 默认允许 WSL 通过宿主机地址访问；若你手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改为 `0.0.0.0` 或移除后重启，再执行 `diagnose`。

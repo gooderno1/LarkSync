@@ -11,7 +11,7 @@
 | `live_readonly` | 必须完整退出 | 允许语义只读请求 | HTTP 边界拒绝 | 系统 keyring |
 | `live_bidirectional` | 必须完整退出，除非使用独立授权 | 允许 | 仅 allowlist 根目录 | 系统 keyring |
 
-非生产 Profile 必须显式使用独立后端端口、Vite 端口、实例锁和数据目录。共享 keyring 的 Profile 在检测到正式版 8000 仍运行时会拒绝启动。
+非生产 Profile 必须显式使用独立后端端口、Vite 端口、实例锁和数据目录。共享 keyring 的 Profile 在检测到正式版 18765 或升级过渡期的旧版 8000 仍运行时会拒绝启动。
 
 ## Level 0：合成数据
 
@@ -88,7 +88,7 @@ python scripts/benchmark_snapshot.py `
 1. 记录正式版版本、任务数、运行数和冲突数。
 2. 等待所有正式任务结束。
 3. 从托盘完整退出正式版。
-4. 确认 `LarkSync.exe` 已退出且 8000 端口关闭。
+4. 确认 `LarkSync.exe` 已退出且 18765、8000 端口均关闭。
 5. 使用 SQLite online backup 备份已确认的正式数据库；禁止导出 keyring Token。
 
 测试环境必须设置 `live_readonly`、独立端口/锁/数据目录、`download_only`、`delete_policy=off` 和新本地空目录。建议同时设置：

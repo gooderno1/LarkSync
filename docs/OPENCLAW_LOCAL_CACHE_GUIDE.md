@@ -97,7 +97,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 如果诊断显示 Windows 侧不可达：
 
 - 确认 LarkSync 托盘程序已启动。
-- 确认后端监听 `8000` 端口。
+- 确认后端监听 `18765` 端口。
 - 如手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改为 `0.0.0.0` 或移除后重启。
 
 ## 7. Agent 提示词建议

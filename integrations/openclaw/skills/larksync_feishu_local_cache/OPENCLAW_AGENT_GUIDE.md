@@ -73,7 +73,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 - 对非回环地址自动补 `--allow-remote-base-url`。
 
 明确限制：
-- 探测不到 Windows 侧 `:8000` 时，直接返回诊断结果并停止。
+- 探测不到 Windows 侧 `:18765` 时，直接返回诊断结果并停止。
 - 不自动执行 `pip install`。
 - 不自动在 WSL 拉起本地后端。
 - 需要用户或外层流程先确保 Windows 侧 LarkSync 已启动。

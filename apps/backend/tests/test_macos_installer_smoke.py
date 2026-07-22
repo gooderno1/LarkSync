@@ -183,7 +183,7 @@ def test_assert_backend_port_available_raises_when_port_is_busy(
 
     monkeypatch.setattr(smoke.socket, "socket", lambda *args, **kwargs: BusySocket())
 
-    with pytest.raises(RuntimeError, match="8000 已被占用"):
+    with pytest.raises(RuntimeError, match="18765 已被占用"):
         smoke._assert_backend_port_available()
 
 

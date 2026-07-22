@@ -50,7 +50,7 @@ def _local_port_active(port: int) -> bool:
 
 
 def _validate_backend_runtime() -> None:
-    from apps.tray.config import BACKEND_PORT
+    from apps.tray.config import BACKEND_PORT, RESERVED_PRODUCTION_BACKEND_PORTS
     from src.core.config import ConfigManager, RuntimeProfile
     from src.core.paths import data_dir
     from src.core.runtime_safety import validate_runtime_environment
@@ -69,7 +69,7 @@ def _validate_backend_runtime() -> None:
         explicit_data_dir=bool((os.getenv("LARKSYNC_DATA_DIR") or "").strip()),
         production_backend_running=(
             config.runtime_profile is not RuntimeProfile.production
-            and _local_port_active(8000)
+            and any(_local_port_active(port) for port in RESERVED_PRODUCTION_BACKEND_PORTS)
         ),
     )
     if issues:
@@ -107,6 +107,10 @@ def entrypoint(argv: list[str] | None = None) -> int:
     if "--backend" in args:
         _run_backend()
         return 0
+    if "--desktop-window" in args:
+        from apps.tray.desktop_window import main as desktop_window_main
+
+        return desktop_window_main([arg for arg in args if arg != "--desktop-window"])
 
     from apps.tray.tray_app import main
 

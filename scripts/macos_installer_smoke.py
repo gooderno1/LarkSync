@@ -88,8 +88,8 @@ def _copy_app_bundle(mount_point: Path, target_root: Path) -> Path:
 def _assert_backend_port_available() -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(1)
-        if sock.connect_ex(("127.0.0.1", 8000)) == 0:
-            raise RuntimeError("127.0.0.1:8000 已被占用，无法执行 macOS 安装启动 smoke")
+        if sock.connect_ex(("127.0.0.1", 18765)) == 0:
+            raise RuntimeError("127.0.0.1:18765 已被占用，无法执行 macOS 安装启动 smoke")
 
 
 def _read_log_tail(path: Path, *, max_chars: int = _LOG_TAIL_MAX_CHARS) -> str:
@@ -156,7 +156,7 @@ def _wait_for_health(
                 )
             )
         try:
-            conn = http.client.HTTPConnection("127.0.0.1", 8000, timeout=2)
+            conn = http.client.HTTPConnection("127.0.0.1", 18765, timeout=2)
             conn.request("GET", "/health")
             resp = conn.getresponse()
             resp.read()

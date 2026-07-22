@@ -46,6 +46,8 @@ from apps.tray.config import (
     FRONTEND_DIR,
     VITE_DEV_PORT,
     VITE_DEV_URL,
+    DEFAULT_BACKEND_PORT,
+    RESERVED_PRODUCTION_BACKEND_PORTS,
     get_dashboard_url,
     get_settings_url,
     get_logs_url,
@@ -60,6 +62,7 @@ from apps.tray.desktop_window import (
     DesktopWindowLaunchResult,
     open_browser_dashboard,
     open_desktop_window,
+    send_desktop_window_command,
 )
 from apps.tray.icon_generator import generate_icons, get_icon_path
 from apps.tray.autostart import is_autostart_enabled, repair_autostart_if_needed, toggle_autostart
@@ -498,6 +501,7 @@ class LarkSyncTray:
         self._backend = BackendManager(dev_mode=dev_mode)
         self._vite_process: subprocess.Popen | None = None
         self._desktop_window_process: subprocess.Popen | None = None
+        self._desktop_window_control_file: Path | None = None
         self._icon: pystray.Icon | None = None
         self._current_state = "idle"
         self._global_paused = False
@@ -631,6 +635,10 @@ class LarkSyncTray:
     def _stop_desktop_window(self) -> None:
         """停止托盘拉起的桌面窗口子进程。"""
         process = getattr(self, "_desktop_window_process", None)
+        control_file = getattr(self, "_desktop_window_control_file", None)
+        self._desktop_window_control_file = None
+        if control_file is not None:
+            control_file.unlink(missing_ok=True)
         if not process:
             return
         self._desktop_window_process = None
@@ -755,23 +763,34 @@ class LarkSyncTray:
         if existing is not None:
             try:
                 if existing.poll() is None:
+                    control_file = getattr(self, "_desktop_window_control_file", None)
+                    restored = bool(
+                        control_file is not None
+                        and send_desktop_window_command(control_file, url=url)
+                    )
                     return DesktopWindowLaunchResult(
                         opened=True,
                         mode="webview",
                         url=url,
-                        message="桌面窗口已在运行。",
+                        message=(
+                            "已恢复并置前桌面窗口。"
+                            if restored
+                            else "桌面窗口正在启动。"
+                        ),
                         pid=getattr(existing, "pid", None),
                         process=existing,
                     )
             except Exception:
                 pass
             self._desktop_window_process = None
+            self._desktop_window_control_file = None
 
         result = open_desktop_window(url)
         if getattr(result, "mode", None) == "webview":
             process = getattr(result, "process", None)
             if process is not None:
                 self._desktop_window_process = process
+                self._desktop_window_control_file = getattr(result, "control_file", None)
         return result
 
     def _on_open_desktop_window(self, icon=None, item=None) -> None:
@@ -1091,6 +1110,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--min-width", type=int, default=DEFAULT_MIN_WIDTH, help=argparse.SUPPRESS)
     parser.add_argument("--min-height", type=int, default=DEFAULT_MIN_HEIGHT, help=argparse.SUPPRESS)
     parser.add_argument("--debug-window", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--control-file", type=Path, help=argparse.SUPPRESS)
     parser.add_argument(
         "--dev",
         action="store_true",
@@ -1116,6 +1136,7 @@ def main() -> None:
                 min_width=args.min_width,
                 min_height=args.min_height,
                 debug=args.debug_window,
+                control_file=args.control_file,
             )
         )
 
@@ -1123,11 +1144,14 @@ def main() -> None:
     lock_port = _int_env("LARKSYNC_LOCK_PORT", 48901)
     production_backend_running = (
         runtime_config.runtime_profile is not RuntimeProfile.production
-        and _is_port_active(8000, host="127.0.0.1")
+        and any(
+            _is_port_active(port, host="127.0.0.1")
+            for port in RESERVED_PRODUCTION_BACKEND_PORTS
+        )
     )
     startup_issues = validate_runtime_environment(
         runtime_config,
-        backend_port=_int_env("LARKSYNC_BACKEND_PORT", 8000),
+        backend_port=_int_env("LARKSYNC_BACKEND_PORT", DEFAULT_BACKEND_PORT),
         lock_port=lock_port,
         runtime_data_dir=_data_dir(),
         explicit_data_dir=bool((os.getenv("LARKSYNC_DATA_DIR") or "").strip()),

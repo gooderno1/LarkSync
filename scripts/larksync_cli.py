@@ -12,7 +12,7 @@ from typing import Any
 from urllib import error, request
 from urllib.parse import urlencode, urlparse
 
-DEFAULT_BASE_URL = "http://localhost:8000"
+DEFAULT_BASE_URL = "http://localhost:18765"
 MODE_CHOICES = ("download_only", "bidirectional", "upload_only")
 UNIT_CHOICES = ("seconds", "hours", "days")
 TASK_MD_MODE_CHOICES = ("enhanced", "download_only", "doc_only")

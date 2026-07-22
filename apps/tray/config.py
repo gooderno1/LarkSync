@@ -34,7 +34,10 @@ _bind_host_raw = (os.getenv("LARKSYNC_BACKEND_BIND_HOST") or "").strip()
 # 如需仅本机回环访问，可显式设置 LARKSYNC_BACKEND_BIND_HOST=127.0.0.1
 _DEFAULT_BACKEND_BIND_HOST = "0.0.0.0" if sys.platform == "win32" else "127.0.0.1"
 BACKEND_HOST = _bind_host_raw or _DEFAULT_BACKEND_BIND_HOST
-BACKEND_PORT = _int_env("LARKSYNC_BACKEND_PORT", 8000)
+DEFAULT_BACKEND_PORT = 18765
+LEGACY_BACKEND_PORT = 8000
+RESERVED_PRODUCTION_BACKEND_PORTS = (DEFAULT_BACKEND_PORT, LEGACY_BACKEND_PORT)
+BACKEND_PORT = _int_env("LARKSYNC_BACKEND_PORT", DEFAULT_BACKEND_PORT)
 _client_host_raw = (os.getenv("LARKSYNC_BACKEND_CLIENT_HOST") or "").strip()
 if _client_host_raw:
     BACKEND_CLIENT_HOST = _client_host_raw
@@ -94,7 +97,7 @@ def _detect_frontend_url() -> str:
     返回生产管理面板 URL。
 
     3666 只属于显式 --dev 模式；安装版即使检测到本机正在运行 Vite，
-    也必须走 FastAPI 8000 挂载的静态前端，避免误打开开发页面。
+    也必须走 FastAPI 默认端口挂载的静态前端，避免误打开开发页面。
     """
     return BACKEND_URL
 

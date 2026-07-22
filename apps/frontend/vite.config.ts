@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 const frontendPort = Number(process.env.LARKSYNC_VITE_DEV_PORT ?? "3666");
 const backendTarget = process.env.LARKSYNC_BACKEND_TARGET
-  ?? `http://localhost:${process.env.LARKSYNC_BACKEND_PORT ?? "8000"}`;
+  ?? `http://localhost:${process.env.LARKSYNC_BACKEND_PORT ?? "18765"}`;
 const backendWsTarget = backendTarget.replace(/^http/, "ws");
 
 export default defineConfig({
@@ -26,7 +26,7 @@ export default defineConfig({
   },
   define: {
     "import.meta.env.VITE_LARKSYNC_BACKEND_PORT": JSON.stringify(
-      process.env.LARKSYNC_BACKEND_PORT ?? "8000"
+      process.env.LARKSYNC_BACKEND_PORT ?? "18765"
     ),
   },
   test: {

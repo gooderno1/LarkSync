@@ -96,3 +96,20 @@ def test_config_manager_migrates_legacy_docs_scope_to_docx_scopes(
         "drive:drive.metadata:readonly",
         "contact:contact.base:readonly",
     ]
+
+
+def test_config_manager_migrates_legacy_oauth_callback_port(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        '{"auth_redirect_uri":"http://localhost:8000/auth/callback"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    monkeypatch.setenv("LARKSYNC_DB_PATH", str(tmp_path / "larksync.db"))
+
+    ConfigManager.reset()
+    manager = ConfigManager.get()
+
+    assert manager.config.auth_redirect_uri == "http://localhost:18765/auth/callback"

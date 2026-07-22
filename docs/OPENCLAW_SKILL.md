@@ -122,7 +122,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
   --run-now
 ```
 
-若所有候选地址均不可达，通常是 Windows 侧 LarkSync 服务未启动/未监听 `:8000`，先启动后再重试。  
+若所有候选地址均不可达，通常是 Windows 侧 LarkSync 服务未启动/未监听 `:18765`，先启动后再重试。
 若你手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改为 `0.0.0.0` 或移除后重启。
 当 Windows 侧仍不可达时，`larksync_wsl_helper.py` 会输出诊断信息并停止，不会在 WSL 自动安装依赖或自动拉起后端。  
 请先启动 Windows 侧 LarkSync，再重新执行命令。

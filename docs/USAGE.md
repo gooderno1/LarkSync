@@ -55,7 +55,7 @@
   "auth_token_url": "FEISHU_AUTH_TOKEN_URL",
   "auth_client_id": "YOUR_APP_ID",
   "auth_client_secret": "YOUR_APP_SECRET",
-  "auth_redirect_uri": "http://localhost:8000/auth/callback",
+  "auth_redirect_uri": "http://localhost:18765/auth/callback",
   "auth_scopes": [
     "drive:drive",
     "docx:document",
@@ -79,7 +79,7 @@
 ```
 
 说明：
-- 回调地址统一为 `http://localhost:8000/auth/callback`。
+- 回调地址统一为 `http://localhost:18765/auth/callback`。
 - `auth_scopes` 为可选字段，默认值已内置；旧配置中的 `docs:doc` 会在运行时自动迁移到新版 Docx scopes。
 
 ### 3.3 环境变量（可覆盖）
@@ -114,7 +114,7 @@ npm run dev
 
 内部会启动：
 - Vite 前端开发服务器（`http://localhost:3666`，HMR 热重载）
-- uvicorn 后端（`http://localhost:8000`，`--reload` 热重载）
+- uvicorn 后端（`http://localhost:18765`，`--reload` 热重载）
 - 系统托盘图标
 
 改前端代码即时生效，改后端代码自动重启。退出：托盘右键"退出"或 Ctrl+C。
@@ -137,7 +137,7 @@ python scripts/build.py
 # 通用：python apps/tray/tray_app.py
 ```
 
-前后端由 FastAPI 统一服务于 `http://localhost:8000`。
+前后端由 FastAPI 统一服务于 `http://localhost:18765`。
 
 ## 5. 主要功能使用
 ### 5.1 同步任务配置
@@ -426,7 +426,7 @@ python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync
 
 说明：
 - 诊断会同时探测 `localhost` / `host.docker.internal` / default gateway / `/etc/resolv.conf` nameserver。
-- 若全部不可达，优先排查 Windows 侧 LarkSync 是否已启动并监听 `8000` 端口。
+- 若全部不可达，优先排查 Windows 侧 LarkSync 是否已启动并监听 `18765` 端口。
 - 若你手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改为 `0.0.0.0` 或移除后重启。
 - 若 Windows 侧不可达，脚本会输出诊断信息并停止，不会在 WSL 自动安装依赖或自动拉起后端。
 - 请先在 Windows 侧启动 LarkSync，再重新执行命令。

@@ -419,6 +419,16 @@ class ConfigManager:
             )
             data["auth_token_url"] = _CORRECT_TOKEN
 
+        # v0.8.2 将正式版默认端口从 8000 迁移到 18765。仅迁移精确匹配的
+        # 本地旧回调，用户自定义域名、路径或显式环境变量保持不变。
+        saved_redirect = str(data.get("auth_redirect_uri") or "").strip()
+        legacy_redirects = {
+            "http://localhost:8000/auth/callback": "http://localhost:18765/auth/callback",
+            "http://127.0.0.1:8000/auth/callback": "http://127.0.0.1:18765/auth/callback",
+        }
+        if saved_redirect in legacy_redirects and not os.getenv("LARKSYNC_AUTH_REDIRECT_URI"):
+            data["auth_redirect_uri"] = legacy_redirects[saved_redirect]
+
         if "upload_interval_value" not in data and "upload_interval_seconds" in data:
             try:
                 data["upload_interval_value"] = float(data["upload_interval_seconds"])

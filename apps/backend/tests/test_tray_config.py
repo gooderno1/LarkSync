@@ -41,7 +41,7 @@ def test_windows_default_bind_host_supports_wsl(monkeypatch):
 
     assert cfg.BACKEND_HOST == "0.0.0.0"
     assert cfg.BACKEND_CLIENT_HOST == "127.0.0.1"
-    assert cfg.BACKEND_URL == "http://127.0.0.1:8000"
+    assert cfg.BACKEND_URL == "http://127.0.0.1:18765"
 
 
 def test_non_windows_default_bind_host_is_loopback(monkeypatch):
@@ -56,7 +56,7 @@ def test_bind_host_env_override(monkeypatch):
 
     assert cfg.BACKEND_HOST == "127.0.0.1"
     assert cfg.BACKEND_CLIENT_HOST == "127.0.0.1"
-    assert cfg.BACKEND_URL == "http://127.0.0.1:8000"
+    assert cfg.BACKEND_URL == "http://127.0.0.1:18765"
 
 
 def test_client_host_env_override(monkeypatch):
@@ -69,16 +69,16 @@ def test_client_host_env_override(monkeypatch):
 
     assert cfg.BACKEND_HOST == "0.0.0.0"
     assert cfg.BACKEND_CLIENT_HOST == "192.168.50.9"
-    assert cfg.BACKEND_URL == "http://192.168.50.9:8000"
+    assert cfg.BACKEND_URL == "http://192.168.50.9:18765"
 
 
 def test_production_urls_ignore_running_vite_port(monkeypatch):
     cfg = _reload_tray_config(monkeypatch, platform="win32")
     monkeypatch.setattr(cfg, "_is_port_active", lambda port: True)
 
-    assert cfg.get_dashboard_url() == "http://127.0.0.1:8000/"
-    assert cfg.get_settings_url() == "http://127.0.0.1:8000/#settings"
-    assert cfg.get_logs_url() == "http://127.0.0.1:8000/#activity"
+    assert cfg.get_dashboard_url() == "http://127.0.0.1:18765/"
+    assert cfg.get_settings_url() == "http://127.0.0.1:18765/#settings"
+    assert cfg.get_logs_url() == "http://127.0.0.1:18765/#activity"
 
 
 def test_dev_ports_can_be_isolated_from_installed_app(monkeypatch):

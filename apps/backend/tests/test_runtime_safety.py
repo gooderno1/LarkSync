@@ -12,14 +12,14 @@ def test_snapshot_profile_requires_isolated_ports_data_and_file_token_store(tmp_
 
     issues = validate_runtime_environment(
         config,
-        backend_port=8000,
+        backend_port=18765,
         lock_port=48901,
         runtime_data_dir=tmp_path,
         explicit_data_dir=False,
         production_backend_running=True,
     )
 
-    assert any("8000" in issue for issue in issues)
+    assert any("18765" in issue for issue in issues)
     assert any("48901" in issue for issue in issues)
     assert any("LARKSYNC_DATA_DIR" in issue for issue in issues)
     assert any("file Token Store" in issue for issue in issues)
@@ -37,7 +37,7 @@ def test_live_profile_refuses_to_share_keyring_while_production_is_running(tmp_p
         production_backend_running=True,
     )
 
-    assert issues == ["正式版 8000 仍在运行，共享 keyring 的真实数据测试配置拒绝启动"]
+    assert issues == ["正式版仍在运行，共享 keyring 的真实数据测试配置拒绝启动"]
 
 
 def test_live_bidirectional_requires_allowlisted_root(tmp_path: Path) -> None:

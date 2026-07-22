@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -74,6 +75,8 @@ def test_open_desktop_window_spawns_child_process_when_webview_is_available() ->
     assert "http://127.0.0.1:8000/" in command
     assert "--debug-window" in command
     assert "--debug" not in command
+    assert "--control-file" in command
+    assert result.control_file is not None
 
 
 def test_open_desktop_window_falls_back_when_child_exits_immediately() -> None:
@@ -101,15 +104,22 @@ def test_open_desktop_window_falls_back_when_child_exits_immediately() -> None:
 def test_run_desktop_window_creates_expected_window(monkeypatch) -> None:
     events: list[tuple[str, tuple, dict]] = []
     shown_callbacks: list[object] = []
+    closing_callbacks: list[object] = []
 
     class FakeShownEvent:
         def __iadd__(self, callback):
             shown_callbacks.append(callback)
             return self
 
+    class FakeClosingEvent:
+        def __iadd__(self, callback):
+            closing_callbacks.append(callback)
+            return self
+
     class FakeWindow:
         class Events:
             shown = FakeShownEvent()
+            closing = FakeClosingEvent()
 
         events = Events()
 
@@ -142,8 +152,59 @@ def test_run_desktop_window_creates_expected_window(monkeypatch) -> None:
     assert events[0][2]["frameless"] is False
     assert events[0][2]["easy_drag"] is False
     assert events[0][2]["background_color"] == "#F5FAFF"
-    assert shown_callbacks == [desktop_window._apply_windows_titlebar_palette]
+    assert desktop_window._apply_windows_titlebar_palette in shown_callbacks
+    assert len(closing_callbacks) == 1
     assert events[1] == ("start", (), {"debug": False, "gui": "edgechromium"})
+
+
+def test_close_button_hides_window_instead_of_ending_host() -> None:
+    hidden: list[bool] = []
+
+    class FakeWindow:
+        def hide(self) -> None:
+            hidden.append(True)
+
+    callback = desktop_window._make_hide_on_close_handler(
+        FakeWindow(),
+        scheduler=lambda action: action(),
+    )
+
+    assert callback() is False
+    assert hidden == [True]
+
+
+def test_control_server_restores_and_navigates_existing_window(tmp_path: Path) -> None:
+    actions: list[tuple[str, str | None]] = []
+
+    class FakeWindow:
+        def load_url(self, url: str) -> None:
+            actions.append(("load_url", url))
+
+        def restore(self) -> None:
+            actions.append(("restore", None))
+
+        def show(self) -> None:
+            actions.append(("show", None))
+
+    control_file = tmp_path / "desktop-control.json"
+    server = desktop_window.DesktopWindowControlServer(FakeWindow(), control_file)
+    try:
+        server.start()
+        assert desktop_window.send_desktop_window_command(
+            control_file,
+            url="http://127.0.0.1:18765/#settings",
+        ) is True
+        deadline = time.time() + 1
+        while len(actions) < 3 and time.time() < deadline:
+            time.sleep(0.01)
+        assert actions == [
+            ("load_url", "http://127.0.0.1:18765/#settings"),
+            ("restore", None),
+            ("show", None),
+        ]
+    finally:
+        server.stop()
+    assert control_file.exists() is False
 
 
 def test_windows_titlebar_palette_uses_subtle_cool_contrast() -> None:
@@ -181,18 +242,26 @@ def test_tray_reuses_running_desktop_window(monkeypatch) -> None:
 
     existing = RunningProcess()
     tray._desktop_window_process = existing
+    tray._desktop_window_control_file = Path("desktop-control.json")
     opened: list[str] = []
+    commands: list[tuple[Path, str]] = []
     monkeypatch.setattr(
         tray_app,
         "open_desktop_window",
         lambda url: opened.append(url),
+    )
+    monkeypatch.setattr(
+        tray_app,
+        "send_desktop_window_command",
+        lambda path, *, url: commands.append((path, url)) or True,
     )
 
     result = tray._open_desktop_window("http://127.0.0.1:8000/#settings")
 
     assert result.mode == "webview"
     assert result.pid == 9001
-    assert result.message == "桌面窗口已在运行。"
+    assert result.message == "已恢复并置前桌面窗口。"
+    assert commands == [(Path("desktop-control.json"), "http://127.0.0.1:8000/#settings")]
     assert opened == []
 
 
@@ -212,6 +281,7 @@ def test_tray_reopens_desktop_window_after_previous_window_exited(monkeypatch) -
             return None
 
     tray._desktop_window_process = ExitedProcess()
+    tray._desktop_window_control_file = Path("old-control.json")
     new_process = NewProcess()
 
     def fake_open(url):
@@ -221,6 +291,7 @@ def test_tray_reopens_desktop_window_after_previous_window_exited(monkeypatch) -
             url=url,
             pid=new_process.pid,
             process=new_process,
+            control_file=Path("new-control.json"),
         )
 
     monkeypatch.setattr(tray_app, "open_desktop_window", fake_open)
@@ -230,6 +301,7 @@ def test_tray_reopens_desktop_window_after_previous_window_exited(monkeypatch) -
     assert result.mode == "webview"
     assert result.pid == 9002
     assert tray._desktop_window_process is new_process
+    assert tray._desktop_window_control_file == Path("new-control.json")
 
 
 def test_tray_stop_desktop_window_kills_running_process(monkeypatch) -> None:
@@ -247,6 +319,7 @@ def test_tray_stop_desktop_window_kills_running_process(monkeypatch) -> None:
             waited.append(timeout)
 
     tray._desktop_window_process = RunningProcess()
+    tray._desktop_window_control_file = Path("desktop-control.json")
     monkeypatch.setattr(tray_app, "_kill_process_tree", lambda pid: killed.append(pid))
 
     tray._stop_desktop_window()
@@ -254,6 +327,7 @@ def test_tray_stop_desktop_window_kills_running_process(monkeypatch) -> None:
     assert killed == [9001]
     assert waited == [5]
     assert tray._desktop_window_process is None
+    assert tray._desktop_window_control_file is None
 
 
 def test_tray_route_actions_prefer_desktop_window(monkeypatch) -> None:

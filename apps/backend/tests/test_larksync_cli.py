@@ -18,6 +18,10 @@ sys.modules["larksync_cli"] = cli
 spec.loader.exec_module(cli)
 
 
+def test_default_base_url_uses_dedicated_production_port() -> None:
+    assert cli.DEFAULT_BASE_URL == "http://localhost:18765"
+
+
 @pytest.fixture(autouse=True)
 def _isolate_workflow_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "WORKFLOW_RUNS_DIR", tmp_path / "workflow-runs")
@@ -702,7 +706,7 @@ def test_main_supports_workflow_execute_controls(
                 "local_path": r"D:\Knowledge\FeishuMirror",
                 "cloud_folder_token": "fld_test",
             },
-            "base_url": "http://localhost:8000",
+            "base_url": "http://localhost:18765",
             "dry_run": False,
             "from_step": "bootstrap",
             "to_step": "inspect-task",
@@ -909,7 +913,7 @@ def test_main_supports_workflow_execute_resume_options(
                 "local_path": r"D:\Knowledge\FeishuMirror",
                 "cloud_folder_token": "fld_test",
             },
-            "base_url": "http://localhost:8000",
+            "base_url": "http://localhost:18765",
             "dry_run": False,
             "from_step": None,
             "to_step": None,
