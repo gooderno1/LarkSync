@@ -70,6 +70,8 @@ class SyncRunEventService:
         run_ids: list[str] | None = None,
         order: str = "desc",
         suppress_errors: bool = True,
+        since: float | None = None,
+        until: float | None = None,
     ) -> tuple[int, list[SyncEventRecord]]:
         filters = self._build_filters(
             status=status,
@@ -79,6 +81,8 @@ class SyncRunEventService:
             task_ids=task_ids,
             run_id=run_id,
             run_ids=run_ids,
+            since=since,
+            until=until,
         )
         order_normalized = order.strip().lower()
         if order_normalized not in {"asc", "desc"}:
@@ -264,6 +268,8 @@ class SyncRunEventService:
             task_ids=[],
             run_id=run_id,
             run_ids=[],
+            since=None,
+            until=None,
         )
         stmt = select(SyncRunEvent.id).limit(1)
         if filters:
@@ -499,6 +505,8 @@ class SyncRunEventService:
         task_ids: list[str] | None,
         run_id: str,
         run_ids: list[str] | None,
+        since: float | None = None,
+        until: float | None = None,
     ) -> list[object]:
         filters: list[object] = []
         status_filters = {
@@ -522,6 +530,10 @@ class SyncRunEventService:
             filters.append(SyncRunEvent.task_id.in_(task_filters))
         if run_filters:
             filters.append(func.coalesce(SyncRunEvent.run_id, "").in_(run_filters))
+        if since is not None:
+            filters.append(SyncRunEvent.timestamp >= float(since))
+        if until is not None:
+            filters.append(SyncRunEvent.timestamp <= float(until))
         search_filter = search.strip().lower()
         if search_filter:
             pattern = f"%{search_filter}%"

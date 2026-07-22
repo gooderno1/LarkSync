@@ -150,6 +150,80 @@ class SyncRunEvent(Base):
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class ProblemRecord(Base):
+    __tablename__ = "problems"
+    __table_args__ = (
+        Index("idx_problems_state_last_seen", "state", "last_seen_at"),
+        Index("idx_problems_category_state", "category", "state"),
+        Index("idx_problems_task_state", "task_id", "state"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    category: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    state: Mapped[str] = mapped_column(String, nullable=False, default="open", index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    task_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    object_kind: Mapped[str] = mapped_column(String, nullable=False)
+    object_key: Mapped[str] = mapped_column(String, nullable=False)
+    object_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_seen_at: Mapped[float] = mapped_column(Float, nullable=False)
+    last_seen_at: Mapped[float] = mapped_column(Float, nullable=False)
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    latest_run_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    latest_event_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    classifier_version: Mapped[str] = mapped_column(String, nullable=False)
+    resolution_verification: Mapped[str | None] = mapped_column(String, nullable=True)
+    resolved_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ignored_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ProblemOccurrence(Base):
+    __tablename__ = "problem_occurrences"
+    __table_args__ = (
+        Index(
+            "idx_problem_occurrences_problem_occurred",
+            "problem_id",
+            "occurred_at",
+        ),
+        Index(
+            "idx_problem_occurrences_source",
+            "source_kind",
+            "source_id",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    problem_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    source_kind: Mapped[str] = mapped_column(String, nullable=False)
+    source_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    run_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    event_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    occurred_at: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    evidence_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+
+class ProblemActionRecord(Base):
+    __tablename__ = "problem_actions"
+    __table_args__ = (
+        Index("idx_problem_actions_problem_requested", "problem_id", "requested_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    problem_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    action_key: Mapped[str] = mapped_column(String, nullable=False)
+    requested_at: Mapped[float] = mapped_column(Float, nullable=False)
+    started_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    finished_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+    result: Mapped[str] = mapped_column(String, nullable=False, default="queued")
+    error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verification_result: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
 class SyncMeta(Base):
     __tablename__ = "sync_meta"
 

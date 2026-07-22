@@ -172,6 +172,7 @@ class SyncTaskOverviewResponse(BaseModel):
 
 
 class SyncLogEntry(BaseModel):
+    event_id: str | None = None
     task_id: str
     task_name: str
     timestamp: float

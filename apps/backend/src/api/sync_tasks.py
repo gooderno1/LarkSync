@@ -322,6 +322,8 @@ async def read_sync_logs(
     run_id: str = Query(default="", description="运行 ID 过滤"),
     run_ids: list[str] = Query(default_factory=list, description="运行 ID 多选过滤"),
     order: str = Query(default="desc", description="排序: desc=最新优先, asc=最早优先"),
+    since: float | None = Query(default=None, ge=0, description="起始 Unix 时间戳（含）"),
+    until: float | None = Query(default=None, ge=0, description="结束 Unix 时间戳（含）"),
 ) -> SyncLogResponse:
     """读取同步日志（持久化 JSONL）。"""
     config = ConfigManager.get().config
@@ -336,6 +338,8 @@ async def read_sync_logs(
         run_id=run_id,
         run_ids=run_ids,
         order=order,
+        since=since,
+        until=until,
         retention_days=int(config.sync_log_retention_days or 0),
         warn_size_mb=int(config.sync_log_warn_size_mb or 0),
         event_store=event_store,

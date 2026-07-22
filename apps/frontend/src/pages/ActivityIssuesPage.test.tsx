@@ -73,7 +73,7 @@ vi.mock("../hooks/useLogCenterTaskDiagnostics", () => ({
     hiddenTaskCount: 0,
     focusedTaskCount: 1,
     overviewQuery: { isLoading: false },
-    taskPickerOptions: [
+    sortedOverviews: [
       {
         task,
         status,
@@ -138,6 +138,18 @@ vi.mock("../hooks/useLogCenterTaskDiagnostics", () => ({
     selectedStateKey: "failed",
     refreshDiagnostics: vi.fn(),
     setDetailTab: vi.fn(),
+    eventFilter: "all",
+    setEventFilter: vi.fn(),
+    eventSearch: "",
+    setEventSearch: vi.fn(),
+    eventPage: 1,
+    setEventPage: vi.fn(),
+    eventPageSize: 30,
+    setEventPageSize: vi.fn(),
+    setEventTimeRange: vi.fn(),
+    selectedTimelineEntries: [event],
+    selectedTimelineTotal: 1,
+    selectedEventsQuery: { isFetching: false },
   }),
 }));
 
@@ -149,23 +161,35 @@ describe("ActivityIssuesPage smoke", () => {
   it("renders the independent light troubleshooting workspace", () => {
     const html = renderToStaticMarkup(<ActivityIssuesPage />);
 
-    expect(html).toContain("问题概览");
-    expect(html).toContain("任务选择");
-    expect(html).toContain("运行历史");
-    expect(html).toContain("事件时间线");
-    expect(html).toContain("事件诊断");
-    expect(html).toContain('data-activity-context="true"');
-    expect(html).toContain('data-diagnostic-workspace="true"');
-    expect(html).toContain('data-activity-task-selector="true"');
-    expect(html).toContain('data-activity-run-search="true"');
-    expect(html).toContain('data-activity-error-detail="true"');
-    expect(html).toContain("grid-cols-[276px_minmax(0,1fr)_416px]");
-    expect(html).toContain("grid-cols-2");
-    expect(html).not.toContain("grid-cols-[280px_minmax(0,1fr)_400px]");
-    expect(html).not.toContain("grid grid-cols-4 gap-4");
-    expect(html).not.toContain("min-[1760px]");
-    expect(html).not.toContain("min-[1440px]");
-    expect(html).not.toContain("min-[1280px]:grid-cols-[300px_minmax(0,1fr)_320px]");
+    expect(html).toContain("活动管理");
+    expect(html).toContain("任务列表");
+    expect(html).toContain("全部事件");
+    expect(html).toContain("时间");
+    expect(html).toContain("对象");
+    expect(html).toContain('data-activity-management="true"');
+    expect(html).toContain('data-window-layout="standard"');
+    expect(html).toContain("grid-cols-[248px_minmax(720px,1fr)]");
+    expect(html).not.toContain("grid-cols-[276px_minmax(0,1fr)_416px]");
     expect(html).not.toContain("日志中心");
+  });
+
+  it("renders compact as a single event master view", () => {
+    const html = renderToStaticMarkup(<ActivityIssuesPage layoutMode="compact" />);
+
+    expect(html).toContain('data-window-layout="compact"');
+    expect(html).toContain("grid-cols-1");
+    expect(html).toContain('aria-label="选择活动任务"');
+    expect(html).toContain('aria-label="选择活动运行"');
+    expect(html).not.toContain("任务列表");
+    expect(html).not.toContain("运行列表");
+  });
+
+  it("renders wide with persistent task, run and event columns", () => {
+    const html = renderToStaticMarkup(<ActivityIssuesPage layoutMode="wide" />);
+
+    expect(html).toContain('data-window-layout="wide"');
+    expect(html).toContain("grid-cols-[248px_288px_minmax(640px,1fr)]");
+    expect(html).toContain("任务列表");
+    expect(html).toContain("运行列表");
   });
 });

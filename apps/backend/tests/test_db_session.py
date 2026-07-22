@@ -71,7 +71,7 @@ async def test_sqlite_pragmas_applied(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_init_db_creates_run_event_tables(tmp_path: Path) -> None:
+async def test_init_db_creates_run_event_and_problem_tables(tmp_path: Path) -> None:
     db_path = tmp_path / "larksync.db"
     url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
     engine = await init_db(url)
@@ -92,10 +92,27 @@ async def test_init_db_creates_run_event_tables(tmp_path: Path) -> None:
     assert "sync_runs" in tables
     assert "sync_run_events" in tables
     assert "sync_meta" in tables
+    assert "problems" in tables
+    assert "problem_occurrences" in tables
+    assert "problem_actions" in tables
     assert "idx_sync_runs_task_started_updated" in sync_run_indexes
     assert "idx_sync_run_events_run_timestamp" in sync_run_event_indexes
     assert "idx_sync_run_events_task_timestamp" in sync_run_event_indexes
     assert "idx_sync_run_events_run_status_timestamp" in sync_run_event_indexes
+
+    async with engine.begin() as conn:
+        problem_indexes = {
+            row[1]
+            for row in (await conn.execute(text("PRAGMA index_list(problems)"))).all()
+        }
+        occurrence_indexes = {
+            row[1]
+            for row in (await conn.execute(text("PRAGMA index_list(problem_occurrences)"))).all()
+        }
+    assert "idx_problems_state_last_seen" in problem_indexes
+    assert "idx_problems_category_state" in problem_indexes
+    assert "idx_problem_occurrences_problem_occurred" in occurrence_indexes
+    assert "idx_problem_occurrences_source" in occurrence_indexes
 
 
 @pytest.mark.asyncio

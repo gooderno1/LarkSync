@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "../lib/api";
@@ -33,6 +33,8 @@ export function useTaskEventTimeline({
   const [eventSearch, setEventSearch] = useState("");
   const [eventPage, setEventPage] = useState(1);
   const [eventPageSize, setEventPageSize] = useState(30);
+  const [eventSince, setEventSince] = useState<number | null>(null);
+  const [eventUntil, setEventUntil] = useState<number | null>(null);
 
   const selectedEventsQuery = useQuery<SyncLogResponse>({
     queryKey: [
@@ -44,6 +46,8 @@ export function useTaskEventTimeline({
       eventSearch,
       eventPage,
       eventPageSize,
+      eventSince,
+      eventUntil,
     ],
     queryFn: async () => {
       const raw = await apiFetch<SyncLogResponseRaw>(
@@ -54,6 +58,8 @@ export function useTaskEventTimeline({
           eventSearch,
           eventPage,
           eventPageSize,
+          since: eventSince,
+          until: eventUntil,
         }),
       );
       return mapSyncLogResponse(raw);
@@ -72,6 +78,12 @@ export function useTaskEventTimeline({
     setEventPage(1);
   }, [activeRunId, selectedTaskId]);
 
+  const setEventTimeRange = useCallback((since: number | null, until: number | null = null) => {
+    setEventSince(since);
+    setEventUntil(until);
+    setEventPage(1);
+  }, []);
+
   const selectedTimelineEntries = selectedEventsQuery.data?.items || [];
   const selectedTimelineTotal = selectedEventsQuery.data?.total || 0;
 
@@ -86,6 +98,9 @@ export function useTaskEventTimeline({
     setEventPage,
     eventPageSize,
     setEventPageSize,
+    eventSince,
+    eventUntil,
+    setEventTimeRange,
     selectedEventsQuery,
     selectedTimelineEntries,
     selectedTimelineTotal,

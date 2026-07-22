@@ -30,7 +30,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -288,11 +288,56 @@ async def _apply_schema_v1(conn) -> None:
     )
 
 
+async def _apply_schema_v2(conn) -> None:
+    await _ensure_index(
+        conn,
+        table="problems",
+        index_name="idx_problems_state_last_seen",
+        columns_sql="state, last_seen_at DESC",
+    )
+    await _ensure_index(
+        conn,
+        table="problems",
+        index_name="idx_problems_category_state",
+        columns_sql="category, state",
+    )
+    await _ensure_index(
+        conn,
+        table="problems",
+        index_name="idx_problems_task_state",
+        columns_sql="task_id, state",
+    )
+    await _ensure_index(
+        conn,
+        table="problem_occurrences",
+        index_name="idx_problem_occurrences_problem_occurred",
+        columns_sql="problem_id, occurred_at DESC",
+    )
+    await _ensure_index(
+        conn,
+        table="problem_occurrences",
+        index_name="idx_problem_occurrences_source",
+        columns_sql="source_kind, source_id",
+        unique=True,
+    )
+    await _ensure_index(
+        conn,
+        table="problem_actions",
+        index_name="idx_problem_actions_problem_requested",
+        columns_sql="problem_id, requested_at DESC",
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     SchemaMigration(
         version=1,
         description="补齐 sync_tasks/sync_links 历史列，并创建 sync_runs/sync_run_events 复合索引",
         upgrade=_apply_schema_v1,
+    ),
+    SchemaMigration(
+        version=2,
+        description="新增统一问题、出现记录和动作记录索引",
+        upgrade=_apply_schema_v2,
     ),
 ]
 
@@ -323,13 +368,15 @@ async def _ensure_index(
     table: str,
     index_name: str,
     columns_sql: str,
+    unique: bool = False,
 ) -> None:
     result = await conn.execute(text(f"PRAGMA index_list({table})"))
     indexes = {str(row[1]) for row in result}
     if index_name in indexes:
         return
+    qualifier = "UNIQUE " if unique else ""
     await conn.execute(
-        text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table} ({columns_sql})")
+        text(f"CREATE {qualifier}INDEX IF NOT EXISTS {index_name} ON {table} ({columns_sql})")
     )
 
 

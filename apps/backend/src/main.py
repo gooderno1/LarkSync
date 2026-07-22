@@ -20,6 +20,7 @@ from src.api import (
     conflicts_router,
     drive_router,
     events_router,
+    problems_router,
     system_router,
     sync_router,
     watcher_router,
@@ -36,6 +37,7 @@ from src.core.config import AppConfig, ConfigManager, RuntimeProfile
 from src.core.paths import bundle_root
 from src.db.session import init_db
 from src.services.conflict_service import ConflictService
+from src.services.problem_service import ProblemService
 from src.services.sync_log_maintenance_service import SyncLogMaintenanceService
 from src.services.sync_run_service import SyncRunService
 from src.services.sync_scheduler import SyncScheduler
@@ -73,6 +75,7 @@ def _runtime_mutation_denied(config: AppConfig, method: str, path: str) -> bool:
 
 sync_scheduler = SyncScheduler(runner=sync_runner, task_service=sync_task_service)
 conflict_service = ConflictService()
+problem_service = ProblemService()
 log_maintenance_service = SyncLogMaintenanceService(
     run_event_service=run_event_service,
     event_store=event_store,
@@ -124,10 +127,19 @@ def _build_lifespan(
         await log_maintenance_service_instance.start()
         await sync_scheduler_instance.start()
         await update_scheduler_instance.start()
+        problem_backfill_task = asyncio.create_task(
+            _backfill_problem_sources(app),
+            name="problem-source-backfill",
+        )
         _log_frontend_mount_status()
         try:
             yield
         finally:
+            problem_backfill_task.cancel()
+            try:
+                await problem_backfill_task
+            except asyncio.CancelledError:
+                pass
             await log_maintenance_service_instance.stop()
             await sync_scheduler_instance.stop()
             await update_scheduler_instance.stop()
@@ -136,6 +148,25 @@ def _build_lifespan(
                 await close_runner()
 
     return lifespan
+
+
+async def _backfill_problem_sources(app: FastAPI) -> None:
+    backfill = getattr(app.state.problem_service, "backfill_sources", None)
+    if not callable(backfill):
+        return
+    await asyncio.sleep(0)
+    try:
+        result = await backfill(batch_size=1000)
+        if result.events_seen:
+            logger.info(
+                "统一问题历史回溯完成: events={}, conflicts={}",
+                result.events_seen,
+                result.conflicts_seen,
+            )
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("统一问题历史回溯失败，后续刷新将继续增量处理")
 
 
 def _configure_static_frontend_routes(app: FastAPI) -> None:
@@ -162,7 +193,7 @@ def _configure_static_frontend_routes(app: FastAPI) -> None:
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str):
-        if full_path.startswith(("auth/", "config/", "conflicts/", "drive/",
+        if full_path.startswith(("auth/", "config/", "conflicts/", "problems/", "drive/",
                                   "sync/", "watcher/", "system/", "ws/",
                                   "health", "tray/", "docs", "openapi")):
             return HTMLResponse("Not found", status_code=404)
@@ -181,6 +212,7 @@ def create_app(
     sync_runner_service=sync_runner,
     sync_task_service_instance=sync_task_service,
     conflict_service_instance=conflict_service,
+    problem_service_instance=problem_service,
     sync_scheduler_instance=sync_scheduler,
     log_maintenance_service_instance=log_maintenance_service,
     update_scheduler_instance=update_scheduler,
@@ -263,6 +295,7 @@ def create_app(
     app.state.sync_runner = sync_runner_service
     app.state.sync_task_service = sync_task_service_instance
     app.state.conflict_service = conflict_service_instance
+    app.state.problem_service = problem_service_instance
     app.state.log_maintenance_service = log_maintenance_service_instance
     app.state.update_scheduler = update_scheduler_instance
 
@@ -281,6 +314,7 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(config_router)
     app.include_router(conflicts_router)
+    app.include_router(problems_router)
     app.include_router(drive_router)
     app.include_router(watcher_router)
     app.include_router(events_router)

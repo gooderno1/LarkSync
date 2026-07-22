@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { SyncTaskOverview } from "../types";
 import {
@@ -53,9 +53,9 @@ export function useTaskDiagnosticsSelection({
     [visibleOverviews, taskPickerQuery],
   );
 
-  const selectTask = (taskId: string) => {
+  const selectTask = useCallback((taskId: string) => {
     setSelectedTaskId(taskId);
-  };
+  }, []);
 
   return {
     selectedTaskId,

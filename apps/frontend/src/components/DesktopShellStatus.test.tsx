@@ -116,7 +116,8 @@ describe("desktop shell status", () => {
 
     expect(html).toContain("w-[228px]");
     expect(html).toContain("/logo-horizontal.png");
-    expect(html).toContain("活动与问题");
+    expect(html).toContain("活动管理");
+    expect(html).toContain("问题中心");
     expect(html).toContain('data-sidebar-badge="conflicts"');
     expect(html).not.toContain('data-sidebar-badge="activity"');
     expect(html).toContain("w-[140px]");

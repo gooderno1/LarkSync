@@ -31,6 +31,7 @@ describe("log center helpers", () => {
       total: 1,
       items: [
         {
+          eventId: null,
           taskId: "task-1",
           taskName: "日志任务",
           timestamp: 100,

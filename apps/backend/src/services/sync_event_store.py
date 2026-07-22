@@ -84,6 +84,8 @@ class SyncEventStore:
         run_id: str = "",
         run_ids: list[str] | None = None,
         order: str = "desc",
+        since: float | None = None,
+        until: float | None = None,
     ) -> tuple[int, list[SyncEventRecord]]:
         max_items = offset + limit
         total = 0
@@ -117,6 +119,10 @@ class SyncEventStore:
             if task_filters and record.task_id not in task_filters:
                 return False
             if run_filters and (record.run_id or "") not in run_filters:
+                return False
+            if since is not None and record.timestamp < float(since):
+                return False
+            if until is not None and record.timestamp > float(until):
                 return False
             if not search_filter:
                 return True

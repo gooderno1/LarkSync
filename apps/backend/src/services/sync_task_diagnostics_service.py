@@ -29,6 +29,7 @@ CURRENT_FILE_EXCLUDED_STATUSES = {"started", "success", "failed", "cancelled"}
 
 def sync_log_entry_from_record(record: SyncEventRecord) -> SyncLogEntry:
     return SyncLogEntry(
+        event_id=SyncRunEventService.build_event_id(record),
         task_id=record.task_id,
         task_name=record.task_name,
         timestamp=record.timestamp,
@@ -65,6 +66,8 @@ async def read_sync_events_db_first(
     run_id: str = "",
     run_ids: list[str] | None = None,
     order: str = "desc",
+    since: float | None = None,
+    until: float | None = None,
 ) -> tuple[int, list[SyncEventRecord]]:
     backfill_state = await get_persisted_run_event_backfill_state(
         run_event_service=run_event_service,
@@ -83,6 +86,8 @@ async def read_sync_events_db_first(
             run_ids=run_ids,
             order=order,
             suppress_errors=False,
+            since=since,
+            until=until,
         )
     except Exception:
         logger.exception("运行事件数据库查询失败，回退 JSONL")
@@ -97,6 +102,8 @@ async def read_sync_events_db_first(
             run_id=run_id,
             run_ids=run_ids,
             order=order,
+            since=since,
+            until=until,
         )
 
     if total > 0:
@@ -122,6 +129,8 @@ async def read_sync_events_db_first(
         run_id=run_id,
         run_ids=run_ids,
         order=order,
+        since=since,
+        until=until,
     )
 
 
@@ -640,6 +649,8 @@ async def build_sync_log_response(
     run_id: str,
     run_ids: list[str],
     order: str,
+    since: float | None,
+    until: float | None,
     retention_days: int,
     warn_size_mb: int,
     event_store: SyncEventStore,
@@ -658,6 +669,8 @@ async def build_sync_log_response(
         run_id=run_id,
         run_ids=run_ids,
         order=order,
+        since=since,
+        until=until,
     )
     items = [sync_log_entry_from_record(entry) for entry in entries]
     file_size = event_store.file_size_bytes()

@@ -34,8 +34,8 @@ type SidebarItem = {
 const workspaceItems: SidebarItem[] = [
   { id: "dashboard", label: "总览", icon: IconHome },
   { id: "tasks", label: "同步任务", icon: IconSyncCircle },
-  { id: "activity", label: "活动与问题", icon: IconActivityList },
-  { id: "conflicts", label: "冲突处理", icon: IconConflicts, badgeKey: "conflicts" },
+  { id: "activity", label: "活动管理", icon: IconActivityList },
+  { id: "conflicts", label: "问题中心", icon: IconConflicts, badgeKey: "conflicts" },
 ];
 
 const systemItems: SidebarItem[] = [

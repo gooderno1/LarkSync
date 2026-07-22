@@ -11,6 +11,8 @@ describe("task event timeline helpers", () => {
       eventSearch: "  delete failed  ",
       eventPage: 2,
       eventPageSize: 30,
+      since: 100,
+      until: 200,
     });
 
     expect(path).toContain("/sync/logs/sync?");
@@ -22,6 +24,8 @@ describe("task event timeline helpers", () => {
     expect(path).toContain("statuses=delete_pending");
     expect(path).toContain("statuses=delete_failed");
     expect(path).toContain("search=delete+failed");
+    expect(path).toContain("since=100");
+    expect(path).toContain("until=200");
   });
 
   it("enables polling only for running event detail timelines", () => {

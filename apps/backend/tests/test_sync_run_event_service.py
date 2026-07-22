@@ -76,6 +76,23 @@ async def test_sync_run_event_service_append_and_filter(tmp_path) -> None:
     assert total == 1
     assert items[0].message == "boom"
 
+    total, items = await service.read_events(
+        limit=10,
+        offset=0,
+        status="",
+        statuses=[],
+        search="",
+        task_id="",
+        task_ids=[],
+        run_id="",
+        run_ids=[],
+        order="asc",
+        since=1.5,
+        until=2.5,
+    )
+    assert total == 1
+    assert [item.timestamp for item in items] == [2.0]
+
 
 @pytest.mark.asyncio
 async def test_sync_run_event_service_backfills_jsonl_idempotently(tmp_path) -> None:

@@ -12,6 +12,7 @@ export type SyncLogResponse = {
 };
 
 export type SyncLogEntryRaw = {
+  event_id?: string | null;
   task_id: string;
   task_name: string;
   timestamp: number;
@@ -39,6 +40,7 @@ export type SyncTaskDiagnosticsRaw = Omit<SyncTaskDiagnostics, "recent_events" |
 
 export function mapSyncLogEntry(item: SyncLogEntryRaw): SyncLogEntry {
   return {
+    eventId: item.event_id ?? null,
     taskId: item.task_id,
     taskName: item.task_name,
     timestamp: item.timestamp,

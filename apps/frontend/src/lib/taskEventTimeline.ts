@@ -7,6 +7,8 @@ type BuildTaskEventQueryPathOptions = {
   eventSearch: string;
   eventPage: number;
   eventPageSize: number;
+  since?: number | null;
+  until?: number | null;
 };
 
 export function buildTaskEventQueryPath({
@@ -16,6 +18,8 @@ export function buildTaskEventQueryPath({
   eventSearch,
   eventPage,
   eventPageSize,
+  since,
+  until,
 }: BuildTaskEventQueryPathOptions): string {
   const params = new URLSearchParams();
   params.set("limit", String(eventPageSize));
@@ -28,6 +32,8 @@ export function buildTaskEventQueryPath({
   }
   const trimmedSearch = eventSearch.trim();
   if (trimmedSearch) params.set("search", trimmedSearch);
+  if (since != null) params.set("since", String(since));
+  if (until != null) params.set("until", String(until));
   return `/sync/logs/sync?${params.toString()}`;
 }
 

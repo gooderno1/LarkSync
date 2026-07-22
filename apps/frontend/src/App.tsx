@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { useConfig } from "./hooks/useConfig";
-import { useConflicts } from "./hooks/useConflicts";
+import { useProblemSummary } from "./hooks/useProblems";
 import { Sidebar } from "./components/Sidebar";
 import { DesktopTopBar } from "./components/DesktopTopBar";
 import { OnboardingWizard } from "./components/OnboardingWizard";
@@ -18,11 +18,13 @@ import { TaskDetailPage } from "./pages/TaskDetailPage";
 import { TasksPage } from "./pages/TasksPage";
 import { ConfirmDialogProvider } from "./components/ui/confirm-dialog";
 import { useDesktopViewportScale } from "./hooks/useDesktopViewportScale";
+import { useWindowLayoutMode } from "./hooks/useWindowLayoutMode";
 import type { NavKey } from "./types";
 
 const navKeys: NavKey[] = ["dashboard", "tasks", "activity", "conflicts", "settings", "maintenance"];
 const legacyHashRoutes: Record<string, NavKey> = {
   logcenter: "activity",
+  problems: "conflicts",
 };
 
 export function getNavKeyFromHash(hash?: string): NavKey | null {
@@ -72,9 +74,10 @@ export default function App() {
   /* ---------- 连接与配置状态检测 ---------- */
   const { connected, loading: authLoading } = useAuth();
   const { config, configLoading } = useConfig();
-  const { conflicts } = useConflicts();
-  const unresolvedConflicts = conflicts.filter((c) => !c.resolved).length;
+  const { summary: problemSummary } = useProblemSummary();
+  const unresolvedConflicts = problemSummary?.unresolved ?? 0;
   const desktopViewport = useDesktopViewportScale();
+  const windowLayout = useWindowLayoutMode();
 
   /* ---------- 加载中：全屏骨架屏 ---------- */
   if (authLoading || configLoading) {
@@ -104,6 +107,8 @@ export default function App() {
         <div
           className="overflow-hidden bg-[#f5f9ff]"
           data-desktop-scale={desktopViewport.scale.toFixed(3)}
+          data-window-layout={windowLayout.mode}
+          data-window-low-height={windowLayout.lowHeight ? "true" : "false"}
           style={desktopViewport.canvasStyle}
         >
           <OnboardingWizard
@@ -122,6 +127,8 @@ export default function App() {
       <div
         className="overflow-hidden bg-white"
         data-desktop-scale={desktopViewport.scale.toFixed(3)}
+        data-window-layout={windowLayout.mode}
+        data-window-low-height={windowLayout.lowHeight ? "true" : "false"}
         style={desktopViewport.canvasStyle}
       >
         <div className="flex h-full w-full overflow-hidden">
@@ -142,8 +149,8 @@ export default function App() {
               {activeTab === "tasks" && !selectedTaskId ? (
                 <TasksPage onOpenTaskDetail={setSelectedTaskId} />
               ) : null}
-              {activeTab === "activity" ? <ActivityIssuesPage /> : null}
-              {activeTab === "conflicts" ? <ConflictResolutionPage /> : null}
+              {activeTab === "activity" ? <ActivityIssuesPage layoutMode={windowLayout.mode} /> : null}
+              {activeTab === "conflicts" ? <ConflictResolutionPage layoutMode={windowLayout.mode} /> : null}
               {activeTab === "settings" ? <SettingsPage /> : null}
               {activeTab === "maintenance" ? <MaintenancePage /> : null}
             </main>

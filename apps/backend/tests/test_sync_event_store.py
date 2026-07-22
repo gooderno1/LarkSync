@@ -185,6 +185,19 @@ def test_sync_event_store_order_and_pagination(tmp_path: Path) -> None:
     )
     assert [item.timestamp for item in items] == [3.0]
 
+    total, items = store.read_events(
+        limit=10,
+        offset=0,
+        status="",
+        search="",
+        task_id="",
+        order="asc",
+        since=1.5,
+        until=3.5,
+    )
+    assert total == 2
+    assert [item.timestamp for item in items] == [2.0, 3.0]
+
     with log_file.open("a", encoding="utf-8") as handle:
         handle.write("{not-json}\n")
 

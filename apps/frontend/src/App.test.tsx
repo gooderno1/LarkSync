@@ -20,9 +20,9 @@ vi.mock("./hooks/useConfig", () => ({
   }),
 }));
 
-vi.mock("./hooks/useConflicts", () => ({
-  useConflicts: () => ({
-    conflicts: [],
+vi.mock("./hooks/useProblems", () => ({
+  useProblemSummary: () => ({
+    summary: { unresolved: 0 },
   }),
 }));
 
@@ -75,6 +75,7 @@ describe("App smoke", () => {
     expect(getNavKeyFromHash("#settings")).toBe("settings");
     expect(getNavKeyFromHash("#activity")).toBe("activity");
     expect(getNavKeyFromHash("#logcenter")).toBe("activity");
+    expect(getNavKeyFromHash("#problems?category=conflict")).toBe("conflicts");
     expect(getNavKeyFromHash("#unknown")).toBeNull();
   });
 
