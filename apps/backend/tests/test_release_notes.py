@@ -128,6 +128,36 @@ def test_parse_development_log_and_render_detailed_sections() -> None:
     assert "- 调整界面 A1" in markdown
 
 
+def test_parse_development_log_supports_current_readability_headings() -> None:
+    development_log = """
+# DEVELOPMENT LOG
+
+## v0.8.3-dev.4 (2026-07-22)
+
+- 开发原因：
+  - 旧页面不能展示全部任务。
+- 实现方式：
+  - 页面拆分为活动管理和问题中心。
+- 当前结果：
+  - 活动管理现在展示全部任务并分页查询事件。
+  - 问题中心只渲染后端允许的动作。
+- 验证方式：
+  - 后端 583 项测试通过。
+- 遗留问题：
+  - 真实写动作仅在专用测试目录执行。
+""".strip()
+
+    sections = release_notes.parse_development_log(development_log)
+
+    assert len(sections) == 1
+    assert sections[0].goals == ["旧页面不能展示全部任务。"]
+    assert sections[0].results == [
+        "活动管理现在展示全部任务并分页查询事件。",
+        "问题中心只渲染后端允许的动作。",
+    ]
+    assert sections[0].tests == ["后端 583 项测试通过。"]
+
+
 def test_render_release_notes_appends_asset_checksums() -> None:
     markdown = release_notes.render_release_notes(
         target_version="v0.5.51",

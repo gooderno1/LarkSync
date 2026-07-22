@@ -114,14 +114,17 @@ def parse_development_log(text: str) -> list[DevelopmentLogSection]:
         if not current_version:
             continue
         stripped = line.strip()
-        if stripped == "- 目标：":
+        if stripped in {"- 目标：", "- 开发原因："}:
             active_bucket = goals
             continue
-        if stripped == "- 结果：":
+        if stripped in {"- 结果：", "- 当前结果："}:
             active_bucket = results
             continue
-        if stripped == "- 测试：":
+        if stripped in {"- 测试：", "- 验证方式："}:
             active_bucket = tests
+            continue
+        if stripped in {"- 实现方式：", "- 遗留问题："}:
+            active_bucket = None
             continue
         if active_bucket is not None and stripped.startswith("- "):
             active_bucket.append(stripped[2:].strip())
