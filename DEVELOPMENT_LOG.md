@@ -13,11 +13,15 @@
   - `v0.8.3` 被指定为活动管理和统一问题中心的首个稳定版本。
   - 正式版自动更新继续忽略 `-dev` 标签，只会在 `v0.8.3` 正式 Release 和对应平台安装资产可用后向 `v0.8.2` 提示升级。
   - 开发预发布 `v0.8.3-dev.4` 保留，便于区分预发布测试与正式渠道资产。
+  - GitHub Latest 已指向非预发布 `v0.8.3`；Windows、macOS arm64、macOS x86_64 三个平台安装包及三个 SHA256 文件均为 uploaded。
 - 验证方式：
   - `v0.8.3-dev.4` GitHub 质量门通过：后端测试、Windows 静默安装 smoke、前端 Lint、类型检查、测试和生产构建均成功。
   - 正式版发布提交仅修改版本元数据、发布记录和发布说明解析兼容；业务源码与已通过预发布质量门的提交一致。
+  - 正式工作流 `29902976473` 全部通过；Windows NSIS 与两个 macOS DMG 均完成构建、安装启动 smoke、校验生成和 Release 上传。
+  - 使用项目 `UpdateService` 做只读线上检查：Latest 返回 `v0.8.3`，`is_newer_version("v0.8.3", "v0.8.2")` 为真，Windows 选择 `LarkSync-Setup-v0.8.3.exe`。
+  - Windows 校验文件解析为 `c0bb8777581c18e82503e8068cbb371de86c4d247a8377e45e8e09f2f401d322`，与 GitHub Release 资产 digest 一致。
 - 遗留问题：
-  - 正式标签推送后仍需等待三个平台安装资产上传完成，并确认 `/releases/latest` 与自动更新 API 均指向 `v0.8.3`。
+  - 三个平台并行上传会各自覆盖 Release 正文的校验表；本次已在工作流结束后手动恢复三平台完整 SHA256。后续应增加统一的 Release 收尾 job，避免依赖人工修正文档。
 
 ## v0.8.3-dev.4 (2026-07-22)
 
