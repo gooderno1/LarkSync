@@ -89,10 +89,10 @@ vi.mock("../hooks/useLogCenterTaskDiagnostics", () => ({
           skipped: 0,
           uploaded: 2,
           downloaded: 3,
-          deleted: 0,
+          deleted: 4,
           conflicts: 1,
-          delete_pending: 0,
-          delete_failed: 0,
+          delete_pending: 2,
+          delete_failed: 1,
         },
         current_file: null,
       },
@@ -117,10 +117,10 @@ vi.mock("../hooks/useLogCenterTaskDiagnostics", () => ({
           skipped: 0,
           uploaded: 2,
           downloaded: 3,
-          deleted: 0,
+          deleted: 4,
           conflicts: 1,
-          delete_pending: 0,
-          delete_failed: 0,
+          delete_pending: 2,
+          delete_failed: 1,
         },
         current_file: null,
       },
@@ -194,5 +194,6 @@ describe("ActivityIssuesPage smoke", () => {
     expect(html).toContain("grid-cols-[248px_288px_minmax(640px,1fr)]");
     expect(html).toContain("任务列表");
     expect(html).toContain("运行列表");
+    expect(html).toContain("上 2 · 下 3 · 删 4 · 待删 2 · 删失败 1 · 异常 1");
   });
 });

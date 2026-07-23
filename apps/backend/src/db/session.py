@@ -30,7 +30,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -391,6 +391,27 @@ async def _apply_schema_v3(conn) -> None:
     )
 
 
+async def _apply_schema_v4(conn) -> None:
+    await conn.execute(
+        text(
+            """
+            UPDATE sync_runs
+            SET has_activity = 0,
+                run_kind = 'legacy_check'
+            WHERE state = 'success'
+              AND last_error IS NULL
+              AND uploaded_files = 0
+              AND downloaded_files = 0
+              AND deleted_files = 0
+              AND conflict_files = 0
+              AND delete_pending_files = 0
+              AND delete_failed_files = 0
+              AND failed_files = 0
+            """
+        )
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     SchemaMigration(
         version=1,
@@ -406,6 +427,11 @@ _SCHEMA_MIGRATIONS = [
         version=3,
         description="区分检测与活动运行，并增加问题恢复事实和自动结案字段",
         upgrade=_apply_schema_v3,
+    ),
+    SchemaMigration(
+        version=4,
+        description="重新分类被误标为活动的历史空运行",
+        upgrade=_apply_schema_v4,
     ),
 ]
 

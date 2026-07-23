@@ -30,6 +30,8 @@ async def test_tombstone_create_refresh_keeps_earliest_expire(tmp_path) -> None:
     )
 
     assert first.id == second.id
+    assert first.created is True
+    assert second.created is False
     assert second.expire_at == 100.0
 
 

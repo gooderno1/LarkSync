@@ -602,6 +602,8 @@ class SyncTaskRunner:
             ready_paths = [Path(path) for path in sorted(ready_keys)]
             for path in ready_keys:
                 pending.pop(path, None)
+        if ready_paths:
+            ready_paths = await self._filter_unchanged_ready_paths(task, ready_paths)
         if not ready_paths and not has_pending_tombstone:
             if self._check_state_service is not None:
                 now = time.time()
@@ -910,8 +912,6 @@ class SyncTaskRunner:
                     delete_pending_files=status.delete_pending_files,
                     delete_failed_files=status.delete_failed_files,
                     last_error=status.last_error,
-                    run_kind="activity",
-                    has_activity=True,
                 )
         except Exception:
             logger.exception(
@@ -1596,6 +1596,45 @@ class SyncTaskRunner:
 
     async def _has_pending_tombstones(self, task_id: str) -> bool:
         return await self._delete_sync_service.has_pending_tombstones(task_id)
+
+    async def _filter_unchanged_ready_paths(
+        self,
+        task: SyncTaskItem,
+        paths: list[Path],
+    ) -> list[Path]:
+        if not paths:
+            return []
+        links = await self._link_service.list_by_task(task.id)
+        link_by_path = {
+            self._normalize_local_path_key(link.local_path): link for link in links
+        }
+        changed: list[Path] = []
+        filtered_count = 0
+        for path in paths:
+            link = link_by_path.get(self._normalize_local_path_key(path))
+            if link is None or link.local_size is None or link.local_mtime is None:
+                changed.append(path)
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                changed.append(path)
+                continue
+            if (
+                path.is_file()
+                and stat.st_size == link.local_size
+                and abs(stat.st_mtime - link.local_mtime) <= 0.001
+            ):
+                filtered_count += 1
+                continue
+            changed.append(path)
+        if filtered_count:
+            logger.info(
+                "本地签名未变化，跳过周期上传: task_id={} skipped={}",
+                task.id,
+                filtered_count,
+            )
+        return changed
 
     @staticmethod
     def _build_cloud_revision(

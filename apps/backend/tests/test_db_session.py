@@ -13,8 +13,10 @@ from src.db.session import (
     _sqlite_literal,
     create_engine,
     dispose_engines,
+    get_session_maker,
     init_db,
 )
+from src.services.sync_run_service import SyncRunService
 
 
 def test_sqlite_literal_string() -> None:
@@ -178,3 +180,52 @@ async def test_init_db_upgrades_legacy_schema_with_versioned_migrations(tmp_path
     assert {"local_hash", "cloud_revision", "resource_sync_revision"}.issubset(sync_link_columns)
     assert "idx_sync_runs_task_started_updated" in sync_run_indexes
     assert version == str(CURRENT_SCHEMA_VERSION)
+
+
+@pytest.mark.asyncio
+async def test_schema_v4_reclassifies_historical_empty_activity_runs(tmp_path: Path) -> None:
+    db_path = tmp_path / "v3-empty-runs.db"
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+    engine = await init_db(url)
+    service = SyncRunService(session_maker=get_session_maker(url))
+    await service.finish_run(
+        run_id="historical-empty",
+        task_id="task-1",
+        trigger_source="scheduled_upload",
+        state="success",
+        started_at=10.0,
+        finished_at=11.0,
+        last_event_at=11.0,
+        total_files=0,
+        completed_files=0,
+        failed_files=0,
+        skipped_files=0,
+        uploaded_files=0,
+        downloaded_files=0,
+        deleted_files=0,
+        conflict_files=0,
+        delete_pending_files=0,
+        delete_failed_files=0,
+        last_error=None,
+        run_kind="activity",
+        has_activity=True,
+    )
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE sync_meta SET value='3' WHERE key='schema_version'")
+        )
+    await init_db(url)
+
+    async with engine.begin() as conn:
+        row = (
+            await conn.execute(
+                text(
+                    "SELECT run_kind, has_activity FROM sync_runs "
+                    "WHERE run_id='historical-empty'"
+                )
+            )
+        ).one()
+    await dispose_engines()
+
+    assert row.run_kind == "legacy_check"
+    assert row.has_activity == 0

@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-07-23] v0.8.7-dev.1 fix(sync): preserve schedule and hide no-op activity
 [2026-07-22] v0.8.6 release: v0.8.6 startup background maintenance hotfix
 [2026-07-22] v0.8.6-dev.1 fix(startup): 修复大历史库升级后问题历史重放与 1.16 GB JSONL 重复回填竞争 SQLite 导致启动、健康检查和页面请求等待 44–66 秒；新增 v4 实时问题游标并保留 v3 历史断点，已有数据库事件时将冗余 JSONL 回填对齐文件尾，实时批次降为 20 且只加载相关问题，启动准备异常降级到后台维护
 [2026-07-22] v0.8.5 release: v0.8.5 activity and problem data availability

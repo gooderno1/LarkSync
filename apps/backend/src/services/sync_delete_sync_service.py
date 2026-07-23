@@ -70,7 +70,10 @@ class SyncDeleteSyncService:
 
     async def has_pending_tombstones(self, task_id: str) -> bool:
         try:
-            pending = await self._tombstone_service.list_pending(task_id)
+            pending = await self._tombstone_service.list_pending(
+                task_id,
+                before=time.time(),
+            )
         except Exception:
             logger.exception("读取删除墓碑失败: task_id={}", task_id)
             return False
@@ -98,7 +101,7 @@ class SyncDeleteSyncService:
             return False
         expire_at = time.time() + grace_seconds
         try:
-            await self._tombstone_service.create_or_refresh(
+            tombstone = await self._tombstone_service.create_or_refresh(
                 task_id=task.id,
                 local_path=str(local_path),
                 cloud_token=link.cloud_token,
@@ -113,6 +116,8 @@ class SyncDeleteSyncService:
                 task.id,
                 local_path,
             )
+            return False
+        if not getattr(tombstone, "created", True):
             return False
         record_event(
             status,
@@ -164,7 +169,7 @@ class SyncDeleteSyncService:
             if link.updated_at <= 0 and not link.local_hash:
                 continue
             try:
-                await self._tombstone_service.create_or_refresh(
+                tombstone = await self._tombstone_service.create_or_refresh(
                     task_id=task.id,
                     local_path=link.local_path,
                     cloud_token=link.cloud_token,
@@ -180,15 +185,16 @@ class SyncDeleteSyncService:
                     link.local_path,
                 )
                 continue
-            record_event(
-                status,
-                SyncFileEvent(
-                    path=link.local_path,
-                    status="delete_pending",
-                    message="检测到本地已删除，待处理删除同步",
-                ),
-                task,
-            )
+            if getattr(tombstone, "created", True):
+                record_event(
+                    status,
+                    SyncFileEvent(
+                        path=link.local_path,
+                        status="delete_pending",
+                        message="检测到本地已删除，待处理删除同步",
+                    ),
+                    task,
+                )
             if link.cloud_type == "folder":
                 missing_folder_roots.append(link.local_path)
 
@@ -225,7 +231,7 @@ class SyncDeleteSyncService:
             if is_descendant_of_missing_folder:
                 continue
             try:
-                await self._tombstone_service.create_or_refresh(
+                tombstone = await self._tombstone_service.create_or_refresh(
                     task_id=task.id,
                     local_path=link.local_path,
                     cloud_token=link.cloud_token,
@@ -241,15 +247,16 @@ class SyncDeleteSyncService:
                     link.local_path,
                 )
                 continue
-            record_event(
-                status,
-                SyncFileEvent(
-                    path=link.local_path,
-                    status="delete_pending",
-                    message="检测到云端已删除，待处理本地删除",
-                ),
-                task,
-            )
+            if getattr(tombstone, "created", True):
+                record_event(
+                    status,
+                    SyncFileEvent(
+                        path=link.local_path,
+                        status="delete_pending",
+                        message="检测到云端已删除，待处理本地删除",
+                    ),
+                    task,
+                )
             if link.cloud_type == "folder":
                 missing_folder_roots.append(link.local_path)
 
@@ -599,6 +606,7 @@ class SyncDeleteSyncService:
             "file already deleted",
             "file not found",
             "resource not found",
+            "not found. token=",
             "not exist",
         )
         return any(marker in lowered for marker in markers)

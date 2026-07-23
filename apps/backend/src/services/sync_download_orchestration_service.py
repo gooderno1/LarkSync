@@ -142,7 +142,7 @@ class SyncDownloadOrchestrationService:
             folders = list(self._flatten_folders(tree))
             await self._sync_cloud_folder_links(task, folders)
             files = list(self._flatten_files(tree))
-            logger.info(
+            logger.debug(
                 "下载阶段: task_id={} folders={} files={}",
                 task.id,
                 len(folders),

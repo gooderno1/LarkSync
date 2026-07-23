@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from datetime import datetime, time as dt_time, timedelta
 
@@ -8,6 +9,7 @@ from loguru import logger
 
 from src.core.config import ConfigManager, SyncIntervalUnit
 from src.services.sync_runner import SyncTaskRunner
+from src.services.sync_schedule_checkpoint_service import SyncScheduleCheckpointService
 from src.services.sync_task_service import SyncTaskService, SyncTaskItem
 
 
@@ -27,6 +29,7 @@ class SyncScheduler:
         runner: SyncTaskRunner,
         task_service: SyncTaskService,
         config_manager: ConfigManager | None = None,
+        checkpoint_service: SyncScheduleCheckpointService | None = None,
         startup_grace_seconds: float = 12.0,
         worker_stagger_seconds: float = 0.75,
         max_concurrent_scheduled_runs: int = 2,
@@ -34,6 +37,7 @@ class SyncScheduler:
         self._runner = runner
         self._task_service = task_service
         self._config_manager = config_manager or ConfigManager.get()
+        self._checkpoint_service = checkpoint_service or SyncScheduleCheckpointService()
         self._stop_event = asyncio.Event()
         self._upload_task: asyncio.Task[None] | None = None
         self._download_task: asyncio.Task[None] | None = None
@@ -178,6 +182,7 @@ class SyncScheduler:
             return
         schedule_key: tuple[object, ...] | None = None
         last_daily_run: datetime | None = None
+        interval_schedule_initialized = False
         while not self._stop_event.is_set():
             task = self._upload_task_meta.get(task_id)
             if task is None or not _should_upload(task):
@@ -192,15 +197,34 @@ class SyncScheduler:
             if key != schedule_key:
                 schedule_key = key
                 last_daily_run = None
+                interval_schedule_initialized = False
             if snapshot.upload_interval_unit in {
                 SyncIntervalUnit.seconds,
                 SyncIntervalUnit.hours,
             }:
-                async with self._run_semaphore:
-                    await self._runner.run_scheduled_upload(task)
                 interval_seconds = _interval_to_seconds(
                     snapshot.upload_interval_value, snapshot.upload_interval_unit
                 )
+                if not interval_schedule_initialized:
+                    interval_schedule_initialized = True
+                    if await self._wait_for_remaining_interval(
+                        task,
+                        direction="upload",
+                        interval_seconds=interval_seconds,
+                    ):
+                        return
+                    task = self._upload_task_meta.get(task_id)
+                    if task is None or not _should_upload(task):
+                        return
+                try:
+                    async with self._run_semaphore:
+                        await self._runner.run_scheduled_upload(task)
+                finally:
+                    await self._checkpoint_service.mark_attempt(
+                        task.id,
+                        "upload",
+                        time.time(),
+                    )
                 if await self._wait_for_stop(interval_seconds):
                     return
                 continue
@@ -230,6 +254,7 @@ class SyncScheduler:
             return
         schedule_key: tuple[object, ...] | None = None
         last_daily_run: datetime | None = None
+        interval_schedule_initialized = False
         while not self._stop_event.is_set():
             task = self._download_task_meta.get(task_id)
             if task is None or not _should_download(task):
@@ -243,15 +268,34 @@ class SyncScheduler:
             if key != schedule_key:
                 schedule_key = key
                 last_daily_run = None
+                interval_schedule_initialized = False
             if snapshot.download_interval_unit in {
                 SyncIntervalUnit.seconds,
                 SyncIntervalUnit.hours,
             }:
-                async with self._run_semaphore:
-                    await self._runner.run_scheduled_download(task)
                 interval_seconds = _interval_to_seconds(
                     snapshot.download_interval_value, snapshot.download_interval_unit
                 )
+                if not interval_schedule_initialized:
+                    interval_schedule_initialized = True
+                    if await self._wait_for_remaining_interval(
+                        task,
+                        direction="download",
+                        interval_seconds=interval_seconds,
+                    ):
+                        return
+                    task = self._download_task_meta.get(task_id)
+                    if task is None or not _should_download(task):
+                        return
+                try:
+                    async with self._run_semaphore:
+                        await self._runner.run_scheduled_download(task)
+                finally:
+                    await self._checkpoint_service.mark_attempt(
+                        task.id,
+                        "download",
+                        time.time(),
+                    )
                 if await self._wait_for_stop(interval_seconds):
                     return
                 continue
@@ -275,6 +319,32 @@ class SyncScheduler:
             async with self._run_semaphore:
                 await self._runner.run_scheduled_download(task)
             last_daily_run = next_run
+
+    async def _wait_for_remaining_interval(
+        self,
+        task: SyncTaskItem,
+        *,
+        direction: str,
+        interval_seconds: float,
+    ) -> bool:
+        last_attempt = await self._checkpoint_service.get_last_attempt(
+            task.id,
+            direction,
+        )
+        if last_attempt is None:
+            last_attempt = task.last_run_at
+        if last_attempt is None:
+            return False
+        remaining = max(0.0, float(last_attempt) + interval_seconds - time.time())
+        if remaining <= 0:
+            return False
+        logger.info(
+            "任务沿用同步周期: task_id={} direction={} remaining={}s",
+            task.id,
+            direction,
+            int(remaining),
+        )
+        return await self._wait_for_stop(remaining)
 
     async def _wait_for_stop(self, timeout: float) -> bool:
         try:

@@ -26,6 +26,7 @@ class SyncTombstoneItem:
     detected_at: float
     expire_at: float
     executed_at: float | None
+    created: bool = False
 
 
 class SyncTombstoneService:
@@ -60,6 +61,7 @@ class SyncTombstoneService:
                 )
                 result = await session.execute(stmt)
                 record = result.scalars().first()
+                created = record is None
                 if record:
                     record.cloud_token = cloud_token
                     record.cloud_type = cloud_type
@@ -87,7 +89,7 @@ class SyncTombstoneService:
                     )
                     session.add(record)
                 await session.commit()
-                return self._to_item(record)
+                return self._to_item(record, created=created)
         except SQLAlchemyError:
             logger.exception("写入删除墓碑失败: task_id={} path={}", task_id, local_path)
             raise
@@ -160,7 +162,11 @@ class SyncTombstoneService:
             return 0
 
     @staticmethod
-    def _to_item(record: SyncTombstone) -> SyncTombstoneItem:
+    def _to_item(
+        record: SyncTombstone,
+        *,
+        created: bool = False,
+    ) -> SyncTombstoneItem:
         return SyncTombstoneItem(
             id=record.id,
             task_id=record.task_id,
@@ -173,6 +179,7 @@ class SyncTombstoneService:
             detected_at=record.detected_at,
             expire_at=record.expire_at,
             executed_at=record.executed_at,
+            created=created,
         )
 
 

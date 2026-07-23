@@ -2333,6 +2333,98 @@ async def test_run_scheduled_upload_clears_current_run_id_after_finish(
 
 
 @pytest.mark.asyncio
+async def test_scheduled_upload_filters_paths_with_unchanged_local_signature(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "unchanged.md"
+    path.write_text("# unchanged", encoding="utf-8")
+    stat = path.stat()
+    link_service = FakeLinkService(
+        [
+            SyncLinkItem(
+                local_path=str(path),
+                cloud_token="doc-unchanged",
+                cloud_type="docx",
+                task_id="task-fast-filter",
+                updated_at=100.0,
+                local_hash="existing-hash",
+                local_size=stat.st_size,
+                local_mtime=stat.st_mtime,
+            )
+        ]
+    )
+    runner = SyncTaskRunner(link_service=link_service)
+    task = SyncTaskItem(
+        id="task-fast-filter",
+        name="签名快速过滤",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    runner.queue_local_change(task.id, path, changed_at=100.0)
+    runner._initial_upload_scanned.add(task.id)
+    uploads: list[list[str]] = []
+
+    async def _capture_upload_paths(task_arg, status_arg, paths):
+        uploads.append([str(item) for item in paths])
+
+    async def _no_pending_tombstones(task_id: str) -> bool:
+        return False
+
+    runner._run_upload_paths = _capture_upload_paths  # type: ignore[method-assign]
+    runner._has_pending_tombstones = _no_pending_tombstones  # type: ignore[method-assign]
+    monkeypatch.setattr("src.services.sync_runner.time.time", lambda: 102.1)
+
+    await runner.run_scheduled_upload(task)
+
+    assert uploads == []
+    assert runner._statuses.get(task.id) is None
+
+
+@pytest.mark.asyncio
+async def test_persist_run_finished_allows_service_to_infer_empty_activity() -> None:
+    captured: dict[str, object] = {}
+
+    class _RunService:
+        async def finish_run(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+    runner = SyncTaskRunner(run_service=_RunService())
+    task = SyncTaskItem(
+        id="task-empty-run",
+        name="空运行分类",
+        local_path="F:/empty",
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="upload_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(
+        task_id=task.id,
+        state="success",
+        current_run_id="run-empty",
+        trigger_source="scheduled_upload",
+        started_at=10.0,
+        finished_at=11.0,
+    )
+
+    await runner._persist_run_finished(task, status)
+
+    assert "run_kind" not in captured
+    assert "has_activity" not in captured
+
+
+@pytest.mark.asyncio
 async def test_handle_local_deleted_event_creates_tombstone(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "config.json"
     config_path.write_text("{}", encoding="utf-8")

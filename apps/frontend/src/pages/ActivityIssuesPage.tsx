@@ -86,6 +86,17 @@ function RunRow({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const deletionParts = [
+    run.counts.deleted > 0 ? `删 ${run.counts.deleted}` : null,
+    run.counts.delete_pending > 0 ? `待删 ${run.counts.delete_pending}` : null,
+    run.counts.delete_failed > 0 ? `删失败 ${run.counts.delete_failed}` : null,
+  ].filter(Boolean);
+  const summary = [
+    `上 ${run.counts.uploaded}`,
+    `下 ${run.counts.downloaded}`,
+    ...deletionParts,
+    `异常 ${run.problem_count}`,
+  ].join(" · ");
   return (
     <button
       type="button"
@@ -107,7 +118,7 @@ function RunRow({
         <StatusPill label={stateLabels[run.state] || run.state} tone={stateTones[run.state] || "neutral"} />
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 text-xs text-[#52657a]">
-        <span>上 {run.counts.uploaded} · 下 {run.counts.downloaded} · 异常 {run.problem_count}</span>
+        <span>{summary}</span>
         <span>{formatDuration(run.started_at, run.finished_at, run.last_event_at)}</span>
       </div>
     </button>

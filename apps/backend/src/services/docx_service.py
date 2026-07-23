@@ -250,7 +250,7 @@ class DocxService:
         processed_markdown, file_placeholders, file_paths = self._build_file_placeholders(
             processed_markdown, base_path
         )
-        logger.info(
+        logger.debug(
             "解析 Markdown 资源: document_id={} image_placeholders={} file_placeholders={}",
             document_id,
             len(placeholders),
