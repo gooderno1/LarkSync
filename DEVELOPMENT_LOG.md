@@ -18,6 +18,11 @@
   - 前端 ESLint、TypeScript、35 个文件共 105 项测试和 Vite 生产构建通过。
   - 本地 NSIS 预构建通过；`v0.8.7-dev.1` 安装包大小 71,626,775 bytes，SHA256 为 `13CFE3D47786CE88C1DE8C3702EB10394039C7190E221C4E6BC1F511703720FB`。
   - 正式资产必须以 GitHub Actions 对 `v0.8.7` 标签重新构建的文件与 SHA256 为准，不复用开发版文件改名。
+  - 正式工作流 `29981308115` 全部通过；质量门、Windows 构建、macOS arm64 与 macOS x86_64 构建以及三平台安装启动 smoke 均成功。
+  - GitHub Release 发布时间为 `2026-07-23T05:12:54Z`，Latest 返回非草稿、非预发布的 `v0.8.7`。
+  - Windows 正式安装包大小 57,082,274 bytes；独立下载后计算 SHA256 为 `2f1d2cbb4dd4c69fde370dca951f83f25d4bbaf033931bf59d410ec17601741e`，与 `.sha256` 资产一致。
+  - 自动更新选择函数验证 `v0.8.7 > v0.8.6`，Windows 正确选择 `LarkSync-Setup-v0.8.7.exe`、对应 `.sha256` 资产和 GitHub digest。
+  - 三平台并行上传后 Release 正文一度只保留 Intel 校验值；已恢复 Windows、macOS arm64 和 macOS x86_64 完整校验表，安装资产未受影响。
 - 遗留问题：
   - 正式自动升级后需使用大历史库观察首次可交互时间、启动后周期任务时间和活动列表历史重分类结果。
   - 冷启动 WebView 约 4 秒的窗口渲染阶段仍保留，避免再次引入空白页竞争；待本次同步负载修复验证后再单独评估。
