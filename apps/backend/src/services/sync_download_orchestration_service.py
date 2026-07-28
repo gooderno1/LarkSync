@@ -189,15 +189,16 @@ class SyncDownloadOrchestrationService:
                     )
                 ]
             known_cloud_tokens = self._folder_cloud_tokens(folders)
-            known_cloud_tokens.update(item.effective_token for item in selected_candidates)
+            known_cloud_tokens.update(item.effective_token for item in candidates)
             selected_cloud_paths = self._build_cloud_folder_paths(task, folders)
-            selected_cloud_paths.update(str(item.target_path) for item in selected_candidates)
+            selected_cloud_paths.update(str(item.target_path) for item in candidates)
             if allow_deletes:
                 await self._enqueue_cloud_missing_deletes(
                     task=task,
                     status=status,
                     persisted_links=persisted_links,
                     cloud_paths=selected_cloud_paths,
+                    known_cloud_tokens=known_cloud_tokens,
                 )
             status.total_files = len(selected_candidates) + len(duplicated_candidates)
 

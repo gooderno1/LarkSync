@@ -16,7 +16,11 @@ async def _build_services(tmp_path):
     db_url = f"sqlite+aiosqlite:///{(tmp_path / 'problems.db').as_posix()}"
     await init_db(db_url)
     session_maker = get_session_maker(db_url)
-    return session_maker, SyncRunEventService(session_maker), ProblemService(session_maker)
+    return (
+        session_maker,
+        SyncRunEventService(session_maker),
+        ProblemService(session_maker, ignore_hidden_cache_paths=True),
+    )
 
 
 async def _insert_task(session_maker, *, task_id: str = "task-1") -> None:
@@ -374,6 +378,211 @@ async def test_delete_pending_is_workflow_state_not_problem(tmp_path) -> None:
 
     assert refreshed.events_seen == 0
     assert total == 0
+
+
+@pytest.mark.asyncio
+async def test_reconcile_current_state_resolves_obsolete_upload_but_keeps_live_error(
+    tmp_path,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    task_root = tmp_path / "sync-root"
+    task_root.mkdir()
+    existing = task_root / "still-failing.md"
+    existing.write_text("content", encoding="utf-8")
+    async with session_maker() as session:
+        session.add(
+            SyncTask(
+                id="task-current-state",
+                name="当前状态收敛",
+                local_path=task_root.as_posix(),
+                cloud_folder_token="folder-token",
+                sync_mode="bidirectional",
+                update_mode="auto",
+                md_sync_mode="enhanced",
+                owner_device_id="device",
+                is_test=True,
+                enabled=True,
+                created_at=1.0,
+                updated_at=1.0,
+            )
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-current-state",
+                task_name="当前状态收敛",
+                status="failed",
+                path=(task_root / "removed.md").as_posix(),
+                message="上传失败 HTTP 500",
+                run_id="run-removed",
+            ),
+            SyncEventRecord(
+                timestamp=11.0,
+                task_id="task-current-state",
+                task_name="当前状态收敛",
+                status="failed",
+                path=existing.as_posix(),
+                message="上传失败 HTTP 500",
+                run_id="run-existing",
+            ),
+        ]
+    )
+    await service.refresh_sources()
+
+    result = await service.reconcile_current_state(batch_size=20, max_batches=1)
+    open_total, open_items = await service.list_problems(state="open", limit=20, offset=0)
+    resolved_total, resolved_items = await service.list_problems(
+        state="resolved",
+        limit=20,
+        offset=0,
+    )
+
+    assert result.resolved == 1
+    assert open_total == 1
+    assert open_items[0].object_path == "still-failing.md"
+    assert resolved_total == 1
+    assert resolved_items[0].object_path == "removed.md"
+    assert resolved_items[0].resolution_verification == "target_absent_verified"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_current_state_keeps_error_when_task_root_is_unavailable(
+    tmp_path,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    unavailable_root = tmp_path / "disconnected-drive"
+    async with session_maker() as session:
+        session.add(
+            SyncTask(
+                id="task-unavailable",
+                name="不可用同步根目录",
+                local_path=unavailable_root.as_posix(),
+                cloud_folder_token="folder-token",
+                sync_mode="bidirectional",
+                update_mode="auto",
+                md_sync_mode="enhanced",
+                owner_device_id="device",
+                is_test=True,
+                enabled=True,
+                created_at=1.0,
+                updated_at=1.0,
+            )
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-unavailable",
+                task_name="不可用同步根目录",
+                status="failed",
+                path=(unavailable_root / "document.md").as_posix(),
+                message="上传失败 HTTP 500",
+                run_id="run-unavailable",
+            )
+        ]
+    )
+    await service.refresh_sources()
+
+    result = await service.reconcile_current_state(batch_size=20, max_batches=1)
+    open_total, _ = await service.list_problems(state="open", limit=20, offset=0)
+
+    assert result.resolved == 0
+    assert open_total == 1
+
+
+@pytest.mark.asyncio
+async def test_reconcile_current_state_uses_current_ignore_and_task_recovery(
+    tmp_path,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    task_root = tmp_path / "sync-root"
+    ignored = task_root / "__pycache__" / "module.pyc"
+    ignored.parent.mkdir(parents=True)
+    ignored.write_bytes(b"cache")
+    async with session_maker() as session:
+        session.add(
+            SyncTask(
+                id="task-recovered",
+                name="恢复证据",
+                local_path=task_root.as_posix(),
+                cloud_folder_token="folder-token",
+                sync_mode="bidirectional",
+                update_mode="auto",
+                md_sync_mode="enhanced",
+                owner_device_id="device",
+                is_test=True,
+                enabled=True,
+                created_at=1.0,
+                updated_at=1.0,
+            )
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-recovered",
+                task_name="恢复证据",
+                status="failed",
+                path=ignored.as_posix(),
+                message="上传失败 HTTP 500",
+                run_id="run-ignored",
+            ),
+            SyncEventRecord(
+                timestamp=11.0,
+                task_id="task-recovered",
+                task_name="恢复证据",
+                status="failed",
+                path=task_root.as_posix(),
+                message="OAuth 授权过期 401",
+                run_id="run-auth",
+            ),
+            SyncEventRecord(
+                timestamp=12.0,
+                task_id="task-recovered",
+                task_name="恢复证据",
+                status="cancelled",
+                path=task_root.as_posix(),
+                message="应用退出",
+                run_id="run-cancelled",
+            ),
+        ]
+    )
+    await service.refresh_sources()
+    async with session_maker() as session:
+        session.add(
+            SyncRun(
+                run_id="run-later-success",
+                task_id="task-recovered",
+                state="success",
+                trigger_source="scheduled_upload",
+                started_at=19.0,
+                finished_at=20.0,
+                last_event_at=20.0,
+                uploaded_files=1,
+                run_kind="activity",
+                has_activity=True,
+                created_at=19.0,
+                updated_at=20.0,
+            )
+        )
+        await session.commit()
+
+    result = await service.reconcile_current_state(batch_size=20, max_batches=1)
+    total, resolved = await service.list_problems(state="resolved", limit=20, offset=0)
+
+    assert result.resolved == 3
+    assert total == 3
+    assert {item.resolution_verification for item in resolved} == {
+        "path_excluded",
+        "task_auth_recovered",
+        "later_run_succeeded",
+    }
+    recovered = next(item for item in resolved if item.category == "auth_permission")
+    assert recovered.resolved_by_run_id == "run-later-success"
 
 
 @pytest.mark.asyncio

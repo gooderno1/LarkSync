@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-07-28] v0.8.8 release: v0.8.8 activity detail and problem convergence
+[2026-07-28] v0.8.8-dev.1 fix(activity-problems): 活动详情按运行和状态直接使用 SQLite 索引；云端缺失判定先用完整 token 集合排除仍存在对象；历史问题按任务状态、后续成功、当前忽略规则和目标存在性安全收敛，正式库只读 dry-run 预计将 2010 条未解决项收敛至 6 条
 [2026-07-23] v0.8.7 release: v0.8.7 scheduler and activity accuracy
 [2026-07-23] v0.8.7-dev.1 fix(sync): preserve schedule and hide no-op activity
 [2026-07-22] v0.8.6 release: v0.8.6 startup background maintenance hotfix

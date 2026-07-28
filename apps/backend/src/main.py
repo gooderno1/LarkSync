@@ -164,9 +164,11 @@ def _build_lifespan(
 
 async def _backfill_problem_sources(app: FastAPI) -> None:
     refresh = getattr(app.state.problem_service, "refresh_sources", None)
+    reconcile = getattr(app.state.problem_service, "reconcile_current_state", None)
     if not callable(refresh):
         return
     await asyncio.sleep(5)
+    last_reconcile_at = 0.0
     while True:
         try:
             result = await refresh(event_limit=20)
@@ -176,6 +178,16 @@ async def _backfill_problem_sources(app: FastAPI) -> None:
                     result.events_seen,
                     result.conflicts_seen,
                 )
+            now = time.monotonic()
+            if callable(reconcile) and now - last_reconcile_at >= 60:
+                reconciled = await reconcile(batch_size=500, max_batches=10)
+                last_reconcile_at = now
+                if reconciled.resolved:
+                    logger.info(
+                        "问题当前状态收敛: scanned={}, resolved={}",
+                        reconciled.scanned,
+                        reconciled.resolved,
+                    )
             await asyncio.sleep(2 if result.events_seen >= 20 else 15)
         except asyncio.CancelledError:
             raise

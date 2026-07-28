@@ -97,6 +97,48 @@ async def test_refreshed_tombstone_does_not_emit_duplicate_pending_event(
     assert events == []
 
 
+@pytest.mark.asyncio
+async def test_cloud_token_present_does_not_create_false_missing_tombstone(
+    tmp_path: Path,
+) -> None:
+    local_path = tmp_path / "renamed-locally.md"
+    link = SyncLinkItem(
+        local_path=str(local_path),
+        cloud_token="doc-still-present",
+        cloud_type="docx",
+        task_id="task-1",
+        updated_at=1.0,
+    )
+    tombstones = _TombstoneService(created=True)
+    service = _service(_LinkService(), tombstones)
+    task = SyncTaskItem(
+        id="task-1",
+        name="云端稳定标识判定",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    status = SyncTaskStatus(task_id=task.id)
+    events: list[object] = []
+
+    await service.enqueue_cloud_missing_deletes(
+        task=task,
+        status=status,
+        persisted_links=[link],
+        cloud_paths=set(),
+        known_cloud_tokens={"doc-still-present"},
+        record_event=lambda *_args: events.append(_args[1]),
+    )
+
+    assert events == []
+
+
 def test_cloud_not_found_token_error_is_idempotent_success() -> None:
     error = RuntimeError("删除文件失败: not found. token=folder-1 type=folder")
 

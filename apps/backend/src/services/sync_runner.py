@@ -47,6 +47,7 @@ from src.services.sync_download_orchestration_service import (
 )
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_path_upload_service import SyncPathUploadService
+from src.services.sync_path_policy import should_ignore_sync_path
 from src.services.sync_cloud_folder_service import SyncCloudFolderService
 from src.services.sync_markdown_cloud_doc_service import SyncMarkdownCloudDocService
 from src.services.sync_markdown_upload_service import SyncMarkdownUploadService
@@ -79,21 +80,6 @@ _LEGACY_DOCX_SCAN_BYTES = 262_144
 _CLOUD_MD_MIRROR_FOLDER_NAME = "_LarkSync_MD_Mirror"
 _CLOUD_MD_MIRROR_CACHE_PREFIX = "__md_mirror__"
 _LOCAL_TRASH_DIR_NAME = ".larksync_trash"
-_LOCAL_TEMP_FILE_PREFIXES = ("~$",)
-_LOCAL_TEMP_FILE_SUFFIXES = (
-    ".tmp",
-    ".temp",
-    ".swp",
-    ".swo",
-    ".part",
-    ".crdownload",
-    ".download",
-)
-_LOCAL_TEMP_FILE_NAMES = {
-    ".ds_store",
-    "desktop.ini",
-    "thumbs.db",
-}
 _MD_SYNC_MODE_ENHANCED = "enhanced"
 _MD_SYNC_MODE_DOWNLOAD_ONLY = "download_only"
 _MD_SYNC_MODE_DOC_ONLY = "doc_only"
@@ -111,32 +97,6 @@ _CHECK_ONLY_EVENT_STATUSES = {
     "started",
     "success",
 }
-
-
-def _is_temporary_local_name(name: str) -> bool:
-    lowered = (name or "").strip().lower()
-    if not lowered:
-        return False
-    if lowered in _LOCAL_TEMP_FILE_NAMES:
-        return True
-    if lowered.startswith(_LOCAL_TEMP_FILE_PREFIXES):
-        return True
-    if lowered.startswith(".~lock.") and lowered.endswith("#"):
-        return True
-    if lowered.endswith(_LOCAL_TEMP_FILE_SUFFIXES):
-        return True
-    return False
-
-
-def _is_hidden_or_cache_relative_path(relative: Path) -> bool:
-    for part in relative.parts:
-        cleaned = part.strip()
-        if not cleaned or cleaned == ".":
-            continue
-        lowered = cleaned.lower()
-        if cleaned.startswith(".") or lowered == "__pycache__":
-            return True
-    return False
 
 
 class SyncTaskRunner:
@@ -1702,12 +1662,14 @@ class SyncTaskRunner:
         status: SyncTaskStatus,
         persisted_links: list[SyncLinkItem],
         cloud_paths: set[str],
+        known_cloud_tokens: set[str] | None = None,
     ) -> None:
         await self._delete_sync_service.enqueue_cloud_missing_deletes(
             task=task,
             status=status,
             persisted_links=persisted_links,
             cloud_paths=cloud_paths,
+            known_cloud_tokens=known_cloud_tokens,
             record_event=self._record_event,
         )
 
@@ -2067,37 +2029,14 @@ class SyncTaskRunner:
         return queued
 
     def _should_ignore_path(self, task: SyncTaskItem, path: Path) -> bool:
-        try:
-            relative = path.relative_to(Path(task.local_path))
-        except ValueError:
-            return True
-        if _is_temporary_local_name(relative.name):
-            return True
-        lowered = {part.lower() for part in relative.parts}
-        if (
-            "assets" in lowered
-            or "attachments" in lowered
-            or "figures" in lowered
-            or "插图" in relative.parts
-            or _LOCAL_TRASH_DIR_NAME.lower() in lowered
-            or _CLOUD_MD_MIRROR_FOLDER_NAME.lower() in lowered
-        ):
-            return True
-        if (
-            ConfigManager.get().config.ignore_hidden_cache_paths
-            and _is_hidden_or_cache_relative_path(relative)
-        ):
-            return True
-        relative_parts = tuple(part.lower() for part in relative.parts if part and part != ".")
-        for ignored in task.ignored_subpaths:
-            ignored_parts = tuple(
-                part.lower()
-                for part in Path(ignored.replace("\\", "/")).parts
-                if part and part != "."
-            )
-            if ignored_parts and relative_parts[: len(ignored_parts)] == ignored_parts:
-                return True
-        return False
+        return should_ignore_sync_path(
+            task_root=task.local_path,
+            path=path,
+            ignored_subpaths=task.ignored_subpaths,
+            ignore_hidden_cache_paths=ConfigManager.get().config.ignore_hidden_cache_paths,
+            local_trash_dir_name=_LOCAL_TRASH_DIR_NAME,
+            cloud_md_mirror_folder_name=_CLOUD_MD_MIRROR_FOLDER_NAME,
+        )
 
     @staticmethod
     def _matches_download_selection(

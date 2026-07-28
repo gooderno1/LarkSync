@@ -205,6 +205,7 @@ class SyncDeleteSyncService:
         status: SyncTaskStatus,
         persisted_links: list[SyncLinkItem],
         cloud_paths: set[str],
+        known_cloud_tokens: set[str] | None = None,
         record_event: RecordEvent,
     ) -> None:
         policy, grace_seconds = self.resolve_delete_policy(task)
@@ -219,6 +220,12 @@ class SyncDeleteSyncService:
         )
         for link in sorted_links:
             if self._should_ignore_path(task, Path(link.local_path)):
+                continue
+            if (
+                known_cloud_tokens
+                and link.cloud_token
+                and link.cloud_token in known_cloud_tokens
+            ):
                 continue
             if self.normalize_local_path_key(link.local_path) in cloud_path_keys:
                 continue

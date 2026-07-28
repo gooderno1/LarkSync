@@ -1,5 +1,8 @@
 import pytest
+from sqlalchemy import select
+from sqlalchemy.dialects import sqlite
 
+from src.db.models import SyncRunEvent
 from src.db.session import get_session_maker, init_db
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_run_event_service import (
@@ -92,6 +95,29 @@ async def test_sync_run_event_service_append_and_filter(tmp_path) -> None:
     )
     assert total == 1
     assert [item.timestamp for item in items] == [2.0]
+
+
+def test_sync_run_event_filters_keep_indexed_columns_unwrapped() -> None:
+    filters = SyncRunEventService._build_filters(
+        status="FAILED",
+        statuses=["uploaded"],
+        search="",
+        task_id="",
+        task_ids=[],
+        run_id="run-1",
+        run_ids=["run-2"],
+    )
+
+    sql = str(
+        select(SyncRunEvent.id)
+        .where(*filters)
+        .compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True})
+    ).lower()
+
+    assert "lower(sync_run_events.status)" not in sql
+    assert "coalesce(sync_run_events.run_id" not in sql
+    assert "sync_run_events.status in" in sql
+    assert "sync_run_events.run_id in" in sql
 
 
 @pytest.mark.asyncio

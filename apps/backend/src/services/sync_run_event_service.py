@@ -535,11 +535,11 @@ class SyncRunEventService:
             if value and value.strip()
         }
         if status_filters:
-            filters.append(func.lower(SyncRunEvent.status).in_(status_filters))
+            filters.append(SyncRunEvent.status.in_(status_filters))
         if task_filters:
             filters.append(SyncRunEvent.task_id.in_(task_filters))
         if run_filters:
-            filters.append(func.coalesce(SyncRunEvent.run_id, "").in_(run_filters))
+            filters.append(SyncRunEvent.run_id.in_(run_filters))
         if since is not None:
             filters.append(SyncRunEvent.timestamp >= float(since))
         if until is not None:

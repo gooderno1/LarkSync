@@ -7,6 +7,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Iterable
 
 from sqlalchemy import case, func, or_, select
@@ -19,10 +20,13 @@ from src.db.models import (
     ProblemRecoveryFact,
     ProblemRecord,
     SyncMeta,
+    SyncRun,
     SyncRunEvent,
     SyncTask,
 )
+from src.core.config import ConfigManager
 from src.db.session import get_session_maker
+from src.services.sync_path_policy import should_ignore_sync_path
 
 
 CLASSIFIER_VERSION = "problem-classifier-v2"
@@ -122,6 +126,12 @@ class ProblemRefreshResult:
 
 
 @dataclass(frozen=True)
+class ProblemReconcileResult:
+    scanned: int
+    resolved: int
+
+
+@dataclass(frozen=True)
 class _Classification:
     category: str
     severity: str
@@ -134,9 +144,13 @@ class ProblemService:
     def __init__(
         self,
         session_maker: async_sessionmaker[AsyncSession] | None = None,
+        *,
+        ignore_hidden_cache_paths: bool | None = None,
     ) -> None:
         self._session_maker = session_maker or get_session_maker()
         self._refresh_lock = asyncio.Lock()
+        self._reconcile_cursor: tuple[float, str] | None = None
+        self._ignore_hidden_cache_paths = ignore_hidden_cache_paths
 
     async def refresh_sources(self, *, event_limit: int | None = 1000) -> ProblemRefreshResult:
         async with self._refresh_lock:
@@ -184,6 +198,219 @@ class ProblemService:
                 break
             await asyncio.sleep(0)
         return ProblemRefreshResult(events_seen=events_seen, conflicts_seen=conflicts_seen)
+
+    async def reconcile_current_state(
+        self,
+        *,
+        batch_size: int = 500,
+        max_batches: int = 10,
+    ) -> ProblemReconcileResult:
+        safe_batch_size = max(1, int(batch_size or 1))
+        safe_max_batches = max(1, int(max_batches or 1))
+        scanned = 0
+        resolved = 0
+        async with self._refresh_lock:
+            for _ in range(safe_max_batches):
+                async with self._session_maker() as session:
+                    stmt = (
+                        select(ProblemRecord)
+                        .where(ProblemRecord.state.in_(["open", "in_progress", "waiting"]))
+                        .order_by(ProblemRecord.last_seen_at.asc(), ProblemRecord.id.asc())
+                        .limit(safe_batch_size)
+                    )
+                    if self._reconcile_cursor is not None:
+                        cursor_time, cursor_id = self._reconcile_cursor
+                        stmt = stmt.where(
+                            or_(
+                                ProblemRecord.last_seen_at > cursor_time,
+                                (
+                                    (ProblemRecord.last_seen_at == cursor_time)
+                                    & (ProblemRecord.id > cursor_id)
+                                ),
+                            )
+                        )
+                    rows = list((await session.execute(stmt)).scalars().all())
+                    if not rows:
+                        self._reconcile_cursor = None
+                        break
+                    last = rows[-1]
+                    self._reconcile_cursor = (last.last_seen_at, last.id)
+                    scanned += len(rows)
+
+                    task_ids = {item.task_id for item in rows if item.task_id}
+                    tasks: dict[str, SyncTask] = {}
+                    if task_ids:
+                        task_rows = await session.execute(
+                            select(SyncTask).where(SyncTask.id.in_(task_ids))
+                        )
+                        tasks = {item.id: item for item in task_rows.scalars().all()}
+                    latest_success: dict[str, tuple[str, float]] = {}
+                    if task_ids:
+                        min_seen_at = min(item.last_seen_at for item in rows)
+                        ranked_runs = (
+                            select(
+                                SyncRun.task_id.label("task_id"),
+                                SyncRun.run_id.label("run_id"),
+                                SyncRun.finished_at.label("finished_at"),
+                                func.row_number()
+                                .over(
+                                    partition_by=SyncRun.task_id,
+                                    order_by=SyncRun.finished_at.desc(),
+                                )
+                                .label("position"),
+                            )
+                            .where(SyncRun.task_id.in_(task_ids))
+                            .where(SyncRun.state == "success")
+                            .where(SyncRun.has_activity.is_(True))
+                            .where(SyncRun.finished_at.is_not(None))
+                            .where(SyncRun.finished_at > min_seen_at)
+                            .subquery()
+                        )
+                        run_rows = await session.execute(
+                            select(
+                                ranked_runs.c.task_id,
+                                ranked_runs.c.run_id,
+                                ranked_runs.c.finished_at,
+                            )
+                            .where(ranked_runs.c.position == 1)
+                        )
+                        for task_id, run_id, finished_at in run_rows.all():
+                            latest_success[str(task_id)] = (
+                                str(run_id),
+                                float(finished_at),
+                            )
+
+                    ignore_hidden_cache_paths = self._ignore_hidden_cache_paths
+                    if ignore_hidden_cache_paths is None:
+                        ignore_hidden_cache_paths = (
+                            ConfigManager.get().config.ignore_hidden_cache_paths
+                        )
+                    decisions = await asyncio.to_thread(
+                        self._build_current_state_decisions,
+                        rows,
+                        tasks,
+                        latest_success,
+                        ignore_hidden_cache_paths,
+                    )
+                    now = time.time()
+                    for problem, verification, evidence_at, run_id in decisions:
+                        problem.state = "resolved"
+                        problem.resolved_at = evidence_at or now
+                        problem.last_good_at = evidence_at or now
+                        problem.resolution_verification = verification
+                        if run_id:
+                            problem.resolved_by_run_id = run_id
+                        resolved += 1
+                    await session.commit()
+                if len(rows) < safe_batch_size:
+                    self._reconcile_cursor = None
+                    break
+                await asyncio.sleep(0)
+        return ProblemReconcileResult(scanned=scanned, resolved=resolved)
+
+    @staticmethod
+    def _build_current_state_decisions(
+        problems: list[ProblemRecord],
+        tasks: dict[str, SyncTask],
+        latest_success: dict[str, tuple[str, float]],
+        ignore_hidden_cache_paths: bool,
+    ) -> list[tuple[ProblemRecord, str, float | None, str | None]]:
+        decisions: list[tuple[ProblemRecord, str, float | None, str | None]] = []
+        for problem in problems:
+            task_id = problem.task_id or ""
+            task = tasks.get(task_id)
+            if task_id and (task is None or not task.enabled):
+                decisions.append((problem, "task_inactive", None, None))
+                continue
+            if task is None:
+                continue
+            successful_run = latest_success.get(task_id)
+            if (
+                successful_run
+                and successful_run[1] > problem.last_seen_at
+                and problem.operation_family == "task_auth"
+            ):
+                decisions.append(
+                    (
+                        problem,
+                        "task_auth_recovered",
+                        successful_run[1],
+                        successful_run[0],
+                    )
+                )
+                continue
+            if (
+                successful_run
+                and successful_run[1] > problem.last_seen_at
+                and (
+                    problem.operation_family == "task_run"
+                    or problem.category == "system"
+                )
+            ):
+                decisions.append(
+                    (
+                        problem,
+                        "later_run_succeeded",
+                        successful_run[1],
+                        successful_run[0],
+                    )
+                )
+                continue
+            if problem.operation_family == "task_auth":
+                continue
+            object_path = (problem.object_path or problem.object_key or "").replace(
+                "\\",
+                "/",
+            )
+            if not object_path or object_path == "未知对象":
+                continue
+            object_candidate = Path(object_path)
+            path = (
+                object_candidate
+                if object_candidate.is_absolute()
+                else Path(task.local_path).joinpath(
+                    *(part for part in object_path.split("/") if part)
+                )
+            )
+            ignored_subpaths = ProblemService._parse_ignored_subpaths(
+                task.ignored_subpaths
+            )
+            if should_ignore_sync_path(
+                task_root=task.local_path,
+                path=path,
+                ignored_subpaths=ignored_subpaths,
+                ignore_hidden_cache_paths=ignore_hidden_cache_paths,
+            ):
+                decisions.append((problem, "path_excluded", None, None))
+                continue
+            if problem.operation_family in {"upload", "conversion", "delete"}:
+                try:
+                    task_root_available = Path(task.local_path).is_dir()
+                except OSError:
+                    task_root_available = False
+                if not task_root_available:
+                    continue
+                try:
+                    exists = path.exists()
+                except OSError:
+                    exists = True
+                if not exists:
+                    decisions.append(
+                        (problem, "target_absent_verified", None, None)
+                    )
+        return decisions
+
+    @staticmethod
+    def _parse_ignored_subpaths(value: str | None) -> list[str]:
+        if not value:
+            return []
+        try:
+            parsed = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return []
+        if not isinstance(parsed, list):
+            return []
+        return [str(item) for item in parsed if str(item).strip()]
 
     async def _refresh_sources(self, *, event_limit: int | None) -> ProblemRefreshResult:
         async with self._session_maker() as session:
@@ -1060,6 +1287,7 @@ __all__ = [
     "ProblemActionItem",
     "ProblemItem",
     "ProblemOccurrenceItem",
+    "ProblemReconcileResult",
     "ProblemRefreshResult",
     "ProblemService",
 ]
