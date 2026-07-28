@@ -25,6 +25,11 @@
   - 后端全量 `613` 项 pytest 通过；同步运行重点回归 `62` 项通过。
   - 前端 ESLint 无警告；Vitest `35` 个文件共 `105` 项通过；TypeScript 和 Vite 生产构建通过，转换 `192` 个模块。
   - `python scripts/build_installer.py --nsis` 通过；最终代码状态生成 `LarkSync-Setup-v0.8.8.exe`，大小 `71,635,409` bytes，SHA256 为 `9A13609F66D050CC5019F588E53C23FF193AC82615564E58E1227EE204CAE870`。仅构建，未安装或启动。
+  - 正式工作流 `30344434730` 全部通过；质量门、Windows 构建、macOS arm64 与 macOS x86_64 构建以及三平台安装启动 smoke 均成功。
+  - GitHub Release 发布时间为 `2026-07-28T09:01:35Z`；Latest 返回非草稿、非预发布的 `v0.8.8`，六个安装与校验资产齐全。
+  - Windows 正式安装包大小为 `57,093,021` bytes，GitHub digest 和 `.sha256` 资产均为 `97df094eee83e4402580d303ca988a52a043bb5f547f7d2a44d7a9abc1e10db5`。
+  - 三平台并行上传后一度只保留 Intel 校验值；已恢复 Windows、macOS arm64 和 macOS x86_64 完整校验表，安装资产未受影响。
+  - 自动更新选择逻辑相关 `19` 项 pytest 通过；稳定版渠道可识别 `v0.8.8` Windows 安装包与校验资产。
   - 正式数据库只通过 SQLite `mode=ro` 查询和 dry-run 分类读取；未写入、复制、迁移或停止正式版进程。
 - 遗留问题：
   - 自动升级后首次后台收敛最多处理 `5,000` 条；超过该数量的用户会在后续轮次继续处理。
