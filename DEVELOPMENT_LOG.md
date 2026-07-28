@@ -18,6 +18,10 @@
   - schema 与运行服务重点测试 `16` 项通过。
   - 后端全量 `614` 项 pytest 通过；前端 ESLint、TypeScript、`105` 项测试和 Vite 生产构建通过。
   - `python scripts/build_installer.py --nsis` 通过；生成 `LarkSync-Setup-v0.8.9.exe`，大小 `71,632,865` bytes，SHA256 为 `407BBEF258FA678A43C629785D79630321892819C3CE1900474DE6BB0FE3B38E`。只构建，未安装或启动。
+  - 正式工作流 `30345784898` 全部通过；质量门、Windows、macOS arm64、macOS x86_64 构建与三平台安装启动 smoke 均成功。
+  - GitHub Release 发布时间为 `2026-07-28T09:19:44Z`；Latest 为非草稿、非预发布的 `v0.8.9`，六个资产齐全。
+  - Windows 正式安装包大小 `57,090,668` bytes；GitHub digest 与 `.sha256` 均为 `e00234a3383deaf3deae709521a0d8babb09539b3277df3acdd8c4633a47b103`。
+  - 并行上传后的 Release 正文已恢复 Windows、arm64 和 x86_64 完整校验表。
 
 ## v0.8.8 release (2026-07-28)
 
