@@ -29,6 +29,11 @@
   - `python scripts/build_installer.py --nsis` 正式构建通过。
   - 本地 Windows 安装包为 `dist/LarkSync-Setup-v0.8.12.exe`，大小 `71,665,832` bytes，SHA256 为 `799A5173DD703E4B533990607FF7ADF5979CA4A341F3F61E0090998D2D7B128C`。
   - 安装包仅完成构建和静态校验，未安装、未启动、未操作当前桌面正式版。
+  - GitHub Actions 正式工作流 `30375432315` 全部通过：质量门、Windows、macOS arm64 与 macOS x86_64 构建及安装启动 smoke 均成功。
+  - GitHub Release 发布时间为 `2026-07-28T15:57:05Z`；Latest 为非草稿、非预发布的 `v0.8.12`，共包含三个安装包与三个 `.sha256` 文件。
+  - Windows 正式安装包大小为 `57,101,322` bytes，SHA256 为 `1bea142662f49486853b8281b24a74104083f9ffcb1d7b0a20ea29cbbaafb4b3`。
+  - macOS arm64 正式安装包 SHA256 为 `a72ef1d1f189233cbbf634219b21599a879b5a05905ff24751be68b4cce77c7c`；macOS x86_64 为 `a4d2462539c8cbdbe8a40d27a77a2803b56a76c25dded700f0fcc2f6cfd47f83`。
+  - 三个平台的 GitHub asset digest 均与各自 `.sha256` 文件一致。
 - 遗留问题：
   - 旧版已经写入的 `queued` 数据不做破坏性删除；如后续需要缩减数据库体积，应另行设计带备份、审计和回滚的维护流程。
 
