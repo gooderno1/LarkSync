@@ -229,3 +229,78 @@ async def test_schema_v4_reclassifies_historical_empty_activity_runs(tmp_path: P
 
     assert row.run_kind == "legacy_check"
     assert row.has_activity == 0
+
+
+@pytest.mark.asyncio
+async def test_schema_v5_reclassifies_only_recovered_false_cloud_pending_runs(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "v4-false-pending.db"
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+    engine = await init_db(url)
+    async with engine.begin() as conn:
+        for run_id, path in (
+            ("false-pending", "D:/Sync/still-exists.md"),
+            ("real-pending", "D:/Sync/really-missing.md"),
+        ):
+            await conn.execute(
+                text(
+                    """
+                    INSERT INTO sync_runs (
+                        run_id, task_id, state, trigger_source, run_kind, has_activity,
+                        started_at, total_files, completed_files, failed_files,
+                        skipped_files, uploaded_files, downloaded_files, deleted_files,
+                        conflict_files, delete_pending_files, delete_failed_files,
+                        created_at, updated_at
+                    ) VALUES (
+                        :run_id, 'task-1', 'success', 'scheduled_download', 'activity', 1,
+                        10, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 10, 11
+                    )
+                    """
+                ),
+                {"run_id": run_id},
+            )
+            await conn.execute(
+                text(
+                    """
+                    INSERT INTO sync_run_events (
+                        id, task_id, task_name, run_id, timestamp, status, path, created_at
+                    ) VALUES (
+                        :id, 'task-1', '任务', :run_id, 10, 'delete_pending', :path, 10
+                    )
+                    """
+                ),
+                {"id": f"event-{run_id}", "run_id": run_id, "path": path},
+            )
+        await conn.execute(
+            text(
+                """
+                INSERT INTO sync_tombstones (
+                    id, task_id, local_path, source, status, reason, detected_at, expire_at
+                ) VALUES (
+                    'tombstone-false', 'task-1', 'D:/Sync/still-exists.md',
+                    'cloud', 'cancelled', '云端文件已恢复', 10, 10
+                )
+                """
+            )
+        )
+        await conn.execute(
+            text("UPDATE sync_meta SET value='4' WHERE key='schema_version'")
+        )
+    await init_db(url)
+
+    async with engine.begin() as conn:
+        rows = (
+            await conn.execute(
+                text(
+                    "SELECT run_id, run_kind, has_activity FROM sync_runs "
+                    "ORDER BY run_id"
+                )
+            )
+        ).all()
+    await dispose_engines()
+
+    assert [(row.run_id, row.run_kind, row.has_activity) for row in rows] == [
+        ("false-pending", "legacy_check", 0),
+        ("real-pending", "activity", 1),
+    ]

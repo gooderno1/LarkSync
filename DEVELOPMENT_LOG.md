@@ -1,5 +1,24 @@
 # DEVELOPMENT LOG
 
+## v0.8.9 release (2026-07-28)
+
+- 开发原因：
+  - `v0.8.8` 已阻止新虚假待删活动，但旧版已经写入的待删运行仍会出现在活动列表。
+  - 正式库只读复核发现 `536` 条成功定时下载运行只有待删计数，没有上传、下载、删除、冲突或失败事实。
+- 实现方式：
+  - schema v5 只处理 success、无错误、scheduled_download 且只有 `delete_pending_files > 0` 的运行。
+  - 要求运行确有待删事件，且每个事件均按 task_id 与完整路径匹配 cloud 来源、cancelled 状态、原因为“云端文件已恢复”的墓碑。
+  - 满足规则的运行改为 `legacy_check / has_activity=0`；原始运行、事件和墓碑不删除。
+- 当前结果：
+  - 正式库 `mode=ro` dry-run 预计归档 `534` 条旧虚假待删运行。
+  - `2` 条无法完整证明为虚假的待删运行继续保留。
+  - 规则适用于所有升级用户，不依赖个人任务、目录或文件名。
+- 验证方式：
+  - 新增 schema v5 正反例测试；完整匹配的虚假待删被归档，缺少恢复墓碑的真实待删保持活动。
+  - schema 与运行服务重点测试 `16` 项通过。
+  - 后端全量 `614` 项 pytest 通过；前端 ESLint、TypeScript、`105` 项测试和 Vite 生产构建通过。
+  - `python scripts/build_installer.py --nsis` 通过；生成 `LarkSync-Setup-v0.8.9.exe`，大小 `71,632,865` bytes，SHA256 为 `407BBEF258FA678A43C629785D79630321892819C3CE1900474DE6BB0FE3B38E`。只构建，未安装或启动。
+
 ## v0.8.8 release (2026-07-28)
 
 - 开发原因：

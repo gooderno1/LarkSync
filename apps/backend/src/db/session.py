@@ -30,7 +30,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -412,6 +412,50 @@ async def _apply_schema_v4(conn) -> None:
     )
 
 
+async def _apply_schema_v5(conn) -> None:
+    await conn.execute(
+        text(
+            """
+            UPDATE sync_runs AS run
+            SET has_activity = 0,
+                run_kind = 'legacy_check'
+            WHERE run.state = 'success'
+              AND run.last_error IS NULL
+              AND run.has_activity = 1
+              AND run.trigger_source = 'scheduled_download'
+              AND run.uploaded_files = 0
+              AND run.downloaded_files = 0
+              AND run.deleted_files = 0
+              AND run.conflict_files = 0
+              AND run.delete_pending_files > 0
+              AND run.delete_failed_files = 0
+              AND run.failed_files = 0
+              AND EXISTS (
+                SELECT 1
+                FROM sync_run_events AS event
+                WHERE event.run_id = run.run_id
+                  AND event.status = 'delete_pending'
+              )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM sync_run_events AS event
+                WHERE event.run_id = run.run_id
+                  AND event.status = 'delete_pending'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM sync_tombstones AS tombstone
+                    WHERE tombstone.task_id = event.task_id
+                      AND tombstone.local_path = event.path
+                      AND tombstone.source = 'cloud'
+                      AND tombstone.status = 'cancelled'
+                      AND tombstone.reason = '云端文件已恢复'
+                  )
+              )
+            """
+        )
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     SchemaMigration(
         version=1,
@@ -432,6 +476,11 @@ _SCHEMA_MIGRATIONS = [
         version=4,
         description="重新分类被误标为活动的历史空运行",
         upgrade=_apply_schema_v4,
+    ),
+    SchemaMigration(
+        version=5,
+        description="归档云端对象仍存在造成的历史虚假待删运行",
+        upgrade=_apply_schema_v5,
     ),
 ]
 
