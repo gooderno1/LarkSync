@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { problemCategoryLabel, problemSeverityTone, shouldKeepProblemSelection } from "./problemCenter";
+import {
+  problemActionSuccessMessage,
+  problemCategoryLabel,
+  problemSeverityTone,
+  shouldKeepProblemSelection,
+} from "./problemCenter";
 
 describe("problem center helpers", () => {
   it("maps backend classifications without reclassifying messages", () => {
@@ -14,5 +19,10 @@ describe("problem center helpers", () => {
     expect(shouldKeepProblemSelection("p-1", ["p-1", "p-2"])).toBe(true);
     expect(shouldKeepProblemSelection("p-1", ["p-2"])).toBe(false);
     expect(shouldKeepProblemSelection(null, ["p-2"])).toBe(false);
+  });
+
+  it("describes an open-folder action as completed instead of pending verification", () => {
+    expect(problemActionSuccessMessage("open_local_folder")).toBe("已打开本地目录");
+    expect(problemActionSuccessMessage("retry_task")).toBe("动作已提交，等待验证");
   });
 });

@@ -5,8 +5,8 @@
 </p>
 
 本地优先的飞书文档同步工具：把飞书云文档稳定同步到本地 Markdown / 文件系统，同时保留继续在飞书协作的工作方式。
-当前稳定版本：`v0.8.11`（2026-07-28）。核心运行形态为 Windows 桌面壳 + 托盘常驻。
-当前代码基线：`v0.8.11`，零字节代码标记文件不再拖垮整轮同步；问题中心区分对象问题、任务异常和运行汇总；更新页显示真实下载进度、大小、速度与安全校验阶段。
+当前稳定版本：`v0.8.12`（2026-07-28）。核心运行形态为 Windows 桌面壳 + 托盘常驻。
+当前代码基线：`v0.8.12`，大历史库按运行读取事件不再误走任务全历史索引；文件只读生命周期不再产生伪“等待上传”；设置与更新页、问题目录动作和事件详情交互已完成修正。
 
 ## 快速入口
 
@@ -41,6 +41,7 @@
 
 ## 核心能力
 
+- v0.8.12 将活动详情查询收敛到 `run_id` 索引，避免同时携带任务条件后扫描百万级任务历史；Watchdog 只接收创建、修改、移动和删除事件，内存中的瞬时上传排队不再写入活动历史。旧 `queued` 记录原样保留并移至“历史排队”，默认“处理结果”只显示可审计事实。设置与更新维护页面统一限制为 1240px 内容宽度，“检查更新”归入更新流程；问题中心可正确打开任务目录，标准/宽屏事件详情改为可用 Esc 或遮罩关闭的居中弹窗。
 - v0.8.11 修复代码目录中零字节标记文件触发“文件大小不能为空”并导致整轮上传失败：零字节普通文件现在保留本地内容并明确记为跳过，不伪造 1 字节文件。问题分类器升级为 v3，具体对象问题结合运行方向分类，任务完成汇总只保留在活动管理；旧任务汇总和旧零字节失败会保留证据后自动结案。更新下载参考 Codex Companion 增加检查、下载、校验、完成和失败阶段，实时展示百分比、已下载/总大小与速度，并使用 `.part` 临时文件和 SHA256 校验后的原子替换。
 - v0.8.10 将活动管理标准模式调整为顶部任务下拉框、左侧运行记录和右侧具体事件；全局字阶从 `11/12/13/14px` 提升到 `12/13/14/15px`，控件高度、事件行高和响应式栏宽同步配适。问题中心通过 schema v6 实装单条忽略与恢复：忽略必须填写原因，不等同于解决，证据和动作历史继续保留；同指纹失败保持忽略，出现严格匹配的后续成功事实时自动转为已解决。
 - v0.8.9 通过 schema v5 归档旧版“先记录待删、同轮又确认云端对象仍存在”的历史运行；只有全部待删事件都能严格匹配“cloud / cancelled / 云端文件已恢复”墓碑、且没有任何真实传输或错误事实时才隐藏，原始运行、事件和墓碑仍保留。
@@ -284,6 +285,7 @@ python scripts/update_install_smoke.py  # Windows 静默安装 smoke
 - v0.8.10 活动布局、字体与问题处理：[`docs/design/v0.8.10-activity-typography-problem-handling-design.md`](docs/design/v0.8.10-activity-typography-problem-handling-design.md)
 - 活动管理 / 问题中心改版：[`docs/design/v0.8.2-activity-problem-center-plan.md`](docs/design/v0.8.2-activity-problem-center-plan.md)
 - 自动更新 v2 升级方案：[`docs/design/v0.8.3-auto-update-v2-plan.md`](docs/design/v0.8.3-auto-update-v2-plan.md)
+- v0.8.12 更新维护、活动运行时修复设计：[`docs/design/v0.8.12-maintenance-activity-runtime-fixes.md`](docs/design/v0.8.12-maintenance-activity-runtime-fixes.md)
 - v0.8.11 同步、问题分层与更新进度设计：[`docs/design/v0.8.11-sync-problem-update-progress-plan.md`](docs/design/v0.8.11-sync-problem-update-progress-plan.md)
 - CLI 契约：[`docs/CLI_AGENT_CONTRACT.md`](docs/CLI_AGENT_CONTRACT.md)
 - OpenClaw Skill：[`docs/OPENCLAW_SKILL.md`](docs/OPENCLAW_SKILL.md)

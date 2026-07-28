@@ -227,7 +227,7 @@ function SettingsLivePage() {
   const inputCls = "h-9 w-full rounded-lg border border-[#c9d8eb] bg-white px-3 text-sm text-[#1f2d3d] outline-none transition placeholder:text-[#8fa1b7] focus:border-[#3370FF] focus:ring-2 focus:ring-[#3370FF]/15";
 
   return (
-    <section className="min-w-0 space-y-4 animate-fade-up">
+    <section className="mx-auto min-w-0 w-full max-w-[1240px] space-y-4 animate-fade-up">
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-[#102033]">设置</h1>

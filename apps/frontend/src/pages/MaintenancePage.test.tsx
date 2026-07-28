@@ -91,12 +91,15 @@ describe("MaintenancePage smoke", () => {
     expect(html).toContain("安装与交接");
     expect(html).toContain("选择任务重置");
     expect(html).toContain('data-maintenance-workspace="true"');
+    expect(html).toContain('data-update-flow-header="true"');
+    expect(html).toContain("max-w-[1240px]");
+    expect(html).toContain("mx-auto");
     expect(html.match(/检查更新/g)).toHaveLength(1);
     expect(html).not.toContain("默认不展示的危险任务");
     expect(html).toContain("安装器已启动");
     expect(html).toContain("req-123");
     expect(html).toContain("pid=1234");
-    expect(html).toContain("grid-cols-[minmax(0,1fr)_360px]");
+    expect(html).toContain("grid-cols-[minmax(0,1fr)_340px]");
     expect(html).toContain("更新流程");
     expect(html).toContain("安装与交接");
     expect(html).not.toContain("min-[1760px]");

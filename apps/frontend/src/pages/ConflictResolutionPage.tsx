@@ -12,6 +12,7 @@ import { formatTimestamp } from "../lib/formatters";
 import { parseProblemLink } from "../lib/activityNavigation";
 import {
   problemCategoryLabel,
+  problemActionSuccessMessage,
   problemScopeLabel,
   problemSeverityTone,
   problemStateLabels,
@@ -346,7 +347,7 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
     }
     try {
       await executeAction({ problemId: selected.id, actionKey: action.key });
-      toast("动作已提交，等待验证", "success");
+      toast(problemActionSuccessMessage(action.key), "success");
     } catch (actionError) {
       toast(actionError instanceof Error ? actionError.message : "动作提交失败", "danger");
     }

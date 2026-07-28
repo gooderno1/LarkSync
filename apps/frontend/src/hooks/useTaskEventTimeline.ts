@@ -29,7 +29,7 @@ export function useTaskEventTimeline({
   activeRunId,
   activeRunState,
 }: UseTaskEventTimelineOptions) {
-  const [eventFilter, setEventFilter] = useState<EventFilter>("all");
+  const [eventFilter, setEventFilter] = useState<EventFilter>("activity");
   const [eventSearch, setEventSearch] = useState("");
   const [eventPage, setEventPage] = useState(1);
   const [eventPageSize, setEventPageSize] = useState(30);

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { ActivityIssuesPage } from "./ActivityIssuesPage";
+import { ActivityEventDetail, ActivityIssuesPage } from "./ActivityIssuesPage";
 
 const task = {
   id: "task-1",
@@ -139,7 +139,7 @@ vi.mock("../hooks/useLogCenterTaskDiagnostics", () => ({
     selectedStateKey: "failed",
     refreshDiagnostics: vi.fn(),
     setDetailTab: vi.fn(),
-    eventFilter: "all",
+    eventFilter: "activity",
     setEventFilter: vi.fn(),
     eventSearch: "",
     setEventSearch: vi.fn(),
@@ -165,6 +165,8 @@ describe("ActivityIssuesPage smoke", () => {
     expect(html).toContain("活动管理");
     expect(html).toContain("运行记录");
     expect(html).toContain("全部事件");
+    expect(html).toContain("处理结果");
+    expect(html).toContain("历史排队");
     expect(html).toContain("时间");
     expect(html).toContain("对象");
     expect(html).toContain('data-activity-management="true"');
@@ -197,5 +199,18 @@ describe("ActivityIssuesPage smoke", () => {
     expect(html).toContain("任务列表");
     expect(html).toContain("运行列表");
     expect(html).toContain("上 2 · 下 3 · 删 4 · 待删 2 · 删失败 1 · 异常 1");
+  });
+
+  it("renders standard event detail as a centered modal", () => {
+    const html = renderToStaticMarkup(
+      <ActivityEventDetail event={event} compact={false} onBack={vi.fn()} />,
+    );
+
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('aria-modal="true"');
+    expect(html).toContain("max-w-[720px]");
+    expect(html).toContain("max-h-[calc(100vh-80px)]");
+    expect(html).toContain("fixed inset-0");
+    expect(html).not.toContain("w-[400px]");
   });
 });

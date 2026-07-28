@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from src.services.watcher import DebounceFilter, FileEventHandler, IgnoreRegistry
 
 
@@ -54,3 +56,32 @@ def test_directory_deleted_event_is_emitted_with_directory_flag() -> None:
     assert events[0].event_type == "deleted"
     assert events[0].src_path == "C:\\tmp\\folder"
     assert events[0].is_directory is True
+
+
+@pytest.mark.parametrize("event_type", ["opened", "closed", "closed_no_write", "unknown"])
+def test_read_only_file_lifecycle_events_are_ignored(event_type: str) -> None:
+    events = []
+    handler = FileEventHandler(
+        lambda event: events.append(event),
+        DebounceFilter(window_seconds=0.0),
+        IgnoreRegistry(ttl_seconds=10.0),
+    )
+
+    handler.on_any_event(DummyEvent("C:\\tmp\\file.md", event_type=event_type))
+
+    assert events == []
+
+
+@pytest.mark.parametrize("event_type", ["created", "modified", "moved", "deleted"])
+def test_mutating_file_events_are_emitted(event_type: str) -> None:
+    events = []
+    handler = FileEventHandler(
+        lambda event: events.append(event),
+        DebounceFilter(window_seconds=0.0),
+        IgnoreRegistry(ttl_seconds=10.0),
+    )
+
+    handler.on_any_event(DummyEvent("C:\\tmp\\file.md", event_type=event_type))
+
+    assert len(events) == 1
+    assert events[0].event_type == event_type

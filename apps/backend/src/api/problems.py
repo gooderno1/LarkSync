@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -342,7 +343,7 @@ async def _run_action(request: Request, problem: ProblemItem, action_key: str) -
         request.app.state.sync_runner.start_task(task)
         return "waiting_for_later_run"
     if action_key == "open_local_folder":
-        open_directory_in_file_manager(task.local_path)
+        open_directory_in_file_manager(Path(task.local_path))
         return "not_applicable"
     raise ValueError("Unsupported action")
 

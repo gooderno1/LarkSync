@@ -2225,11 +2225,6 @@ class SyncTaskRunner:
         if event.is_directory:
             return
         self.queue_local_change(task.id, path, changed_at=event.timestamp)
-        self._record_event(
-            status,
-            SyncFileEvent(path=str(path), status="queued", message="等待周期上传"),
-            task,
-        )
 
     async def _apply_block_update(
         self,

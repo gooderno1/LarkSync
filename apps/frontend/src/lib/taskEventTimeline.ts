@@ -25,8 +25,11 @@ export function buildTaskEventQueryPath({
   params.set("limit", String(eventPageSize));
   params.set("offset", String((eventPage - 1) * eventPageSize));
   params.set("order", "desc");
-  if (selectedTaskId) params.append("task_ids", selectedTaskId);
-  if (activeRunId) params.append("run_ids", activeRunId);
+  if (activeRunId) {
+    params.append("run_ids", activeRunId);
+  } else if (selectedTaskId) {
+    params.append("task_ids", selectedTaskId);
+  }
   for (const status of buildStatusParams(eventFilter)) {
     params.append("statuses", status);
   }

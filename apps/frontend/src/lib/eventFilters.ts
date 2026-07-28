@@ -1,5 +1,7 @@
 export type EventFilter =
+  | "activity"
   | "all"
+  | "queued"
   | "uploaded"
   | "downloaded"
   | "deleted"
@@ -12,13 +14,30 @@ export const WARNING_STATUS_VALUES = ["skipped", "delete_pending", "cancelled", 
 export const DANGER_STATUS_VALUES = ["failed", "delete_failed", "conflict"] as const;
 export const CHANGE_STATUS_VALUES = ["uploaded", "downloaded", "deleted", "mirrored", "delete_pending", "conflict"] as const;
 export const DELETE_STATUS_VALUES = ["deleted", "delete_pending", "delete_failed"] as const;
+export const ACTIVITY_STATUS_VALUES = [
+  "started",
+  "completed",
+  "success",
+  "uploaded",
+  "downloaded",
+  "deleted",
+  "delete_pending",
+  "delete_failed",
+  "skipped",
+  "conflict",
+  "failed",
+  "cancelled",
+  "mirrored",
+] as const;
 
 export const PROBLEM_STATUSES = new Set<string>(PROBLEM_STATUS_VALUES);
 export const WARNING_STATUSES = new Set<string>(WARNING_STATUS_VALUES);
 export const DANGER_STATUSES = new Set<string>(DANGER_STATUS_VALUES);
 
 export const EVENT_FILTERS: Array<{ value: EventFilter; label: string }> = [
+  { value: "activity", label: "处理结果" },
   { value: "all", label: "全部事件" },
+  { value: "queued", label: "历史排队" },
   { value: "uploaded", label: "上传" },
   { value: "downloaded", label: "下载" },
   { value: "deleted", label: "删除" },
@@ -29,6 +48,10 @@ export const EVENT_FILTERS: Array<{ value: EventFilter; label: string }> = [
 
 export function buildStatusParams(filter: EventFilter): string[] {
   switch (filter) {
+    case "activity":
+      return [...ACTIVITY_STATUS_VALUES];
+    case "queued":
+      return ["queued"];
     case "uploaded":
       return ["uploaded"];
     case "downloaded":

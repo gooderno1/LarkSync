@@ -8,6 +8,8 @@ from typing import Callable
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+_MUTATING_EVENT_TYPES = {"created", "modified", "moved", "deleted"}
+
 
 @dataclass
 class FileChangeEvent:
@@ -66,6 +68,9 @@ class FileEventHandler(FileSystemEventHandler):
         self._ignore = ignore
 
     def on_any_event(self, event) -> None:
+        event_type = str(getattr(event, "event_type", "unknown"))
+        if event_type not in _MUTATING_EVENT_TYPES:
+            return
         is_directory = bool(getattr(event, "is_directory", False))
         src_path = str(getattr(event, "src_path", "")) or ""
         dest_path = getattr(event, "dest_path", None)
@@ -82,7 +87,7 @@ class FileEventHandler(FileSystemEventHandler):
         if not self._debounce.should_emit(primary_path):
             return
         payload = FileChangeEvent(
-            event_type=str(getattr(event, "event_type", "unknown")),
+            event_type=event_type,
             src_path=src_path,
             dest_path=dest_path_str if dest_path_str else None,
             timestamp=time.time(),

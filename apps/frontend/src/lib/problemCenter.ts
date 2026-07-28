@@ -38,6 +38,12 @@ export function shouldKeepProblemSelection(
   return Boolean(selectedId && visibleIds.includes(selectedId));
 }
 
+export function problemActionSuccessMessage(actionKey: string): string {
+  return actionKey === "open_local_folder"
+    ? "已打开本地目录"
+    : "动作已提交，等待验证";
+}
+
 export const problemStateLabels: Record<string, string> = {
   open: "未解决",
   in_progress: "处理中",

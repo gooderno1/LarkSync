@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from src.api.problems import router
+from src.api.problems import _run_action, router
 from src.db.models import SyncTask
 from src.db.session import get_session_maker, init_db
 from src.services.problem_service import ProblemService
@@ -28,6 +28,40 @@ class _Runner:
 
     def start_task(self, task) -> None:
         self.started.append(task.id)
+
+
+@pytest.mark.asyncio
+async def test_open_local_folder_action_passes_a_path_to_file_manager(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    opened = []
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                sync_task_service=SimpleNamespace(
+                    get_task=AsyncMock(
+                        return_value=SimpleNamespace(
+                            id="task-1",
+                            local_path=str(tmp_path),
+                        )
+                    )
+                )
+            )
+        )
+    )
+    monkeypatch.setattr(
+        "src.api.problems.open_directory_in_file_manager",
+        lambda path: opened.append(path),
+    )
+
+    result = await _run_action(
+        request,
+        SimpleNamespace(task_id="task-1"),
+        "open_local_folder",
+    )
+
+    assert result == "not_applicable"
+    assert opened == [tmp_path]
 
 
 @pytest.mark.asyncio

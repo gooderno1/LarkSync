@@ -1685,7 +1685,7 @@ async def test_handle_local_event_calls_upload_with_all_dependencies(tmp_path: P
     assert pending is not None
     assert pending[str(path)] == 0.0
     status = runner.get_status(task.id)
-    assert status.last_files[-1].status == "queued"
+    assert status.last_files == []
 
 
 @pytest.mark.asyncio
@@ -1747,7 +1747,9 @@ async def test_run_upload_paths_uses_latest_upload_callback(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
-async def test_handle_local_event_records_run_id_for_active_queued_event(tmp_path: Path) -> None:
+async def test_handle_local_event_queues_change_without_persisting_transient_event(
+    tmp_path: Path,
+) -> None:
     store = SyncEventStore(tmp_path / "sync-events.jsonl")
     runner = SyncTaskRunner(link_service=FakeLinkService(), event_store=store)
     task = SyncTaskItem(
@@ -1781,10 +1783,8 @@ async def test_handle_local_event_records_run_id_for_active_queued_event(tmp_pat
         ),
     )
 
-    records = list(store.iter_records())
-    assert len(records) == 1
-    assert records[0].status == "queued"
-    assert records[0].run_id == "run-queued"
+    assert runner._pending_uploads[task.id][str(path)] == 123.0
+    assert list(store.iter_records()) == []
 
 
 @pytest.mark.asyncio
@@ -2330,9 +2330,8 @@ async def test_run_scheduled_upload_clears_current_run_id_after_finish(
         ),
     )
 
-    records = list(store.iter_records())
-    assert records[-1].status == "queued"
-    assert records[-1].run_id is None
+    assert runner._pending_uploads[task.id][str(queued_path)] == 123.0
+    assert all(record.status != "queued" for record in store.iter_records())
 
 
 @pytest.mark.asyncio

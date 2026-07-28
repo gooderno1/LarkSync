@@ -205,7 +205,7 @@ function EventList({
   );
 }
 
-function EventDetail({
+export function ActivityEventDetail({
   event,
   compact,
   onBack,
@@ -216,6 +216,14 @@ function EventDetail({
 }) {
   const { toast } = useToast();
   const problem = classifyEventProblem(event);
+  useEffect(() => {
+    if (compact || typeof window === "undefined") return undefined;
+    const handleKeyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key === "Escape") onBack();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [compact, onBack]);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText([
@@ -244,23 +252,26 @@ function EventDetail({
     );
     window.dispatchEvent(new HashChangeEvent("hashchange"));
   };
-  return (
+  const detail = (
     <section
       data-activity-event-detail="true"
+      role={compact ? undefined : "dialog"}
+      aria-modal={compact ? undefined : "true"}
+      aria-labelledby={compact ? undefined : "activity-event-detail-title"}
       className={cn(
         "flex min-h-0 flex-col bg-white",
         compact
           ? "h-full w-full"
-          : "absolute inset-y-0 right-0 z-20 w-[400px] border-l border-[#c9d8ec] shadow-[-18px_0_36px_rgba(32,67,112,0.12)]",
+          : "max-h-[calc(100vh-80px)] w-[min(720px,calc(100vw-48px))] max-w-[720px] overflow-hidden rounded-xl border border-[#c9d8ec] shadow-[0_24px_72px_rgba(32,67,112,0.24)]",
       )}
     >
       <header className="border-b border-[#d7e4f5] px-5 py-4">
-        <button type="button" onClick={onBack} className="text-xs font-semibold text-[#3370ff] hover:underline">
-          ← 返回事件列表
+        <button type="button" onClick={onBack} aria-label="关闭事件详情" className="text-xs font-semibold text-[#3370ff] hover:underline">
+          {compact ? "← 返回事件列表" : "关闭"}
         </button>
         <div className="mt-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-[#102033]">{problem.title}</h2>
+            <h2 id="activity-event-detail-title" className="text-lg font-semibold text-[#102033]">{problem.title}</h2>
             <p className="mt-1 break-words text-sm text-[#52657a]">{event.path}</p>
           </div>
           <StatusPill label={eventStatusDisplay(event)} tone={problem.tone} />
@@ -282,6 +293,17 @@ function EventDetail({
         <button type="button" onClick={goToProblems} className="rounded-lg bg-[#3370ff] px-3 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8]">前往问题中心</button>
       </footer>
     </section>
+  );
+  if (compact) return detail;
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-[#102033]/35 p-6"
+      onMouseDown={(mouseEvent) => {
+        if (mouseEvent.target === mouseEvent.currentTarget) onBack();
+      }}
+    >
+      {detail}
+    </div>
   );
 }
 
@@ -396,7 +418,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
   );
 
   if (compact && selectedEvent) {
-    return <EventDetail event={selectedEvent} compact onBack={() => setSelectedEvent(null)} />;
+    return <ActivityEventDetail event={selectedEvent} compact onBack={() => setSelectedEvent(null)} />;
   }
 
   return (
@@ -511,7 +533,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
               <div className="flex items-center gap-2"><button type="button" disabled={eventPage <= 1} onClick={() => setEventPage(Math.max(1, eventPage - 1))} className="rounded border border-[#c9d8ec] px-2 py-1 disabled:opacity-40">上一页</button><span>{eventPage} / {maxPage}</span><button type="button" disabled={eventPage >= maxPage} onClick={() => setEventPage(Math.min(maxPage, eventPage + 1))} className="rounded border border-[#c9d8ec] px-2 py-1 disabled:opacity-40">下一页</button></div>
             )}
           </footer>
-          {!compact && selectedEvent ? <EventDetail event={selectedEvent} compact={false} onBack={() => setSelectedEvent(null)} /> : null}
+          {!compact && selectedEvent ? <ActivityEventDetail event={selectedEvent} compact={false} onBack={() => setSelectedEvent(null)} /> : null}
         </main>
       </div>
     </section>

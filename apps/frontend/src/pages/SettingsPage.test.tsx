@@ -70,6 +70,8 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain("同步策略");
     expect(html).toContain("本地忽略目录");
     expect(html).toContain('data-settings-context="true"');
+    expect(html).toContain("max-w-[1240px]");
+    expect(html).toContain("mx-auto");
     expect(html.match(/保存设置/g)).toHaveLength(1);
     expect(html).not.toContain("保存策略");
     expect(html).not.toContain("保存配置");
