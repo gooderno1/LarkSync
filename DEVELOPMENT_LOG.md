@@ -17,7 +17,12 @@
   - `python scripts/build_installer.py --nsis` 正式构建通过。
   - 本地 Windows 安装包为 `dist/LarkSync-Setup-v0.8.11.exe`，大小 `71,655,235` bytes，SHA256 为 `2B95AB8D3C394011719115E10546E9CD88E3D207129BDCFEC49437BAF6D4673C`。
   - 安装包仅完成构建和静态校验，未安装、未启动、未操作当前桌面正式版。
-  - GitHub Actions 与 Release 资产校验将在发布流程完成后回写。
+  - GitHub Actions 正式工作流 `30367959227` 全部通过：质量门、Windows、macOS arm64 与 macOS x86_64 构建及安装启动 smoke 均成功。
+  - GitHub Release 发布时间为 `2026-07-28T14:27:13Z`；Latest 为非草稿、非预发布的 `v0.8.11`，共包含三个安装包与三个 `.sha256` 文件。
+  - Windows 正式安装包大小为 `57,102,869` bytes，SHA256 为 `e4b160ad46d743b876975820fc989e36ab72caa9382c60a6b3cf170df1dff355`。
+  - macOS arm64 正式安装包 SHA256 为 `9942ea218ac50e9be72e7f3a640fb11df02e5da0b08e787efd061dc01d87e27e`；macOS x86_64 为 `b09e72132885bef9430ddecc4e8b15dc253f1de61e29745a399ba81e44cf5318`。
+  - 三个平台的 GitHub asset digest 均与各自 `.sha256` 文件一致；Release 正文已恢复完整三平台校验表。
+  - 使用项目更新选择函数验证：`v0.8.11 > v0.8.10`，Windows 正确选择 `LarkSync-Setup-v0.8.11.exe`、对应 `.sha256` 资产和 GitHub digest。
 
 ## v0.8.11-dev.1 fix: 修复代码同步并分层问题与更新下载状态 (2026-07-28)
 
