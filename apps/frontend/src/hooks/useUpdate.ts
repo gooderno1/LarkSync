@@ -16,8 +16,17 @@ export type UpdateStatus = {
   last_check?: number | null;
   last_error?: string | null;
   download_path?: string | null;
+  phase?: "idle" | "checking" | "up_to_date" | "available" | "downloading" | "verifying" | "downloaded" | "error" | string;
+  progress?: UpdateProgress | null;
   install_request?: UpdateInstallRequest | null;
   install_handoff?: UpdateInstallHandoff | null;
+};
+
+export type UpdateProgress = {
+  percent: number;
+  bytes_per_second: number;
+  transferred: number;
+  total: number;
 };
 
 export type UpdateInstallRequest = {
@@ -55,6 +64,7 @@ export function useUpdate() {
     queryFn: () => apiFetch<UpdateStatus>("/system/update/status"),
     staleTime: 30_000,
     placeholderData: {},
+    refetchInterval: 750,
   });
 
   const checkMutation = useMutation({
@@ -64,7 +74,20 @@ export function useUpdate() {
 
   const downloadMutation = useMutation({
     mutationFn: () => apiFetch<UpdateStatus>("/system/update/download", { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["update-status"] }),
+    onMutate: () => {
+      qc.setQueryData<UpdateStatus>(["update-status"], (current) => ({
+        ...(current || {}),
+        phase: "downloading",
+        last_error: null,
+        progress: {
+          percent: 0,
+          bytes_per_second: 0,
+          transferred: 0,
+          total: current?.asset?.size || 0,
+        },
+      }));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["update-status"] }),
   });
 
   const installMutation = useMutation({

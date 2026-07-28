@@ -13,6 +13,13 @@ vi.mock("../hooks/useUpdate", () => ({
       last_check: 3,
       last_error: null,
       download_path: null,
+      phase: "downloading",
+      progress: {
+        percent: 42,
+        bytes_per_second: 4 * 1024 * 1024,
+        transferred: 24 * 1024 * 1024,
+        total: 57 * 1024 * 1024,
+      },
       install_request: {
         request_id: "req-123",
         installer_path: "D:/downloads/LarkSync-Setup-v0.8.0.exe",
@@ -74,6 +81,11 @@ describe("MaintenancePage smoke", () => {
     const html = renderToStaticMarkup(<MaintenancePage />);
 
     expect(html).toContain("更新流程");
+    expect(html).toContain("正在下载安装包");
+    expect(html).toContain("42%");
+    expect(html).toContain("24.0 MB / 57.0 MB");
+    expect(html).toContain("4.0 MB/s");
+    expect(html).toContain('role="progressbar"');
     expect(html).toContain("日志保留");
     expect(html).toContain("重置同步映射");
     expect(html).toContain("安装与交接");

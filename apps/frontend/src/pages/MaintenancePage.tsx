@@ -16,6 +16,17 @@ function formatAssetSize(size?: number): string {
   return `${size} B`;
 }
 
+function updatePhaseLabel(phase?: string): string {
+  if (phase === "checking") return "正在检查更新";
+  if (phase === "downloading") return "正在下载安装包";
+  if (phase === "verifying") return "下载完成，正在校验安全性";
+  if (phase === "downloaded") return "安装包已下载并校验通过";
+  if (phase === "error") return "更新未完成";
+  if (phase === "available") return "发现新版本";
+  if (phase === "up_to_date") return "已是最新版本";
+  return "等待检查";
+}
+
 type InstallStepTone = "neutral" | "info" | "success" | "warning" | "danger";
 
 type InstallTimelineStep = {
@@ -142,6 +153,8 @@ function MaintenanceLivePage() {
   }, [status.last_check]);
   const installTimeline = useMemo(() => getInstallTimelineSteps(status), [status]);
   const installStageTone = getHandoffStageTone(status.install_handoff);
+  const downloadActive = downloading || status.phase === "downloading" || status.phase === "verifying";
+  const progress = status.progress;
 
   const handleCheckUpdate = async () => {
     try {
@@ -283,15 +296,42 @@ function MaintenanceLivePage() {
                 </p>
               </div>
             </div>
-            {status.last_error ? <p className="mt-3 text-xs text-[#F43F5E]">检查失败：{status.last_error}</p> : null}
+            {status.last_error ? <p className="mt-3 text-xs text-[#F43F5E]">更新失败：{status.last_error}</p> : null}
+            {progress && ["downloading", "verifying", "downloaded"].includes(status.phase || "") ? (
+              <div className="mt-4 rounded-lg border border-[#bfd8ff] bg-[#f6faff] p-3" aria-live="polite">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[#102033]">{updatePhaseLabel(status.phase)}</p>
+                    <p className="mt-1 text-xs text-[#52657A]">
+                      {formatAssetSize(progress.transferred)} / {formatAssetSize(progress.total)}
+                      {status.phase === "downloading" ? ` · ${formatAssetSize(progress.bytes_per_second)}/s` : ""}
+                    </p>
+                  </div>
+                  <strong className="text-lg text-[#3370ff]">{Math.round(progress.percent)}%</strong>
+                </div>
+                <div
+                  className="mt-3 h-2 overflow-hidden rounded-full bg-[#dceaff]"
+                  role="progressbar"
+                  aria-label={updatePhaseLabel(status.phase)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(progress.percent)}
+                >
+                  <span
+                    className="block h-full rounded-full bg-[#3370ff] transition-[width] duration-300"
+                    style={{ width: `${Math.max(0, Math.min(100, progress.percent))}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 className="h-9 rounded-lg bg-[#3370FF] px-4 text-sm font-semibold text-white hover:bg-[#2563eb] disabled:opacity-50"
                 onClick={handleDownloadUpdate}
-                disabled={!status.update_available || downloading || installing}
+                disabled={!status.update_available || downloadActive || installing}
                 type="button"
               >
-                {downloading ? "下载中" : "下载更新"}
+                {downloadActive ? `下载中${progress ? ` ${Math.round(progress.percent)}%` : ""}` : status.phase === "error" ? "重新下载" : "下载更新"}
               </button>
               <button
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#bfd8ff] px-4 text-sm font-medium text-[#3370FF] hover:bg-[#eef5ff] disabled:opacity-50"
@@ -305,7 +345,7 @@ function MaintenanceLivePage() {
               <button
                 className="h-9 rounded-lg border border-[#10B981]/40 bg-[#ECFDF5] px-4 text-sm font-semibold text-[#047857] hover:bg-[#D1FAE5] disabled:opacity-50"
                 onClick={handleInstallUpdate}
-                disabled={installing || !status.download_path}
+                disabled={installing || downloadActive || !status.download_path}
                 type="button"
               >
                 {installing ? "启动中" : "静默安装"}

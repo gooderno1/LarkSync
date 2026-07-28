@@ -7,6 +7,8 @@ import httpx
 from src.core.config import ConfigManager
 from src.core.paths import update_data_dir
 from src.services.update_service import (
+    UpdateAsset,
+    UpdateStatus,
     UpdateService,
     compute_file_sha256,
     extract_sha256_from_release_notes,
@@ -430,3 +432,139 @@ def test_update_service_uses_external_update_dir_when_frozen(
 
     assert service._status_path == update_data_dir() / "status.json"  # type: ignore[attr-defined]
     assert service._status_path == expected_root / "updates" / "status.json"  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_download_update_reports_progress_and_atomically_publishes_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = b"verified-installer-content"
+    source = tmp_path / "source.exe"
+    source.write_bytes(content)
+    digest = compute_file_sha256(source)
+    asset = UpdateAsset(
+        name="LarkSync-Setup-v9.9.9.exe",
+        url="https://example.com/LarkSync-Setup-v9.9.9.exe",
+        size=len(content),
+        sha256=digest,
+    )
+    service = UpdateService()
+    service._status_path = tmp_path / "status.json"  # type: ignore[attr-defined]
+
+    async def fake_check_for_updates(*, force: bool = False):
+        del force
+        return UpdateStatus(
+            current_version="v0.8.10",
+            latest_version="v9.9.9",
+            update_available=True,
+            asset=asset,
+            phase="available",
+        )
+
+    class FakeResponse:
+        status_code = 200
+        headers = {"content-length": str(len(content))}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def aiter_bytes(self):
+            yield content[:8]
+            assert service.load_cached_status().phase == "downloading"
+            assert service.load_cached_status().progress is not None
+            assert service.load_cached_status().progress.transferred == 8
+            yield content[8:]
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def stream(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(service, "check_for_updates", fake_check_for_updates)
+    monkeypatch.setattr("src.services.update_service.update_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("src.services.update_service.httpx.AsyncClient", FakeClient)
+
+    result = await service.download_update()
+
+    target = tmp_path / asset.name
+    assert result.phase == "downloaded"
+    assert result.progress is not None
+    assert result.progress.percent == 100
+    assert result.download_path == str(target)
+    assert target.read_bytes() == content
+    assert not (tmp_path / f"{asset.name}.part").exists()
+
+
+@pytest.mark.asyncio
+async def test_download_update_removes_partial_file_when_checksum_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = b"corrupted-installer"
+    asset = UpdateAsset(
+        name="LarkSync-Setup-v9.9.9.exe",
+        url="https://example.com/LarkSync-Setup-v9.9.9.exe",
+        size=len(content),
+        sha256="f" * 64,
+    )
+    service = UpdateService()
+    service._status_path = tmp_path / "status.json"  # type: ignore[attr-defined]
+
+    async def fake_check_for_updates(*, force: bool = False):
+        del force
+        return UpdateStatus(
+            current_version="v0.8.10",
+            latest_version="v9.9.9",
+            update_available=True,
+            asset=asset,
+            phase="available",
+        )
+
+    class FakeResponse:
+        status_code = 200
+        headers = {"content-length": str(len(content))}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def aiter_bytes(self):
+            yield content
+
+    class FakeClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def stream(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(service, "check_for_updates", fake_check_for_updates)
+    monkeypatch.setattr("src.services.update_service.update_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("src.services.update_service.httpx.AsyncClient", FakeClient)
+
+    with pytest.raises(RuntimeError, match="sha256"):
+        await service.download_update()
+
+    assert service.load_cached_status().phase == "error"
+    assert not (tmp_path / asset.name).exists()
+    assert not (tmp_path / f"{asset.name}.part").exists()

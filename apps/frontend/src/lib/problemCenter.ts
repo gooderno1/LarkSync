@@ -18,6 +18,12 @@ export function problemCategoryLabel(category: string): string {
   return CATEGORY_LABELS[category] || category;
 }
 
+export function problemScopeLabel(objectKind: string): string {
+  if (objectKind === "task_run") return "任务异常";
+  if (objectKind === "conflict") return "内容冲突";
+  return "对象问题";
+}
+
 export function problemSeverityTone(severity: string): Tone {
   if (severity === "critical" || severity === "high") return "danger";
   if (severity === "medium") return "warning";

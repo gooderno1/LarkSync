@@ -13,7 +13,7 @@ const problem: ProblemItem = {
   title: "上传失败 · a.md",
   summary: "文件没有成功写入云端。",
   task_id: "task-1",
-  object_kind: "sync_event",
+  object_kind: "sync_object",
   object_key: "a.md",
   object_path: "a.md",
   first_seen_at: 1,
@@ -78,6 +78,8 @@ describe("ConflictResolutionPage smoke", () => {
 
     expect(html).toContain("问题中心");
     expect(html).toContain("上传失败 · a.md");
+    expect(html).toContain("对象问题");
+    expect(html).toContain("问题层级");
     expect(html).toContain("诊断");
     expect(html).toContain("证据");
     expect(html).toContain("处理记录");

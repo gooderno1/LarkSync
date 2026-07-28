@@ -5,7 +5,14 @@ import json
 import pytest
 from sqlalchemy import select
 
-from src.db.models import ConflictRecord, SyncMeta, SyncRun, SyncTask
+from src.db.models import (
+    ConflictRecord,
+    ProblemRecord,
+    SyncMeta,
+    SyncRun,
+    SyncRunEvent,
+    SyncTask,
+)
 from src.db.session import get_session_maker, init_db
 from src.services.problem_service import ProblemService
 from src.services.sync_event_store import SyncEventRecord
@@ -100,6 +107,132 @@ async def test_refresh_sources_deduplicates_occurrences_with_stable_fingerprint(
     )
     assert before_latest == 0
     assert after_latest == 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_sources_separates_upload_object_from_failed_run_summary(
+    tmp_path,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    async with session_maker() as session:
+        session.add(
+            SyncRun(
+                run_id="run-upload",
+                task_id="task-1",
+                state="failed",
+                trigger_source="scheduled_upload",
+                started_at=10.0,
+                finished_at=12.0,
+                last_event_at=12.0,
+                created_at=10.0,
+                updated_at=12.0,
+            )
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=11.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing/src/resource/package_marker",
+                message="文件大小不能为空",
+                run_id="run-upload",
+            ),
+            SyncEventRecord(
+                timestamp=12.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing",
+                message="完成: total=1 ok=0 failed=1 skipped=0",
+                run_id="run-upload",
+            ),
+        ]
+    )
+
+    await service.refresh_sources()
+    total, items = await service.list_problems(state="open", limit=20, offset=0)
+
+    assert total == 1
+    assert items[0].category == "upload"
+    assert items[0].object_kind == "sync_object"
+    assert items[0].object_path == "src/resource/package_marker"
+
+
+@pytest.mark.asyncio
+async def test_refresh_sources_resolves_legacy_failed_run_summary_problem(
+    tmp_path,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    async with session_maker() as session:
+        session.add(
+            SyncRun(
+                run_id="run-summary",
+                task_id="task-1",
+                state="failed",
+                trigger_source="scheduled_upload",
+                started_at=10.0,
+                finished_at=12.0,
+                last_event_at=12.0,
+                created_at=10.0,
+                updated_at=12.0,
+            )
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=12.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing",
+                message="完成: total=1 ok=0 failed=1 skipped=0",
+                run_id="run-summary",
+            )
+        ]
+    )
+    async with session_maker() as session:
+        event = (
+            await session.execute(
+                select(SyncRunEvent).where(SyncRunEvent.run_id == "run-summary")
+            )
+        ).scalar_one()
+        session.add(
+            ProblemRecord(
+                id="legacy-summary",
+                fingerprint="legacy-summary-fingerprint",
+                category="system",
+                severity="medium",
+                state="open",
+                title="同步失败 · Marketing",
+                summary="同步动作未完成，需要查看原始证据。",
+                task_id="task-1",
+                object_kind="sync_event",
+                object_key="marketing",
+                object_path="Marketing",
+                first_seen_at=12.0,
+                last_seen_at=12.0,
+                occurrence_count=1,
+                latest_run_id="run-summary",
+                latest_event_id=event.id,
+                classifier_version="problem-classifier-v2",
+                actionability="diagnostic_only",
+            )
+        )
+        await session.commit()
+
+    await service.refresh_sources()
+    item = await service.get_problem("legacy-summary")
+
+    assert item is not None
+    assert item.state == "resolved"
+    assert item.object_kind == "task_run"
+    assert item.resolution_verification == "workflow_summary_not_problem"
 
 
 @pytest.mark.asyncio

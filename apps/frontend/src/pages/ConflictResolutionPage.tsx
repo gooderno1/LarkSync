@@ -12,6 +12,7 @@ import { formatTimestamp } from "../lib/formatters";
 import { parseProblemLink } from "../lib/activityNavigation";
 import {
   problemCategoryLabel,
+  problemScopeLabel,
   problemSeverityTone,
   problemStateLabels,
   shouldKeepProblemSelection,
@@ -91,6 +92,10 @@ function ProblemQueueItem({
         <span className="shrink-0 text-xs text-[#52657a]">{formatTimestamp(problem.last_seen_at)}</span>
       </div>
       <div className="mt-2 flex items-center gap-2 pl-[18px] text-xs text-[#52657a]">
+        <span className="shrink-0 rounded-full border border-[#c9d8ec] bg-[#f6faff] px-2 py-0.5 font-semibold text-[#334762]">
+          {problemScopeLabel(problem.object_kind)}
+        </span>
+        <span>·</span>
         <span className="truncate">{problem.task_id || "系统"}</span>
         <span>·</span>
         <span>{problemCategoryLabel(problem.category)}</span>
@@ -141,7 +146,8 @@ function Diagnosis({
       </section>
       <section>
         <h3 className="text-sm font-semibold text-[#102033]">对象与关联</h3>
-        <dl className="mt-2 grid grid-cols-2 gap-3 text-xs">
+        <dl className="mt-2 grid grid-cols-3 gap-3 text-xs">
+          <div className="rounded-lg border border-[#edf3fb] p-3"><dt className="text-[#6b7f96]">问题层级</dt><dd className="mt-1 font-semibold text-[#102033]">{problemScopeLabel(problem.object_kind)}</dd></div>
           <div className="rounded-lg border border-[#edf3fb] p-3"><dt className="text-[#6b7f96]">对象</dt><dd className="mt-1 break-words font-mono text-[#102033]">{problem.object_path || problem.object_key}</dd></div>
           <div className="rounded-lg border border-[#edf3fb] p-3"><dt className="text-[#6b7f96]">关联运行</dt><dd className="mt-1 break-words font-mono text-[#102033]">{problem.latest_run_id || "无"}</dd></div>
         </dl>

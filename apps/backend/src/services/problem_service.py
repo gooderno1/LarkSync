@@ -29,7 +29,7 @@ from src.db.session import get_session_maker
 from src.services.sync_path_policy import should_ignore_sync_path
 
 
-CLASSIFIER_VERSION = "problem-classifier-v2"
+CLASSIFIER_VERSION = "problem-classifier-v3"
 PROBLEM_STATUSES = {
     "failed",
     "delete_failed",
@@ -51,6 +51,9 @@ _REQUEST_ID_PATTERN = re.compile(
 )
 _TOKEN_PATTERN = re.compile(
     r"(?i)(?:access_token|refresh_token|app_secret|authorization)\s*[:=]\s*[^\s,;]+"
+)
+_RUN_SUMMARY_PATTERN = re.compile(
+    r"^完成:\s*total=(\d+)\s+ok=(\d+)\s+failed=(\d+)\s+skipped=(\d+)\s*$"
 )
 
 
@@ -417,6 +420,7 @@ class ProblemService:
         async with self._session_maker() as session:
             task_rows = await session.execute(select(SyncTask.id, SyncTask.local_path))
             task_roots = {str(task_id): str(root) for task_id, root in task_rows.all()}
+            await self._migrate_active_event_problems(session, task_roots=task_roots)
             cursor_timestamp, cursor_event_id = await self._load_event_cursor(session)
             event_stmt = (
                 select(SyncRunEvent)
@@ -436,15 +440,28 @@ class ProblemService:
                 event_stmt = event_stmt.limit(max(1, event_limit))
             event_rows = await session.execute(event_stmt)
             events = list(event_rows.scalars().all())
+            run_triggers = await self._load_run_triggers(
+                session,
+                [event.run_id for event in events],
+            )
             problem_fingerprints: set[str] = set()
             for event in events:
                 if event.status not in PROBLEM_STATUSES:
+                    continue
+                if self.is_failed_run_summary(event.status, event.message):
                     continue
                 _, object_key = self.normalize_object_path(
                     event.path,
                     task_roots.get(event.task_id),
                 )
-                classification = self.classify_event(event.status, event.path, event.message)
+                classification = self.classify_event(
+                    event.status,
+                    event.path,
+                    event.message,
+                    operation_hint=self.operation_hint_from_trigger(
+                        run_triggers.get(event.run_id or "")
+                    ),
+                )
                 problem_fingerprints.add(
                     self.build_fingerprint(
                         source_kind="sync_event",
@@ -481,10 +498,15 @@ class ProblemService:
                     known_conflicts[str(source_id)] = str(problem_id)
             for event in events:
                 if event.status in PROBLEM_STATUSES:
+                    if self.is_failed_run_summary(event.status, event.message):
+                        continue
                     await self._ingest_event(
                         session,
                         event,
                         task_root=task_roots.get(event.task_id),
+                        operation_hint=self.operation_hint_from_trigger(
+                            run_triggers.get(event.run_id or "")
+                        ),
                         occurrence_known_absent=False,
                         problems_by_fingerprint=problems_by_fingerprint,
                     )
@@ -510,6 +532,205 @@ class ProblemService:
                 )
             await session.commit()
         return ProblemRefreshResult(events_seen=len(events), conflicts_seen=len(conflicts))
+
+    async def _migrate_active_event_problems(
+        self,
+        session: AsyncSession,
+        *,
+        task_roots: dict[str, str],
+        limit: int = 500,
+    ) -> None:
+        rows = await session.execute(
+            select(ProblemRecord)
+            .where(ProblemRecord.object_kind == "sync_event")
+            .where(ProblemRecord.classifier_version != CLASSIFIER_VERSION)
+            .where(
+                ProblemRecord.state.in_(
+                    ["open", "in_progress", "waiting", "ignored"]
+                )
+            )
+            .order_by(ProblemRecord.last_seen_at.desc())
+            .limit(max(1, limit))
+        )
+        problems = list(rows.scalars().all())
+        event_ids = [
+            problem.latest_event_id
+            for problem in problems
+            if problem.latest_event_id
+        ]
+        if not event_ids:
+            return
+        event_rows = await session.execute(
+            select(SyncRunEvent).where(SyncRunEvent.id.in_(event_ids))
+        )
+        events = {event.id: event for event in event_rows.scalars().all()}
+        run_triggers = await self._load_run_triggers(
+            session,
+            [event.run_id for event in events.values()],
+        )
+
+        migration_targets: list[
+            tuple[
+                ProblemRecord,
+                SyncRunEvent,
+                _Classification,
+                str,
+                str,
+                str,
+                str,
+            ]
+        ] = []
+        for problem in problems:
+            event = events.get(problem.latest_event_id or "")
+            if event is None:
+                continue
+            problem.classifier_version = CLASSIFIER_VERSION
+            if self.is_failed_run_summary(event.status, event.message):
+                problem.object_kind = "task_run"
+                problem.state = "resolved"
+                problem.resolved_at = event.timestamp
+                problem.last_good_at = event.timestamp
+                problem.resolution_verification = "workflow_summary_not_problem"
+                problem.actionability = "diagnostic_only"
+                continue
+            task_root = task_roots.get(event.task_id)
+            object_path, object_key = self.normalize_object_path(event.path, task_root)
+            operation_hint = self.operation_hint_from_trigger(
+                run_triggers.get(event.run_id or "")
+            )
+            classification = self.classify_event(
+                event.status,
+                event.path,
+                event.message,
+                operation_hint=operation_hint,
+            )
+            object_kind = self.event_object_kind(event.path, task_root)
+            operation_family = self.operation_family_for_problem(
+                classification.category,
+                event.status,
+            )
+            fingerprint = self.build_fingerprint(
+                source_kind="sync_event",
+                task_id=event.task_id,
+                category=classification.category,
+                stage=event.status,
+                normalized_error_code=classification.normalized_error_code,
+                object_key=object_key,
+            )
+            migration_targets.append(
+                (
+                    problem,
+                    event,
+                    classification,
+                    object_path,
+                    object_key,
+                    object_kind,
+                    fingerprint,
+                )
+            )
+            problem.operation_family = operation_family
+            problem.resolution_key = self.build_resolution_key(
+                task_id=event.task_id,
+                object_key=object_key,
+                operation_family=operation_family,
+            )
+
+        target_fingerprints = {item[6] for item in migration_targets}
+        existing_by_fingerprint: dict[str, ProblemRecord] = {}
+        if target_fingerprints:
+            existing_rows = await session.execute(
+                select(ProblemRecord).where(
+                    ProblemRecord.fingerprint.in_(target_fingerprints)
+                )
+            )
+            existing_by_fingerprint = {
+                item.fingerprint: item for item in existing_rows.scalars().all()
+            }
+
+        claimed_fingerprints = dict(existing_by_fingerprint)
+        for (
+            problem,
+            event,
+            classification,
+            object_path,
+            object_key,
+            object_kind,
+            fingerprint,
+        ) in migration_targets:
+            existing = claimed_fingerprints.get(fingerprint)
+            if existing is not None and existing.id != problem.id:
+                problem.state = "resolved"
+                problem.resolved_at = event.timestamp
+                problem.last_good_at = event.timestamp
+                problem.resolution_verification = "superseded_by_reclassification"
+                problem.actionability = "diagnostic_only"
+                continue
+            problem.fingerprint = fingerprint
+            claimed_fingerprints[fingerprint] = problem
+            problem.category = classification.category
+            problem.severity = classification.severity
+            problem.title = classification.title
+            problem.summary = classification.summary
+            problem.object_kind = object_kind
+            problem.object_path = object_path
+            problem.object_key = object_key
+            problem.actionability = self.actionability_for_category(
+                classification.category
+            )
+            if (
+                classification.category == "upload"
+                and (event.message or "").strip() == "文件大小不能为空"
+            ):
+                problem.state = "resolved"
+                problem.resolved_at = event.timestamp
+                problem.last_good_at = event.timestamp
+                problem.resolution_verification = "zero_byte_file_now_skipped"
+                problem.ignored_reason = None
+                problem.ignored_at = None
+
+    @staticmethod
+    async def _load_run_triggers(
+        session: AsyncSession,
+        run_ids: Iterable[str | None],
+    ) -> dict[str, str]:
+        normalized = {str(run_id) for run_id in run_ids if run_id}
+        if not normalized:
+            return {}
+        rows = await session.execute(
+            select(SyncRun.run_id, SyncRun.trigger_source).where(
+                SyncRun.run_id.in_(normalized)
+            )
+        )
+        return {
+            str(run_id): str(trigger_source or "")
+            for run_id, trigger_source in rows.all()
+        }
+
+    @staticmethod
+    def is_failed_run_summary(status: str, message: str | None) -> bool:
+        if status.strip().lower() != "failed":
+            return False
+        match = _RUN_SUMMARY_PATTERN.fullmatch((message or "").strip())
+        return bool(match and int(match.group(3)) > 0)
+
+    @staticmethod
+    def operation_hint_from_trigger(trigger_source: str | None) -> str | None:
+        normalized = (trigger_source or "").strip().lower()
+        if "upload" in normalized:
+            return "upload"
+        if "download" in normalized:
+            return "download"
+        return None
+
+    @classmethod
+    def event_object_kind(cls, path: str, task_root: str | None) -> str:
+        normalized_path = (path or "").strip().replace("\\", "/").rstrip("/").casefold()
+        normalized_root = (
+            (task_root or "").strip().replace("\\", "/").rstrip("/").casefold()
+        )
+        if normalized_root and normalized_path == normalized_root:
+            return "task_run"
+        return "sync_object"
 
     @staticmethod
     async def _load_event_cursor(session: AsyncSession) -> tuple[float, str]:
@@ -866,6 +1087,7 @@ class ProblemService:
         event: SyncRunEvent,
         *,
         task_root: str | None,
+        operation_hint: str | None = None,
         occurrence_known_absent: bool = False,
         problems_by_fingerprint: dict[str, ProblemRecord] | None = None,
     ) -> None:
@@ -873,7 +1095,12 @@ class ProblemService:
         if not occurrence_known_absent and await session.get(ProblemOccurrence, occurrence_id):
             return
         object_path, object_key = self.normalize_object_path(event.path, task_root)
-        classification = self.classify_event(event.status, event.path, event.message)
+        classification = self.classify_event(
+            event.status,
+            event.path,
+            event.message,
+            operation_hint=operation_hint,
+        )
         operation_family = self.operation_family_for_problem(classification.category, event.status)
         resolution_key = self.build_resolution_key(
             task_id=event.task_id,
@@ -905,7 +1132,7 @@ class ProblemService:
                 title=classification.title,
                 summary=classification.summary,
                 task_id=event.task_id,
-                object_kind="sync_event",
+                object_kind=self.event_object_kind(event.path, task_root),
                 object_key=object_key,
                 object_path=object_path,
                 first_seen_at=event.timestamp,
@@ -1193,6 +1420,8 @@ class ProblemService:
         status: str,
         path: str,
         message: str | None,
+        *,
+        operation_hint: str | None = None,
     ) -> _Classification:
         text = f"{status} {path} {message or ''}".lower()
         status_key = status.strip().lower()
@@ -1218,6 +1447,10 @@ class ProblemService:
             return _Classification("local_io", "medium", f"本地文件异常 · {name}", "本地路径、文件占用、权限或磁盘状态阻止了同步。", error_code)
         if any(word in text for word in ("timeout", "timed out", " 429", " 500", " 502", " 503", " 504", "网络", "限流")):
             return _Classification("network_remote", "medium", f"网络或云端异常 · {name}", "网络连接、限流或飞书临时错误导致同步失败。", error_code)
+        if operation_hint == "upload":
+            return _Classification("upload", "high", f"上传失败 · {name}", "文件或文档内容没有成功写入云端。", error_code)
+        if operation_hint == "download":
+            return _Classification("download", "medium", f"下载失败 · {name}", "云端内容没有成功写入本地。", error_code)
         return _Classification("system", "medium", f"同步失败 · {name}", "同步动作未完成，需要查看原始证据。", error_code)
 
     @staticmethod

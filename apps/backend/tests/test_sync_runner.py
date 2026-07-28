@@ -1838,6 +1838,8 @@ async def test_scan_for_unlinked_files_skips_temporary_files(tmp_path: Path) -> 
     temp_path.write_text("temp", encoding="utf-8")
     real_path = tmp_path / "正式文档.md"
     real_path.write_text("# real", encoding="utf-8")
+    empty_marker = tmp_path / "package_marker"
+    empty_marker.write_bytes(b"")
 
     queued = await runner._scan_for_unlinked_files(task)
 
@@ -1846,6 +1848,7 @@ async def test_scan_for_unlinked_files_skips_temporary_files(tmp_path: Path) -> 
     assert pending is not None
     assert str(real_path) in pending
     assert str(temp_path) not in pending
+    assert str(empty_marker) not in pending
 
 
 @pytest.mark.asyncio

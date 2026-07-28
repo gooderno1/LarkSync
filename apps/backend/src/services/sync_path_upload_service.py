@@ -149,6 +149,20 @@ class SyncPathUploadService:
             )
             return
         file_hash, file_size, file_mtime = signature
+        if file_size == 0:
+            status.skipped_files += 1
+            message = "空文件已跳过：飞书云盘不支持 0 字节文件"
+            self._record_event(
+                status,
+                SyncFileEvent(path=str(path), status="skipped", message=message),
+                None,
+            )
+            logger.info(
+                "跳过零字节文件上传: task_id={} path={}",
+                task.id,
+                path,
+            )
+            return
         if link:
             if (
                 link.local_hash

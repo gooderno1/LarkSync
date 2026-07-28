@@ -2012,6 +2012,11 @@ class SyncTaskRunner:
                     continue
                 if skip_md and path.suffix.lower() == ".md":
                     continue
+                try:
+                    if path.stat().st_size == 0:
+                        continue
+                except OSError:
+                    pass
                 path_key = os.path.normcase(os.path.normpath(str(path)))
                 if path_key not in linked_paths:
                     candidates.append(path)

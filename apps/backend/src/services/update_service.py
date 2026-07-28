@@ -34,6 +34,13 @@ class UpdateAsset(BaseModel):
     sha256: str | None = None
 
 
+class UpdateProgress(BaseModel):
+    percent: float = 0.0
+    bytes_per_second: float = 0.0
+    transferred: int = 0
+    total: int = 0
+
+
 class UpdateStatus(BaseModel):
     current_version: str
     latest_version: str | None = None
@@ -45,6 +52,8 @@ class UpdateStatus(BaseModel):
     last_check: float | None = None
     last_error: str | None = None
     download_path: str | None = None
+    phase: str = "idle"
+    progress: UpdateProgress | None = None
 
 
 def is_dev_version(version: str) -> bool:
@@ -358,12 +367,18 @@ class UpdateService:
         self._repo = repo
         self._config_manager = config_manager or ConfigManager.get()
         self._lock = asyncio.Lock()
+        self._download_lock = asyncio.Lock()
         self._status_path = update_data_dir() / "status.json"
+        self._runtime_status: UpdateStatus | None = None
 
     def auto_update_enabled(self) -> bool:
         return bool(self._config_manager.config.auto_update_enabled)
 
     def load_cached_status(self) -> UpdateStatus:
+        if self._runtime_status is not None:
+            runtime = self._runtime_status.model_copy(deep=True)
+            runtime.current_version = get_version()
+            return runtime
         data = _read_json(self._status_path)
         current_version = get_version()
         if data:
@@ -379,9 +394,19 @@ class UpdateService:
                     data["download_path"] = None
                 elif download_path and not Path(download_path).is_file():
                     data["download_path"] = None
+            phase = str(data.get("phase") or "").strip()
+            if phase in {"checking", "downloading", "verifying"}:
+                data["phase"] = "available" if data.get("update_available") else "idle"
+                data["progress"] = None
+            if data.get("download_path"):
+                data["phase"] = "downloaded"
+            elif not data.get("phase"):
+                data["phase"] = "available" if data.get("update_available") else "idle"
             if not data.get("last_check"):
                 data["last_check"] = self._config_manager.config.last_update_check or None
-            return UpdateStatus.model_validate(data)
+            status = UpdateStatus.model_validate(data)
+            self._runtime_status = status.model_copy(deep=True)
+            return status
         return UpdateStatus(current_version=current_version)
 
     async def check_for_updates(self, force: bool = False) -> UpdateStatus:
@@ -389,6 +414,8 @@ class UpdateService:
             config = self._config_manager.config
             now = time.time()
             cached = self.load_cached_status()
+            if cached.phase in {"downloading", "verifying"}:
+                return cached
 
             interval_hours = max(int(config.update_check_interval_hours or 24), 1)
             last_check = config.last_update_check or cached.last_check or 0.0
@@ -398,6 +425,12 @@ class UpdateService:
                     return cached
                 if last_check and (now - last_check) < (interval_hours * 3600):
                     return cached
+
+            checking = cached.model_copy(deep=True)
+            checking.phase = "checking"
+            checking.progress = None
+            checking.last_error = None
+            self._set_runtime_status(checking)
 
             try:
                 release = await self._fetch_latest_release()
@@ -413,6 +446,7 @@ class UpdateService:
                             asset=None,
                             last_check=now,
                             last_error=None,
+                            phase="up_to_date",
                         ),
                         now,
                     )
@@ -429,6 +463,7 @@ class UpdateService:
                             asset=None,
                             last_check=now,
                             last_error=None,
+                            phase="up_to_date",
                         ),
                         now,
                     )
@@ -470,6 +505,13 @@ class UpdateService:
                     last_check=now,
                     last_error=None,
                     download_path=download_path,
+                    phase=(
+                        "downloaded"
+                        if download_path
+                        else "available"
+                        if update_available
+                        else "up_to_date"
+                    ),
                 )
                 return self._save_status(status, now)
             except Exception as exc:
@@ -485,45 +527,145 @@ class UpdateService:
                     asset=cached.asset,
                     last_check=now,
                     last_error=message,
+                    phase="error",
                 )
                 return self._save_status(status, now)
 
     async def download_update(self) -> UpdateStatus:
-        status = await self.check_for_updates(force=True)
-        if not status.asset or not status.asset.url:
-            raise RuntimeError("没有可下载的更新包")
-        expected_sha256 = await self._resolve_expected_sha256(status.asset)
+        async with self._download_lock:
+            status = await self.check_for_updates(force=True)
+            if not status.asset or not status.asset.url:
+                raise RuntimeError("没有可下载的更新包")
 
-        updates_dir = update_data_dir()
-        updates_dir.mkdir(parents=True, exist_ok=True)
-        target_path = updates_dir / status.asset.name
+            updates_dir = update_data_dir()
+            updates_dir.mkdir(parents=True, exist_ok=True)
+            target_path = updates_dir / status.asset.name
+            partial_path = updates_dir / f"{status.asset.name}.part"
+            total = max(0, int(status.asset.size or 0))
 
-        if target_path.exists() and status.asset.size:
-            if target_path.stat().st_size == status.asset.size:
-                if compute_file_sha256(target_path) == expected_sha256:
-                    status.download_path = str(target_path)
-                    return self._save_status(status, status.last_check or time.time())
-                _append_update_log(f"本地更新包校验失败，重新下载: {target_path}")
+            try:
+                expected_sha256 = await self._resolve_expected_sha256(status.asset)
+                if target_path.exists() and status.asset.size:
+                    if target_path.stat().st_size == status.asset.size:
+                        if compute_file_sha256(target_path) == expected_sha256:
+                            status.download_path = str(target_path)
+                            status.phase = "downloaded"
+                            status.progress = UpdateProgress(
+                                percent=100.0,
+                                transferred=target_path.stat().st_size,
+                                total=target_path.stat().st_size,
+                            )
+                            status.last_error = None
+                            return self._save_status(
+                                status,
+                                status.last_check or time.time(),
+                            )
+                        _append_update_log(
+                            f"本地更新包校验失败，重新下载: {target_path}"
+                        )
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            async with client.stream("GET", status.asset.url, follow_redirects=True) as resp:
-                if resp.status_code >= 400:
-                    raise RuntimeError(f"下载失败: HTTP {resp.status_code}")
-                with target_path.open("wb") as file:
-                    async for chunk in resp.aiter_bytes():
-                        if chunk:
-                            file.write(chunk)
+                partial_path.unlink(missing_ok=True)
+                status.download_path = None
+                status.phase = "downloading"
+                status.progress = UpdateProgress(total=total)
+                status.last_error = None
+                self._save_status(status, status.last_check or time.time())
 
-        actual_sha256 = compute_file_sha256(target_path)
-        if actual_sha256 != expected_sha256:
-            target_path.unlink(missing_ok=True)
-            raise RuntimeError("下载完成但 sha256 校验失败，已中止更新")
+                transferred = 0
+                started_at = time.monotonic()
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    async with client.stream(
+                        "GET",
+                        status.asset.url,
+                        follow_redirects=True,
+                    ) as resp:
+                        if resp.status_code >= 400:
+                            raise RuntimeError(
+                                f"下载失败: HTTP {resp.status_code}"
+                            )
+                        if total <= 0:
+                            try:
+                                total = max(
+                                    0,
+                                    int(resp.headers.get("content-length") or 0),
+                                )
+                            except (TypeError, ValueError):
+                                total = 0
+                        with partial_path.open("wb") as file:
+                            async for chunk in resp.aiter_bytes():
+                                if not chunk:
+                                    continue
+                                file.write(chunk)
+                                transferred += len(chunk)
+                                elapsed = max(time.monotonic() - started_at, 0.001)
+                                percent = (
+                                    min(100.0, transferred * 100.0 / total)
+                                    if total > 0
+                                    else 0.0
+                                )
+                                status.progress = UpdateProgress(
+                                    percent=percent,
+                                    bytes_per_second=transferred / elapsed,
+                                    transferred=transferred,
+                                    total=total,
+                                )
+                                self._set_runtime_status(status)
 
-        status.download_path = str(target_path)
-        _append_update_log(
-            f"下载更新包完成: {target_path} (sha256={actual_sha256[:12]}...)"
-        )
-        return self._save_status(status, status.last_check or time.time())
+                status.phase = "verifying"
+                status.progress = UpdateProgress(
+                    percent=100.0,
+                    bytes_per_second=(
+                        status.progress.bytes_per_second if status.progress else 0.0
+                    ),
+                    transferred=transferred,
+                    total=total or transferred,
+                )
+                self._set_runtime_status(status)
+                actual_sha256 = compute_file_sha256(partial_path)
+                if actual_sha256 != expected_sha256:
+                    raise RuntimeError(
+                        "下载完成但 sha256 校验失败，已中止更新"
+                    )
+
+                partial_path.replace(target_path)
+                status.download_path = str(target_path)
+                status.phase = "downloaded"
+                status.progress = UpdateProgress(
+                    percent=100.0,
+                    bytes_per_second=(
+                        status.progress.bytes_per_second if status.progress else 0.0
+                    ),
+                    transferred=transferred,
+                    total=total or transferred,
+                )
+                status.last_error = None
+                _append_update_log(
+                    f"下载更新包完成: {target_path} (sha256={actual_sha256[:12]}...)"
+                )
+                return self._save_status(
+                    status,
+                    status.last_check or time.time(),
+                )
+            except asyncio.CancelledError:
+                partial_path.unlink(missing_ok=True)
+                status.download_path = None
+                status.phase = "error"
+                status.progress = None
+                status.last_error = "下载已取消"
+                self._save_status(status, status.last_check or time.time())
+                _append_update_log("下载更新包已取消")
+                raise
+            except Exception as exc:
+                partial_path.unlink(missing_ok=True)
+                status.download_path = None
+                status.phase = "error"
+                status.progress = None
+                status.last_error = str(exc)
+                self._save_status(status, status.last_check or time.time())
+                _append_update_log(f"下载更新包失败: {exc}")
+                if isinstance(exc, RuntimeError):
+                    raise
+                raise RuntimeError(str(exc)) from exc
 
     async def _fetch_latest_release(self) -> dict[str, Any] | None:
         url = f"https://api.github.com/repos/{self._owner}/{self._repo}/releases/latest"
@@ -594,9 +736,13 @@ class UpdateService:
 
     def _save_status(self, status: UpdateStatus, last_check: float) -> UpdateStatus:
         self._persist_last_check(last_check)
+        self._set_runtime_status(status)
         payload = status.model_dump()
         _write_json(self._status_path, payload)
         return status
+
+    def _set_runtime_status(self, status: UpdateStatus) -> None:
+        self._runtime_status = status.model_copy(deep=True)
 
     def _persist_last_check(self, last_check: float) -> None:
         path = self._config_manager.config_path

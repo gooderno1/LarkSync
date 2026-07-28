@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-07-28] v0.8.11 release: v0.8.11 code sync problem layering and update progress
+[2026-07-28] v0.8.11-dev.1 fix(sync-problems-update): 零字节代码标记文件改为明确跳过；问题分类器 v3 区分对象问题、任务异常和运行汇总并兼容收敛旧记录；更新下载增加实时百分比、大小、速度、校验阶段和临时文件原子落盘
 [2026-07-28] v0.8.10 release: v0.8.10 activity layout typography and problem handling
 [2026-07-28] v0.8.10-dev.1 feat(activity-problems): 活动标准模式改为顶部任务选择和运行/事件左右布局；全局字阶由 11/12/13/14px 提升为 12/13/14/15px 并配适控件、行高和栏宽；schema v6 实装问题忽略、恢复、原因、时间、动作审计及可信恢复自动结案
 [2026-07-28] v0.8.9 release: v0.8.9 historical false pending activity migration
