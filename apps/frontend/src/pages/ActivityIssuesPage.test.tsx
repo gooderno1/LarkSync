@@ -163,15 +163,17 @@ describe("ActivityIssuesPage smoke", () => {
     const html = renderToStaticMarkup(<ActivityIssuesPage />);
 
     expect(html).toContain("活动管理");
-    expect(html).toContain("任务列表");
+    expect(html).toContain("运行记录");
     expect(html).toContain("全部事件");
     expect(html).toContain("时间");
     expect(html).toContain("对象");
     expect(html).toContain('data-activity-management="true"');
     expect(html).toContain('data-window-layout="standard"');
-    expect(html).toContain("grid-cols-[248px_minmax(720px,1fr)]");
-    expect(html.match(/aria-label="选择活动任务"/g) ?? []).toHaveLength(0);
-    expect(html.match(/aria-label="选择活动运行"/g) ?? []).toHaveLength(1);
+    expect(html).toContain("grid-cols-[296px_minmax(676px,1fr)]");
+    expect(html.match(/aria-label="选择活动任务"/g) ?? []).toHaveLength(1);
+    expect(html.match(/aria-label="选择活动运行"/g) ?? []).toHaveLength(0);
+    expect(html).toContain("运行记录");
+    expect(html).not.toContain("任务列表");
     expect(html).not.toContain("grid-cols-[276px_minmax(0,1fr)_416px]");
     expect(html).not.toContain("日志中心");
   });
@@ -191,7 +193,7 @@ describe("ActivityIssuesPage smoke", () => {
     const html = renderToStaticMarkup(<ActivityIssuesPage layoutMode="wide" />);
 
     expect(html).toContain('data-window-layout="wide"');
-    expect(html).toContain("grid-cols-[248px_288px_minmax(640px,1fr)]");
+    expect(html).toContain("grid-cols-[252px_292px_minmax(632px,1fr)]");
     expect(html).toContain("任务列表");
     expect(html).toContain("运行列表");
     expect(html).toContain("上 2 · 下 3 · 删 4 · 待删 2 · 删失败 1 · 异常 1");

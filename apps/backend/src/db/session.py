@@ -30,7 +30,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -456,6 +456,22 @@ async def _apply_schema_v5(conn) -> None:
     )
 
 
+async def _apply_schema_v6(conn) -> None:
+    await _ensure_column(
+        conn,
+        table="problems",
+        column="ignored_at",
+        column_type="REAL",
+        default_value=None,
+    )
+    await _ensure_index(
+        conn,
+        table="problems",
+        index_name="idx_problems_state_ignored_at",
+        columns_sql="state, ignored_at DESC",
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     SchemaMigration(
         version=1,
@@ -481,6 +497,11 @@ _SCHEMA_MIGRATIONS = [
         version=5,
         description="归档云端对象仍存在造成的历史虚假待删运行",
         upgrade=_apply_schema_v5,
+    ),
+    SchemaMigration(
+        version=6,
+        description="补齐问题人工忽略时间与状态查询索引",
+        upgrade=_apply_schema_v6,
     ),
 ]
 

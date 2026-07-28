@@ -219,6 +219,118 @@ async def test_action_history_tracks_waiting_and_failure_without_false_resolutio
 
 
 @pytest.mark.asyncio
+async def test_manual_ignore_and_restore_are_audited_without_false_resolution(tmp_path) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing/legacy.md",
+                message="上传失败 HTTP 503",
+                run_id="run-1",
+            )
+        ]
+    )
+    await service.refresh_sources()
+    _, problems = await service.list_problems(state="open", limit=20, offset=0)
+    problem = problems[0]
+
+    ignored = await service.ignore_problem(problem.id, "历史问题，当前无需处理")
+
+    assert ignored.state == "ignored"
+    assert ignored.ignored_reason == "历史问题，当前无需处理"
+    assert ignored.ignored_at is not None
+    assert ignored.resolved_at is None
+    assert ignored.resolution_verification == "manually_ignored"
+    assert (await service.get_summary())["unresolved"] == 0
+    with pytest.raises(ValueError, match="cannot be ignored"):
+        await service.ignore_problem(problem.id, "重复操作")
+
+    restored = await service.restore_problem(problem.id)
+
+    assert restored.state == "open"
+    assert restored.ignored_reason is None
+    assert restored.ignored_at is None
+    assert restored.resolution_verification == "manually_restored"
+    actions = await service.list_actions(problem.id, limit=20, offset=0)
+    assert [item.action_key for item in actions] == ["restore_problem", "ignore_problem"]
+    assert all(item.result == "accepted" for item in actions)
+    with pytest.raises(ValueError, match="not ignored"):
+        await service.restore_problem(problem.id)
+
+
+@pytest.mark.asyncio
+async def test_ignored_problem_stays_ignored_on_failure_but_resolves_on_matching_success(
+    tmp_path,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing/legacy.md",
+                message="上传失败 HTTP 503",
+                run_id="run-1",
+            )
+        ]
+    )
+    await service.refresh_sources()
+    _, problems = await service.list_problems(state="open", limit=20, offset=0)
+    problem = await service.ignore_problem(problems[0].id, "外部条件限制，暂时接受")
+
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=20.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing/legacy.md",
+                message="上传失败 HTTP 503",
+                run_id="run-2",
+            )
+        ]
+    )
+    await service.refresh_sources()
+    repeated = await service.get_problem(problem.id)
+
+    assert repeated is not None
+    assert repeated.state == "ignored"
+    assert repeated.occurrence_count == 2
+    assert repeated.ignored_reason == "外部条件限制，暂时接受"
+
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=30.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="uploaded",
+                path="D:/Work/Marketing/legacy.md",
+                message="上传完成",
+                run_id="run-3",
+            )
+        ]
+    )
+    await service.refresh_sources()
+    resolved = await service.get_problem(problem.id)
+
+    assert resolved is not None
+    assert resolved.state == "resolved"
+    assert resolved.ignored_reason is None
+    assert resolved.ignored_at is None
+    assert resolved.resolution_verification == "same_object_operation_succeeded"
+
+
+@pytest.mark.asyncio
 async def test_conflict_source_is_materialized_once_and_tracks_source_resolution(tmp_path) -> None:
     session_maker, _, service = await _build_services(tmp_path)
     await _insert_task(session_maker)

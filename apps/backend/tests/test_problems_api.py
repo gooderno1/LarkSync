@@ -108,7 +108,30 @@ async def test_problem_api_lists_details_and_executes_real_task_action(tmp_path)
         assert action_response.json()["verification_result"] == "waiting_for_later_run"
         assert runner.started == ["task-1"]
 
+        invalid_ignore = await client.post(
+            f"/problems/{problem['id']}/ignore",
+            json={"reason": "   "},
+        )
+        assert invalid_ignore.status_code == 422
+
+        ignored_response = await client.post(
+            f"/problems/{problem['id']}/ignore",
+            json={"reason": "历史问题，当前无需处理"},
+        )
+        assert ignored_response.status_code == 200
+        assert ignored_response.json()["state"] == "ignored"
+        assert ignored_response.json()["ignored_at"] is not None
+
         summary_response = await client.get("/problems/summary")
         assert summary_response.status_code == 200
         refresh_mock.assert_not_awaited()
-        assert summary_response.json()["by_state"]["waiting"] == 1
+        assert summary_response.json()["by_state"]["ignored"] == 1
+        assert summary_response.json()["unresolved"] == 0
+
+        restored_response = await client.post(f"/problems/{problem['id']}/restore")
+        assert restored_response.status_code == 200
+        assert restored_response.json()["state"] == "open"
+        assert restored_response.json()["ignored_reason"] is None
+
+        repeated_restore = await client.post(f"/problems/{problem['id']}/restore")
+        assert repeated_restore.status_code == 409

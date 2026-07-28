@@ -29,14 +29,14 @@
   --input-bg: #09090b;      /* zinc-950 */
   --ui-font-sans: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
   --ui-font-mono: "Cascadia Code", "JetBrains Mono", "SF Mono", monospace;
-  --ui-body-size: 14px;
-  --ui-body-line: 20px;
-  --ui-caption-size: 13px;
-  --ui-caption-line: 20px;
-  --ui-micro-size: 11px;
-  --ui-micro-line: 16px;
-  --ui-meta-size: 12px;
-  --ui-meta-line: 18px;
+  --ui-body-size: 15px;
+  --ui-body-line: 22px;
+  --ui-caption-size: 14px;
+  --ui-caption-line: 21px;
+  --ui-micro-size: 12px;
+  --ui-micro-line: 18px;
+  --ui-meta-size: 13px;
+  --ui-meta-line: 20px;
 }
 
 /* ---- Light theme ---- */
@@ -78,7 +78,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 桌面端采用 11/12/13/14px 四级信息密度，并为每一级配套行高。 */
+/* 桌面端采用 12/13/14/15px 四级信息密度，并为每一级配套行高。 */
 .text-\[10px\] {
   font-size: var(--ui-micro-size);
   line-height: var(--ui-micro-line);
@@ -89,9 +89,14 @@ body {
   line-height: var(--ui-meta-line);
 }
 
-.text-xs {
+.text-\[13px\] {
   font-size: var(--ui-caption-size);
   line-height: var(--ui-caption-line);
+}
+
+/* 36px 控件随正文字阶提升为 40px，保持点击区与文字留白。 */
+.h-9 {
+  height: 2.5rem;
 }
 
 .desktop-grid-surface {

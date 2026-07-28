@@ -84,6 +84,7 @@ class ProblemItem:
     resolution_verification: str | None
     resolved_at: float | None
     ignored_reason: str | None
+    ignored_at: float | None
     resolution_key: str | None
     operation_family: str | None
     actionability: str
@@ -724,22 +725,93 @@ class ProblemService:
             action.error_code = error_code
             action.error_message = self.sanitize_evidence_text(error_message)
             action.verification_result = verification_result
-            problem.resolution_verification = verification_result
-            if result == "failed":
-                problem.state = "open"
-                problem.resolved_at = None
-            elif verification_result in {"verified", "source_resolved", "later_run_succeeded"}:
-                problem.state = "resolved"
-                problem.resolved_at = now
-            elif verification_result and verification_result.startswith("waiting"):
-                problem.state = "waiting"
-            elif action.action_key == "open_local_folder":
-                problem.state = "open"
+            ignored_without_resolution = (
+                problem.state == "ignored"
+                and verification_result
+                not in {"verified", "source_resolved", "later_run_succeeded"}
+            )
+            if ignored_without_resolution:
+                problem.resolution_verification = "manually_ignored"
             else:
-                problem.state = "waiting"
+                problem.resolution_verification = verification_result
+                if result == "failed":
+                    problem.state = "open"
+                    problem.resolved_at = None
+                elif verification_result in {"verified", "source_resolved", "later_run_succeeded"}:
+                    problem.state = "resolved"
+                    problem.resolved_at = now
+                    problem.ignored_reason = None
+                    problem.ignored_at = None
+                elif verification_result and verification_result.startswith("waiting"):
+                    problem.state = "waiting"
+                elif action.action_key == "open_local_folder":
+                    problem.state = "open"
+                else:
+                    problem.state = "waiting"
             await session.commit()
             await session.refresh(action)
             return self._to_action(action)
+
+    async def ignore_problem(self, problem_id: str, reason: str) -> ProblemItem:
+        normalized_reason = (self.sanitize_evidence_text(reason) or "").strip()
+        if len(normalized_reason) < 2 or len(normalized_reason) > 200:
+            raise ValueError("Ignore reason must contain 2 to 200 characters")
+        now = time.time()
+        async with self._session_maker() as session:
+            problem = await session.get(ProblemRecord, problem_id)
+            if not problem:
+                raise LookupError("Problem not found")
+            if problem.state not in {"open", "in_progress", "waiting"}:
+                raise ValueError("Problem cannot be ignored in its current state")
+            problem.state = "ignored"
+            problem.ignored_reason = normalized_reason
+            problem.ignored_at = now
+            problem.resolved_at = None
+            problem.resolution_verification = "manually_ignored"
+            session.add(
+                ProblemActionRecord(
+                    id=str(uuid.uuid4()),
+                    problem_id=problem.id,
+                    action_key="ignore_problem",
+                    requested_at=now,
+                    started_at=now,
+                    finished_at=now,
+                    result="accepted",
+                    verification_result="manually_ignored",
+                )
+            )
+            await session.commit()
+            await session.refresh(problem)
+            return self._to_item(problem)
+
+    async def restore_problem(self, problem_id: str) -> ProblemItem:
+        now = time.time()
+        async with self._session_maker() as session:
+            problem = await session.get(ProblemRecord, problem_id)
+            if not problem:
+                raise LookupError("Problem not found")
+            if problem.state != "ignored":
+                raise ValueError("Problem is not ignored")
+            problem.state = "open"
+            problem.ignored_reason = None
+            problem.ignored_at = None
+            problem.resolved_at = None
+            problem.resolution_verification = "manually_restored"
+            session.add(
+                ProblemActionRecord(
+                    id=str(uuid.uuid4()),
+                    problem_id=problem.id,
+                    action_key="restore_problem",
+                    requested_at=now,
+                    started_at=now,
+                    finished_at=now,
+                    result="accepted",
+                    verification_result="manually_restored",
+                )
+            )
+            await session.commit()
+            await session.refresh(problem)
+            return self._to_item(problem)
 
     async def verify_problem(self, problem_id: str) -> ProblemItem | None:
         async with self._session_maker() as session:
@@ -779,6 +851,8 @@ class ProblemService:
             if resolved:
                 problem.state = "resolved"
                 problem.resolved_at = time.time()
+                problem.ignored_reason = None
+                problem.ignored_at = None
             elif problem.state in {"in_progress", "waiting"}:
                 problem.state = "open"
                 problem.resolved_at = None
@@ -916,7 +990,7 @@ class ProblemService:
         rows = await session.execute(
             select(ProblemRecord)
             .where(ProblemRecord.resolution_key == resolution_key)
-            .where(ProblemRecord.state.in_(["open", "in_progress", "waiting"]))
+            .where(ProblemRecord.state.in_(["open", "in_progress", "waiting", "ignored"]))
             .where(ProblemRecord.last_seen_at < event.timestamp)
         )
         for problem in rows.scalars().all():
@@ -926,6 +1000,8 @@ class ProblemService:
             problem.resolved_by_run_id = event.run_id
             problem.resolved_by_event_id = event.id
             problem.resolution_verification = "same_object_operation_succeeded"
+            problem.ignored_reason = None
+            problem.ignored_at = None
 
     def _backfill_lifecycle_fields(self, problems: list[ProblemRecord]) -> None:
         for problem in problems:
@@ -1037,6 +1113,8 @@ class ProblemService:
                 problem.state = "resolved"
                 problem.resolved_at = conflict.resolved_at or time.time()
                 problem.resolution_verification = "source_resolved"
+                problem.ignored_reason = None
+                problem.ignored_at = None
             return
         task_id, task_root = self._match_task(conflict.local_path, task_roots)
         object_path, object_key = self.normalize_object_path(conflict.local_path, task_root)
@@ -1247,6 +1325,7 @@ class ProblemService:
             resolution_verification=record.resolution_verification,
             resolved_at=record.resolved_at,
             ignored_reason=record.ignored_reason,
+            ignored_at=record.ignored_at,
             resolution_key=record.resolution_key,
             operation_family=record.operation_family,
             actionability=record.actionability,
@@ -1266,7 +1345,7 @@ class ProblemService:
 
     @staticmethod
     def _available_actions(record: ProblemRecord) -> tuple[AvailableProblemAction, ...]:
-        if record.state == "resolved":
+        if record.state in {"resolved", "ignored"}:
             return ()
         if record.object_kind == "conflict":
             return (

@@ -187,7 +187,7 @@ function EventList({
               type="button"
               onClick={() => onSelect(entry)}
               className={cn(
-                "grid min-h-11 w-full grid-cols-[112px_72px_minmax(220px,1fr)_104px_80px] items-center px-3 text-left text-xs hover:bg-[#f6faff]",
+                "grid min-h-12 w-full grid-cols-[112px_72px_minmax(220px,1fr)_104px_80px] items-center px-3 text-left text-xs hover:bg-[#f6faff]",
                 selected && eventKey(selected) === eventKey(entry) ? "bg-[#eef5ff]" : "bg-white",
                 problem.tone === "danger" ? "border-l-[3px] border-l-[#f43f5e]" : "border-l-[3px] border-l-transparent",
               )}
@@ -378,7 +378,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
       aria-label="选择活动任务"
       value={selectedTaskId || ""}
       onChange={(event) => selectTask(event.target.value)}
-      className="h-10 min-w-0 rounded-lg border border-[#c9d8ec] bg-white px-3 text-sm font-semibold text-[#102033] outline-none focus:border-[#3370ff]"
+      className="h-[42px] min-w-0 w-full rounded-lg border border-[#c9d8ec] bg-white px-3 text-sm font-semibold text-[#102033] outline-none focus:border-[#3370ff]"
     >
       {sortedOverviews.map((overview) => <option key={overview.task.id} value={overview.task.id}>{overview.task.name || "未命名任务"}</option>)}
     </select>
@@ -450,11 +450,27 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
         <div className="grid grid-cols-2 gap-2">{taskSelector}{runSelector}</div>
       ) : null}
 
+      {!wide && !compact ? (
+        <div data-activity-task-selector="true" className="flex min-w-0 items-center gap-3 rounded-xl border border-[#d7e4f5] bg-[#fbfdff] px-4 py-3">
+          <span className="shrink-0 text-xs font-semibold text-[#52657a]">当前任务</span>
+          <div className="min-w-0 flex-1">{taskSelector}</div>
+          {activeOverview ? (
+            <StatusPill
+              label={activeOverview.task.enabled ? stateLabels[activeOverview.status.state] || activeOverview.status.state : "已停用"}
+              tone={activeOverview.task.enabled ? stateTones[activeOverview.status.state] || "neutral" : "neutral"}
+              dot={activeOverview.status.state === "running"}
+            />
+          ) : null}
+          <span className="shrink-0 text-xs text-[#52657a]">真实活动 {visibleRuns.length} 条</span>
+          <span className="shrink-0 text-[11px] text-[#7e91a8]">仅显示有实际动作的运行</span>
+        </div>
+      ) : null}
+
       <div className={cn(
         "grid min-h-0 flex-1 gap-4",
-        wide ? "grid-cols-[248px_288px_minmax(640px,1fr)]" : compact ? "grid-cols-1" : "grid-cols-[248px_minmax(720px,1fr)]",
+        wide ? "grid-cols-[252px_292px_minmax(632px,1fr)]" : compact ? "grid-cols-1" : "grid-cols-[296px_minmax(676px,1fr)]",
       )}>
-        {!compact ? (
+        {wide ? (
           <aside className="flex min-h-0 flex-col rounded-xl border border-[#d7e4f5] bg-[#fbfdff] p-3">
             <div className="flex items-center justify-between"><h2 className="text-sm font-semibold text-[#102033]">任务列表</h2><span className="text-xs text-[#52657a]">{taskItems.length} / {sortedOverviews.length}</span></div>
             <input value={taskSearch} onChange={(event) => setTaskSearch(event.target.value)} placeholder="搜索任务" className="mt-3 h-9 rounded-lg border border-[#c9d8ec] bg-white px-3 text-xs outline-none focus:border-[#3370ff]" />
@@ -466,9 +482,9 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
           </aside>
         ) : null}
 
-        {wide ? (
+        {!compact ? (
           <aside className="flex min-h-0 flex-col rounded-xl border border-[#d7e4f5] bg-[#fbfdff] p-3">
-            <div className="flex items-center justify-between"><h2 className="text-sm font-semibold text-[#102033]">运行列表</h2><span className="text-xs text-[#52657a]">{visibleRuns.length} 条</span></div>
+            <div className="flex items-center justify-between"><h2 className="text-sm font-semibold text-[#102033]">{wide ? "运行列表" : "运行记录"}</h2><span className="text-xs text-[#52657a]">{visibleRuns.length} 条</span></div>
             <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto">
               {visibleRuns.map((run) => <RunRow key={run.run_id} run={run} selected={activeRunId === run.run_id} onSelect={() => setSelectedRunId(run.run_id)} />)}
               {visibleRuns.length === 0 ? <p className="rounded-lg border border-dashed border-[#c9d8ec] p-6 text-center text-sm text-[#52657a]">所选时间内暂无运行。</p> : null}
@@ -477,7 +493,6 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
         ) : null}
 
         <main className="relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[#d7e4f5] bg-white">
-          {!wide && !compact ? <div className="flex items-center gap-3 border-b border-[#d7e4f5] bg-[#fbfdff] p-3"><span className="shrink-0 text-xs font-semibold text-[#52657a]">当前运行</span><div className="min-w-0 flex-1">{runSelector}</div><span className="shrink-0 text-[11px] text-[#7e91a8]">仅显示有实际动作的运行</span></div> : null}
           <div className="flex flex-wrap items-center gap-2 border-b border-[#d7e4f5] px-3 py-2.5">
             <select value={eventFilter} onChange={(event) => { setEventFilter(event.target.value as EventFilter); setEventPage(1); }} className="h-9 rounded-lg border border-[#c9d8ec] bg-white px-3 text-xs text-[#102033]">
               {EVENT_FILTERS.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}

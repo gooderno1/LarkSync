@@ -65,6 +65,7 @@ export type ProblemItem = {
   resolution_verification?: string | null;
   resolved_at?: number | null;
   ignored_reason?: string | null;
+  ignored_at?: number | null;
   resolution_key?: string | null;
   operation_family?: string | null;
   actionability?: "manual_required" | "auto_recovering" | "diagnostic_only" | string;

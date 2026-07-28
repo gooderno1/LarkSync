@@ -4,7 +4,7 @@ import json
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.core.file_manager import open_directory_in_file_manager
 from src.services.conflict_resolution_service import ConflictResolutionService
@@ -49,6 +49,7 @@ class ProblemResponse(BaseModel):
     resolution_verification: str | None
     resolved_at: float | None
     ignored_reason: str | None
+    ignored_at: float | None
     resolution_key: str | None
     operation_family: str | None
     actionability: str
@@ -144,6 +145,18 @@ class ProblemActionRequest(BaseModel):
     ]
 
 
+class ProblemIgnoreRequest(BaseModel):
+    reason: str = Field(min_length=2, max_length=200)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 2:
+            raise ValueError("忽略原因至少需要 2 个字符")
+        return normalized
+
+
 router = APIRouter(prefix="/problems", tags=["problems"])
 service = ProblemService()
 
@@ -234,6 +247,32 @@ async def verify_problem(request: Request, problem_id: str) -> ProblemResponse:
     item = await _service(request).verify_problem(problem_id)
     if not item:
         raise HTTPException(status_code=404, detail="Problem not found")
+    return ProblemResponse.from_item(item)
+
+
+@router.post("/{problem_id}/ignore", response_model=ProblemResponse)
+async def ignore_problem(
+    request: Request,
+    problem_id: str,
+    payload: ProblemIgnoreRequest,
+) -> ProblemResponse:
+    try:
+        item = await _service(request).ignore_problem(problem_id, payload.reason)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return ProblemResponse.from_item(item)
+
+
+@router.post("/{problem_id}/restore", response_model=ProblemResponse)
+async def restore_problem(request: Request, problem_id: str) -> ProblemResponse:
+    try:
+        item = await _service(request).restore_problem(problem_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return ProblemResponse.from_item(item)
 
 

@@ -109,6 +109,32 @@ export function useProblems(
       ]);
     },
   });
+  const ignoreMutation = useMutation({
+    mutationFn: ({ problemId, reason }: { problemId: string; reason: string }) =>
+      apiFetch<ProblemItem>(`/problems/${problemId}/ignore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      }),
+    onSettled: async (_data, _error, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["problems"] }),
+        queryClient.invalidateQueries({ queryKey: ["problems-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["problem-detail", variables.problemId] }),
+      ]);
+    },
+  });
+  const restoreMutation = useMutation({
+    mutationFn: (problemId: string) =>
+      apiFetch<ProblemItem>(`/problems/${problemId}/restore`, { method: "POST" }),
+    onSettled: async (_data, _error, problemId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["problems"] }),
+        queryClient.invalidateQueries({ queryKey: ["problems-summary"] }),
+        queryClient.invalidateQueries({ queryKey: ["problem-detail", problemId] }),
+      ]);
+    },
+  });
 
   return {
     problems: listQuery.data?.items ?? [],
@@ -124,6 +150,9 @@ export function useProblems(
     actionPending: actionMutation.isPending,
     verifyProblem: verifyMutation.mutateAsync,
     verifyPending: verifyMutation.isPending,
+    ignoreProblem: ignoreMutation.mutateAsync,
+    restoreProblem: restoreMutation.mutateAsync,
+    lifecyclePending: ignoreMutation.isPending || restoreMutation.isPending,
     refresh: async () => {
       await Promise.all([listQuery.refetch(), summaryQuery.refetch(), detailQuery.refetch()]);
     },

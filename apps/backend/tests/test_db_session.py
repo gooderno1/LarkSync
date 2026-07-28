@@ -58,6 +58,53 @@ def test_backup_corrupt_db_moves_file(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_schema_v6_adds_ignored_at_without_changing_existing_problem_state(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "v5-problems.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE sync_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at REAL NOT NULL
+            );
+            INSERT INTO sync_meta VALUES ('schema_version', '5', 1);
+            CREATE TABLE problems (
+                id TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                ignored_reason TEXT
+            );
+            INSERT INTO problems VALUES ('problem-open', 'open', NULL);
+            """
+        )
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+
+    engine = await init_db(url)
+    async with engine.begin() as conn:
+        columns = {
+            row[1] for row in (await conn.execute(text("PRAGMA table_info(problems)"))).all()
+        }
+        row = (
+            await conn.execute(
+                text("SELECT state, ignored_reason, ignored_at FROM problems WHERE id='problem-open'")
+            )
+        ).one()
+        version = (
+            await conn.execute(
+                text("SELECT value FROM sync_meta WHERE key='schema_version'")
+            )
+        ).scalar_one()
+    await dispose_engines()
+
+    assert CURRENT_SCHEMA_VERSION == 6
+    assert "ignored_at" in columns
+    assert (row.state, row.ignored_reason, row.ignored_at) == ("open", None, None)
+    assert version == "6"
+
+
+@pytest.mark.asyncio
 async def test_sqlite_pragmas_applied(tmp_path: Path) -> None:
     db_path = tmp_path / "larksync.db"
     url = f"sqlite+aiosqlite:///{db_path.as_posix()}"

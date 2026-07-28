@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-07-28] v0.8.10 release: v0.8.10 activity layout typography and problem handling
+[2026-07-28] v0.8.10-dev.1 feat(activity-problems): 活动标准模式改为顶部任务选择和运行/事件左右布局；全局字阶由 11/12/13/14px 提升为 12/13/14/15px 并配适控件、行高和栏宽；schema v6 实装问题忽略、恢复、原因、时间、动作审计及可信恢复自动结案
 [2026-07-28] v0.8.9 release: v0.8.9 historical false pending activity migration
 [2026-07-28] v0.8.9-dev.1 fix(activity): schema v5 严格匹配已取消且云端已恢复的 cloud 墓碑，归档只有虚假待删事实的历史运行；正式库只读 dry-run 预计归档 534 条并保留 2 条无法充分证明的待删运行
 [2026-07-28] v0.8.8 release: v0.8.8 activity detail and problem convergence

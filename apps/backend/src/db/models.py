@@ -195,6 +195,7 @@ class ProblemRecord(Base):
     resolution_verification: Mapped[str | None] = mapped_column(String, nullable=True)
     resolved_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     ignored_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ignored_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     resolution_key: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     operation_family: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     actionability: Mapped[str] = mapped_column(String, nullable=False, default="diagnostic_only")

@@ -49,6 +49,13 @@ const STATE_QUERY: Record<StateScope, string> = {
   ignored: "ignored",
 };
 
+const IGNORE_REASON_OPTIONS = [
+  "历史问题，当前无需处理",
+  "已确认不再同步此对象",
+  "外部条件限制，暂时接受",
+  "其他",
+];
+
 function evidenceText(evidence: Record<string, unknown>): string {
   return Object.entries(evidence)
     .map(([key, value]) => `${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`)
@@ -124,6 +131,13 @@ function Diagnosis({
             {problem.resolution_verification === "same_object_operation_succeeded" ? "，依据是同一对象、同一操作后续成功" : ""}。
           </p>
         ) : null}
+        {problem.state === "ignored" ? (
+          <div className="mt-3 rounded-md border border-[#f2d49b] bg-[#fffbeb] px-3 py-2 text-xs leading-5 text-[#8a5a13]">
+            <p className="font-semibold">该问题已人工忽略</p>
+            <p className="mt-1">{problem.ignored_reason || "未记录原因"}</p>
+            {problem.ignored_at ? <p className="mt-1 text-[#9a6b23]">忽略时间：{formatTimestamp(problem.ignored_at)}</p> : null}
+          </div>
+        ) : null}
       </section>
       <section>
         <h3 className="text-sm font-semibold text-[#102033]">对象与关联</h3>
@@ -163,7 +177,7 @@ function ActionHistory({ actions }: { actions: ProblemActionRecord[] }) {
     <div className="space-y-3">
       {actions.map((item) => (
         <article key={item.id} className="rounded-lg border border-[#d7e4f5] bg-white p-4 text-xs">
-          <div className="flex items-center justify-between gap-3"><strong className="text-[#102033]">{item.action_key}</strong><time className="text-[#52657a]">{formatTimestamp(item.requested_at)}</time></div>
+          <div className="flex items-center justify-between gap-3"><strong className="text-[#102033]">{item.action_key === "ignore_problem" ? "忽略问题" : item.action_key === "restore_problem" ? "恢复处理" : item.action_key}</strong><time className="text-[#52657a]">{formatTimestamp(item.requested_at)}</time></div>
           <p className="mt-2 text-[#52657a]">结果：{item.result} · 验证：{item.verification_result || "未验证"}</p>
           {item.error_message ? <p className="mt-2 rounded bg-[#fff7f8] p-2 text-[#be123c]">{item.error_message}</p> : null}
         </article>
@@ -177,12 +191,16 @@ function ProblemActions({
   pending,
   onAction,
   onVerify,
+  onIgnore,
+  onRestore,
   wide,
 }: {
   problem: ProblemItem;
   pending: boolean;
   onAction: (action: ProblemAvailableAction) => void;
   onVerify: () => void;
+  onIgnore: () => void;
+  onRestore: () => void;
   wide: boolean;
 }) {
   return (
@@ -209,7 +227,13 @@ function ProblemActions({
           </button>
         ))}
         {problem.state === "waiting" ? <button type="button" disabled={pending} onClick={onVerify} className={cn("rounded-lg border border-[#c9d8ec] bg-white px-4 py-2 text-sm font-semibold text-[#334762] hover:bg-[#f6faff] disabled:opacity-50", wide ? "w-full" : "")}>立即验证</button> : null}
-        {problem.available_actions.length === 0 && problem.state !== "waiting" ? <p className="text-xs text-[#52657a]">当前没有后端允许的处理动作。</p> : null}
+        {problem.state === "open" || problem.state === "in_progress" || problem.state === "waiting" ? (
+          <button type="button" disabled={pending} onClick={onIgnore} className={cn("rounded-lg border border-[#d6b36a] bg-white px-4 py-2 text-sm font-semibold text-[#8a5a13] hover:bg-[#fffbeb] disabled:opacity-50", wide ? "w-full" : "")}>忽略问题</button>
+        ) : null}
+        {problem.state === "ignored" ? (
+          <button type="button" disabled={pending} onClick={onRestore} className={cn("rounded-lg bg-[#3370ff] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8] disabled:opacity-50", wide ? "w-full" : "")}>恢复处理</button>
+        ) : null}
+        {problem.available_actions.length === 0 && problem.state === "resolved" ? <p className="text-xs text-[#52657a]">该问题已经解决，无需继续处理。</p> : null}
       </div>
     </div>
   );
@@ -237,6 +261,9 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(initialLink.problemId);
   const [compactDetailOpen, setCompactDetailOpen] = useState(Boolean(initialLink.problemId));
   const [tab, setTab] = useState<DetailTab>("diagnosis");
+  const [ignoreDialogOpen, setIgnoreDialogOpen] = useState(false);
+  const [ignoreReason, setIgnoreReason] = useState(IGNORE_REASON_OPTIONS[0]);
+  const [ignoreNote, setIgnoreNote] = useState("");
   const { toast } = useToast();
   const rangeSince = useMemo(() => {
     const seconds = timeRange === "24h" ? 86400 : timeRange === "7d" ? 7 * 86400 : timeRange === "30d" ? 30 * 86400 : 0;
@@ -264,8 +291,11 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
     detailError,
     actionPending,
     verifyPending,
+    lifecyclePending,
     executeAction,
     verifyProblem,
+    ignoreProblem,
+    restoreProblem,
     refresh,
   } = useProblems(filters, selectedId, true);
 
@@ -273,6 +303,14 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
     setPage(1);
     if (compact) setPageSize(50);
   }, [category, compact, scope, search, severity, taskId, timeRange]);
+  useEffect(() => {
+    if (!ignoreDialogOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIgnoreDialogOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [ignoreDialogOpen]);
 
   useEffect(() => {
     const ids = problems.map((item) => item.id);
@@ -314,6 +352,44 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
       toast(result.state === "resolved" ? "问题已验证解决" : "验证未通过，问题保持未解决", result.state === "resolved" ? "success" : "info");
     } catch (verifyError) {
       toast(verifyError instanceof Error ? verifyError.message : "验证失败", "danger");
+    }
+  };
+  const handleIgnore = async () => {
+    if (!selected) return;
+    const note = ignoreNote.trim();
+    if (ignoreReason === "其他" && note.length < 2) {
+      toast("请填写至少 2 个字符的忽略原因", "info");
+      return;
+    }
+    const reason = note ? `${ignoreReason === "其他" ? "" : `${ignoreReason}：`}${note}` : ignoreReason;
+    try {
+      await ignoreProblem({ problemId: selected.id, reason });
+      setIgnoreDialogOpen(false);
+      setIgnoreNote("");
+      setIgnoreReason(IGNORE_REASON_OPTIONS[0]);
+      setSelectedId(null);
+      if (compact) setCompactDetailOpen(false);
+      toast("问题已移入“已忽略”，证据和记录仍会保留", "success");
+    } catch (ignoreError) {
+      toast(ignoreError instanceof Error ? ignoreError.message : "忽略失败", "danger");
+    }
+  };
+  const handleRestore = async () => {
+    if (!selected) return;
+    const approved = await confirm({
+      title: "恢复处理这个问题？",
+      description: "恢复后问题会重新计入未解决数量，历史忽略记录仍会保留。",
+      confirmLabel: "恢复处理",
+      tone: "neutral",
+    });
+    if (!approved) return;
+    try {
+      await restoreProblem(selected.id);
+      setSelectedId(null);
+      if (compact) setCompactDetailOpen(false);
+      toast("问题已恢复到未解决", "success");
+    } catch (restoreError) {
+      toast(restoreError instanceof Error ? restoreError.message : "恢复失败", "danger");
     }
   };
   const viewRelatedActivity = () => {
@@ -370,13 +446,32 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
         {tab === "evidence" ? <EvidenceList occurrences={occurrences} /> : null}
         {tab === "history" ? <ActionHistory actions={actions} /> : null}
       </div>
-      {!wide ? <footer className="shrink-0 border-t border-[#d7e4f5] bg-[#fbfdff] px-5 py-3"><ProblemActions problem={selected} pending={actionPending || verifyPending} onAction={handleAction} onVerify={handleVerify} wide={false} /></footer> : null}
+      {!wide ? <footer className="shrink-0 border-t border-[#d7e4f5] bg-[#fbfdff] px-5 py-3"><ProblemActions problem={selected} pending={actionPending || verifyPending || lifecyclePending} onAction={handleAction} onVerify={handleVerify} onIgnore={() => setIgnoreDialogOpen(true)} onRestore={handleRestore} wide={false} /></footer> : null}
     </main>
   ) : (
     <main className="grid min-h-0 place-items-center rounded-xl border border-dashed border-[#c9d8ec] bg-white text-sm text-[#52657a]">请选择一条问题。</main>
   );
 
-  if (compact && compactDetailOpen && selected) return workbench;
+  const ignoreDialog = ignoreDialogOpen && selected ? (
+    <div role="presentation" className="fixed inset-0 z-[100] grid place-items-center bg-[#102033]/35 px-5" onMouseDown={() => setIgnoreDialogOpen(false)}>
+      <section role="dialog" aria-modal="true" aria-labelledby="ignore-problem-title" className="w-full max-w-[520px] rounded-2xl border border-[#c9d8ec] bg-white p-5 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h2 id="ignore-problem-title" className="text-lg font-semibold text-[#102033]">忽略这个问题</h2>
+        <p className="mt-2 text-sm leading-6 text-[#52657a]">忽略不会删除问题或伪装成已解决；它会移出未解决列表，并保留证据、次数和处理记录。</p>
+        <label className="mt-5 block text-xs font-semibold text-[#334762]" htmlFor="ignore-reason">原因</label>
+        <select id="ignore-reason" value={ignoreReason} onChange={(event) => setIgnoreReason(event.target.value)} className="mt-2 h-10 w-full rounded-lg border border-[#c9d8ec] bg-white px-3 text-sm text-[#102033] outline-none focus:border-[#3370ff]">
+          {IGNORE_REASON_OPTIONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+        </select>
+        <label className="mt-4 block text-xs font-semibold text-[#334762]" htmlFor="ignore-note">补充说明{ignoreReason === "其他" ? "（必填）" : "（可选）"}</label>
+        <textarea id="ignore-note" value={ignoreNote} maxLength={160} onChange={(event) => setIgnoreNote(event.target.value)} placeholder={ignoreReason === "其他" ? "请说明暂不处理的原因" : "可补充判断依据，最多 160 个字符"} className="mt-2 min-h-[104px] w-full resize-y rounded-lg border border-[#c9d8ec] bg-white px-3 py-2 text-sm leading-6 text-[#102033] outline-none focus:border-[#3370ff]" />
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" disabled={lifecyclePending} onClick={() => setIgnoreDialogOpen(false)} className="h-9 rounded-lg border border-[#c9d8ec] bg-white px-4 text-sm font-semibold text-[#334762] hover:bg-[#f6faff] disabled:opacity-50">取消</button>
+          <button type="button" disabled={lifecyclePending || (ignoreReason === "其他" && ignoreNote.trim().length < 2)} onClick={handleIgnore} className="h-9 rounded-lg bg-[#3370ff] px-4 text-sm font-semibold text-white hover:bg-[#1d4ed8] disabled:opacity-50">{lifecyclePending ? "处理中…" : "确认忽略"}</button>
+        </div>
+      </section>
+    </div>
+  ) : null;
+
+  if (compact && compactDetailOpen && selected) return <>{workbench}{ignoreDialog}</>;
 
   const advancedFilters = (
     <>
@@ -388,6 +483,7 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
   );
 
   return (
+    <>
     <section data-problem-center="true" data-window-layout={mode} className="flex h-full min-h-0 min-w-0 flex-col gap-3 animate-fade-up">
       <header className="flex min-w-0 items-start justify-between gap-4">
         <div><div className="flex items-center gap-3"><h1 className="text-xl font-semibold text-[#102033]">问题中心</h1><span className="rounded-full bg-[#fff1f2] px-2.5 py-1 text-xs font-semibold text-[#be123c]">未解决 {summary ? summary.unresolved : "—"}</span></div><p className="mt-1 text-sm text-[#52657a]">集中查看需要关注的问题、证据和真实可执行动作。</p></div>
@@ -400,12 +496,14 @@ function ProblemCenterLivePage({ layoutMode }: Props) {
         {compact ? <button type="button" onClick={() => setFiltersOpen((value) => !value)} className="ml-auto h-9 rounded-lg border border-[#c9d8ec] bg-white px-4 text-xs font-semibold text-[#3370ff]">筛选{category || severity || taskId || timeRange !== "all" ? " · 已启用" : ""}</button> : <div className="ml-auto flex flex-wrap items-center justify-end gap-2">{advancedFilters}</div>}
       </div>
       {compact && filtersOpen ? <div className="grid grid-cols-2 gap-2 rounded-lg border border-[#d7e4f5] bg-[#fbfdff] p-3">{advancedFilters}</div> : null}
-      <div className={cn("grid min-h-0 flex-1 gap-4", compact ? "grid-cols-1" : wide ? "grid-cols-[288px_minmax(520px,1fr)_320px]" : "grid-cols-[288px_minmax(680px,1fr)]")}>
+      <div className={cn("grid min-h-0 flex-1 gap-4", compact ? "grid-cols-1" : wide ? "grid-cols-[304px_minmax(512px,1fr)_328px]" : "grid-cols-[304px_minmax(664px,1fr)]")}>
         {queue}
         {!compact ? workbench : null}
-        {wide && selected ? <aside data-problem-actions="true" className="min-h-0 overflow-y-auto rounded-xl border border-[#d7e4f5] bg-[#fbfdff] p-4"><ProblemActions problem={selected} pending={actionPending || verifyPending} onAction={handleAction} onVerify={handleVerify} wide /><div className="mt-5 border-t border-[#d7e4f5] pt-4 text-xs text-[#52657a]"><p className="font-semibold text-[#102033]">验证规则</p><p className="mt-2 leading-5">冲突检查源记录终态；文件问题只接受同一任务、同一对象、同一操作的后续成功事实，无变化检查不能结案。</p><p className="mt-4 font-semibold text-[#102033]">最近动作</p><p className="mt-2">{actions[0] ? `${actions[0].action_key} · ${actions[0].result}` : "尚未执行动作"}</p></div></aside> : null}
+        {wide && selected ? <aside data-problem-actions="true" className="min-h-0 overflow-y-auto rounded-xl border border-[#d7e4f5] bg-[#fbfdff] p-4"><ProblemActions problem={selected} pending={actionPending || verifyPending || lifecyclePending} onAction={handleAction} onVerify={handleVerify} onIgnore={() => setIgnoreDialogOpen(true)} onRestore={handleRestore} wide /><div className="mt-5 border-t border-[#d7e4f5] pt-4 text-xs text-[#52657a]"><p className="font-semibold text-[#102033]">验证规则</p><p className="mt-2 leading-5">冲突检查源记录终态；文件问题只接受同一任务、同一对象、同一操作的后续成功事实，无变化检查不能结案。</p><p className="mt-4 font-semibold text-[#102033]">最近动作</p><p className="mt-2">{actions[0] ? `${actions[0].action_key} · ${actions[0].result}` : "尚未执行动作"}</p></div></aside> : null}
       </div>
     </section>
+    {ignoreDialog}
+    </>
   );
 }
 

@@ -15,6 +15,10 @@ export default {
         sans: ["Inter", "-apple-system", "Segoe UI", "sans-serif"],
         mono: ["JetBrains Mono", "SF Mono", "Cascadia Code", "monospace"],
       },
+      fontSize: {
+        xs: ["var(--ui-caption-size)", { lineHeight: "var(--ui-caption-line)" }],
+        sm: ["var(--ui-body-size)", { lineHeight: "var(--ui-body-line)" }],
+      },
       borderRadius: {
         "2xl": "1rem",
         xl: "0.75rem",
