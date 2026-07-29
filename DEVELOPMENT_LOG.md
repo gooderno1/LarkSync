@@ -1,5 +1,28 @@
 # DEVELOPMENT LOG
 
+## v0.8.13 release (2026-07-29)
+
+- 开发原因：
+  - 将 v0.8.13-dev.1 的设置与更新维护页面布局纠偏作为正式版本交付。
+  - 继续由正式版自动升级链路验证最大化与常规窗口体验。
+- 实现方式：
+  - 正式版本号统一更新为 `v0.8.13`。
+  - 正式 Release 包含页面实现、结构回归测试、1360×900 与 1920×1080 四张真实页面截图和布局纠偏文档。
+- 当前结果：
+  - v0.8.13 已成为非草稿、非预发布的 GitHub Latest Release。
+  - Windows 正式版可通过现有自动更新检查发现并下载 `LarkSync-Setup-v0.8.13.exe`。
+- 验证方式：
+  - GitHub Actions 正式工作流 `30445613632` 全部通过。
+  - 质量门完成后端测试、Windows 静默安装 smoke、前端 lint、类型检查、测试和构建。
+  - Windows、macOS arm64、macOS x86_64 构建及安装启动 smoke 均成功。
+  - GitHub Release 发布时间为 `2026-07-29T11:01:36Z`，共包含三个安装包与三个 `.sha256` 文件。
+  - Windows 正式安装包大小为 `57,117,438` bytes，SHA256 为 `0ec46e25a6164d5b305917cd3d4f75a1139f979a4721dde210e8c92b52fe278f`。
+  - macOS arm64 正式安装包大小为 `64,608,600` bytes，SHA256 为 `b8c269faccc92c3e007dde6d7299c0d1ee3bb360564b3fe8bbceae8b70032a8b`。
+  - macOS x86_64 正式安装包大小为 `65,498,556` bytes，SHA256 为 `71671f4391ac3a3d502166600f90381bfacdc10a7f80ca681bd891edc8f51cc3`。
+  - 三个平台的 GitHub asset digest 与各自 `.sha256` 文件一致。
+- 遗留问题：
+  - 无阻塞发布的问题；后续由用户在正式版自动升级后继续反馈真实窗口体验。
+
 ## v0.8.13-dev.1 fix: 设置与更新维护页面布局纠偏 (2026-07-29)
 
 - 开发原因：
@@ -25,7 +48,7 @@
   - 本地 Windows 安装包为 `dist/LarkSync-Setup-v0.8.13.exe`，大小 `71,684,045` bytes，SHA256 为 `21B791B9EAD42BF4F596CB345D752B3F2930DB8ACD6689F76A8FD2C7AAAD49AD`。
   - 未安装、未启动、未停止或修改用户当前正式版。
 - 遗留问题：
-  - 正式发布与跨平台安装包验证待 v0.8.13 Release 流程完成后补记。
+  - 无。
 
 ## v0.8.12 release (2026-07-28)
 
