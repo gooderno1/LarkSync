@@ -69,7 +69,10 @@ describe("settings panels", () => {
     expect(html).toContain("OAuth 配置");
     expect(html).toContain("同步策略");
     expect(html).toContain("双向同步");
-    expect(html).toContain("grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]");
+    expect(html).toContain("grid-cols-2");
+    expect(html).toContain("col-span-2");
+    expect(html).toContain("grid-cols-3");
+    expect(html).toContain('data-settings-strategy-header="true"');
     expect(html).toContain("min-h-[72px]");
     expect(html).toContain("计划设置");
     expect(html).toContain("border-[#d7e4f5]");

@@ -62,7 +62,7 @@ export function SettingsOAuthPanel({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)] gap-3">
+      <div className="mt-4 grid grid-cols-2 gap-3">
         <div>
           <label className="mb-1 block text-xs font-medium text-[#52677f]">App ID</label>
           <input className={inputCls} placeholder="cli_xxxxxxxxxxxx" value={clientId} onChange={(e) => setClientId(e.target.value)} />
@@ -71,7 +71,7 @@ export function SettingsOAuthPanel({
           <label className="mb-1 block text-xs font-medium text-[#52677f]">App Secret</label>
           <input className={inputCls} placeholder="保存后自动清空" type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} />
         </div>
-        <div>
+        <div className="col-span-2">
           <label className="mb-1 block truncate text-xs font-medium text-[#52677f]">
             Redirect URI
             <span className="ml-2 text-[#7e91a8]">（自动生成，请复制填入飞书后台）</span>
@@ -79,7 +79,7 @@ export function SettingsOAuthPanel({
           <div className="flex gap-2">
             <input className={`${inputCls} bg-[#f8fbff] text-[#34516f]`} value={redirectUri} readOnly />
             <button
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#c9d8eb] bg-[#f8fbff] px-3 py-2 text-xs font-medium text-[#34516f] transition hover:border-[#3370FF]/40 hover:bg-[#eef5ff]"
+              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#c9d8eb] bg-[#f8fbff] px-3 py-2 text-xs font-medium text-[#34516f] transition hover:border-[#3370FF]/40 hover:bg-[#eef5ff]"
               onClick={copyRedirectUri}
               type="button"
             >

@@ -57,12 +57,34 @@ export function SettingsSyncStrategyPanel({
 
   return (
     <div className="rounded-lg border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-      <div className="grid grid-cols-[140px_minmax(0,1fr)_280px] items-start gap-4">
+      <div data-settings-strategy-header="true" className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-[#102033]">默认同步策略</h2>
           <p className="mt-1 text-xs leading-5 text-[#58708d]">新建任务时的默认同步方向。</p>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="w-[260px] shrink-0">
+          <label className="block text-xs font-medium text-[#52677f]">删除策略</label>
+          <div className="mt-2 flex items-center gap-2">
+            <select
+              className="h-8 min-w-0 flex-1 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs text-[#1f2d3d] outline-none focus:border-[#3370FF]"
+              value={deletePolicy}
+              onChange={(event) => setDeletePolicy(event.target.value as "off" | "safe" | "strict")}
+            >
+              <option value="safe">安全删除（不删除云端文件）</option>
+              <option value="strict">严格联动删除</option>
+              <option value="off">关闭删除联动</option>
+            </select>
+            <button
+              className="shrink-0 text-xs font-semibold text-[#3370ff] hover:text-[#2456d6]"
+              onClick={() => setShowSchedule((value) => !value)}
+              type="button"
+            >
+              {showSchedule ? "收起计划" : "计划设置"}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
           {[
             { value: "bidirectional", label: "双向同步", desc: "本地与云端互相同步", Icon: IconArrowRightLeft },
             { value: "download_only", label: "仅下载", desc: "仅从云端拉取到本地", Icon: IconArrowDown },
@@ -86,26 +108,6 @@ export function SettingsSyncStrategyPanel({
               </span>
             </button>
           ))}
-        </div>
-        <div className="border-l border-[#d7e4f5] pl-4">
-          <label className="block text-xs font-medium text-[#52677f]">删除策略</label>
-          <select
-            className="mt-2 h-8 w-full rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs text-[#1f2d3d] outline-none focus:border-[#3370FF]"
-            value={deletePolicy}
-            onChange={(event) => setDeletePolicy(event.target.value as "off" | "safe" | "strict")}
-          >
-            <option value="safe">安全删除（不删除云端文件）</option>
-            <option value="strict">严格联动删除</option>
-            <option value="off">关闭删除联动</option>
-          </select>
-          <button
-            className="mt-2 text-xs font-semibold text-[#3370ff] hover:text-[#2456d6]"
-            onClick={() => setShowSchedule((value) => !value)}
-            type="button"
-          >
-            {showSchedule ? "收起计划设置" : "计划设置"}
-          </button>
-        </div>
       </div>
 
       {showSchedule ? <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[#e4edf8] pt-3">

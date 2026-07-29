@@ -235,31 +235,32 @@ function MaintenanceLivePage() {
   };
 
   return (
-    <section className="mx-auto w-full max-w-[1240px] animate-fade-up min-w-0 space-y-4">
+    <section data-maintenance-page="true" className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-4 animate-fade-up">
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-[#102033]">更新与维护</h1>
           <p className="mt-1 text-sm text-[#52657A]">管理应用更新、安装交接、日志保留和系统维护工具。</p>
         </div>
+        <button
+          data-page-primary-action="check-update"
+          className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#3370FF] px-4 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.22)] hover:bg-[#2563eb]"
+          onClick={handleCheckUpdate}
+          disabled={checking}
+          type="button"
+        >
+          <IconRefresh className={`h-3.5 w-3.5 ${checking ? "animate-spin" : ""}`} />
+          {checking ? "检查中" : "检查更新"}
+        </button>
       </div>
 
       <div
         data-maintenance-workspace="true"
-        className="grid grid-cols-[minmax(0,1fr)_340px] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
+        className="grid min-h-0 grid-cols-[minmax(0,1fr)_360px] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
       >
-        <div className="min-w-0 p-5">
+        <main data-maintenance-scroll-region="main" className="min-h-0 min-w-0 overflow-y-auto border-r border-[#e4edf8] p-5">
           <div>
-            <div data-update-flow-header="true" className="flex items-start justify-between gap-4">
+            <div>
               <h2 className="text-lg font-semibold text-[#102033]">更新流程</h2>
-              <button
-                className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-[#3370FF] px-4 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.22)] hover:bg-[#2563eb]"
-                onClick={handleCheckUpdate}
-                disabled={checking}
-                type="button"
-              >
-                <IconRefresh className={`h-3.5 w-3.5 ${checking ? "animate-spin" : ""}`} />
-                {checking ? "检查中" : "检查更新"}
-              </button>
             </div>
             <p className="mt-1 text-xs text-[#52657A]">检查、下载并安装 LarkSync Windows 更新包。</p>
           </div>
@@ -395,9 +396,9 @@ function MaintenanceLivePage() {
               </div>
             </div>
           </div>
-        </div>
+        </main>
 
-        <aside className="space-y-5 border-l border-[#e4edf8] bg-[#fbfdff] p-5">
+        <aside data-maintenance-scroll-region="side" className="min-h-0 space-y-5 overflow-y-auto bg-[#fbfdff] p-5">
           <div>
             <h2 className="text-lg font-semibold text-[#102033]">日志保留</h2>
             <div className="mt-4 grid gap-3">

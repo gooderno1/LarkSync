@@ -70,8 +70,16 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain("同步策略");
     expect(html).toContain("本地忽略目录");
     expect(html).toContain('data-settings-context="true"');
-    expect(html).toContain("max-w-[1240px]");
-    expect(html).toContain("mx-auto");
+    expect(html).toContain('data-settings-workspace="true"');
+    expect(html).toContain('data-settings-page="true"');
+    expect(html).toContain("grid-rows-[auto_minmax(0,1fr)]");
+    expect(html).toContain("grid-cols-[minmax(0,1.16fr)_minmax(390px,0.84fr)]");
+    expect(html).toContain("grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]");
+    expect(html).toContain('data-settings-account-panel="true"');
+    expect(html).toContain('data-settings-device-panel="true"');
+    expect(html).toContain('data-settings-strategy-header="true"');
+    expect(html.match(/data-settings-scroll-region=/g)).toHaveLength(2);
+    expect(html).not.toContain("max-w-[1240px]");
     expect(html.match(/保存设置/g)).toHaveLength(1);
     expect(html).not.toContain("保存策略");
     expect(html).not.toContain("保存配置");

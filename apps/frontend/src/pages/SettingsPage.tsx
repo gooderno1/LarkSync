@@ -227,7 +227,7 @@ function SettingsLivePage() {
   const inputCls = "h-9 w-full rounded-lg border border-[#c9d8eb] bg-white px-3 text-sm text-[#1f2d3d] outline-none transition placeholder:text-[#8fa1b7] focus:border-[#3370FF] focus:ring-2 focus:ring-[#3370FF]/15";
 
   return (
-    <section className="mx-auto min-w-0 w-full max-w-[1240px] space-y-4 animate-fade-up">
+    <section data-settings-page="true" className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-4 animate-fade-up">
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-[#102033]">设置</h1>
@@ -243,105 +243,124 @@ function SettingsLivePage() {
         </button>
       </div>
 
-      <div data-settings-context="true" className="grid grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-        <div className="border-r border-[#d7e4f5] p-4">
-          <div className="grid grid-cols-[112px_minmax(0,1fr)_auto] items-center gap-4">
-          <h2 className="text-base font-semibold text-[#102033]">飞书账号</h2>
-          <div className="flex min-w-0 items-center gap-4">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ecfdf5] text-[#10b981]">
-              <IconCircleCheck className="h-6 w-6" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#102033]">{connected ? "飞书已连接" : "飞书未连接"}</p>
-              <p className="mt-1 truncate text-xs text-[#6b7f96]">
-                {connected
-                  ? `${accountName || "当前账号"} · 本机授权有效`
-                  : "请在高级 OAuth 中完成授权"}
-              </p>
+      <div
+        data-settings-workspace="true"
+        className="grid min-h-0 grid-cols-[minmax(0,1.16fr)_minmax(390px,0.84fr)] overflow-hidden rounded-xl border border-[#cdddf0] bg-white shadow-[0_16px_40px_rgba(51,112,255,0.08)]"
+      >
+        <main data-settings-scroll-region="main" className="min-h-0 min-w-0 space-y-4 overflow-y-auto border-r border-[#dce7f4] p-4">
+          <div data-settings-context="true" className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
+            <div data-settings-account-panel="true" className="min-w-0 border-r border-[#d7e4f5] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-base font-semibold text-[#102033]">飞书账号</h2>
+                <button
+                  className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs font-semibold text-[#52677f] hover:border-[#3370ff]/40 hover:text-[#3370ff]"
+                  onClick={() => logout()}
+                  type="button"
+                >
+                  <IconLogout className="h-3.5 w-3.5" />
+                  {connected ? "登出设备" : "重新授权"}
+                </button>
+              </div>
+              <div className="mt-4 flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ecfdf5] text-[#10b981]">
+                    <IconCircleCheck className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[#102033]">{connected ? "飞书已连接" : "飞书未连接"}</p>
+                    <p className="mt-1 truncate text-xs text-[#6b7f96]">
+                      {connected
+                        ? `${accountName || "当前账号"} · 本机授权有效`
+                        : "请在高级 OAuth 中完成授权"}
+                    </p>
+                  </div>
+              </div>
             </div>
+            <SettingsGeneralPanel
+              embedded
+              inputCls={inputCls}
+              deviceDisplayName={deviceDisplayName}
+              setDeviceDisplayName={setDeviceDisplayName}
+              deviceId={deviceId}
+            />
           </div>
-          <button
-            className="inline-flex h-8 items-center gap-2 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs font-semibold text-[#52677f] hover:border-[#3370ff]/40 hover:text-[#3370ff]"
-            onClick={() => logout()}
-            type="button"
-          >
-            <IconLogout className="h-3.5 w-3.5" />
-            {connected ? "登出设备" : "重新授权"}
-          </button>
-          </div>
-        </div>
-        <SettingsGeneralPanel
-          embedded
-          inputCls={inputCls}
-          deviceDisplayName={deviceDisplayName}
-          setDeviceDisplayName={setDeviceDisplayName}
-          deviceId={deviceId}
-        />
+
+          <SettingsSyncStrategyPanel
+            syncMode={syncMode}
+            setSyncMode={setSyncMode}
+            uploadEnabled={uploadEnabled}
+            downloadEnabled={downloadEnabled}
+            uploadValue={uploadValue}
+            setUploadValue={setUploadValue}
+            uploadUnit={uploadUnit}
+            setUploadUnit={setUploadUnit}
+            uploadTime={uploadTime}
+            setUploadTime={setUploadTime}
+            downloadValue={downloadValue}
+            setDownloadValue={setDownloadValue}
+            downloadUnit={downloadUnit}
+            setDownloadUnit={setDownloadUnit}
+            downloadTime={downloadTime}
+            setDownloadTime={setDownloadTime}
+            handleSave={handleSave}
+            saving={saving}
+            deletePolicy={deletePolicy}
+            setDeletePolicy={setDeletePolicy}
+            showSaveAction={false}
+          />
+
+          <SettingsOAuthPanel
+            clientId={clientId}
+            setClientId={setClientId}
+            clientSecret={clientSecret}
+            setClientSecret={setClientSecret}
+            redirectUri={redirectUri}
+            copyRedirectUri={copyRedirectUri}
+            handleSave={handleSave}
+            saving={saving}
+            saveError={saveError}
+            showAdvanced={showAdvanced}
+            toggleAdvanced={() => setShowAdvanced((prev) => !prev)}
+            authorizeUrl={authorizeUrl}
+            setAuthorizeUrl={setAuthorizeUrl}
+            tokenUrl={tokenUrl}
+            setTokenUrl={setTokenUrl}
+            tokenStore={tokenStore}
+            setTokenStore={setTokenStore}
+            inputCls={inputCls}
+            showSaveAction={false}
+          />
+        </main>
+
+        <aside data-settings-scroll-region="side" className="min-h-0 min-w-0 space-y-4 overflow-y-auto bg-[#fbfdff] p-4">
+          <SettingsIgnoredDirectoriesPanel
+            tasks={tasks}
+            showIgnoredDirectorySettings={showIgnoredDirectorySettings}
+            toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
+            ignoreHiddenCachePaths={ignoreHiddenCachePaths}
+            setIgnoreHiddenCachePaths={setIgnoreHiddenCachePaths}
+            ignoredSubpathsMap={ignoredSubpathsMap}
+            ignoredPathDrafts={ignoredPathDrafts}
+            setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}
+            updatingIgnoredSubpaths={updatingIgnoredSubpaths}
+            handleSaveIgnoredSubpaths={handleSaveIgnoredSubpaths}
+            removeIgnoredSubpath={removeIgnoredSubpath}
+            addIgnoredSubpath={addIgnoredSubpath}
+            pickingIgnoredTaskId={pickingIgnoredTaskId}
+            handlePickIgnoredSubpath={handlePickIgnoredSubpath}
+          />
+          <section className="rounded-lg border border-[#b9e8d8] bg-[#f2fbf8] p-4">
+            <div className="flex items-center gap-2 text-[#047857]">
+              <IconCircleCheck className="h-5 w-5" />
+              <h2 className="text-sm font-semibold">数据保护</h2>
+            </div>
+            <ul className="mt-3 space-y-1.5 text-xs leading-5 text-[#52657a]">
+              <li>OAuth Token 存储于系统凭证库。</li>
+              <li>云端内容作为冲突判断的事实来源。</li>
+              <li>覆盖前保留冲突副本，避免静默丢失。</li>
+            </ul>
+          </section>
+        </aside>
       </div>
-
-      <SettingsSyncStrategyPanel
-        syncMode={syncMode}
-        setSyncMode={setSyncMode}
-        uploadEnabled={uploadEnabled}
-        downloadEnabled={downloadEnabled}
-        uploadValue={uploadValue}
-        setUploadValue={setUploadValue}
-        uploadUnit={uploadUnit}
-        setUploadUnit={setUploadUnit}
-        uploadTime={uploadTime}
-        setUploadTime={setUploadTime}
-        downloadValue={downloadValue}
-        setDownloadValue={setDownloadValue}
-        downloadUnit={downloadUnit}
-        setDownloadUnit={setDownloadUnit}
-        downloadTime={downloadTime}
-        setDownloadTime={setDownloadTime}
-        handleSave={handleSave}
-        saving={saving}
-        deletePolicy={deletePolicy}
-        setDeletePolicy={setDeletePolicy}
-        showSaveAction={false}
-      />
-
-      <SettingsIgnoredDirectoriesPanel
-        tasks={tasks}
-        showIgnoredDirectorySettings={showIgnoredDirectorySettings}
-        toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
-        ignoreHiddenCachePaths={ignoreHiddenCachePaths}
-        setIgnoreHiddenCachePaths={setIgnoreHiddenCachePaths}
-        ignoredSubpathsMap={ignoredSubpathsMap}
-        ignoredPathDrafts={ignoredPathDrafts}
-        setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}
-        updatingIgnoredSubpaths={updatingIgnoredSubpaths}
-        handleSaveIgnoredSubpaths={handleSaveIgnoredSubpaths}
-        removeIgnoredSubpath={removeIgnoredSubpath}
-        addIgnoredSubpath={addIgnoredSubpath}
-        pickingIgnoredTaskId={pickingIgnoredTaskId}
-        handlePickIgnoredSubpath={handlePickIgnoredSubpath}
-      />
-
-      <SettingsOAuthPanel
-        clientId={clientId}
-        setClientId={setClientId}
-        clientSecret={clientSecret}
-        setClientSecret={setClientSecret}
-        redirectUri={redirectUri}
-        copyRedirectUri={copyRedirectUri}
-        handleSave={handleSave}
-        saving={saving}
-        saveError={saveError}
-        showAdvanced={showAdvanced}
-        toggleAdvanced={() => setShowAdvanced((prev) => !prev)}
-        authorizeUrl={authorizeUrl}
-        setAuthorizeUrl={setAuthorizeUrl}
-        tokenUrl={tokenUrl}
-        setTokenUrl={setTokenUrl}
-        tokenStore={tokenStore}
-        setTokenStore={setTokenStore}
-        inputCls={inputCls}
-        showSaveAction={false}
-      />
-
     </section>
   );
 }
