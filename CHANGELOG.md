@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-07-29] v0.8.14-dev.1 docs(design): redesign settings and maintenance information architecture
 [2026-07-29] v0.8.13 fix(desktop): correct settings and maintenance layouts
 [2026-07-29] v0.8.13-dev.1 fix(frontend): 撤销设置与更新维护页的 1240px 居中窄版；恢复与其他桌面页一致的满高工作区、固定页头和双栏独立滚动，并重排设置页内部表单以适配 1360×900
 [2026-07-28] v0.8.12 release: 修复大历史库运行事件查询、伪等待上传、问题目录动作与桌面页面宽屏布局；事件详情改为居中弹窗

@@ -6,7 +6,7 @@
 
 本地优先的飞书文档同步工具：把飞书云文档稳定同步到本地 Markdown / 文件系统，同时保留继续在飞书协作的工作方式。
 当前稳定版本：`v0.8.13`（2026-07-29）。核心运行形态为 Windows 桌面壳 + 托盘常驻。
-当前代码基线：`v0.8.13`，设置与更新维护页已恢复与其他桌面页面一致的满高工作区、固定页头和双栏独立滚动；1360×900 与 1920×1080 均完成真实页面截图复核。
+当前开发基线：`v0.8.14-dev.1` 仅完成设置与更新维护页的信息架构方案和四张设计图，尚未修改业务页面；当前正式运行代码仍为 `v0.8.13`。
 
 ## 快速入口
 
@@ -41,6 +41,7 @@
 
 ## 核心能力
 
+- v0.8.14-dev.1 仅完成设计：设置与更新维护页统一为一套信息架构、单栏/双栏两种排布；取消少量表单的双独立滚动，检查更新归回版本模块，自动更新从日志管理移回更新模块，空闲安装详情默认折叠，忽略规则改为摘要加独立管理入口。四张 imagegen 设计图已归档，等待确认后再开发。
 - v0.8.13 撤销设置与更新维护页在 v0.8.12 引入的 `1240px` 居中窄版，统一为“固定页头 + 满高工作区 + 主/侧栏独立滚动”。设置页账号、设备、同步策略和 OAuth 表单按实际列宽重新排布；维护页恢复页头主操作和 `360px` 维护侧栏。两页均以真实后端只读数据在 1360×900、1920×1080 下完成截图复核。
 - v0.8.12 将活动详情查询收敛到 `run_id` 索引，避免同时携带任务条件后扫描百万级任务历史；Watchdog 只接收创建、修改、移动和删除事件，内存中的瞬时上传排队不再写入活动历史。旧 `queued` 记录原样保留并移至“历史排队”，默认“处理结果”只显示可审计事实。问题中心可正确打开任务目录，标准/宽屏事件详情改为可用 Esc 或遮罩关闭的居中弹窗。
 - v0.8.11 修复代码目录中零字节标记文件触发“文件大小不能为空”并导致整轮上传失败：零字节普通文件现在保留本地内容并明确记为跳过，不伪造 1 字节文件。问题分类器升级为 v3，具体对象问题结合运行方向分类，任务完成汇总只保留在活动管理；旧任务汇总和旧零字节失败会保留证据后自动结案。更新下载参考 Codex Companion 增加检查、下载、校验、完成和失败阶段，实时展示百分比、已下载/总大小与速度，并使用 `.part` 临时文件和 SHA256 校验后的原子替换。
@@ -283,6 +284,7 @@ python scripts/update_install_smoke.py  # Windows 静默安装 smoke
 - OpenClaw / AI Agent 本地缓存教程：[`docs/OPENCLAW_LOCAL_CACHE_GUIDE.md`](docs/OPENCLAW_LOCAL_CACHE_GUIDE.md)
 - 同步逻辑：[`docs/SYNC_LOGIC.md`](docs/SYNC_LOGIC.md)
 - 发布标准：[`docs/RELEASE_STANDARD.md`](docs/RELEASE_STANDARD.md)
+- v0.8.14 设置与更新维护页信息架构设计：[`docs/design/v0.8.14-settings-maintenance-information-architecture-design.md`](docs/design/v0.8.14-settings-maintenance-information-architecture-design.md)
 - v0.8.13 设置与更新维护页面布局纠偏：[`docs/design/v0.8.13-settings-maintenance-layout-correction.md`](docs/design/v0.8.13-settings-maintenance-layout-correction.md)
 - v0.8.10 活动布局、字体与问题处理：[`docs/design/v0.8.10-activity-typography-problem-handling-design.md`](docs/design/v0.8.10-activity-typography-problem-handling-design.md)
 - 活动管理 / 问题中心改版：[`docs/design/v0.8.2-activity-problem-center-plan.md`](docs/design/v0.8.2-activity-problem-center-plan.md)
