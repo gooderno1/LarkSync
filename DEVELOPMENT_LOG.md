@@ -1,5 +1,28 @@
 # DEVELOPMENT LOG
 
+## v0.8.16 release (2026-07-31)
+
+- 开发原因：
+  - 将`v0.8.16-dev.2`已验证的设置与更新维护页自然高度双栏作为正式版本交付。
+  - 正式版用户需要通过 GitHub Latest Release 自动发现并升级到本版本。
+- 实现方式：
+  - 根包、前端包、前端 lockfile 和后端包版本统一冻结为`v0.8.16`。
+  - `CHANGELOG.md`增加正式发布锚点，供 Release Notes 汇总`v0.8.15 -> v0.8.16`变更。
+  - 正式 Tag 使用`v0.8.16`，触发 GitHub Actions 构建 Windows NSIS 和 macOS 双架构安装包。
+  - 正式版保留`900px`响应阈值；1080×720 正常桌面窗口仍保持双栏，低于阈值才进入单栏安全回退。
+- 当前结果：
+  - 源码版本已冻结为`v0.8.16`。
+  - 设置与更新维护页不再强制满高、等高或把次级模块锚定到卡片底部。
+  - 本地正式版 NSIS 安装包已生成：`dist/LarkSync-Setup-v0.8.16.exe`，大小`71,702,688 bytes`（`68.38 MiB`）。
+  - 本地安装包 SHA256 为`9D89B5F0916C291F3A8B3186A9F1B3FFED28159A5E75BBE1EDC5BA90A12598FD`。
+  - GitHub Release 与安装资产状态将在 Tag 推送后补充。
+- 验证方式：
+  - 继承`v0.8.16-dev.2`的前后端全量测试、依赖审计、更新安装 smoke 和多尺寸隔离预览结果。
+  - `python scripts/build_installer.py --nsis`：通过；前端生产构建、PyInstaller 和 NSIS 均成功。
+  - 构建、版本、Release、Release Notes 和 GitHub Actions 工作流专项测试：44 项通过。
+- 遗留问题：
+  - 等待 Tag 推送和 GitHub Release 资产上传完成。
+
 ## v0.8.16-dev.2 feat: 实装设置与更新维护页自然高度双栏 (2026-07-31)
 
 - 开发原因：
