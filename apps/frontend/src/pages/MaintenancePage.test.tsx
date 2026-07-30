@@ -109,6 +109,9 @@ describe("MaintenancePage smoke", () => {
     expect(html).not.toContain("data-maintenance-scroll-region");
     expect(html).not.toContain('data-page-primary-action="check-update"');
     expect(html).not.toContain("max-w-[1240px]");
+    expect(html).toContain("grid-rows-[auto_minmax(0,1fr)]");
+    expect(html).toContain("h-full");
+    expect(html).toContain("min-h-0");
     expect(html.match(/检查更新/g)).toHaveLength(1);
     expect(html).not.toContain("默认不展示的危险任务");
     expect(html).toContain("安装器已启动");

@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-07-30] v0.8.15-dev.1 fix(frontend): 修正设置页默认窗口滚动和双栏比例；OAuth 凭证默认折叠，更新与维护双面板占满剩余工作区以消除底部大块留白
 [2026-07-30] v0.8.14 release: 发布更新与维护页对齐双主面板、状态驱动更新动作、分离配置保存与统一页面滚动；Windows 安装 worker 在启动前显式校验安装包存在，并消除 PowerShell 集成测试的管道继承等待
 [2026-07-30] v0.8.14-dev.4 feat(frontend): implement aligned maintenance dual-panel layout
 [2026-07-30] v0.8.14-dev.3 docs(design): align maintenance dual-panel layout

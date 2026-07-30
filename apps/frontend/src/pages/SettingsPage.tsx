@@ -227,7 +227,7 @@ function SettingsLivePage() {
   const inputCls = "h-9 w-full rounded-lg border border-[#c9d8eb] bg-white px-3 text-sm text-[#1f2d3d] outline-none transition placeholder:text-[#8fa1b7] focus:border-[#3370FF] focus:ring-2 focus:ring-[#3370FF]/15";
 
   return (
-    <section data-settings-page="true" className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-4 animate-fade-up">
+    <section data-settings-page="true" className="mx-auto min-w-0 max-w-[1440px] animate-fade-up">
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-[#102033]">设置</h1>
@@ -245,9 +245,9 @@ function SettingsLivePage() {
 
       <div
         data-settings-workspace="true"
-        className="grid min-h-0 grid-cols-[minmax(0,1.16fr)_minmax(390px,0.84fr)] overflow-hidden rounded-xl border border-[#cdddf0] bg-white shadow-[0_16px_40px_rgba(51,112,255,0.08)]"
+        className="mt-5 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(380px,420px)] items-start gap-4"
       >
-        <main data-settings-scroll-region="main" className="min-h-0 min-w-0 space-y-4 overflow-y-auto border-r border-[#dce7f4] p-4">
+        <main className="min-w-0 space-y-4">
           <div data-settings-context="true" className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
             <div data-settings-account-panel="true" className="min-w-0 border-r border-[#d7e4f5] p-4">
               <div className="flex items-start justify-between gap-3">
@@ -331,7 +331,7 @@ function SettingsLivePage() {
           />
         </main>
 
-        <aside data-settings-scroll-region="side" className="min-h-0 min-w-0 space-y-4 overflow-y-auto bg-[#fbfdff] p-4">
+        <aside className="min-w-0 space-y-4">
           <SettingsIgnoredDirectoriesPanel
             tasks={tasks}
             showIgnoredDirectorySettings={showIgnoredDirectorySettings}

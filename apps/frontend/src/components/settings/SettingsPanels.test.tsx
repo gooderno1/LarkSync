@@ -20,7 +20,7 @@ const task: SyncTask = {
 };
 
 describe("settings panels", () => {
-  it("renders oauth and sync strategy panels", () => {
+  it("keeps oauth credentials collapsed until explicitly expanded", () => {
     const html = renderToStaticMarkup(
       <>
         <SettingsOAuthPanel
@@ -69,15 +69,50 @@ describe("settings panels", () => {
     expect(html).toContain("OAuth 配置");
     expect(html).toContain("同步策略");
     expect(html).toContain("双向同步");
-    expect(html).toContain("grid-cols-2");
-    expect(html).toContain("col-span-2");
     expect(html).toContain("grid-cols-3");
     expect(html).toContain('data-settings-strategy-header="true"');
     expect(html).toContain("min-h-[72px]");
     expect(html).toContain("计划设置");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("App ID");
+    expect(html).not.toContain("App Secret");
+    expect(html).not.toContain("Redirect URI");
     expect(html).toContain("border-[#d7e4f5]");
     expect(html).not.toContain("bg-zinc-900/60");
     expect(html).not.toContain("border-zinc-800");
+  });
+
+  it("renders oauth credentials and endpoints when expanded", () => {
+    const html = renderToStaticMarkup(
+      <SettingsOAuthPanel
+        clientId="cli_123"
+        setClientId={vi.fn()}
+        clientSecret=""
+        setClientSecret={vi.fn()}
+        redirectUri="http://localhost:8000/auth/callback"
+        copyRedirectUri={vi.fn()}
+        handleSave={vi.fn()}
+        saving={false}
+        saveError={null}
+        showAdvanced
+        toggleAdvanced={vi.fn()}
+        authorizeUrl=""
+        setAuthorizeUrl={vi.fn()}
+        tokenUrl=""
+        setTokenUrl={vi.fn()}
+        tokenStore="keyring"
+        setTokenStore={vi.fn()}
+        inputCls="input"
+      />,
+    );
+
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain("App ID");
+    expect(html).toContain("App Secret");
+    expect(html).toContain("Redirect URI");
+    expect(html).toContain("授权地址");
+    expect(html).toContain("Token 地址");
+    expect(html).toContain("保存配置");
   });
 
   it("renders more settings panels", () => {

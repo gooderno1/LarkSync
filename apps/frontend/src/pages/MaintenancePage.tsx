@@ -325,7 +325,7 @@ function MaintenanceLivePage() {
   };
 
   return (
-    <section data-maintenance-page="true" className="mx-auto min-w-0 max-w-[1440px] animate-fade-up">
+    <section data-maintenance-page="true" className="mx-auto grid h-full min-h-0 w-full max-w-[1440px] grid-rows-[auto_minmax(0,1fr)] gap-4 animate-fade-up">
       <header className="min-w-0">
         <h1 className="text-xl font-semibold text-[#102033]">更新与维护</h1>
         <p className="mt-1 text-sm text-[#52657A]">管理应用更新、日志保留和本机维护工具。</p>
@@ -333,11 +333,11 @@ function MaintenanceLivePage() {
 
       <div
         data-maintenance-workspace="true"
-        className="mt-5 grid min-w-0 grid-cols-1 items-stretch gap-5 min-[900px]:grid-cols-[minmax(0,3fr)_minmax(400px,2fr)]"
+        className="grid h-full min-h-0 min-w-0 grid-cols-1 items-stretch gap-5 min-[900px]:grid-cols-[minmax(0,3fr)_minmax(400px,2fr)]"
       >
         <article
           data-maintenance-panel="version-install"
-          className="flex min-w-0 flex-col rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
+          className="flex h-full min-w-0 flex-col rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
         >
           <h2 className="text-lg font-semibold text-[#102033]">版本与安装</h2>
 
@@ -579,7 +579,7 @@ function MaintenanceLivePage() {
 
         <aside
           data-maintenance-panel="local-maintenance"
-          className="flex min-w-0 flex-col rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
+          className="flex h-full min-w-0 flex-col rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
         >
           <h2 className="text-lg font-semibold text-[#102033]">本机维护</h2>
 
