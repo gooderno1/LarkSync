@@ -350,6 +350,7 @@ def test_generated_worker_script_runs_under_windows_powershell(tmp_path: Path) -
     log_path = tmp_path / "update-install.log"
     handoff_path = tmp_path / "install-handoff.json"
     script_path = tmp_path / "worker.ps1"
+    stderr_path = tmp_path / "worker-stderr.txt"
 
     script = tray_app._build_windows_installer_worker_script(
         installer_path,
@@ -361,23 +362,28 @@ def test_generated_worker_script_runs_under_windows_powershell(tmp_path: Path) -
     )
     tray_app._write_powershell_script(script_path, script)
 
-    result = subprocess.run(
-        [
-            tray_app._resolve_powershell_executable(),
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(script_path),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
+    with stderr_path.open("wb") as stderr_file:
+        result = subprocess.run(
+            [
+                tray_app._resolve_powershell_executable(),
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_file,
+            timeout=10,
+        )
 
     assert result.returncode == 1
-    assert "ParserError" not in (result.stderr or "")
+    stderr_text = stderr_path.read_bytes().replace(b"\x00", b"").decode(
+        "utf-8",
+        errors="ignore",
+    )
+    assert "ParserError" not in stderr_text
 
     payload = json.loads(handoff_path.read_text(encoding="utf-8-sig"))
     assert payload["request_id"] == "req-ps51"
