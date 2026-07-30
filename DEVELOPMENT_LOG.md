@@ -15,13 +15,20 @@
   - 设置与更新维护页不再强制满高、等高或把次级模块锚定到卡片底部。
   - 本地正式版 NSIS 安装包已生成：`dist/LarkSync-Setup-v0.8.16.exe`，大小`71,702,688 bytes`（`68.38 MiB`）。
   - 本地安装包 SHA256 为`9D89B5F0916C291F3A8B3186A9F1B3FFED28159A5E75BBE1EDC5BA90A12598FD`。
-  - GitHub Release 与安装资产状态将在 Tag 推送后补充。
+  - GitHub Release`v0.8.16`已发布为非草稿、非预发布版本，并由`releases/latest`返回为 Latest Release。
+  - Windows NSIS、macOS arm64 和 macOS x86_64 六个安装与校验资产均处于`uploaded`状态。
+  - GitHub Windows 安装包 SHA256 为`7ee5a4a49e4fdd3953750e6986439d51822df05ccd367502d5ba18f83035584a`。
+  - GitHub macOS arm64 DMG SHA256 为`379ffafe6ff518da1470d5eece9f8aec824d98ff4546c9d8a4816aebd5ab9c67`。
+  - GitHub macOS x86_64 DMG SHA256 为`94df05260b37f2bd34c49d546e03798ce6226bd107e3e667f9edbe6115110147`。
+  - Release 正文已在并行上传结束后统一补齐三个平台的 SHA256，避免只保留最后完成任务的单个平台校验值。
 - 验证方式：
   - 继承`v0.8.16-dev.2`的前后端全量测试、依赖审计、更新安装 smoke 和多尺寸隔离预览结果。
   - `python scripts/build_installer.py --nsis`：通过；前端生产构建、PyInstaller 和 NSIS 均成功。
   - 构建、版本、Release、Release Notes 和 GitHub Actions 工作流专项测试：44 项通过。
+  - GitHub Actions Release Build`30568267498`：通过；quality、Windows、macOS arm64 和 macOS x86_64 任务全部成功。
+  - GitHub`releases/latest`接口：返回`v0.8.16`，六个资产名称、上传状态和大小均已核对。
 - 遗留问题：
-  - 等待 Tag 推送和 GitHub Release 资产上传完成。
+  - 无。
 
 ## v0.8.16-dev.2 feat: 实装设置与更新维护页自然高度双栏 (2026-07-31)
 
