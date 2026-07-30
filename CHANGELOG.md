@@ -1,6 +1,6 @@
 # CHANGELOG
 
-[2026-07-30] v0.8.14 release: 发布更新与维护页对齐双主面板、状态驱动更新动作、分离配置保存与统一页面滚动
+[2026-07-30] v0.8.14 release: 发布更新与维护页对齐双主面板、状态驱动更新动作、分离配置保存与统一页面滚动；Windows 安装 worker 在启动前显式校验安装包存在
 [2026-07-30] v0.8.14-dev.4 feat(frontend): implement aligned maintenance dual-panel layout
 [2026-07-30] v0.8.14-dev.3 docs(design): align maintenance dual-panel layout
 [2026-07-30] v0.8.14-dev.2 docs(design): adopt stable dual-column settings and maintenance layouts

@@ -10,6 +10,8 @@
   - 前端`package-lock.json`根版本同步更新为`0.8.14`。
   - `CHANGELOG.md`增加稳定版发布锚点，供 Release Notes 自动汇总本版本开发记录。
   - 正式 Tag 使用`v0.8.14`，触发 GitHub Actions 构建 Windows NSIS 和两种 macOS 架构安装包。
+  - Windows 安装 worker 在调用 PowerShell `Start-Process`前使用`Test-Path -PathType Leaf`校验安装包。
+  - 安装包不存在时直接写入`launch_failed`回执并退出，不再依赖 GitHub Runner 上耗时不确定的`Start-Process`失败路径。
 - 当前结果：
   - 稳定版源码已冻结为`v0.8.14`。
   - 更新与维护页采用顶底对齐的双主面板。
@@ -24,11 +26,14 @@
   - 前端 Vitest 通过：35 个测试文件、111 项测试。
   - 前端 Vite 生产构建通过。
   - Windows 更新安装 smoke 通过，bootstrap、worker 和失败回执链路符合预期。
+  - 首次云端质量门禁及一次失败作业重跑均在 PowerShell worker 集成测试的固定 10 秒超时处失败。
+  - 两次云端失败均为不存在安装包触发`Start-Process`时超时，不是产品断言、解析或版本逻辑失败。
+  - 新增生成脚本断言，覆盖安装包存在性校验和明确错误文案。
   - Release、Release Notes 和 GitHub Actions 工作流专项测试通过：20 项。
   - `python scripts/build_installer.py --nsis`通过。
   - 本地正式安装包为`dist/LarkSync-Setup-v0.8.14.exe`。
-  - 本地正式安装包大小为`71,700,768`字节，约`68.38 MB`。
-  - 本地正式安装包 SHA256 为`473304FCEF9A4E05D9D08308FAC5F40DAA9D78EC82AE1491C3224D4A984091E1`。
+  - 修复后本地正式安装包大小为`71,698,167`字节，约`68.38 MB`。
+  - 修复后本地正式安装包 SHA256 为`39CCC625336EFBDB09CC76266BC45CEB923812A2142704EB76C3D98A108395C2`。
   - Release Notes 预生成通过，能够正确汇总`v0.8.13 -> v0.8.14`的 4 个开发版本记录。
   - 本地安装包只完成构建和文件校验，未执行安装、启动或覆盖。
   - GitHub Actions 和 Release 资产结果在 Tag 推送并完成云端构建后补记。

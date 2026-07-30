@@ -248,6 +248,8 @@ def test_build_windows_installer_launch_command_uses_encoded_command(tmp_path: P
 
     assert "Start-Process -FilePath $installerPath -ArgumentList $argumentList -PassThru" in script
     assert "Start-Process -LiteralPath $installerPath" not in script
+    assert "Test-Path -LiteralPath $installerPath -PathType Leaf" in script
+    assert "安装包不存在:" in script
     assert "$argumentList += '/S'" in script
     assert "Wait-Process -Id $process.Id" in script
     assert str(handoff_path).replace("'", "''") in script
