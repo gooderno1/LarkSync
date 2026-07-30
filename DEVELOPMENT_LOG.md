@@ -17,6 +17,9 @@
   - 源码版本已冻结为`v0.8.15`。
   - 设置页默认窗口不再出现内部滚动条。
   - 更新与维护页底部大块页面留白已消除。
+  - GitHub Release`v0.8.15`已发布为非草稿、非预发布版本，并设为 Latest Release。
+  - 自动更新使用的 GitHub`releases/latest`接口已返回`v0.8.15`。
+  - Windows NSIS、macOS arm64 和 macOS x86_64 六个安装与校验资产均处于`uploaded`状态。
 - 验证方式：
   - 后端全量 pytest：631 项测试通过。
   - 后端 editable 安装元数据 dry-run：通过，解析版本为`larksync-backend==0.8.15`。
@@ -33,8 +36,15 @@
   - Release Notes 预生成通过，能够正确汇总`v0.8.14 -> v0.8.15`的开发记录。
   - 首次云端质量门的 630 项测试已通过，仅 PowerShell 生成脚本集成测试在固定`10秒`上限处超时。
   - 失败堆栈停在`subprocess.wait()`，没有产品断言、PowerShell 解析或 handoff 状态失败。
+  - 修正后云端运行`30523840831`全部通过。
+  - Windows 正式资产为`LarkSync-Setup-v0.8.15.exe`，大小`57,181,262`字节，SHA256 为`75a42c8167d5db70d7b46a06e9e97872bbf4fe3f17e11afe0e3e687348ed176c`。
+  - macOS arm64 资产大小`64,655,561`字节，SHA256 为`7c670e57e2850ce330b0b38c03eec7fe971966ee9ef4a2d48c1e32a8ca63ad5d`。
+  - macOS x86_64 资产大小`65,578,551`字节，SHA256 为`50cbc6e86af32a6db0fa054d887b47d543fab1eabd4d4482f478636589462c9b`。
+  - 三个`.sha256`资产内容分别与 GitHub 安装资产的 digest 一致。
+  - GitHub Release 正文已在三套并行构建完成后统一整理，避免最后完成的单一架构只保留一条校验记录。
 - 遗留问题：
-  - GitHub Actions 仍需完成 Windows 与 macOS 双架构正式资产构建；完成前不得将本节视为 GitHub Release 已可用。
+  - 当前版本无发布阻断项。
+  - 后续应把三套并行构建的 Release Notes 合并逻辑收敛到单独作业，避免每个资产作业覆盖正文。
 
 ## v0.8.15-dev.1 fix: 设置与维护页默认窗口尺寸修正 (2026-07-30)
 
