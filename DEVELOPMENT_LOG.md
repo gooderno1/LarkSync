@@ -1,5 +1,40 @@
 # DEVELOPMENT LOG
 
+## v0.8.14 release (2026-07-30)
+
+- 开发原因：
+  - 将 v0.8.14-dev.1 至 v0.8.14-dev.4 已确认的设置与维护页设计和维护页实装作为正式版本交付。
+  - 现有正式版需要通过 GitHub Latest Release 自动发现并升级到本版本。
+- 实现方式：
+  - 根包、前端包和后端包版本统一更新为`v0.8.14`。
+  - 前端`package-lock.json`根版本同步更新为`0.8.14`。
+  - `CHANGELOG.md`增加稳定版发布锚点，供 Release Notes 自动汇总本版本开发记录。
+  - 正式 Tag 使用`v0.8.14`，触发 GitHub Actions 构建 Windows NSIS 和两种 macOS 架构安装包。
+- 当前结果：
+  - 稳定版源码已冻结为`v0.8.14`。
+  - 更新与维护页采用顶底对齐的双主面板。
+  - 更新动作按真实状态显示。
+  - 自动更新配置与日志配置独立保存。
+  - 页面只保留桌面主内容滚动，不再嵌套左右滚动区。
+- 验证方式：
+  - 飞书开发文档同步检查通过：4 个压缩包均为最新。
+  - 后端全量 pytest 通过。
+  - 前端 TypeScript 类型检查通过。
+  - 前端 ESLint 通过，无警告。
+  - 前端 Vitest 通过：35 个测试文件、111 项测试。
+  - 前端 Vite 生产构建通过。
+  - Windows 更新安装 smoke 通过，bootstrap、worker 和失败回执链路符合预期。
+  - Release、Release Notes 和 GitHub Actions 工作流专项测试通过：20 项。
+  - `python scripts/build_installer.py --nsis`通过。
+  - 本地正式安装包为`dist/LarkSync-Setup-v0.8.14.exe`。
+  - 本地正式安装包大小为`71,700,768`字节，约`68.38 MB`。
+  - 本地正式安装包 SHA256 为`473304FCEF9A4E05D9D08308FAC5F40DAA9D78EC82AE1491C3224D4A984091E1`。
+  - Release Notes 预生成通过，能够正确汇总`v0.8.13 -> v0.8.14`的 4 个开发版本记录。
+  - 本地安装包只完成构建和文件校验，未执行安装、启动或覆盖。
+  - GitHub Actions 和 Release 资产结果在 Tag 推送并完成云端构建后补记。
+- 遗留问题：
+  - 用户升级后的真实 DPI、正式数据状态和静默安装体验仍需用户侧验收。
+
 ## v0.8.14-dev.4 feat: 更新与维护页对齐双主面板实装 (2026-07-30)
 
 - 开发原因：
