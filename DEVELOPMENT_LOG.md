@@ -1,5 +1,37 @@
 # DEVELOPMENT LOG
 
+## v0.8.15 release (2026-07-30)
+
+- 开发原因：
+  - 将`v0.8.15-dev.1`已验证的设置与更新维护页尺寸修正作为正式版本交付。
+  - 现有正式版需要通过 GitHub Latest Release 自动发现并升级到本版本。
+- 实现方式：
+  - 根包、前端包、前端 lockfile 和后端包版本统一更新为`v0.8.15`。
+  - `CHANGELOG.md`增加正式发布锚点，供 Release Notes 汇总`v0.8.14 -> v0.8.15`变更。
+  - 正式 Tag 使用`v0.8.15`，触发 GitHub Actions 构建 Windows NSIS 和 macOS 双架构安装包。
+  - 设置页正式采用自然高度双栏、固定辅助栏和默认折叠 OAuth。
+  - 更新与维护页正式采用标题区加剩余工作区的满高双面板布局。
+- 当前结果：
+  - 源码版本已冻结为`v0.8.15`。
+  - 设置页默认窗口不再出现内部滚动条。
+  - 更新与维护页底部大块页面留白已消除。
+- 验证方式：
+  - 后端全量 pytest：631 项测试通过。
+  - 后端 editable 安装元数据 dry-run：通过，解析版本为`larksync-backend==0.8.15`。
+  - Windows 静默安装 smoke：通过，缺失安装包按预期收敛为`launch_failed`，未影响当前运行实例。
+  - `npm ci`：通过。
+  - `npm audit --omit=dev`：生产依赖漏洞为`0`。
+  - `npm run lint`：通过，无 ESLint 警告。
+  - `npm run typecheck`：通过。
+  - `npm test`：35 个测试文件、112 项测试全部通过。
+  - `npm run build`：通过，Vite 生产构建成功。
+  - `python scripts/build_installer.py --nsis`：通过。
+  - 本地正式安装包为`dist/LarkSync-Setup-v0.8.15.exe`，文件大小`71,700,698`字节。
+  - 本地安装包 SHA256 为`8dd9c6eeaaf5d5912b22584c1405b3aac9d54706b9dcdbb2b823299bd9f6b0d9`。
+  - Release Notes 预生成通过，能够正确汇总`v0.8.14 -> v0.8.15`的开发记录。
+- 遗留问题：
+  - GitHub Actions 仍需完成 Windows 与 macOS 双架构正式资产构建；完成前不得将本节视为 GitHub Release 已可用。
+
 ## v0.8.15-dev.1 fix: 设置与维护页默认窗口尺寸修正 (2026-07-30)
 
 - 开发原因：
