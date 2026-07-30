@@ -40,7 +40,18 @@
   - 修复后本地正式安装包 SHA256 为`39CCC625336EFBDB09CC76266BC45CEB923812A2142704EB76C3D98A108395C2`。
   - Release Notes 预生成通过，能够正确汇总`v0.8.13 -> v0.8.14`的 4 个开发版本记录。
   - 本地安装包只完成构建和文件校验，未执行安装、启动或覆盖。
-  - GitHub Actions 和 Release 资产结果在 Tag 推送并完成云端构建后补记。
+  - GitHub Actions`30518351625`完整工作流通过。
+  - 云端质量门禁通过：后端全量测试、Windows 更新安装 smoke、前端 lint、类型检查、111 项测试和生产构建均成功。
+  - Windows NSIS 构建与资产上传成功。
+  - macOS x86_64 和 arm64 的 DMG 构建、安装启动 smoke 与资产上传均成功。
+  - GitHub Release`v0.8.14`为非草稿、非预发布版本，并已成为 Latest Release。
+  - Release 共包含 6 个资产：Windows EXE 与 SHA256、macOS x86_64 DMG 与 SHA256、macOS arm64 DMG 与 SHA256。
+  - 云端 Windows 安装包名称为`LarkSync-Setup-v0.8.14.exe`。
+  - 云端 Windows 安装包大小为`57,184,016`字节。
+  - 云端 Windows 安装包 SHA256 为`8BC25EE78193E05FDC1C9566A8EF4EEB9A9BFDD8943864228A0CD163E98EE49C`。
+  - `LarkSync-Setup-v0.8.14.exe.sha256`内容与 GitHub 资产摘要完全一致。
+  - Windows 安装包公开下载地址 HEAD 请求返回 HTTP 200，`Content-Length`与 Release 资产大小一致。
+  - 自动更新使用的 GitHub`releases/latest`接口返回`v0.8.14`，正式版可发现、下载并校验本版本。
 - 遗留问题：
   - 用户升级后的真实 DPI、正式数据状态和静默安装体验仍需用户侧验收。
 
