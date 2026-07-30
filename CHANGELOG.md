@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-07-30] v0.8.14-dev.4 feat(frontend): implement aligned maintenance dual-panel layout
 [2026-07-30] v0.8.14-dev.3 docs(design): align maintenance dual-panel layout
 [2026-07-30] v0.8.14-dev.2 docs(design): adopt stable dual-column settings and maintenance layouts
 [2026-07-29] v0.8.14-dev.1 docs(design): redesign settings and maintenance information architecture

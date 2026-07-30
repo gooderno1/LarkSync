@@ -1,7 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { MaintenancePage, getInstallTimelineSteps } from "./MaintenancePage";
+import {
+  MaintenancePage,
+  getInstallTimelineSteps,
+  getUpdateActionVisibility,
+  shouldAutoExpandInstallDetails,
+} from "./MaintenancePage";
 
 vi.mock("../hooks/useUpdate", () => ({
   useUpdate: () => ({
@@ -77,33 +82,39 @@ vi.mock("../components/ui/confirm-dialog", () => ({
 }));
 
 describe("MaintenancePage smoke", () => {
-  it("renders the light maintenance workspace with shell-safe wide breakpoint", () => {
+  it("renders one aligned dual-panel workspace with module-owned actions", () => {
     const html = renderToStaticMarkup(<MaintenancePage />);
 
-    expect(html).toContain("更新流程");
+    expect(html).toContain("版本与安装");
+    expect(html).toContain("版本与更新");
+    expect(html).toContain("本机维护");
+    expect(html).toContain("日志管理");
+    expect(html).toContain("危险操作");
     expect(html).toContain("正在下载安装包");
     expect(html).toContain("42%");
     expect(html).toContain("24.0 MB / 57.0 MB");
     expect(html).toContain("4.0 MB/s");
     expect(html).toContain('role="progressbar"');
-    expect(html).toContain("日志保留");
     expect(html).toContain("重置同步映射");
-    expect(html).toContain("安装与交接");
-    expect(html).toContain("选择任务重置");
+    expect(html).toContain("安装详情");
+    expect(html).toContain("选择任务");
+    expect(html).toContain("保存更新设置");
+    expect(html).toContain("保存日志设置");
+    expect(html).not.toContain("保存维护设置");
     expect(html).toContain('data-maintenance-workspace="true"');
-    expect(html).toContain("grid-rows-[auto_minmax(0,1fr)]");
     expect(html).toContain('data-maintenance-page="true"');
-    expect(html.match(/data-maintenance-scroll-region=/g)).toHaveLength(2);
-    expect(html).toContain('data-page-primary-action="check-update"');
+    expect(html).toContain('data-maintenance-panel="version-install"');
+    expect(html).toContain('data-maintenance-panel="local-maintenance"');
+    expect(html).toContain('data-maintenance-action="check-update"');
+    expect(html).not.toContain("data-maintenance-scroll-region");
+    expect(html).not.toContain('data-page-primary-action="check-update"');
     expect(html).not.toContain("max-w-[1240px]");
     expect(html.match(/检查更新/g)).toHaveLength(1);
     expect(html).not.toContain("默认不展示的危险任务");
     expect(html).toContain("安装器已启动");
     expect(html).toContain("req-123");
     expect(html).toContain("pid=1234");
-    expect(html).toContain("grid-cols-[minmax(0,1fr)_360px]");
-    expect(html).toContain("更新流程");
-    expect(html).toContain("安装与交接");
+    expect(html).toContain("min-[900px]:grid-cols-[minmax(0,3fr)_minmax(400px,2fr)]");
     expect(html).not.toContain("min-[1760px]");
     expect(html).not.toContain("min-[1440px]:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]");
     expect(html).not.toContain("xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]");
@@ -132,5 +143,76 @@ describe("MaintenancePage smoke", () => {
       "静默安装:已完成:success",
       "自动重启:未确认:danger",
     ]);
+  });
+
+  it("only exposes update actions that are meaningful for the current state", () => {
+    expect(
+      getUpdateActionVisibility(
+        { phase: "up_to_date", update_available: false, download_path: null },
+        { downloadActive: false, installing: false },
+      ),
+    ).toEqual({
+      showDownload: false,
+      showOpenFolder: false,
+      showInstall: false,
+      disableDownload: false,
+      disableInstall: false,
+    });
+
+    expect(
+      getUpdateActionVisibility(
+        { phase: "available", update_available: true, download_path: null },
+        { downloadActive: false, installing: false },
+      ),
+    ).toMatchObject({
+      showDownload: true,
+      showOpenFolder: false,
+      showInstall: false,
+    });
+
+    expect(
+      getUpdateActionVisibility(
+        {
+          phase: "downloaded",
+          update_available: true,
+          download_path: "D:/downloads/LarkSync-Setup.exe",
+        },
+        { downloadActive: false, installing: false },
+      ),
+    ).toMatchObject({
+      showDownload: false,
+      showOpenFolder: true,
+      showInstall: true,
+    });
+  });
+
+  it("auto-expands install details only for active, failed, or unconfirmed handoff", () => {
+    expect(
+      shouldAutoExpandInstallDetails({
+        install_request: {
+          request_id: "req-active",
+          installer_path: "D:/downloads/LarkSync-Setup.exe",
+          created_at: 1800000000,
+          silent: true,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoExpandInstallDetails({
+        install_handoff: {
+          request_id: "req-failed",
+          stage: "restart_failed",
+        },
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoExpandInstallDetails({
+        install_handoff: {
+          request_id: "req-done",
+          stage: "restart_succeeded",
+        },
+      }),
+    ).toBe(false);
+    expect(shouldAutoExpandInstallDetails({})).toBe(false);
   });
 });
