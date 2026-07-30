@@ -325,7 +325,7 @@ function MaintenanceLivePage() {
   };
 
   return (
-    <section data-maintenance-page="true" className="mx-auto grid h-full min-h-0 w-full max-w-[1440px] grid-rows-[auto_minmax(0,1fr)] gap-4 animate-fade-up">
+    <section data-maintenance-page="true" className="mx-auto min-w-0 w-full max-w-[1440px] animate-fade-up">
       <header className="min-w-0">
         <h1 className="text-xl font-semibold text-[#102033]">更新与维护</h1>
         <p className="mt-1 text-sm text-[#52657A]">管理应用更新、日志保留和本机维护工具。</p>
@@ -333,11 +333,11 @@ function MaintenanceLivePage() {
 
       <div
         data-maintenance-workspace="true"
-        className="grid h-full min-h-0 min-w-0 grid-cols-1 items-stretch gap-5 min-[900px]:grid-cols-[minmax(0,3fr)_minmax(400px,2fr)]"
+        className="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] min-[1200px]:gap-5"
       >
         <article
           data-maintenance-panel="version-install"
-          className="flex h-full min-w-0 flex-col rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
+          className="flex min-w-0 flex-col rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
         >
           <h2 className="text-lg font-semibold text-[#102033]">版本与安装</h2>
 
@@ -506,7 +506,7 @@ function MaintenanceLivePage() {
             ) : null}
           </section>
 
-          <section className="mt-auto border-t border-[#dce7f4] pt-5">
+          <section data-maintenance-section="install-details" className="mt-5 border-t border-[#dce7f4] pt-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-3">
@@ -579,11 +579,11 @@ function MaintenanceLivePage() {
 
         <aside
           data-maintenance-panel="local-maintenance"
-          className="flex h-full min-w-0 flex-col rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
+          className="flex min-w-0 flex-col rounded-xl border border-[#d7e4f5] bg-white p-5 shadow-[0_14px_34px_rgba(51,112,255,0.06)]"
         >
           <h2 className="text-lg font-semibold text-[#102033]">本机维护</h2>
 
-          <section className="mt-5">
+          <section data-maintenance-section="log-management" className="mt-5">
             <h3 className="text-base font-semibold text-[#102033]">日志管理</h3>
             <div className="mt-4 grid gap-3">
               <label className="text-xs font-medium text-[#52657A]">
@@ -627,7 +627,11 @@ function MaintenanceLivePage() {
             </div>
           </section>
 
-          <section data-maintenance-danger="true" className="mt-auto border-t border-[#f3d4da] pt-5">
+          <section
+            data-maintenance-danger="true"
+            data-maintenance-section="danger"
+            className="mt-5 border-t border-[#f3d4da] pt-5"
+          >
             <div className="flex items-center gap-2 text-[#e11d48]">
               <IconMaintenance className="h-5 w-5" />
               <h3 className="text-base font-semibold">危险操作</h3>

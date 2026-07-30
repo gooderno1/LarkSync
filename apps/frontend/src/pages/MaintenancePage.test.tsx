@@ -82,7 +82,7 @@ vi.mock("../components/ui/confirm-dialog", () => ({
 }));
 
 describe("MaintenancePage smoke", () => {
-  it("renders one aligned dual-panel workspace with module-owned actions", () => {
+  it("renders one natural-height responsive dual-panel workspace with module-owned actions", () => {
     const html = renderToStaticMarkup(<MaintenancePage />);
 
     expect(html).toContain("版本与安装");
@@ -105,19 +105,27 @@ describe("MaintenancePage smoke", () => {
     expect(html).toContain('data-maintenance-page="true"');
     expect(html).toContain('data-maintenance-panel="version-install"');
     expect(html).toContain('data-maintenance-panel="local-maintenance"');
+    expect(html).toContain('data-maintenance-section="install-details"');
+    expect(html).toContain('data-maintenance-section="log-management"');
+    expect(html).toContain('data-maintenance-section="danger"');
     expect(html).toContain('data-maintenance-action="check-update"');
     expect(html).not.toContain("data-maintenance-scroll-region");
     expect(html).not.toContain('data-page-primary-action="check-update"');
     expect(html).not.toContain("max-w-[1240px]");
-    expect(html).toContain("grid-rows-[auto_minmax(0,1fr)]");
-    expect(html).toContain("h-full");
-    expect(html).toContain("min-h-0");
+    expect(html).toContain(
+      'data-maintenance-page="true" class="mx-auto min-w-0 w-full max-w-[1440px] animate-fade-up"',
+    );
+    expect(html).toContain(
+      'data-maintenance-workspace="true" class="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] min-[1200px]:gap-5"',
+    );
+    expect(html).not.toContain("grid-rows-[auto_minmax(0,1fr)]");
+    expect(html).not.toContain('class="mt-auto border-t');
     expect(html.match(/检查更新/g)).toHaveLength(1);
     expect(html).not.toContain("默认不展示的危险任务");
     expect(html).toContain("安装器已启动");
     expect(html).toContain("req-123");
     expect(html).toContain("pid=1234");
-    expect(html).toContain("min-[900px]:grid-cols-[minmax(0,3fr)_minmax(400px,2fr)]");
+    expect(html).toContain("min-[900px]:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)]");
     expect(html).not.toContain("min-[1760px]");
     expect(html).not.toContain("min-[1440px]:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]");
     expect(html).not.toContain("xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]");

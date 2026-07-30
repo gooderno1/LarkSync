@@ -66,7 +66,7 @@ describe("settings panels", () => {
       </>,
     );
 
-    expect(html).toContain("OAuth 配置");
+    expect(html).toContain("仅在更换应用凭证或授权端点时修改。");
     expect(html).toContain("同步策略");
     expect(html).toContain("双向同步");
     expect(html).toContain("grid-cols-3");

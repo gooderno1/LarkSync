@@ -231,7 +231,7 @@ function SettingsLivePage() {
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-[#102033]">设置</h1>
-          <p className="mt-1 text-sm text-[#52657A]">飞书账号、当前设备、默认同步策略和忽略规则。</p>
+          <p className="mt-1 text-sm text-[#52657A]">管理飞书账号、当前设备、默认同步行为和本地规则。</p>
         </div>
         <button
           className="inline-flex h-9 items-center rounded-lg bg-[#3370FF] px-4 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.22)] hover:bg-[#2563eb]"
@@ -245,44 +245,49 @@ function SettingsLivePage() {
 
       <div
         data-settings-workspace="true"
-        className="mt-5 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(380px,420px)] items-start gap-4"
+        className="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(380px,420px)] min-[1200px]:gap-5"
       >
-        <main className="min-w-0 space-y-4">
-          <div data-settings-context="true" className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-            <div data-settings-account-panel="true" className="min-w-0 border-r border-[#d7e4f5] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="text-base font-semibold text-[#102033]">飞书账号</h2>
-                <button
-                  className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs font-semibold text-[#52677f] hover:border-[#3370ff]/40 hover:text-[#3370ff]"
-                  onClick={() => logout()}
-                  type="button"
-                >
-                  <IconLogout className="h-3.5 w-3.5" />
-                  {connected ? "登出设备" : "重新授权"}
-                </button>
+        <main data-settings-primary-column="true" className="min-w-0 space-y-4">
+          <section data-settings-context="true" className="overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
+            <h2 data-settings-context-title="true" className="px-4 pt-4 text-base font-semibold text-[#102033]">
+              飞书账号与当前设备
+            </h2>
+            <div className="mt-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] border-t border-[#e4edf8]">
+              <div data-settings-account-panel="true" className="min-w-0 border-r border-[#d7e4f5] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-[#102033]">飞书账号</h3>
+                  <button
+                    className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs font-semibold text-[#52677f] hover:border-[#3370ff]/40 hover:text-[#3370ff]"
+                    onClick={() => logout()}
+                    type="button"
+                  >
+                    <IconLogout className="h-3.5 w-3.5" />
+                    {connected ? "登出设备" : "重新授权"}
+                  </button>
+                </div>
+                <div className="mt-4 flex min-w-0 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ecfdf5] text-[#10b981]">
+                      <IconCircleCheck className="h-6 w-6" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#102033]">{connected ? "飞书已连接" : "飞书未连接"}</p>
+                      <p className="mt-1 truncate text-xs text-[#6b7f96]">
+                        {connected
+                          ? `${accountName || "当前账号"} · 本机授权有效`
+                          : "请在高级 OAuth 中完成授权"}
+                      </p>
+                    </div>
+                </div>
               </div>
-              <div className="mt-4 flex min-w-0 items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ecfdf5] text-[#10b981]">
-                    <IconCircleCheck className="h-6 w-6" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[#102033]">{connected ? "飞书已连接" : "飞书未连接"}</p>
-                    <p className="mt-1 truncate text-xs text-[#6b7f96]">
-                      {connected
-                        ? `${accountName || "当前账号"} · 本机授权有效`
-                        : "请在高级 OAuth 中完成授权"}
-                    </p>
-                  </div>
-              </div>
+              <SettingsGeneralPanel
+                embedded
+                inputCls={inputCls}
+                deviceDisplayName={deviceDisplayName}
+                setDeviceDisplayName={setDeviceDisplayName}
+                deviceId={deviceId}
+              />
             </div>
-            <SettingsGeneralPanel
-              embedded
-              inputCls={inputCls}
-              deviceDisplayName={deviceDisplayName}
-              setDeviceDisplayName={setDeviceDisplayName}
-              deviceId={deviceId}
-            />
-          </div>
+          </section>
 
           <SettingsSyncStrategyPanel
             syncMode={syncMode}
@@ -331,7 +336,7 @@ function SettingsLivePage() {
           />
         </main>
 
-        <aside className="min-w-0 space-y-4">
+        <aside data-settings-auxiliary-column="true" className="min-w-0 space-y-4">
           <SettingsIgnoredDirectoriesPanel
             tasks={tasks}
             showIgnoredDirectorySettings={showIgnoredDirectorySettings}

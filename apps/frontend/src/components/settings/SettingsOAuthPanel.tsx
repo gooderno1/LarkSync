@@ -48,7 +48,7 @@ export function SettingsOAuthPanel({
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-[#102033]">高级 OAuth</h2>
-          <p className="mt-1 text-xs text-[#58708d]">OAuth 配置：仅在更换应用凭证或授权端点时修改。</p>
+          <p className="mt-1 text-xs text-[#58708d]">仅在更换应用凭证或授权端点时修改。</p>
         </div>
         <div className="flex items-center gap-2">
           <a
