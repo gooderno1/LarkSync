@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-07-30] v0.8.14-dev.2 docs(design): adopt stable dual-column settings and maintenance layouts
 [2026-07-29] v0.8.14-dev.1 docs(design): redesign settings and maintenance information architecture
 [2026-07-29] v0.8.13 fix(desktop): correct settings and maintenance layouts
 [2026-07-29] v0.8.13-dev.1 fix(frontend): 撤销设置与更新维护页的 1240px 居中窄版；恢复与其他桌面页一致的满高工作区、固定页头和双栏独立滚动，并重排设置页内部表单以适配 1360×900
