@@ -11,6 +11,8 @@
   - 正式 Tag 使用`v0.8.15`，触发 GitHub Actions 构建 Windows NSIS 和 macOS 双架构安装包。
   - 设置页正式采用自然高度双栏、固定辅助栏和默认折叠 OAuth。
   - 更新与维护页正式采用标题区加剩余工作区的满高双面板布局。
+  - Windows PowerShell 5.1 生成脚本集成测试的进程等待上限从`10秒`提高到`30秒`。
+  - 该调整只放宽 GitHub Windows Runner 启动 PowerShell 和 Defender 扫描临时脚本的环境容差，不改变安装 worker 的产品执行逻辑。
 - 当前结果：
   - 源码版本已冻结为`v0.8.15`。
   - 设置页默认窗口不再出现内部滚动条。
@@ -29,6 +31,8 @@
   - 本地正式安装包为`dist/LarkSync-Setup-v0.8.15.exe`，文件大小`71,700,698`字节。
   - 本地安装包 SHA256 为`8dd9c6eeaaf5d5912b22584c1405b3aac9d54706b9dcdbb2b823299bd9f6b0d9`。
   - Release Notes 预生成通过，能够正确汇总`v0.8.14 -> v0.8.15`的开发记录。
+  - 首次云端质量门的 630 项测试已通过，仅 PowerShell 生成脚本集成测试在固定`10秒`上限处超时。
+  - 失败堆栈停在`subprocess.wait()`，没有产品断言、PowerShell 解析或 handoff 状态失败。
 - 遗留问题：
   - GitHub Actions 仍需完成 Windows 与 macOS 双架构正式资产构建；完成前不得将本节视为 GitHub Release 已可用。
 

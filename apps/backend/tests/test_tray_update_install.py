@@ -375,7 +375,9 @@ def test_generated_worker_script_runs_under_windows_powershell(tmp_path: Path) -
             ],
             stdout=subprocess.DEVNULL,
             stderr=stderr_file,
-            timeout=10,
+            # GitHub Windows runners can spend more than 10 seconds starting
+            # Windows PowerShell while Defender scans the generated script.
+            timeout=30,
         )
 
     assert result.returncode == 1
