@@ -1,6 +1,30 @@
 # DEVELOPMENT LOG
 
-## v0.8.17-dev.1 fix: Windows 托盘唤醒窗口显式置前 (2026-07-31)
+## v0.8.17 release (2026-07-31)
+
+- 开发原因：
+  - 将`v0.8.17-dev.1`已验证的 Windows 托盘窗口置前修复作为正式补丁版本交付。
+  - 正式版用户需要通过 GitHub Latest Release 自动发现并升级，避免继续使用只恢复可见、不保证前台层级的 v0.8.16。
+- 实现方式：
+  - 根包、前端包、前端 lockfile 和后端包版本统一冻结为`v0.8.17`。
+  - `CHANGELOG.md`增加正式发布锚点，Release Notes 汇总范围固定为`v0.8.16 -> v0.8.17`。
+  - 正式 Tag 使用`v0.8.17`，触发 GitHub Actions 构建 Windows NSIS 和 macOS 双架构安装包。
+  - 正式版保留`v0.8.17-dev.1`的两层 Windows 置前策略：跨进程前台授权优先，临时 TopMost 后立即解除作为回退。
+- 当前结果：
+  - 源码版本已冻结为`v0.8.17`。
+  - 从托盘恢复已有 LarkSync 窗口时，窗口会取得前台焦点；系统拒绝激活时也会提升到普通窗口 Z-order 顶部。
+  - LarkSync 不会保持永久 TopMost，用户切换到其他应用后窗口层级继续遵循 Windows 正常规则。
+  - 本地正式版 NSIS 安装包已生成：`dist/LarkSync-Setup-v0.8.17.exe`，大小`71,701,795 bytes`（`68.38 MiB`）。
+  - 本地正式版安装包 SHA256 为`C5FB50EF3E0D04DD67488D8B116426305F215E9DF834FD932CB6F0DEEA4B3BD9`。
+- 验证方式：
+  - 继承`v0.8.17-dev.1`的后端 633 项、前端 112 项、依赖审计、元数据、更新安装 smoke、NSIS 构建和真实 Windows 窗口验证结果。
+  - 发布、版本、构建、更新与安全专项 pytest：112 项通过。
+  - `python scripts/build_installer.py --nsis`：通过；前端生产构建、PyInstaller 和 NSIS 均成功。
+  - `python scripts/release_notes.py --version v0.8.17 --asset dist/LarkSync-Setup-v0.8.17.exe`：通过；输出变更区间`v0.8.16 -> v0.8.17`和实际安装包 SHA256。
+- 遗留问题：
+  - 正式发布前仍需生成`v0.8.17`NSIS 安装包、校验 Release Notes、推送 Tag，并确认 GitHub Actions 与三个平台的 Release 资产。
+
+## v0.8.17-dev.1 (2026-07-31)
 
 - 开发原因：
   - 用户从系统托盘打开 LarkSync 时，已有桌面窗口会恢复可见，但仍停留在其他应用窗口下方。
@@ -13,9 +37,10 @@
   - 非 Windows 平台保持原有`restore()`和`show()`行为，不引入 Windows API 依赖。
   - 根包、前端包、前端 lockfile 和后端包版本统一更新为`v0.8.17-dev.1`。
 - 当前结果：
-  - 当前安装版旧逻辑已稳定复现：控制命令返回成功、窗口从隐藏变为可见，但前台 PID 未变化。
+  - Windows 用户从托盘唤醒已有 LarkSync 窗口时，窗口会成为前台窗口，不再只恢复可见后停留在其他应用下方。
   - 对同一真实 pywebview 窗口句柄执行新原生激活逻辑后，Windows`GetForegroundWindow()`返回 LarkSync 窗口句柄。
   - 自动化测试覆盖前台权限授予的目标 PID、授权与唤醒命令顺序、窗口激活调用，以及临时 TopMost 必须立即解除。
+  - 当前安装版旧逻辑的对照复现为：控制命令返回成功、窗口从隐藏变为可见，但前台 PID 未变化。
 - 验证方式：
   - `python -m pytest -q apps/backend/tests/test_desktop_window.py`：17 项通过。
   - 后端全量`python -m pytest -q`：633 项通过。
