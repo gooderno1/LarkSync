@@ -1,5 +1,35 @@
 # DEVELOPMENT LOG
 
+## v0.8.19-dev.1 (2026-07-31)
+
+- 开发原因：
+  - 用户升级到`v0.8.18`后，问题中心仍显示 5 条历史下载问题。
+  - 这些问题最后发生于 2026-07-29，最新证据均为`完成: total=0 ok=0 failed=0 skipped=0`，升级后没有新增失败。
+  - 旧迁移已把记录的`object_kind`改成`task_run`并把分类器写成`problem-classifier-v3`，而 v0.8.18 只扫描`sync_event`且分类器不是 v3 的问题，因此没有再次执行新的汇总过滤规则。
+- 实现方式：
+  - 活跃问题迁移同时覆盖`sync_event`和`task_run`，状态范围保持`open / in_progress / waiting / ignored`。
+  - 旧分类器问题继续按原逻辑重分类；当前 v3 问题只有在最新事件为`failed`且消息以`完成:`开头时才进入候选。
+  - 候选进入 Python 后必须严格匹配`完成: total=N ok=N failed=N skipped=N`完整格式，才转为`resolved`并记录`workflow_summary_not_problem`。
+  - 旧的人工忽略原因和时间会被清除，但问题出现记录、原始运行事件及动作历史继续保留。
+  - 候选查询使用问题状态索引，并通过`latest_event_id`对运行事件主键做相关子查询，避免扫描数百万条活动事件。
+- 当前结果：
+  - 正式数据库只读预估命中 8 条历史汇总误报：5 条 open、3 条 ignored。
+  - 8 条记录均为 2026-07-29 的零计数完成汇总；其余真实下载、认证和对象问题不在候选范围。
+  - 升级后问题后台刷新时会自动结案这些记录，用户无需重试任务、重新授权或手动忽略。
+  - 版本统一更新为`v0.8.19-dev.1`。
+- 验证方式：
+  - TDD 首次运行当前 v3、`task_run`空汇总迁移用例按预期失败，证明遗漏可稳定复现。
+  - 问题服务测试覆盖旧分类器、当前 v3、`sync_event`、`task_run`、open 与 ignored 状态，以及忽略字段清理。
+  - 正式`2.25 GB`SQLite 数据库采用`mode=ro`只读查询；SQL 候选 8 条，严格格式匹配 8 条。
+  - 正式库查询计划使用`ix_problems_state`和`sqlite_autoindex_sync_run_events_1`，实测耗时约`0.84 ms`。
+  - 后端全量测试通过，共收集`651`项；问题服务定向测试`19`项通过。
+  - 前端 ESLint、TypeScript 类型检查与生产构建通过；Vitest 共`112`项通过。
+  - 发布元数据 dry-run、更新安装 smoke 通过；生产依赖审计为`0`个漏洞。
+  - Windows NSIS 安装包构建通过，产物大小`71,713,257`字节（`68.39 MB`）。
+  - 安装包 SHA-256：`80B3EB47F29DC6F8AA8E79025BEABF418D663DEC58B38C2989BACA600EF961FD`。
+- 遗留问题：
+  - 无。
+
 ## v0.8.18 release (2026-07-31)
 
 - 开发原因：

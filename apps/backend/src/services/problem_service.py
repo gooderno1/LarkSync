@@ -540,10 +540,22 @@ class ProblemService:
         task_roots: dict[str, str],
         limit: int = 500,
     ) -> None:
+        has_run_summary_event = (
+            select(SyncRunEvent.id)
+            .where(SyncRunEvent.id == ProblemRecord.latest_event_id)
+            .where(SyncRunEvent.status == "failed")
+            .where(SyncRunEvent.message.like("完成:%"))
+            .exists()
+        )
         rows = await session.execute(
             select(ProblemRecord)
-            .where(ProblemRecord.object_kind == "sync_event")
-            .where(ProblemRecord.classifier_version != CLASSIFIER_VERSION)
+            .where(ProblemRecord.object_kind.in_(["sync_event", "task_run"]))
+            .where(
+                or_(
+                    ProblemRecord.classifier_version != CLASSIFIER_VERSION,
+                    has_run_summary_event,
+                )
+            )
             .where(
                 ProblemRecord.state.in_(
                     ["open", "in_progress", "waiting", "ignored"]
@@ -584,14 +596,22 @@ class ProblemService:
             event = events.get(problem.latest_event_id or "")
             if event is None:
                 continue
+            is_run_summary = self.is_failed_run_summary(event.status, event.message)
+            if (
+                problem.classifier_version == CLASSIFIER_VERSION
+                and not is_run_summary
+            ):
+                continue
             problem.classifier_version = CLASSIFIER_VERSION
-            if self.is_failed_run_summary(event.status, event.message):
+            if is_run_summary:
                 problem.object_kind = "task_run"
                 problem.state = "resolved"
                 problem.resolved_at = event.timestamp
                 problem.last_good_at = event.timestamp
                 problem.resolution_verification = "workflow_summary_not_problem"
                 problem.actionability = "diagnostic_only"
+                problem.ignored_reason = None
+                problem.ignored_at = None
                 continue
             task_root = task_roots.get(event.task_id)
             object_path, object_key = self.normalize_object_path(event.path, task_root)

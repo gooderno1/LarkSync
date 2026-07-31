@@ -289,6 +289,75 @@ async def test_refresh_sources_resolves_legacy_failed_run_summary_problem(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("initial_state", ["open", "ignored"])
+async def test_refresh_sources_resolves_current_classifier_failed_run_summary_problem(
+    tmp_path,
+    initial_state: str,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=12.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing",
+                message="完成: total=0 ok=0 failed=0 skipped=0",
+                run_id="run-current-summary",
+            )
+        ]
+    )
+    async with session_maker() as session:
+        event = (
+            await session.execute(
+                select(SyncRunEvent).where(
+                    SyncRunEvent.run_id == "run-current-summary"
+                )
+            )
+        ).scalar_one()
+        session.add(
+            ProblemRecord(
+                id="current-summary",
+                fingerprint="current-summary-fingerprint",
+                category="download",
+                severity="medium",
+                state=initial_state,
+                title="下载失败 · Marketing",
+                summary="文件或文档内容没有成功同步到本地。",
+                task_id="task-1",
+                object_kind="task_run",
+                object_key="marketing",
+                object_path="Marketing",
+                first_seen_at=12.0,
+                last_seen_at=12.0,
+                occurrence_count=1,
+                latest_run_id="run-current-summary",
+                latest_event_id=event.id,
+                classifier_version="problem-classifier-v3",
+                actionability="auto_recovering",
+                ignored_reason=(
+                    "历史问题暂时忽略" if initial_state == "ignored" else None
+                ),
+                ignored_at=12.0 if initial_state == "ignored" else None,
+            )
+        )
+        await session.commit()
+
+    await service.refresh_sources()
+    item = await service.get_problem("current-summary")
+
+    assert item is not None
+    assert item.state == "resolved"
+    assert item.object_kind == "task_run"
+    assert item.resolution_verification == "workflow_summary_not_problem"
+    assert item.actionability == "diagnostic_only"
+    assert item.ignored_reason is None
+    assert item.ignored_at is None
+
+
+@pytest.mark.asyncio
 async def test_verify_task_problem_requires_matching_object_success(tmp_path) -> None:
     session_maker, event_service, service = await _build_services(tmp_path)
     await _insert_task(session_maker)
