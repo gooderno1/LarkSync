@@ -1,5 +1,37 @@
 # DEVELOPMENT LOG
 
+## v0.8.18 release (2026-07-31)
+
+- 开发原因：
+  - 将`v0.8.18-dev.1`已验证的飞书 OAuth 跨进程刷新保护作为正式补丁版本交付。
+  - 正式版用户需要通过 GitHub Latest Release 升级，避免长驻旧进程重复提交已轮换的 refresh token 并持续产生`20026`。
+- 实现方式：
+  - 根包、前端包、前端 lockfile 和后端包版本统一冻结为`v0.8.18`。
+  - `CHANGELOG.md`增加正式发布锚点，Release Notes 汇总范围固定为`v0.8.17 -> v0.8.18`。
+  - 正式 Tag 使用`v0.8.18`，触发 GitHub Actions 构建 Windows NSIS 和 macOS x86_64、arm64 安装包。
+  - 正式版完整保留`v0.8.18-dev.1`的跨进程 Token 锁、持久化凭据强制重读、有限错误恢复、真实失败证据、空汇总过滤和更新前进程收敛。
+- 当前结果：
+  - 源码版本已冻结为`v0.8.18`。
+  - 同一台设备上的 LarkSync 进程不会并发消费同一个 refresh token；等待进程会重新读取系统凭据。
+  - 系统凭据确实失效时会明确提示重新连接飞书，不再持续重放同一个旧值。
+  - 问题中心保留真实`20026`认证错误，不再把`failed=0`完成汇总显示成额外下载问题。
+  - 本地正式版 NSIS 安装包已生成：`dist/LarkSync-Setup-v0.8.18.exe`，大小`71,712,141 bytes`（`68.39 MiB`）。
+  - 本地正式版安装包 SHA256 为`63209727C19FB09A94E989522D721007C2B1A3FA3CFC7D664C0A1E9C13BE6513`。
+  - GitHub Release 与多平台资产将在 Tag 推送后生成并核验。
+- 验证方式：
+  - 继承`v0.8.18-dev.1`的后端 649 项、前端 112 项、依赖审计、包元数据、更新安装 smoke 和 NSIS 构建结果。
+  - 后端全量`python -m pytest -q`顺序复跑：649 项通过。
+  - 前端`npm run lint`、`npm run typecheck`、`npm run test`和`npm run build`：通过；35 个测试文件、112 项测试通过。
+  - 后端 editable 安装元数据 dry-run：通过，解析版本为`larksync-backend==0.8.18`。
+  - `npm audit --omit=dev`：0 个生产依赖漏洞。
+  - `python scripts/update_install_smoke.py`：通过；缺失模拟安装包按预期收敛为`launch_failed`。
+  - `python scripts/build_installer.py --nsis`：通过；前端生产构建、PyInstaller 和 NSIS 均成功。
+  - `python scripts/release_notes.py --version v0.8.18 --asset dist/LarkSync-Setup-v0.8.18.exe`：通过；输出变更区间`v0.8.17 -> v0.8.18`和实际安装包 SHA256。
+  - GitHub Actions 全量质量门与多平台资产将在 Tag 推送后核验。
+- 遗留问题：
+  - 系统凭据中已经没有可恢复新 Token 的用户，升级后仍需重新连接飞书一次。
+  - OAuth v2 继续采用显式配置，不主动迁移现有 v1 用户。
+
 ## v0.8.18-dev.1 (2026-07-31)
 
 - 开发原因：
