@@ -16,13 +16,21 @@
   - LarkSync 不会保持永久 TopMost，用户切换到其他应用后窗口层级继续遵循 Windows 正常规则。
   - 本地正式版 NSIS 安装包已生成：`dist/LarkSync-Setup-v0.8.17.exe`，大小`71,701,795 bytes`（`68.38 MiB`）。
   - 本地正式版安装包 SHA256 为`C5FB50EF3E0D04DD67488D8B116426305F215E9DF834FD932CB6F0DEEA4B3BD9`。
+  - GitHub Release`v0.8.17`已发布为非草稿、非预发布版本，并由`releases/latest`返回为 Latest Release。
+  - Windows NSIS、macOS arm64 和 macOS x86_64 六个安装与校验资产均处于`uploaded`状态。
+  - GitHub Windows 安装包 SHA256 为`6146c587f97627f07e3816580fa679cbc5d8a129194c1a167df0366e0acbcb12`。
+  - GitHub macOS arm64 DMG SHA256 为`ed8224903eee154da8d29bf02ec1fc2045090ee38c3def95cde5fbe3e26fc91d`。
+  - GitHub macOS x86_64 DMG SHA256 为`8677270d6423c5c859c701cd12e90dca1f6fa60fdb390939c04db0b0a5f13ca3`。
+  - Release 正文已在并行上传结束后统一补齐三个平台的 SHA256，避免只保留最后完成任务的单个平台校验值。
 - 验证方式：
   - 继承`v0.8.17-dev.1`的后端 633 项、前端 112 项、依赖审计、元数据、更新安装 smoke、NSIS 构建和真实 Windows 窗口验证结果。
   - 发布、版本、构建、更新与安全专项 pytest：112 项通过。
   - `python scripts/build_installer.py --nsis`：通过；前端生产构建、PyInstaller 和 NSIS 均成功。
   - `python scripts/release_notes.py --version v0.8.17 --asset dist/LarkSync-Setup-v0.8.17.exe`：通过；输出变更区间`v0.8.16 -> v0.8.17`和实际安装包 SHA256。
+  - GitHub Actions Release Build`30603406910`：通过；quality、Windows、macOS arm64 和 macOS x86_64 任务全部成功。
+  - GitHub`releases/latest`接口：返回`v0.8.17`，六个资产名称、上传状态、大小和摘要均已核对。
 - 遗留问题：
-  - 正式发布前仍需生成`v0.8.17`NSIS 安装包、校验 Release Notes、推送 Tag，并确认 GitHub Actions 与三个平台的 Release 资产。
+  - 无。
 
 ## v0.8.17-dev.1 (2026-07-31)
 
