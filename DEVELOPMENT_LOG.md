@@ -16,7 +16,12 @@
   - 原始问题记录、运行事件与动作历史继续保留，真实下载、认证和对象错误不在自动结案范围。
   - 本地正式版 NSIS 安装包已生成：`dist/LarkSync-Setup-v0.8.19.exe`，大小`71,714,317 bytes`（`68.39 MiB`）。
   - 本地正式版安装包 SHA256 为`C41093E91C97A3210E5E2D83698A474C2F32B8D8B1A6175B262783E8CA5C6F84`。
-  - GitHub 跨平台安装资产将在正式 Tag 推送后由 Release Build 工作流生成。
+  - GitHub Release`v0.8.19`已发布为非草稿、非预发布版本，并由`releases/latest`返回为 Latest Release。
+  - Windows NSIS、macOS arm64 和 macOS x86_64 六个安装与校验资产均处于`uploaded`状态。
+  - GitHub Windows 安装包大小为`57,195,969 bytes`，SHA256 为`a0be4a0c2e3efcb573f1516890ba4f0cb9c851480cfadcb01102507e3c313b2b`。
+  - GitHub macOS arm64 DMG 大小为`64,671,734 bytes`，SHA256 为`82631c9a67ac7811c16448370bc7217ce3ad80e4fbf535f9e8014caf891e2da0`。
+  - GitHub macOS x86_64 DMG 大小为`65,594,468 bytes`，SHA256 为`ec5dd746ee23329cb3fb2200af0389922e85ac7008845e04865c5edf172deb2a`。
+  - Release 正文已统一补齐三个平台的 SHA256，三个`.sha256`资产内容与对应安装资产摘要一致。
 - 验证方式：
   - 继承`v0.8.19-dev.1`的 TDD 回归、正式数据库只读命中与查询计划验证结果。
   - 后端全量`python -m pytest -q`顺序复跑：651 项通过。
@@ -26,9 +31,11 @@
   - `python scripts/update_install_smoke.py`：通过；缺失模拟安装包按预期收敛为`launch_failed`。
   - `python scripts/build_installer.py --nsis`：通过；前端生产构建、PyInstaller 和 NSIS 均成功。
   - `python scripts/release_notes.py --version v0.8.19 --asset dist/LarkSync-Setup-v0.8.19.exe`：通过；输出变更区间`v0.8.18 -> v0.8.19`和实际安装包 SHA256。
+  - GitHub Actions Release Build`30616946870`：通过；quality、Windows、macOS arm64 和 macOS x86_64 任务全部成功。
+  - GitHub`releases/latest`接口：返回`v0.8.19`，六个资产名称、上传状态、大小和摘要均已核对。
 - 遗留问题：
   - v0.8.18 已被用户手动标记为 ignored 的同类历史误报也会自动结案，并清除旧忽略原因与时间。
-  - GitHub Release 和三个平台资产需等待 Tag 工作流完成后核对。
+  - 无新增发布阻塞项。
 
 ## v0.8.19-dev.1 (2026-07-31)
 
