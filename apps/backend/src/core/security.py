@@ -32,6 +32,10 @@ class TokenStore:
     def get(self) -> Optional[TokenData]:
         raise NotImplementedError
 
+    def reload(self) -> Optional[TokenData]:
+        """绕过进程内缓存，重新读取持久化凭据。"""
+        return self.get()
+
     def set(self, token: TokenData) -> None:
         raise NotImplementedError
 
@@ -94,6 +98,12 @@ class KeyringTokenStore(TokenStore):
             account_name=data.get("account_name"),
         )
 
+    def reload(self) -> Optional[TokenData]:
+        with self._cache_lock:
+            self._cached_token = self._read_from_keyring()
+            self._cache_loaded = True
+            return self._cached_token
+
     def set(self, token: TokenData) -> None:
         with self._cache_lock:
             keyring.set_password(self._service, self._KEY_ACCESS, token.access_token)
@@ -143,6 +153,9 @@ class MemoryTokenStore(TokenStore):
         self._token: Optional[TokenData] = None
 
     def get(self) -> Optional[TokenData]:
+        return self._token
+
+    def reload(self) -> Optional[TokenData]:
         return self._token
 
     def set(self, token: TokenData) -> None:
@@ -201,6 +214,9 @@ class FileTokenStore(TokenStore):
             open_id=open_id.strip() if open_id else None,
             account_name=account_name.strip() if account_name else None,
         )
+
+    def reload(self) -> Optional[TokenData]:
+        return self.get()
 
     def set(self, token: TokenData) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)

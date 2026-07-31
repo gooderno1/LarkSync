@@ -113,8 +113,7 @@ async def cli_status() -> LarkCliAuthStatus:
 @router.post("/logout")
 async def logout():
     auth_service = AuthService()
-    store = auth_service._token_store
-    await asyncio.to_thread(store.clear)
+    await auth_service.logout()
     return {"connected": False}
 
 

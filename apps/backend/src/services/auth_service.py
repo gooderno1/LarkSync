@@ -1,21 +1,35 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import os
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from threading import Lock
-from typing import ClassVar
+from typing import AsyncIterator, ClassVar, Protocol
 from urllib.parse import urlencode
 
 import httpx
 from loguru import logger
 
 from src.core.config import AppConfig, ConfigManager
+from src.core.paths import _default_app_data_dir
+from src.core.process_lock import InterProcessFileLock
 from src.core.security import TokenData, TokenStore, get_token_store
 
 
 class AuthError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class ProcessLock(Protocol):
+    def acquire(self) -> None: ...
+
+    def release(self) -> None: ...
 
 
 @dataclass
@@ -41,10 +55,14 @@ class AuthService:
         config: AppConfig | None = None,
         token_store: TokenStore | None = None,
         http_client: httpx.AsyncClient | None = None,
+        process_lock: ProcessLock | None = None,
     ) -> None:
         self._config = config or ConfigManager.get().config
         self._token_store = token_store or get_token_store()
         self._http_client = http_client
+        self._process_lock = process_lock or InterProcessFileLock(
+            self._refresh_lock_path(self._config.auth_client_id)
+        )
 
     @staticmethod
     def _require_config(value: str, label: str) -> str:
@@ -62,12 +80,22 @@ class AuthService:
             self._config.auth_redirect_uri, "auth_redirect_uri"
         )
 
-        # 飞书 v1 OAuth：使用 app_id 参数
-        params: dict[str, str] = {
-            "app_id": app_id,
-            "redirect_uri": redirect_uri,
-            "state": state,
-        }
+        if self._uses_v2_oauth():
+            scopes = list(dict.fromkeys([*self._config.auth_scopes, "offline_access"]))
+            params: dict[str, str] = {
+                "client_id": app_id,
+                "response_type": "code",
+                "redirect_uri": redirect_uri,
+                "scope": " ".join(scopes),
+                "state": state,
+            }
+        else:
+            # 飞书历史 v1 OAuth：使用 app_id 参数。
+            params = {
+                "app_id": app_id,
+                "redirect_uri": redirect_uri,
+                "state": state,
+            }
 
         url = f"{authorize_url}?{urlencode(params)}"
         logger.info("授权 URL（脱敏）: {}...&state=***", url.split("&state=")[0])
@@ -78,22 +106,42 @@ class AuthService:
         app_secret = self._require_config(
             self._config.auth_client_secret, "auth_client_secret"
         )
-        # 飞书 v1 OAuth：使用 app_id / app_secret
-        payload = {
-            "grant_type": "authorization_code",
-            "code": code,
-            "app_id": app_id,
-            "app_secret": app_secret,
-        }
-        return await self._request_token(payload)
+        if self._uses_v2_oauth():
+            payload = {
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": app_id,
+                "client_secret": app_secret,
+                "redirect_uri": self._require_config(
+                    self._config.auth_redirect_uri,
+                    "auth_redirect_uri",
+                ),
+            }
+        else:
+            payload = {
+                "grant_type": "authorization_code",
+                "code": code,
+                "app_id": app_id,
+                "app_secret": app_secret,
+            }
+        async with self._get_refresh_lock():
+            async with self._hold_process_lock():
+                await asyncio.to_thread(self._token_store.reload)
+                return await self._request_token(payload)
 
     async def refresh(self) -> TokenData:
         async with self._get_refresh_lock():
-            current = self._token_store.get()
-            return await self._refresh_unlocked(current)
+            async with self._hold_process_lock():
+                current = await asyncio.to_thread(self._token_store.reload)
+                return await self._refresh_with_recovery(current)
 
     def get_cached_token(self) -> TokenData | None:
         return self._token_store.get()
+
+    async def logout(self) -> None:
+        async with self._get_refresh_lock():
+            async with self._hold_process_lock():
+                await asyncio.to_thread(self._token_store.clear)
 
     async def get_valid_access_token(self) -> str:
         token = self._token_store.get()
@@ -102,13 +150,14 @@ class AuthService:
         if not token.is_expired():
             return token.access_token
         async with self._get_refresh_lock():
-            latest = self._token_store.get()
-            if latest is None:
-                raise AuthError("未登录，请先完成 OAuth 登录")
-            if not latest.is_expired():
-                return latest.access_token
-            refreshed = await self._refresh_unlocked(latest)
-            return refreshed.access_token
+            async with self._hold_process_lock():
+                latest = await asyncio.to_thread(self._token_store.reload)
+                if latest is None:
+                    raise AuthError("未登录，请先完成 OAuth 登录")
+                if not latest.is_expired():
+                    return latest.access_token
+                refreshed = await self._refresh_with_recovery(latest)
+                return refreshed.access_token
 
     async def ensure_cached_identity(self) -> TokenData | None:
         """确保缓存凭证里带有身份信息；缺失时通过用户信息接口补齐。"""
@@ -122,22 +171,27 @@ class AuthService:
         if latest.open_id and latest.account_name:
             return latest
         profile = await self._fetch_user_profile(access_token)
-        resolved_open_id = latest.open_id or profile.open_id
-        resolved_account_name = latest.account_name or profile.account_name
-        if (
-            resolved_open_id == latest.open_id
-            and resolved_account_name == latest.account_name
-        ):
-            return latest
-        updated = TokenData(
-            access_token=latest.access_token or access_token,
-            refresh_token=latest.refresh_token,
-            expires_at=latest.expires_at,
-            open_id=resolved_open_id,
-            account_name=resolved_account_name,
-        )
-        await asyncio.to_thread(self._token_store.set, updated)
-        return updated
+        async with self._get_refresh_lock():
+            async with self._hold_process_lock():
+                latest = await asyncio.to_thread(self._token_store.reload)
+                if latest is None:
+                    return None
+                resolved_open_id = latest.open_id or profile.open_id
+                resolved_account_name = latest.account_name or profile.account_name
+                if (
+                    resolved_open_id == latest.open_id
+                    and resolved_account_name == latest.account_name
+                ):
+                    return latest
+                updated = TokenData(
+                    access_token=latest.access_token,
+                    refresh_token=latest.refresh_token,
+                    expires_at=latest.expires_at,
+                    open_id=resolved_open_id,
+                    account_name=resolved_account_name,
+                )
+                await asyncio.to_thread(self._token_store.set, updated)
+                return updated
 
     async def _request_token(self, payload: dict[str, str]) -> TokenData:
         token_url = self._require_config(self._config.auth_token_url, "auth_token_url")
@@ -150,7 +204,10 @@ class AuthService:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 message = self._format_http_error(exc.response)
-                raise AuthError(message) from exc
+                raise AuthError(
+                    message,
+                    code=self._extract_error_code(exc.response),
+                ) from exc
             except httpx.RequestError as exc:
                 raise AuthError(f"Token 请求失败：{exc}") from exc
             try:
@@ -205,14 +262,98 @@ class AuthService:
         app_secret = self._require_config(
             self._config.auth_client_secret, "auth_client_secret"
         )
-        # 飞书 v1 OAuth：使用 app_id / app_secret
-        payload = {
-            "grant_type": "refresh_token",
-            "refresh_token": current.refresh_token,
-            "app_id": app_id,
-            "app_secret": app_secret,
-        }
+        if self._uses_v2_oauth():
+            payload = {
+                "grant_type": "refresh_token",
+                "refresh_token": current.refresh_token,
+                "client_id": app_id,
+                "client_secret": app_secret,
+            }
+        else:
+            payload = {
+                "grant_type": "refresh_token",
+                "refresh_token": current.refresh_token,
+                "app_id": app_id,
+                "app_secret": app_secret,
+            }
         return await self._request_token(payload)
+
+    def _uses_v2_oauth(self) -> bool:
+        return "/authen/v2/oauth/token" in self._config.auth_token_url.strip().lower()
+
+    async def _refresh_with_recovery(self, current: TokenData | None) -> TokenData:
+        attempted = current
+        try:
+            return await self._refresh_unlocked(current)
+        except AuthError as exc:
+            if exc.code not in {"20026", "20064", "20073"}:
+                raise
+            latest = await asyncio.to_thread(self._token_store.reload)
+            if self._refresh_token_changed(attempted, latest):
+                logger.warning(
+                    "检测到其他进程已轮换 OAuth token: old={} new={} code={}",
+                    self._token_fingerprint(attempted),
+                    self._token_fingerprint(latest),
+                    exc.code,
+                )
+                if latest is not None and not latest.is_expired():
+                    return latest
+                try:
+                    return await self._refresh_unlocked(latest)
+                except AuthError as retry_exc:
+                    raise self._reauthorization_error(retry_exc) from retry_exc
+            raise self._reauthorization_error(exc) from exc
+
+    @asynccontextmanager
+    async def _hold_process_lock(self) -> AsyncIterator[None]:
+        started = time.perf_counter()
+        try:
+            await asyncio.to_thread(self._process_lock.acquire)
+        except TimeoutError as exc:
+            raise AuthError("OAuth 凭证正在被其他进程更新，请稍后重试") from exc
+        logger.debug(
+            "OAuth 跨进程锁已获取: pid={} wait_ms={:.1f}",
+            os.getpid(),
+            (time.perf_counter() - started) * 1000,
+        )
+        try:
+            yield
+        finally:
+            await asyncio.shield(asyncio.to_thread(self._process_lock.release))
+
+    @staticmethod
+    def _refresh_lock_path(app_id: str) -> Path:
+        namespace = hashlib.sha256(
+            (app_id.strip() or "unconfigured").encode("utf-8")
+        ).hexdigest()[:16]
+        return _default_app_data_dir() / "locks" / f"oauth-refresh-{namespace}.lock"
+
+    @staticmethod
+    def _token_fingerprint(token: TokenData | None) -> str:
+        if token is None or not token.refresh_token:
+            return "missing"
+        return hashlib.sha256(token.refresh_token.encode("utf-8")).hexdigest()[:10]
+
+    @classmethod
+    def _refresh_token_changed(
+        cls,
+        attempted: TokenData | None,
+        latest: TokenData | None,
+    ) -> bool:
+        return (
+            attempted is not None
+            and latest is not None
+            and bool(latest.refresh_token)
+            and latest.refresh_token != attempted.refresh_token
+        )
+
+    @staticmethod
+    def _reauthorization_error(exc: AuthError) -> AuthError:
+        code = exc.code or "unknown"
+        return AuthError(
+            f"飞书刷新凭证已失效，请重新连接飞书（code={code}）",
+            code=exc.code,
+        )
 
     @classmethod
     def _get_refresh_lock(cls) -> asyncio.Lock:
@@ -298,7 +439,7 @@ class AuthService:
             code = data.get("code")
             if isinstance(code, int) and code != 0:
                 message = data.get("msg") or data.get("message") or "Token 接口返回错误"
-                raise AuthError(f"{message} (code={code})")
+                raise AuthError(f"{message} (code={code})", code=str(code))
             wrapped = data.get("data")
             if isinstance(wrapped, dict):
                 data = wrapped
@@ -355,6 +496,17 @@ class AuthService:
                 return f"{message}：{' '.join(detail_parts)}"
 
         return f"{message}：{payload}"
+
+    @staticmethod
+    def _extract_error_code(response: httpx.Response) -> str | None:
+        try:
+            payload = response.json()
+        except ValueError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        code = payload.get("code")
+        return str(code) if code is not None else None
 
     def _get_client(self) -> httpx.AsyncClient:
         return self._http_client or httpx.AsyncClient(timeout=15.0)

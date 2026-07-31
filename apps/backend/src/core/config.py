@@ -400,11 +400,9 @@ class ConfigManager:
         _CORRECT_TOKEN = AppConfig.model_fields["auth_token_url"].default
         _WRONG_AUTHORIZE_URLS = {
             "https://open.feishu.cn/open-apis/authen/v1/authorize",
-            "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
         }
         _WRONG_TOKEN_URLS = {
             "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token",
-            "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
         }
         saved_authorize = (data.get("auth_authorize_url") or "").strip()
         saved_token_url = (data.get("auth_token_url") or "").strip()

@@ -61,6 +61,11 @@
 > - 授权地址：`https://open.feishu.cn/open-apis/authen/v1/index`
 > - Token 地址：`https://open.feishu.cn/open-apis/authen/v1/access_token`
 
+LarkSync 同时兼容显式配置的 OAuth v2 端点。需要使用 v2 时，应成对配置飞书控制台给出的授权地址和
+`https://open.feishu.cn/open-apis/authen/v2/oauth/token`；此时授权请求会自动携带
+`offline_access`，Token 请求使用 `client_id` / `client_secret`。现有 v1 配置不会被自动迁移，
+避免升级后强制用户重新授权。
+
 ## 4. 保存与验证
 1) 在设置页点击“保存配置”。
 2) 点击“连接飞书”完成授权。
@@ -68,6 +73,13 @@
    - 回调地址是否与控制台完全一致（含协议与端口）。
    - App ID / App Secret 是否正确。
    - 控制台中是否已添加所需权限并通过审核。
+
+### 常见报错：20026 / refresh token 失效
+
+飞书会在刷新成功后轮换 `refresh_token`，旧值不能再次使用。LarkSync 会在多个本机进程之间串行化
+凭据更新，并在刷新前重新读取系统凭据库；如果错误发生时发现其他进程已经写入新凭据，只会使用新值
+恢复一次，不会再次提交同一个旧值。如果问题中心仍提示 `code=20026`，说明系统凭据库中已没有可恢复
+的新凭据，请在设置页重新连接飞书。
 
 ### 常见报错：Access denied / 缺少权限
 若出现“获取根目录失败: Access denied”或提示缺少权限（如 `drive:drive`、`docx:document`、`docx:document.block:convert`），请确认：

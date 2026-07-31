@@ -868,11 +868,15 @@ class LarkSyncTray:
         created_at = float(request.get("created_at") or 0.0)
         if created_at > 0 and (time.time() - created_at) < _INSTALL_REQUEST_MIN_AGE_SECONDS:
             return False
+        quiesced = False
         try:
             _clear_install_handoff()
             _append_install_launch_log(
                 f"准备启动安装包: {installer_path} (silent={silent} restart={restart_path or '-'})"
             )
+            self._validate_install_targets(installer_path, restart_path=restart_path)
+            self._quiesce_for_install()
+            quiesced = True
             self._schedule_installer_launch(
                 installer_path,
                 silent=silent,
@@ -882,6 +886,8 @@ class LarkSyncTray:
         except Exception as exc:
             _append_install_launch_log(f"启动安装包失败: {installer_path} ({type(exc).__name__}: {exc})")
             print(f"警告：启动安装程序失败: {exc}")
+            if quiesced:
+                self._resume_after_failed_install_launch()
             _clear_install_request()
             self._notify(
                 "更新安装启动失败",
@@ -898,6 +904,40 @@ class LarkSyncTray:
         )
         self.stop()
         return True
+
+    @staticmethod
+    def _validate_install_targets(
+        installer_path: str,
+        *,
+        restart_path: str | None,
+    ) -> None:
+        path = Path(installer_path).expanduser().resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"安装包不存在: {path}")
+        if restart_path:
+            restart_target = Path(restart_path).expanduser().resolve()
+            if not restart_target.is_file():
+                raise FileNotFoundError(f"重启程序不存在: {restart_target}")
+
+    def _quiesce_for_install(self) -> None:
+        _append_install_launch_log("更新安装前停止桌面窗口、开发服务与后端")
+        self._stop_desktop_window()
+        self._stop_vite()
+        if not self._backend.stop_for_update():
+            raise RuntimeError("后端未完全退出，已中止更新安装")
+        _append_install_launch_log("更新安装前后端已完全退出")
+
+    def _resume_after_failed_install_launch(self) -> None:
+        _append_install_launch_log("安装器接管失败，尝试恢复后端服务")
+        try:
+            if self._dev_mode:
+                self._start_vite()
+            if not self._backend.start(wait=True):
+                _append_install_launch_log("安装器接管失败后，后端恢复启动未成功")
+        except Exception as exc:
+            _append_install_launch_log(
+                f"安装器接管失败后恢复异常: {type(exc).__name__}: {exc}"
+            )
 
     def _schedule_installer_launch(
         self,

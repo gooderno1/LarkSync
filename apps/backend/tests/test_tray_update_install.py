@@ -14,8 +14,15 @@ from apps.tray import tray_app
 
 
 class _DummyBackend:
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
     def maybe_auto_restart(self) -> bool:
         return False
+
+    def stop_for_update(self) -> bool:
+        self.events.append("backend-stopped")
+        return True
 
 
 def _build_tray() -> tray_app.LarkSyncTray:
@@ -90,9 +97,17 @@ def test_tray_processes_mature_install_request_and_stops(monkeypatch, tmp_path: 
     monkeypatch.setattr(
         tray,
         "_schedule_installer_launch",
-        lambda path, *, silent=False, restart_path=None, request_id="": consumed.append(
-            f"{path}|silent={silent}|restart={restart_path}|request_id={request_id}"
+        lambda path, *, silent=False, restart_path=None, request_id="": (
+            consumed.append("scheduled"),
+            consumed.append(
+                f"{path}|silent={silent}|restart={restart_path}|request_id={request_id}"
+            ),
         ),
+    )
+    monkeypatch.setattr(
+        tray,
+        "_quiesce_for_install",
+        lambda: consumed.append("quiesced"),
     )
     monkeypatch.setattr(tray, "_notify", lambda *args, **kwargs: None)
     monkeypatch.setattr(tray, "stop", lambda: stopped.append(True))
@@ -102,6 +117,8 @@ def test_tray_processes_mature_install_request_and_stops(monkeypatch, tmp_path: 
 
     assert handled is True
     assert consumed == [
+        "quiesced",
+        "scheduled",
         f"{requested_path}|silent=True|restart={restart_path}|request_id=req-1",
         "cleared",
     ]

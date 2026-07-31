@@ -285,6 +285,34 @@ class BackendManager:
                 self._process = None
                 self._restart_count = 0
 
+    def stop_for_update(self, *, timeout_seconds: float = 10.0) -> bool:
+        """更新前停止后端，包括当前托盘复用的同数据目录外部后端。"""
+        with self._lock:
+            external_backend = self._external_backend
+            if external_backend:
+                self._should_run = False
+
+        if not external_backend:
+            self.stop()
+            if self.health_check():
+                logger.error("更新前后端端口仍可用，拒绝启动安装器")
+                return False
+            return True
+
+        if not self._request_shutdown():
+            logger.error("更新前无法向复用后端发送关闭请求")
+            return False
+        deadline = time.monotonic() + max(0.1, timeout_seconds)
+        while time.monotonic() < deadline:
+            if not self.health_check():
+                with self._lock:
+                    self._external_backend = False
+                logger.info("更新前复用后端已退出")
+                return True
+            time.sleep(0.1)
+        logger.error("更新前复用后端未在时限内退出")
+        return False
+
     def restart(self) -> bool:
         """重启后端进程。"""
         logger.info("重启后端服务...")

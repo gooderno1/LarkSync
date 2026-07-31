@@ -711,7 +711,7 @@ class ProblemService:
         if status.strip().lower() != "failed":
             return False
         match = _RUN_SUMMARY_PATTERN.fullmatch((message or "").strip())
-        return bool(match and int(match.group(3)) > 0)
+        return match is not None
 
     @staticmethod
     def operation_hint_from_trigger(trigger_source: str | None) -> str | None:
@@ -1435,7 +1435,24 @@ class ProblemService:
             return _Classification("deletion", "medium", f"删除失败 · {name}", "删除动作未完成，需要确认目标状态或权限。", error_code)
         if status_key == "cancelled":
             return _Classification("system", "low", f"运行已中断 · {name}", "同步运行未完成，可能由退出、更新或手动停止触发。", error_code)
-        if any(word in text for word in ("授权", "oauth", "scope", "forbidden", "permission", " 401", " 403")):
+        if any(
+            word in text
+            for word in (
+                "授权",
+                "oauth",
+                "refresh token",
+                "refresh_token",
+                "token is invalid",
+                "code=20026",
+                "code=20064",
+                "code=20073",
+                "scope",
+                "forbidden",
+                "permission",
+                " 401",
+                " 403",
+            )
+        ):
             return _Classification("auth_permission", "high", f"授权或权限异常 · {name}", "当前身份或应用权限不足以完成同步动作。", error_code)
         if any(word in text for word in ("上传", "upload", "blocks/", "/children", "云端写入")):
             return _Classification("upload", "high", f"上传失败 · {name}", "文件或文档内容没有成功写入云端。", error_code)

@@ -1,4 +1,5 @@
 import asyncio
+import time
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -22,6 +23,7 @@ class FakeAsyncClient:
         self._get_response = get_response
         self._get_exc = get_exc
         self.get_calls = 0
+        self.posts: list[tuple[str, dict[str, str]]] = []
 
     async def __aenter__(self):
         return self
@@ -30,6 +32,7 @@ class FakeAsyncClient:
         return False
 
     async def post(self, url: str, json: dict[str, str]):
+        self.posts.append((url, json))
         if self._exc:
             raise self._exc
         return self._response
@@ -69,6 +72,88 @@ class SequencedRefreshClient:
         )
 
 
+class ReloadableTokenStore:
+    def __init__(self, cached: TokenData, persisted: TokenData | None = None) -> None:
+        self.cached = cached
+        self.persisted = persisted or cached
+        self.reload_calls = 0
+
+    def get(self) -> TokenData:
+        return self.cached
+
+    def reload(self) -> TokenData:
+        self.reload_calls += 1
+        self.cached = self.persisted
+        return self.cached
+
+    def set(self, token: TokenData) -> None:
+        self.cached = token
+        self.persisted = token
+
+    def clear(self) -> None:
+        raise AssertionError("unexpected clear")
+
+
+class RecordingProcessLock:
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def acquire(self) -> None:
+        self.events.append("acquire")
+
+    def release(self) -> None:
+        self.events.append("release")
+
+
+class RefreshRaceClient:
+    def __init__(self, store: ReloadableTokenStore, replacement: TokenData | None) -> None:
+        self.store = store
+        self.replacement = replacement
+        self.post_calls = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def post(self, url: str, json: dict[str, str]):
+        self.post_calls += 1
+        if self.replacement is not None:
+            self.store.persisted = self.replacement
+        return httpx.Response(
+            400,
+            json={
+                "code": 20026,
+                "msg": "refresh token is invalid, it may has been used",
+            },
+            request=httpx.Request("POST", url),
+        )
+
+
+class IdentityRaceClient:
+    def __init__(self, store: ReloadableTokenStore, replacement: TokenData) -> None:
+        self.store = store
+        self.replacement = replacement
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url: str, headers: dict[str, str] | None = None):
+        self.store.persisted = self.replacement
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {"open_id": "ou-profile", "name": "测试用户"},
+            },
+            request=httpx.Request("GET", url),
+        )
+
+
 def test_build_authorize_url() -> None:
     config = AppConfig(
         auth_authorize_url="https://example.com/oauth/authorize",
@@ -86,6 +171,72 @@ def test_build_authorize_url() -> None:
     assert params["app_id"] == ["client-123"]
     assert params["redirect_uri"] == ["http://localhost/callback"]
     assert params["state"] == ["state-xyz"]
+
+
+def test_build_v2_authorize_url_uses_client_id_scopes_and_offline_access() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://accounts.feishu.cn/open-apis/authen/v1/authorize",
+        auth_token_url="https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+        auth_scopes=["drive:drive", "docx:document"],
+    )
+    service = AuthService(config=config, token_store=MemoryTokenStore())
+
+    params = parse_qs(urlparse(service.build_authorize_url("state-v2")).query)
+
+    assert params["client_id"] == ["client-123"]
+    assert params["response_type"] == ["code"]
+    assert params["redirect_uri"] == ["http://localhost/callback"]
+    assert params["state"] == ["state-v2"]
+    assert "offline_access" in params["scope"][0].split()
+    assert "drive:drive" in params["scope"][0].split()
+    assert "app_id" not in params
+
+
+@pytest.mark.asyncio
+async def test_v2_exchange_code_uses_current_oauth_payload() -> None:
+    config = AppConfig(
+        auth_authorize_url="https://accounts.feishu.cn/open-apis/authen/v1/authorize",
+        auth_token_url="https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+        auth_redirect_uri="http://localhost/callback",
+    )
+    response = httpx.Response(
+        200,
+        json={
+            "code": 0,
+            "access_token": "access-v2",
+            "refresh_token": "refresh-v2",
+            "expires_in": 7200,
+        },
+        request=httpx.Request("POST", config.auth_token_url),
+    )
+    client = FakeAsyncClient(response=response)
+    service = AuthService(
+        config=config,
+        token_store=MemoryTokenStore(),
+        http_client=client,
+        process_lock=RecordingProcessLock(),
+    )
+
+    token = await service.exchange_code("code-v2")
+
+    assert token.access_token == "access-v2"
+    assert client.posts == [
+        (
+            config.auth_token_url,
+            {
+                "grant_type": "authorization_code",
+                "code": "code-v2",
+                "client_id": "client-123",
+                "client_secret": "secret-456",
+                "redirect_uri": "http://localhost/callback",
+            },
+        )
+    ]
 
 
 @pytest.mark.asyncio
@@ -378,6 +529,108 @@ async def test_get_valid_access_token_serializes_concurrent_refresh() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_valid_access_token_force_reloads_after_process_lock() -> None:
+    config = AppConfig(
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+    )
+    store = ReloadableTokenStore(
+        cached=TokenData(
+            access_token="access-old",
+            refresh_token="refresh-old",
+            expires_at=0,
+        ),
+        persisted=TokenData(
+            access_token="access-new",
+            refresh_token="refresh-new",
+            expires_at=time.time() + 3600,
+        ),
+    )
+    process_lock = RecordingProcessLock()
+    client = SequencedRefreshClient([])
+    service = AuthService(
+        config=config,
+        token_store=store,
+        http_client=client,
+        process_lock=process_lock,
+    )
+
+    access_token = await service.get_valid_access_token()
+
+    assert access_token == "access-new"
+    assert store.reload_calls == 1
+    assert client.post_calls == 0
+    assert process_lock.events == ["acquire", "release"]
+
+
+@pytest.mark.asyncio
+async def test_refresh_20026_recovers_from_newer_token_written_by_other_process() -> None:
+    config = AppConfig(
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+    )
+    store = ReloadableTokenStore(
+        cached=TokenData(
+            access_token="access-old",
+            refresh_token="refresh-old",
+            expires_at=0,
+        )
+    )
+    replacement = TokenData(
+        access_token="access-other-process",
+        refresh_token="refresh-other-process",
+        expires_at=time.time() + 3600,
+    )
+    client = RefreshRaceClient(store, replacement)
+    process_lock = RecordingProcessLock()
+    service = AuthService(
+        config=config,
+        token_store=store,
+        http_client=client,
+        process_lock=process_lock,
+    )
+
+    access_token = await service.get_valid_access_token()
+
+    assert access_token == "access-other-process"
+    assert client.post_calls == 1
+    assert store.reload_calls == 2
+    assert process_lock.events == ["acquire", "release"]
+
+
+@pytest.mark.asyncio
+async def test_refresh_20026_does_not_retry_same_refresh_token() -> None:
+    config = AppConfig(
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+    )
+    store = ReloadableTokenStore(
+        cached=TokenData(
+            access_token="access-old",
+            refresh_token="refresh-old",
+            expires_at=0,
+        )
+    )
+    client = RefreshRaceClient(store, replacement=None)
+    service = AuthService(
+        config=config,
+        token_store=store,
+        http_client=client,
+        process_lock=RecordingProcessLock(),
+    )
+
+    with pytest.raises(AuthError, match="重新连接飞书") as excinfo:
+        await service.get_valid_access_token()
+
+    assert excinfo.value.code == "20026"
+    assert client.post_calls == 1
+    assert store.reload_calls == 2
+
+
+@pytest.mark.asyncio
 async def test_exchange_code_does_not_block_redirect_on_user_info() -> None:
     config = AppConfig(
         auth_authorize_url="https://example.com/oauth/authorize",
@@ -456,6 +709,43 @@ async def test_ensure_cached_identity_fetches_open_id() -> None:
     assert loaded is not None
     assert loaded.open_id == "ou-test-user"
     assert loaded.account_name == "测试用户"
+
+
+@pytest.mark.asyncio
+async def test_identity_hydration_does_not_roll_back_rotated_refresh_token() -> None:
+    config = AppConfig(
+        auth_token_url="https://example.com/oauth/token",
+        auth_client_id="client-123",
+        auth_client_secret="secret-456",
+    )
+    original = TokenData(
+        access_token="access-old",
+        refresh_token="refresh-old",
+        expires_at=time.time() + 3600,
+    )
+    replacement = TokenData(
+        access_token="access-new",
+        refresh_token="refresh-new",
+        expires_at=time.time() + 7200,
+    )
+    store = ReloadableTokenStore(cached=original)
+    process_lock = RecordingProcessLock()
+    service = AuthService(
+        config=config,
+        token_store=store,
+        http_client=IdentityRaceClient(store, replacement),
+        process_lock=process_lock,
+    )
+
+    hydrated = await service.ensure_cached_identity()
+
+    assert hydrated is not None
+    assert hydrated.access_token == "access-new"
+    assert hydrated.refresh_token == "refresh-new"
+    assert hydrated.open_id == "ou-profile"
+    assert hydrated.account_name == "测试用户"
+    assert store.persisted == hydrated
+    assert process_lock.events == ["acquire", "release"]
 
 
 def test_token_store_roundtrip() -> None:

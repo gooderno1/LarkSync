@@ -113,3 +113,33 @@ def test_config_manager_migrates_legacy_oauth_callback_port(
     manager = ConfigManager.get()
 
     assert manager.config.auth_redirect_uri == "http://localhost:18765/auth/callback"
+
+
+def test_config_manager_preserves_explicit_current_oauth_v2_endpoints(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        (
+            '{"auth_authorize_url":'
+            '"https://accounts.feishu.cn/open-apis/authen/v1/authorize",'
+            '"auth_token_url":'
+            '"https://open.feishu.cn/open-apis/authen/v2/oauth/token"}'
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARKSYNC_CONFIG", str(config_path))
+    monkeypatch.setenv("LARKSYNC_DB_PATH", str(tmp_path / "larksync.db"))
+
+    ConfigManager.reset()
+    config = ConfigManager.get().config
+
+    assert (
+        config.auth_authorize_url
+        == "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
+    )
+    assert (
+        config.auth_token_url
+        == "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
+    )

@@ -185,3 +185,19 @@ async def test_cli_status_returns_lark_cli_probe(monkeypatch) -> None:
     assert payload.installed is True
     assert payload.executable == "lark-cli.cmd"
     assert payload.can_assist_oauth is True
+
+
+@pytest.mark.asyncio
+async def test_logout_uses_serialized_auth_service_operation(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class DummyAuthService:
+        async def logout(self) -> None:
+            calls.append("logout")
+
+    monkeypatch.setattr(auth_api, "AuthService", DummyAuthService)
+
+    payload = await auth_api.logout()
+
+    assert payload == {"connected": False}
+    assert calls == ["logout"]

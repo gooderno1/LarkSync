@@ -163,6 +163,59 @@ async def test_refresh_sources_separates_upload_object_from_failed_run_summary(
 
 
 @pytest.mark.asyncio
+async def test_zero_count_failed_run_summary_is_not_a_download_problem(tmp_path) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    async with session_maker() as session:
+        session.add(
+            SyncRun(
+                run_id="run-auth-preflight",
+                task_id="task-1",
+                state="failed",
+                trigger_source="scheduled_download",
+                started_at=10.0,
+                finished_at=12.0,
+                last_event_at=12.0,
+                last_error="refresh token is invalid, it may has been used (code=20026)",
+                created_at=10.0,
+                updated_at=12.0,
+            )
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=11.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing",
+                message="refresh token is invalid, it may has been used (code=20026)",
+                run_id="run-auth-preflight",
+            ),
+            SyncEventRecord(
+                timestamp=12.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing",
+                message="完成: total=0 ok=0 failed=0 skipped=0",
+                run_id="run-auth-preflight",
+            ),
+        ]
+    )
+
+    await service.refresh_sources()
+    total, items = await service.list_problems(state="open", limit=20, offset=0)
+
+    assert total == 1
+    assert items[0].category == "auth_permission"
+    assert items[0].operation_family == "task_auth"
+    assert items[0].object_kind == "task_run"
+    assert items[0].occurrence_count == 1
+
+
+@pytest.mark.asyncio
 async def test_refresh_sources_resolves_legacy_failed_run_summary_problem(
     tmp_path,
 ) -> None:

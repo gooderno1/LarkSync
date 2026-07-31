@@ -514,6 +514,7 @@ class SyncTaskRunner:
             status.state = "failed"
             status.last_error = str(exc)
             status.finished_at = time.time()
+            self._record_task_failure_event(task, status, exc)
             raise
         finally:
             if status.state == "running":
@@ -601,6 +602,7 @@ class SyncTaskRunner:
             status.state = "failed"
             status.last_error = str(exc)
             status.finished_at = time.time()
+            self._record_task_failure_event(task, status, exc)
         finally:
             self._record_event(
                 status,
@@ -649,6 +651,7 @@ class SyncTaskRunner:
             status.state = "failed"
             status.last_error = str(exc)
             status.finished_at = time.time()
+            self._record_task_failure_event(task, status, exc)
         finally:
             self._record_event(
                 status,
@@ -705,6 +708,23 @@ class SyncTaskRunner:
                 task,
             )
 
+    def _record_task_failure_event(
+        self,
+        task: SyncTaskItem,
+        status: SyncTaskStatus,
+        exc: Exception,
+    ) -> None:
+        """记录任务级前置失败；运行汇总只保留计数，不承担问题证据。"""
+        self._record_event(
+            status,
+            SyncFileEvent(
+                path=task.local_path,
+                status="failed",
+                message=str(exc),
+            ),
+            task,
+        )
+
     async def run_task(self, task: SyncTaskItem) -> None:
         self._task_meta[task.id] = task
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
@@ -732,6 +752,7 @@ class SyncTaskRunner:
             status.state = "failed"
             status.last_error = str(exc)
             status.finished_at = time.time()
+            self._record_task_failure_event(task, status, exc)
         finally:
             if status.state == "cancelled":
                 message = "任务已取消"

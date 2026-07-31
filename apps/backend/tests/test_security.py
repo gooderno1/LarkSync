@@ -95,6 +95,37 @@ def test_keyring_store_reads_windows_credentials_only_once(monkeypatch) -> None:
     assert len(calls) == first_call_count
 
 
+def test_keyring_store_reload_observes_external_credential_update(monkeypatch) -> None:
+    values = {
+        ("larksync", "access_token"): "access-old",
+        ("larksync", "refresh_token"): "refresh-old",
+        ("larksync", "expires_at"): "123",
+    }
+
+    monkeypatch.setattr(
+        security.keyring,
+        "get_password",
+        lambda service, key: values.get((service, key)),
+    )
+    token_store = KeyringTokenStore()
+
+    cached = token_store.get()
+    assert cached is not None
+    assert cached.refresh_token == "refresh-old"
+
+    values[("larksync", "access_token")] = "access-new"
+    values[("larksync", "refresh_token")] = "refresh-new"
+    values[("larksync", "expires_at")] = "456"
+
+    assert token_store.get() == cached
+    reloaded = token_store.reload()
+
+    assert reloaded is not None
+    assert reloaded.access_token == "access-new"
+    assert reloaded.refresh_token == "refresh-new"
+    assert reloaded.expires_at == 456.0
+
+
 def test_file_token_store_roundtrip(tmp_path) -> None:
     token_file = tmp_path / "tokens.json"
     store = FileTokenStore(path=token_file)

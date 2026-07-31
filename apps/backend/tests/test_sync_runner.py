@@ -2089,6 +2089,60 @@ async def test_scheduled_download_creates_run_when_first_real_activity_arrives(
     assert all(record.run_id for record in records)
 
 
+@pytest.mark.asyncio
+async def test_scheduled_download_records_preflight_error_before_run_summary(
+    tmp_path: Path,
+) -> None:
+    class CapturingRunService:
+        def __init__(self) -> None:
+            self.started: list[dict] = []
+            self.finished: list[dict] = []
+
+        async def start_run(self, **kwargs) -> None:
+            self.started.append(kwargs)
+
+        async def finish_run(self, **kwargs) -> None:
+            self.finished.append(kwargs)
+
+    run_service = CapturingRunService()
+    store = SyncEventStore(tmp_path / "events.jsonl")
+    runner = SyncTaskRunner(event_store=store, run_service=run_service)
+    task = SyncTaskItem(
+        id="task-auth-failure",
+        name="授权失败检测",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+        last_run_at=time.time(),
+    )
+
+    async def _failed_download(*args, **kwargs) -> None:
+        raise RuntimeError(
+            "refresh token is invalid, it may has been used (code=20026)"
+        )
+
+    runner._run_download = _failed_download  # type: ignore[method-assign]
+
+    await runner.run_scheduled_download(task)
+    await runner._flush_pending_events_now()
+
+    records = list(store.iter_records())
+    assert [record.status for record in records] == ["started", "failed", "failed"]
+    assert records[1].message == (
+        "refresh token is invalid, it may has been used (code=20026)"
+    )
+    assert records[2].message == "完成: total=0 ok=0 failed=0 skipped=0"
+    assert len(run_service.started) == 1
+    assert len(run_service.finished) == 1
+    assert run_service.finished[0]["last_error"] == records[1].message
+
+
 def test_should_ignore_path_skips_embedded_figure_source_dirs(tmp_path: Path) -> None:
     runner = SyncTaskRunner(link_service=FakeLinkService())
     task = SyncTaskItem(

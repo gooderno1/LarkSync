@@ -127,6 +127,50 @@ def test_backend_manager_rejects_external_backend_with_different_data_dir(
     assert manager._external_backend is False
 
 
+def test_backend_manager_stops_reused_external_backend_for_update(monkeypatch) -> None:
+    manager = bm.BackendManager()
+    manager._external_backend = True
+    health_results = iter([True, True, False])
+    shutdown_calls: list[bool] = []
+
+    monkeypatch.setattr(
+        manager,
+        "health_check",
+        lambda: next(health_results, False),
+    )
+    monkeypatch.setattr(
+        manager,
+        "_request_shutdown",
+        lambda: shutdown_calls.append(True) or True,
+    )
+    monkeypatch.setattr(bm.time, "sleep", lambda _seconds: None)
+
+    assert manager.stop_for_update(timeout_seconds=1.0) is True
+    assert shutdown_calls == [True]
+    assert manager._external_backend is False
+    assert manager._should_run is False
+
+
+def test_backend_manager_refuses_update_when_external_backend_will_not_stop(
+    monkeypatch,
+) -> None:
+    manager = bm.BackendManager()
+    manager._external_backend = True
+
+    monkeypatch.setattr(manager, "health_check", lambda: True)
+    monkeypatch.setattr(manager, "_request_shutdown", lambda: True)
+    monkeypatch.setattr(bm.time, "sleep", lambda _seconds: None)
+    monotonic_values = iter([0.0, 0.0, 2.0])
+    monkeypatch.setattr(
+        bm.time,
+        "monotonic",
+        lambda: next(monotonic_values, 2.0),
+    )
+
+    assert manager.stop_for_update(timeout_seconds=1.0) is False
+    assert manager._external_backend is True
+
+
 def test_runtime_data_dir_uses_external_app_data_when_frozen(
     monkeypatch,
     tmp_path: Path,
