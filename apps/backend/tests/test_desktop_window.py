@@ -173,6 +173,83 @@ def test_close_button_hides_window_instead_of_ending_host() -> None:
     assert hidden == [True]
 
 
+def test_grant_desktop_window_foreground_permission_targets_child_process(monkeypatch) -> None:
+    calls: list[int] = []
+
+    class FakeUser32:
+        def AllowSetForegroundWindow(self, pid: int) -> int:
+            calls.append(pid)
+            return 1
+
+    monkeypatch.setattr(desktop_window.sys, "platform", "win32")
+
+    assert desktop_window.grant_desktop_window_foreground_permission(
+        4242,
+        user32=FakeUser32(),
+    ) is True
+    assert calls == [4242]
+
+
+def test_bring_desktop_window_to_front_uses_temporary_topmost_fallback(monkeypatch) -> None:
+    hwnd = 0x1234
+    calls: list[tuple[str, int]] = []
+
+    class FakeHandle:
+        def ToInt64(self) -> int:
+            return hwnd
+
+    class FakeNative:
+        Handle = FakeHandle()
+
+    class FakeWindow:
+        native = FakeNative()
+
+    class FakeUser32:
+        def ShowWindowAsync(self, target: int, command: int) -> int:
+            assert target == hwnd
+            calls.append(("show", command))
+            return 1
+
+        def SetForegroundWindow(self, target: int) -> int:
+            assert target == hwnd
+            calls.append(("foreground", target))
+            return 0
+
+        def BringWindowToTop(self, target: int) -> int:
+            assert target == hwnd
+            calls.append(("bring_to_top", target))
+            return 1
+
+        def SetWindowPos(
+            self,
+            target: int,
+            insert_after: int,
+            _x: int,
+            _y: int,
+            _width: int,
+            _height: int,
+            _flags: int,
+        ) -> int:
+            assert target == hwnd
+            calls.append(("window_pos", insert_after))
+            return 1
+
+        def GetForegroundWindow(self) -> int:
+            return hwnd
+
+    monkeypatch.setattr(desktop_window.sys, "platform", "win32")
+
+    assert desktop_window.bring_desktop_window_to_front(
+        FakeWindow(),
+        user32=FakeUser32(),
+    ) is True
+    assert ("window_pos", desktop_window._HWND_TOPMOST) in calls
+    assert ("window_pos", desktop_window._HWND_NOTOPMOST) in calls
+    assert calls.index(
+        ("window_pos", desktop_window._HWND_TOPMOST)
+    ) < calls.index(("window_pos", desktop_window._HWND_NOTOPMOST))
+
+
 def test_control_server_restores_and_navigates_existing_window(tmp_path: Path) -> None:
     actions: list[tuple[str, str | None]] = []
 
@@ -187,7 +264,11 @@ def test_control_server_restores_and_navigates_existing_window(tmp_path: Path) -
             actions.append(("show", None))
 
     control_file = tmp_path / "desktop-control.json"
-    server = desktop_window.DesktopWindowControlServer(FakeWindow(), control_file)
+    server = desktop_window.DesktopWindowControlServer(
+        FakeWindow(),
+        control_file,
+        foreground_activator=lambda _window: actions.append(("bring_to_front", None)) or True,
+    )
     try:
         server.start()
         assert desktop_window.send_desktop_window_command(
@@ -201,6 +282,7 @@ def test_control_server_restores_and_navigates_existing_window(tmp_path: Path) -
             ("load_url", "http://127.0.0.1:18765/#settings"),
             ("restore", None),
             ("show", None),
+            ("bring_to_front", None),
         ]
     finally:
         server.stop()
@@ -245,6 +327,8 @@ def test_tray_reuses_running_desktop_window(monkeypatch) -> None:
     tray._desktop_window_control_file = Path("desktop-control.json")
     opened: list[str] = []
     commands: list[tuple[Path, str]] = []
+    foreground_grants: list[int] = []
+    call_order: list[str] = []
     monkeypatch.setattr(
         tray_app,
         "open_desktop_window",
@@ -253,7 +337,20 @@ def test_tray_reuses_running_desktop_window(monkeypatch) -> None:
     monkeypatch.setattr(
         tray_app,
         "send_desktop_window_command",
-        lambda path, *, url: commands.append((path, url)) or True,
+        lambda path, *, url: (
+            call_order.append("command"),
+            commands.append((path, url)),
+            True,
+        )[-1],
+    )
+    monkeypatch.setattr(
+        tray_app,
+        "grant_desktop_window_foreground_permission",
+        lambda pid: (
+            call_order.append("grant"),
+            foreground_grants.append(pid),
+            True,
+        )[-1],
     )
 
     result = tray._open_desktop_window("http://127.0.0.1:8000/#settings")
@@ -261,6 +358,8 @@ def test_tray_reuses_running_desktop_window(monkeypatch) -> None:
     assert result.mode == "webview"
     assert result.pid == 9001
     assert result.message == "已恢复并置前桌面窗口。"
+    assert foreground_grants == [9001]
+    assert call_order == ["grant", "command"]
     assert commands == [(Path("desktop-control.json"), "http://127.0.0.1:8000/#settings")]
     assert opened == []
 

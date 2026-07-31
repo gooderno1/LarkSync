@@ -60,6 +60,7 @@ from apps.tray.desktop_window import (
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_WIDTH,
     DesktopWindowLaunchResult,
+    grant_desktop_window_foreground_permission,
     open_browser_dashboard,
     open_desktop_window,
     send_desktop_window_command,
@@ -764,6 +765,8 @@ class LarkSyncTray:
             try:
                 if existing.poll() is None:
                     control_file = getattr(self, "_desktop_window_control_file", None)
+                    process_id = int(getattr(existing, "pid", 0) or 0)
+                    grant_desktop_window_foreground_permission(process_id)
                     restored = bool(
                         control_file is not None
                         and send_desktop_window_command(control_file, url=url)

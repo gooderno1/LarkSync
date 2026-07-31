@@ -40,6 +40,13 @@ _DWMWA_BORDER_COLOR = 34
 _DWMWA_CAPTION_COLOR = 35
 _DWMWA_TEXT_COLOR = 36
 
+_SW_RESTORE = 9
+_SWP_NOSIZE = 0x0001
+_SWP_NOMOVE = 0x0002
+_SWP_SHOWWINDOW = 0x0040
+_HWND_TOPMOST = -1
+_HWND_NOTOPMOST = -2
+
 LaunchMode = Literal["webview", "browser"]
 
 
@@ -72,6 +79,57 @@ def _apply_windows_titlebar_palette(window: Any) -> None:
     except (AttributeError, OSError, TypeError, ValueError):
         # Older Windows builds may not support caption color attributes.
         return
+
+
+def grant_desktop_window_foreground_permission(
+    process_id: int,
+    *,
+    user32: Any | None = None,
+) -> bool:
+    """Let the WebView child process activate after a user tray action."""
+    if sys.platform != "win32":
+        return True
+    if process_id <= 0:
+        return False
+    try:
+        windows_api = user32 or ctypes.windll.user32
+        return bool(windows_api.AllowSetForegroundWindow(int(process_id)))
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+
+
+def bring_desktop_window_to_front(
+    window: Any,
+    *,
+    user32: Any | None = None,
+) -> bool:
+    """Activate a restored Windows window without leaving it permanently topmost."""
+    if sys.platform != "win32":
+        return True
+    try:
+        native = window.native
+        handle = native.Handle
+        hwnd = int(handle.ToInt64()) if hasattr(handle, "ToInt64") else int(handle)
+        windows_api = user32 or ctypes.windll.user32
+
+        windows_api.ShowWindowAsync(hwnd, _SW_RESTORE)
+        windows_api.BringWindowToTop(hwnd)
+        if bool(windows_api.SetForegroundWindow(hwnd)):
+            return True
+
+        flags = _SWP_NOMOVE | _SWP_NOSIZE | _SWP_SHOWWINDOW
+        raised = bool(
+            windows_api.SetWindowPos(hwnd, _HWND_TOPMOST, 0, 0, 0, 0, flags)
+        )
+        lowered = bool(
+            windows_api.SetWindowPos(hwnd, _HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+        )
+        windows_api.BringWindowToTop(hwnd)
+        windows_api.SetForegroundWindow(hwnd)
+        foreground = int(windows_api.GetForegroundWindow())
+        return foreground == hwnd or (raised and lowered)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
 
 
 @dataclass(frozen=True)
@@ -111,9 +169,16 @@ def _make_hide_on_close_handler(
 class DesktopWindowControlServer:
     """Small authenticated loopback channel used by the tray to reuse a window."""
 
-    def __init__(self, window: Any, control_file: Path) -> None:
+    def __init__(
+        self,
+        window: Any,
+        control_file: Path,
+        *,
+        foreground_activator: Callable[[Any], bool] = bring_desktop_window_to_front,
+    ) -> None:
         self._window = window
         self._control_file = Path(control_file)
+        self._foreground_activator = foreground_activator
         self._token = secrets.token_urlsafe(32)
         self._socket: socket.socket | None = None
         self._thread: threading.Thread | None = None
@@ -173,6 +238,7 @@ class DesktopWindowControlServer:
                         self._window.load_url(url)
                     self._window.restore()
                     self._window.show()
+                    self._foreground_activator(self._window)
                     response = {"ok": True}
                 except Exception as exc:
                     response = {"ok": False, "error": type(exc).__name__}

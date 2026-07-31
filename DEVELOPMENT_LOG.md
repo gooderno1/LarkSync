@@ -1,5 +1,36 @@
 # DEVELOPMENT LOG
 
+## v0.8.17-dev.1 fix: Windows 托盘唤醒窗口显式置前 (2026-07-31)
+
+- 开发原因：
+  - 用户从系统托盘打开 LarkSync 时，已有桌面窗口会恢复可见，但仍停留在其他应用窗口下方。
+  - 托盘进程和 pywebview 窗口宿主是两个进程；Windows 前台锁会拒绝没有前台权限的 WebView 子进程直接抢占焦点。
+  - v0.8.2 的回归测试只断言调用了`restore()`和`show()`，没有验证真实前台窗口是否切换。
+- 实现方式：
+  - 托盘进程在发送本机回环唤醒命令前，调用`AllowSetForegroundWindow()`把本次用户操作的前台权限授予已有 WebView 子进程。
+  - 窗口宿主在`restore()`和`show()`后调用 Windows 原生窗口激活逻辑，依次执行`ShowWindowAsync(SW_RESTORE)`、`BringWindowToTop()`和`SetForegroundWindow()`。
+  - 若 Windows 仍拒绝前台切换，则使用`SetWindowPos(HWND_TOPMOST)`临时提升 Z-order，并立即调用`SetWindowPos(HWND_NOTOPMOST)`解除；该回退只影响本次托盘唤醒，不会留下永久置顶状态。
+  - 非 Windows 平台保持原有`restore()`和`show()`行为，不引入 Windows API 依赖。
+  - 根包、前端包、前端 lockfile 和后端包版本统一更新为`v0.8.17-dev.1`。
+- 当前结果：
+  - 当前安装版旧逻辑已稳定复现：控制命令返回成功、窗口从隐藏变为可见，但前台 PID 未变化。
+  - 对同一真实 pywebview 窗口句柄执行新原生激活逻辑后，Windows`GetForegroundWindow()`返回 LarkSync 窗口句柄。
+  - 自动化测试覆盖前台权限授予的目标 PID、授权与唤醒命令顺序、窗口激活调用，以及临时 TopMost 必须立即解除。
+- 验证方式：
+  - `python -m pytest -q apps/backend/tests/test_desktop_window.py`：17 项通过。
+  - 后端全量`python -m pytest -q`：633 项通过。
+  - 前端`npm run lint`：通过，无 ESLint 警告。
+  - 前端`npm run typecheck`：通过，无 TypeScript 类型错误。
+  - 前端全量`npm run test`：35 个测试文件、112 项测试通过。
+  - 前端`npm run build`：通过，Vite 生产构建成功。
+  - 后端 editable 安装元数据 dry-run：通过，解析版本为`larksync-backend==0.8.17.dev1`。
+  - `npm audit --omit=dev`：0 个生产依赖漏洞。
+  - `python scripts/update_install_smoke.py`：通过；缺失模拟安装包按预期收敛为`launch_failed`，未触碰当前正式实例。
+  - `python scripts/build_installer.py --nsis`：通过；生成`dist/LarkSync-Setup-v0.8.17-dev.1.exe`，大小`71,702,464 bytes`（`68.38 MiB`），SHA256 为`3C33D96AC83C8897E72714C63C007DFB2DF156EA287FAAA55865F72394BFEEE5`。
+  - Windows 当前安装版真实窗口句柄验证：控制命令成功，原生激活返回成功，LarkSync 成为前台窗口；验证结束后恢复隐藏状态。
+- 遗留问题：
+  - 正式发布前仍需完成前后端全量质量门、Windows 更新安装 smoke、NSIS 安装包构建、稳定版号冻结与 GitHub Release 资产验证。
+
 ## v0.8.16 release (2026-07-31)
 
 - 开发原因：
