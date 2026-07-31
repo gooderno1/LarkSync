@@ -1,5 +1,35 @@
 # DEVELOPMENT LOG
 
+## v0.8.19 release (2026-07-31)
+
+- 开发原因：
+  - 将`v0.8.19-dev.1`已验证的历史问题自动结案迁移作为正式补丁版本交付。
+  - v0.8.18 用户的问题中心仍可能保留迁移前产生的空运行汇总误报，不能要求用户逐条手动忽略。
+- 实现方式：
+  - 根包、前端包、前端 lockfile 和后端包版本统一冻结为`v0.8.19`。
+  - `CHANGELOG.md`增加正式发布锚点，Release Notes 汇总范围固定为`v0.8.18 -> v0.8.19`。
+  - 正式 Tag 使用`v0.8.19`，触发 GitHub Actions 构建 Windows NSIS 和 macOS x86_64、arm64 安装包。
+  - 正式版完整保留`v0.8.19-dev.1`的候选事件索引查询、严格汇总格式校验、自动结案和旧忽略标记清理。
+- 当前结果：
+  - 源码版本已冻结为`v0.8.19`。
+  - 正式数据库只读预估命中的 5 条 open 与 3 条 ignored 历史误报，会在升级后的问题后台刷新中自动结案。
+  - 原始问题记录、运行事件与动作历史继续保留，真实下载、认证和对象错误不在自动结案范围。
+  - 本地正式版 NSIS 安装包已生成：`dist/LarkSync-Setup-v0.8.19.exe`，大小`71,714,317 bytes`（`68.39 MiB`）。
+  - 本地正式版安装包 SHA256 为`C41093E91C97A3210E5E2D83698A474C2F32B8D8B1A6175B262783E8CA5C6F84`。
+  - GitHub 跨平台安装资产将在正式 Tag 推送后由 Release Build 工作流生成。
+- 验证方式：
+  - 继承`v0.8.19-dev.1`的 TDD 回归、正式数据库只读命中与查询计划验证结果。
+  - 后端全量`python -m pytest -q`顺序复跑：651 项通过。
+  - 前端`npm run lint`、`npm run typecheck`、`npm run test`和`npm run build`：通过；35 个测试文件、112 项测试通过。
+  - 后端 editable 安装元数据 dry-run：通过，解析版本为`larksync-backend==0.8.19`。
+  - `npm audit --omit=dev`：0 个生产依赖漏洞。
+  - `python scripts/update_install_smoke.py`：通过；缺失模拟安装包按预期收敛为`launch_failed`。
+  - `python scripts/build_installer.py --nsis`：通过；前端生产构建、PyInstaller 和 NSIS 均成功。
+  - `python scripts/release_notes.py --version v0.8.19 --asset dist/LarkSync-Setup-v0.8.19.exe`：通过；输出变更区间`v0.8.18 -> v0.8.19`和实际安装包 SHA256。
+- 遗留问题：
+  - v0.8.18 已被用户手动标记为 ignored 的同类历史误报也会自动结案，并清除旧忽略原因与时间。
+  - GitHub Release 和三个平台资产需等待 Tag 工作流完成后核对。
+
 ## v0.8.19-dev.1 (2026-07-31)
 
 - 开发原因：
