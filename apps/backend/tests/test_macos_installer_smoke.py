@@ -209,7 +209,11 @@ def test_assert_bundle_metadata_requires_real_icon(tmp_path: Path) -> None:
     assert smoke._assert_bundle_metadata(app)["CFBundleIdentifier"] == "com.larksync.app"
 
 
-def test_run_macos_installer_smoke_rejects_non_macos(tmp_path: Path) -> None:
+def test_run_macos_installer_smoke_rejects_non_macos(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(smoke.sys, "platform", "linux")
     with pytest.raises(RuntimeError, match="仅支持 macOS"):
         smoke.run_macos_installer_smoke(dmg_path=tmp_path / "demo.dmg")
 

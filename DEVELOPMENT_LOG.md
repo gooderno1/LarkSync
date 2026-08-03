@@ -23,6 +23,7 @@
   - 后端 macOS 定向测试覆盖构建、Bundle、安装 smoke、图标、桌面窗口、Keychain、LaunchAgent、通知和发布工作流。
   - 前端执行`npm run lint`、`npm run typecheck`、`npm run test`和`npm run build`；生产依赖`npm audit --omit=dev`为 0 个漏洞，完整依赖审计经安全范围更新后为 0 个漏洞。
   - Windows 本机可验证跨平台单元测试和浏览器页面；Cocoa、Keychain、签名公证及 Gatekeeper 的最终结果由 macOS GitHub runner 强制验证。
+  - 首轮双架构 runner 暴露“非 macOS 拒绝”测试依赖宿主平台的问题；用例现显式模拟 Linux，不再在真实 macOS 上误挂载不存在的测试 DMG。
 - 遗留问题：
   - Windows 主机不能直接执行 Cocoa、Apple Keychain、notarytool 或 Gatekeeper；正式 DMG 是否完成全部真机验收以 GitHub macOS 工作流结果为准。
 
