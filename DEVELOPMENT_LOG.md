@@ -31,6 +31,8 @@
   - 第五、六轮 arm64 runner 证明安装版 App 已进入`webview_starting`，但托管 runner 无交互式 WindowServer，随后会结束原生进程且不会触发`loaded`；CI 降级仅在 App 自身写入该阶段后启用 headless Playwright WebKit，并继续断言 1080×720 首屏、二维码 ready、可见尺寸和 PNG data URL，不把托管环境结果表述为原生窗口持续存活。
   - 第七轮 headless WebKit 子进程在总超时边界未退出；脚本现为 browser launch、页面加载、二维码等待和 browser close 分别设置上限，逐阶段原子输出`starting/browser_launched/page_loaded/qr_verified/webkit_exception`，最终结果落盘后强制退出 Node。
   - 第八轮确认 macOS 托管 runner 的 Playwright WebKit 也只能到`browser_launched`，无法创建页面；WebKit 引擎验收迁移到独立 Linux headless 任务，Mac 双架构任务显式依赖其成功，并继续独立验证 App 已到`webview_starting`。
+  - GitHub Actions Release Build`30805971775`最终通过：全量 quality、Linux headless WebKit`qr_verified`、macOS arm64 与 x86_64 的定向测试、DMG 构建及安装启动 smoke 全部成功。
+  - 最终本机验证：后端全量 669 项通过；前端 lint、typecheck、35 个文件 114 项测试、生产构建和 npm audit 通过；Playwright WebKit 在 1080×720 实际返回`qr_state=ready`、可见 PNG data URL。
 - 遗留问题：
   - Windows 主机不能直接执行 Cocoa、Apple Keychain、notarytool 或 Gatekeeper；正式 DMG 是否完成全部真机验收以 GitHub macOS 工作流结果为准。
 
