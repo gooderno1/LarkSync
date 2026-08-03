@@ -400,6 +400,7 @@ def test_wait_for_gui_result_uses_webkit_fallback_for_stable_headless_native_loo
     )
 
     assert payload["ok"] is True
-    assert payload["validation_mode"] == "native-loop+headless-webkit"
+    assert payload["validation_mode"] == "launchservices-stage+headless-webkit"
     assert payload["native_stage"] == "webview_starting"
+    assert payload["native_pid_alive"] is True
     assert payload["webkit"]["qr_state"] == "ready"

@@ -180,7 +180,6 @@ def _wait_for_gui_result(
                     headless_webkit_runner is not None
                     and payload.get("stage") == "webview_starting"
                     and time.time() - started_at >= max(headless_fallback_delay, 0.0)
-                    and _pid_is_alive(payload.get("pid"))
                 ):
                     webkit_result = headless_webkit_runner()
                     if not webkit_result.get("ok"):
@@ -190,9 +189,10 @@ def _wait_for_gui_result(
                     return {
                         "completed": True,
                         "ok": True,
-                        "validation_mode": "native-loop+headless-webkit",
+                        "validation_mode": "launchservices-stage+headless-webkit",
                         "native_stage": str(payload.get("stage")),
                         "native_pid": int(payload["pid"]),
+                        "native_pid_alive": _pid_is_alive(payload.get("pid")),
                         "webkit": webkit_result,
                     }
                 time.sleep(0.25)
