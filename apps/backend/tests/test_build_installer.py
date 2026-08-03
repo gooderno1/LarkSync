@@ -202,7 +202,12 @@ def test_build_dmg_uses_root_app_bundle_when_present(monkeypatch, tmp_path: Path
 
     monkeypatch.setattr(bi, "PROJECT_ROOT", project_root)
     monkeypatch.setattr(bi, "OUTPUT_DIR", dist_dir)
-    monkeypatch.setattr(bi, "run", lambda cmd, cwd=None, env=None: captured.update({"cmd": cmd, "cwd": cwd, "env": env}))
+    def fake_run(cmd, cwd=None, env=None):
+        captured.update({"cmd": cmd, "cwd": cwd, "env": env})
+        (dist_dir / "LarkSync-v9.9.9.dmg").write_bytes(b"dmg")
+    monkeypatch.setattr(bi, "run", fake_run)
+    monkeypatch.setattr(bi, "_sign_macos_app", lambda _app: None)
+    monkeypatch.setattr(bi, "_notarize_macos_dmg", lambda _dmg: False)
     monkeypatch.setattr(bi, "_read_version", lambda: "v9.9.9")
     monkeypatch.setattr(bi.os, "environ", {"BASE": "1"})
     captured: dict[str, object] = {}
@@ -229,7 +234,12 @@ def test_build_dmg_passes_arch_suffix_when_configured(monkeypatch, tmp_path: Pat
 
     monkeypatch.setattr(bi, "PROJECT_ROOT", project_root)
     monkeypatch.setattr(bi, "OUTPUT_DIR", dist_dir)
-    monkeypatch.setattr(bi, "run", lambda cmd, cwd=None, env=None: captured.update({"cmd": cmd, "cwd": cwd, "env": env}))
+    def fake_run(cmd, cwd=None, env=None):
+        captured.update({"cmd": cmd, "cwd": cwd, "env": env})
+        (dist_dir / "LarkSync-v1.2.3-arm64.dmg").write_bytes(b"dmg")
+    monkeypatch.setattr(bi, "run", fake_run)
+    monkeypatch.setattr(bi, "_sign_macos_app", lambda _app: None)
+    monkeypatch.setattr(bi, "_notarize_macos_dmg", lambda _dmg: False)
     monkeypatch.setattr(bi, "_read_version", lambda: "v1.2.3")
     monkeypatch.setenv("LARKSYNC_MACOS_DMG_SUFFIX", "arm64")
     captured: dict[str, object] = {}
@@ -252,7 +262,12 @@ def test_build_dmg_falls_back_to_nested_app_bundle(monkeypatch, tmp_path: Path) 
 
     monkeypatch.setattr(bi, "PROJECT_ROOT", project_root)
     monkeypatch.setattr(bi, "OUTPUT_DIR", dist_dir)
-    monkeypatch.setattr(bi, "run", lambda cmd, cwd=None, env=None: captured.update({"cmd": cmd, "cwd": cwd, "env": env}))
+    def fake_run(cmd, cwd=None, env=None):
+        captured.update({"cmd": cmd, "cwd": cwd, "env": env})
+        (dist_dir / "LarkSync-v1.2.3.dmg").write_bytes(b"dmg")
+    monkeypatch.setattr(bi, "run", fake_run)
+    monkeypatch.setattr(bi, "_sign_macos_app", lambda _app: None)
+    monkeypatch.setattr(bi, "_notarize_macos_dmg", lambda _dmg: False)
     monkeypatch.setattr(bi, "_read_version", lambda: "v1.2.3")
     captured: dict[str, object] = {}
 
@@ -298,6 +313,8 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     monkeypatch.setattr(bi, "BACKEND_DIR", project_root / "apps" / "backend")
     monkeypatch.setattr(bi, "SPEC_FILE", spec_file)
     monkeypatch.setattr(bi, "WINDOWS_ICON", project_root / "assets" / "branding" / "LarkSync.ico")
+    monkeypatch.setattr(bi, "MACOS_ICON", project_root / "assets" / "branding" / "LarkSync.icns")
+    monkeypatch.setattr(bi, "MACOS_ENTITLEMENTS", project_root / "scripts" / "installer" / "macos" / "LarkSync.entitlements")
 
     bi._generate_spec()
 
@@ -314,6 +331,12 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     assert "platform.machine()" in content
     assert "'arm64'" in content
     assert "'x86_64'" in content
+    assert "LarkSync.icns" in content
+    assert "CFBundleDisplayName" in content
+    assert "CFBundleShortVersionString" in content
+    assert "LSMinimumSystemVersion" in content
+    assert "LARKSYNC_MACOS_CODESIGN_IDENTITY" in content
+    assert "entitlements_file" in content
     assert "\n        ,\n" not in content
 
 
@@ -333,3 +356,35 @@ def test_checked_in_spec_includes_webview_hiddenimports() -> None:
     assert '"webview"' in spec
     assert '"webview.platforms.edgechromium"' in spec
     assert '"webview.platforms.winforms"' in spec
+    assert 'icon=str(macos_icon)' in spec
+    assert '"CFBundleDisplayName": "LarkSync"' in spec
+    assert '"LSMinimumSystemVersion": "12.0"' in spec
+
+
+def test_sign_macos_app_uses_hardened_runtime_for_developer_id(monkeypatch, tmp_path: Path) -> None:
+    app = tmp_path / "LarkSync.app"
+    app.mkdir()
+    commands: list[list[str]] = []
+    monkeypatch.setenv("LARKSYNC_MACOS_CODESIGN_IDENTITY", "Developer ID Application: Example")
+    monkeypatch.setattr(bi, "MACOS_ENTITLEMENTS", tmp_path / "LarkSync.entitlements")
+    bi.MACOS_ENTITLEMENTS.write_text("plist", encoding="utf-8")
+    monkeypatch.setattr(bi, "run", lambda command, cwd=None, env=None: commands.append(command))
+
+    bi._sign_macos_app(app)
+
+    assert commands[0][:7] == [
+        "codesign", "--force", "--deep", "--sign", "Developer ID Application: Example", "--options", "runtime"
+    ]
+    assert "--timestamp" in commands[0]
+    assert commands[1][:5] == ["codesign", "--verify", "--deep", "--strict", "--verbose=2"]
+
+
+def test_required_macos_notarization_rejects_missing_credentials(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LARKSYNC_REQUIRE_MACOS_NOTARIZATION", "1")
+    monkeypatch.delenv("LARKSYNC_NOTARYTOOL_PROFILE", raising=False)
+    monkeypatch.delenv("APPLE_ID", raising=False)
+    monkeypatch.delenv("APPLE_TEAM_ID", raising=False)
+    monkeypatch.delenv("APPLE_APP_SPECIFIC_PASSWORD", raising=False)
+
+    with pytest.raises(RuntimeError, match="要求 Apple 公证凭证"):
+        bi._notarize_macos_dmg(tmp_path / "LarkSync.dmg")

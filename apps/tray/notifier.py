@@ -59,12 +59,31 @@ def notify(
         # plyer 未安装，尝试 Windows toast 或静默
         return _fallback_notify(title, message)
     except Exception:
-        return False
+        return _fallback_notify(title, message)
 
 
 def _fallback_notify(title: str, message: str) -> bool:
     """fallback 通知方式。"""
     import sys
+
+    if sys.platform == "darwin":
+        try:
+            import subprocess
+
+            escaped_title = _escape_applescript(title)
+            escaped_message = _escape_applescript(message)
+            result = subprocess.run(
+                [
+                    "/usr/bin/osascript",
+                    "-e",
+                    f'display notification "{escaped_message}" with title "{escaped_title}"',
+                ],
+                capture_output=True,
+                timeout=5,
+            )
+            return result.returncode == 0
+        except Exception:
+            pass
 
     if sys.platform == "win32":
         try:
@@ -94,6 +113,10 @@ def _fallback_notify(title: str, message: str) -> bool:
     import sys as _sys
     print(f"[LarkSync] {title}: {message}", file=_sys.stderr)
     return False
+
+
+def _escape_applescript(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\r", " ").replace("\n", " ")
 
 
 def notify_sync_complete(file_count: int) -> bool:

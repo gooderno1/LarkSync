@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-08-03] v0.8.20-dev.2 fix(macos): 补齐应用与菜单栏图标、响应式 OAuth 二维码、Cocoa 窗口恢复、现代 LaunchAgent、原生通知、Keychain/WKWebView 安装验收及 Developer ID 签名公证链路
 [2026-08-03] v0.8.20-dev.1 fix(sync): 内嵌 Sheet 占位按云端文档版本和转码迁移版本限次回刷，避免内容未变化时被周期性重复下载
 [2026-07-31] v0.8.19 release: 自动结案 v0.8.18 遗留的历史空运行汇总误报；保留真实问题和原始活动证据
 [2026-07-31] v0.8.19-dev.1 fix(problems): 重新扫描 v3 与 task_run 历史完成汇总并自动结案；清除同类问题的旧忽略标记，保留活动证据且不影响真实错误

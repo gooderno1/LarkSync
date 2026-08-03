@@ -102,8 +102,20 @@ def bring_desktop_window_to_front(
     window: Any,
     *,
     user32: Any | None = None,
+    appkit: Any | None = None,
 ) -> bool:
-    """Activate a restored Windows window without leaving it permanently topmost."""
+    """Activate a restored desktop window using the native platform API."""
+    if sys.platform == "darwin":
+        try:
+            cocoa = appkit or importlib.import_module("AppKit")
+            cocoa.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+            native = getattr(window, "native", None)
+            make_key = getattr(native, "makeKeyAndOrderFront_", None)
+            if callable(make_key):
+                make_key(None)
+            return True
+        except (AttributeError, ImportError, OSError, TypeError, ValueError):
+            return False
     if sys.platform != "win32":
         return True
     try:
@@ -164,6 +176,34 @@ def _make_hide_on_close_handler(
         return False
 
     return _hide_on_close
+
+
+def _start_macos_reopen_monitor(window: Any, *, appkit: Any | None = None) -> None:
+    """Dock 再次激活隐藏的应用时恢复窗口，不干扰关闭到托盘行为。"""
+    if sys.platform != "darwin" or getattr(window, "_larksync_reopen_monitor", False):
+        return
+    setattr(window, "_larksync_reopen_monitor", True)
+
+    def monitor() -> None:  # pragma: no cover - requires Cocoa event loop
+        try:
+            cocoa = appkit or importlib.import_module("AppKit")
+            application = cocoa.NSApplication.sharedApplication()
+            was_active = bool(application.isActive())
+            while True:
+                time.sleep(0.2)
+                active = bool(application.isActive())
+                native = getattr(window, "native", None)
+                visible_reader = getattr(native, "isVisible", None)
+                visible = bool(visible_reader()) if callable(visible_reader) else True
+                if active and not was_active and not visible:
+                    window.restore()
+                    window.show()
+                    bring_desktop_window_to_front(window, appkit=cocoa)
+                was_active = active
+        except Exception:
+            return
+
+    threading.Thread(target=monitor, name="larksync-macos-reopen", daemon=True).start()
 
 
 class DesktopWindowControlServer:
@@ -459,6 +499,7 @@ def run_desktop_window(
     min_height: int = DEFAULT_MIN_HEIGHT,
     debug: bool = False,
     control_file: Path | None = None,
+    smoke_result: Path | None = None,
     webview_module: Any | None = None,
 ) -> int:
     """Run a blocking pywebview window process."""
@@ -481,6 +522,9 @@ def run_desktop_window(
         window = webview.create_window(title, url, **window_kwargs)
     if sys.platform == "win32" and getattr(getattr(window, "events", None), "shown", None) is not None:
         window.events.shown += _apply_windows_titlebar_palette
+    if sys.platform == "darwin" and getattr(getattr(window, "events", None), "shown", None) is not None:
+        window.events.shown += lambda: bring_desktop_window_to_front(window)
+        window.events.shown += lambda: _start_macos_reopen_monitor(window)
     closing_event = getattr(getattr(window, "events", None), "closing", None)
     if closing_event is not None:
         window.events.closing += _make_hide_on_close_handler(window)
@@ -492,6 +536,11 @@ def run_desktop_window(
     shown_event = getattr(getattr(window, "events", None), "shown", None)
     if control_server is not None and shown_event is not None:
         window.events.shown += control_server.start
+    loaded_event = getattr(getattr(window, "events", None), "loaded", None)
+    if smoke_result is not None and loaded_event is not None:
+        window.events.loaded += lambda: _schedule_daemon(
+            lambda: _run_ui_smoke_probe(window, Path(smoke_result))
+        )
     start_kwargs: dict[str, Any] = {"debug": debug}
     if sys.platform == "win32":
         start_kwargs["gui"] = "edgechromium"
@@ -507,6 +556,50 @@ def run_desktop_window(
     return 0
 
 
+def _run_ui_smoke_probe(window: Any, result_path: Path, timeout: float = 30.0) -> None:
+    """在真实 WebView 中验证首屏和二维码，并输出机器可读结果。"""
+    deadline = time.time() + max(timeout, 0.1)
+    last_result: dict[str, Any] = {}
+    last_error = ""
+    script = """
+        (() => {
+          const root = document.querySelector('[data-onboarding-root="true"]');
+          const panel = document.querySelector('[data-testid="oauth-qr-panel"]');
+          const image = document.querySelector('[data-testid="oauth-qr-image"]');
+          const rect = image ? image.getBoundingClientRect() : null;
+          return {
+            title: document.title,
+            onboarding_visible: Boolean(root),
+            qr_state: panel ? panel.getAttribute('data-qr-state') : null,
+            qr_visible: Boolean(rect && rect.width > 0 && rect.height > 0),
+            qr_is_data_url: Boolean(image && String(image.getAttribute('src') || '').startsWith('data:image/png;base64,'))
+          };
+        })()
+    """
+    while time.time() < deadline:
+        try:
+            payload = window.evaluate_js(script)
+            if isinstance(payload, dict):
+                last_result = payload
+                if _ui_smoke_result_ok(payload):
+                    break
+        except Exception as exc:  # pragma: no cover - native WebView only
+            last_error = f"{type(exc).__name__}: {exc}"
+        time.sleep(0.25)
+    result = {**last_result, "ok": _ui_smoke_result_ok(last_result), "error": last_error}
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+
+
+def _ui_smoke_result_ok(payload: dict[str, Any]) -> bool:
+    return bool(
+        payload.get("onboarding_visible")
+        and payload.get("qr_state") == "ready"
+        and payload.get("qr_visible")
+        and payload.get("qr_is_data_url")
+    )
+
+
 def parse_desktop_window_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LarkSync 桌面窗口宿主")
     parser.add_argument("--url", required=True)
@@ -517,6 +610,7 @@ def parse_desktop_window_args(argv: list[str] | None = None) -> argparse.Namespa
     parser.add_argument("--min-height", type=int, default=DEFAULT_MIN_HEIGHT)
     parser.add_argument("--debug-window", "--debug", dest="debug", action="store_true")
     parser.add_argument("--control-file", type=Path)
+    parser.add_argument("--smoke-result", type=Path, help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 
@@ -531,6 +625,7 @@ def main(argv: list[str] | None = None) -> int:
         min_height=args.min_height,
         debug=args.debug,
         control_file=args.control_file,
+        smoke_result=args.smoke_result,
     )
 
 

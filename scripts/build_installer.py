@@ -36,6 +36,8 @@ PYPROJECT_FILE = BACKEND_DIR / "pyproject.toml"
 BRANDING_DIR = PROJECT_ROOT / "assets" / "branding"
 BRAND_ICON = BRANDING_DIR / "LarkSync_Logo_Icon_FullColor.png"
 WINDOWS_ICON = BRANDING_DIR / "LarkSync.ico"
+MACOS_ICON = BRANDING_DIR / "LarkSync.icns"
+MACOS_ENTITLEMENTS = PROJECT_ROOT / "scripts" / "installer" / "macos" / "LarkSync.entitlements"
 BUILD_BASELINE_PYTHON = (3, 14)
 BUILD_BASELINE_PYTHON_LABEL = "Python 3.14.x"
 BUILD_BASELINE_NODE_MAJOR = 25
@@ -308,10 +310,13 @@ def step_build_frontend() -> None:
 def step_generate_icons() -> None:
     print("\n[2/4] 生成托盘图标...")
     sys.path.insert(0, str(PROJECT_ROOT))
-    from apps.tray.icon_generator import generate_icons
+    from apps.tray.icon_generator import generate_icons, generate_macos_app_icon
     icons = generate_icons(force=True)
+    macos_icon = generate_macos_app_icon(force=True)
     _ensure_windows_icon()
-    print(f"  ✓ 生成了 {len(icons)} 个图标")
+    print(f"  ✓ 生成了 {len(icons)} 个托盘图标")
+    if macos_icon:
+        print(f"  ✓ macOS 应用图标: {macos_icon}")
 
 
 def step_pyinstaller() -> None:
@@ -423,6 +428,11 @@ def _resolve_project_root() -> Path:
 
 
 project_root = _resolve_project_root()
+macos_icon = project_root / 'assets' / 'branding' / 'LarkSync.icns'
+macos_entitlements = project_root / 'scripts' / 'installer' / 'macos' / 'LarkSync.entitlements'
+bundle_version = os.getenv('LARKSYNC_BUNDLE_VERSION', '0.0.0').lstrip('v')
+bundle_short_version = bundle_version.split('-')[0]
+codesign_identity = os.getenv('LARKSYNC_MACOS_CODESIGN_IDENTITY', '').strip() or None
 
 a = Analysis(
     ['{entry_script.as_posix()}'],
@@ -460,8 +470,8 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=_resolve_macos_target_arch(),
-    codesign_identity=None,
-    entitlements_file=None,
+    codesign_identity=codesign_identity if sys.platform == 'darwin' else None,
+    entitlements_file=str(macos_entitlements) if sys.platform == 'darwin' and macos_entitlements.is_file() else None,
     icon='{WINDOWS_ICON.as_posix()}' if sys.platform == 'win32' else None,
 )
 
@@ -480,8 +490,18 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
         name='LarkSync.app',
-        icon=None,
+        icon=str(macos_icon),
         bundle_identifier='com.larksync.app',
+        info_plist={{
+            'CFBundleDisplayName': 'LarkSync',
+            'CFBundleName': 'LarkSync',
+            'CFBundleShortVersionString': bundle_short_version,
+            'CFBundleVersion': bundle_short_version,
+            'LSApplicationCategoryType': 'public.app-category.productivity',
+            'LSMinimumSystemVersion': '12.0',
+            'NSHighResolutionCapable': True,
+            'NSHumanReadableCopyright': 'Copyright © LarkSync contributors',
+        }},
     )
 """
     SPEC_FILE.write_text(spec_content, encoding="utf-8")
@@ -561,6 +581,7 @@ def _build_dmg() -> None:
         sys.exit(1)
 
     version = _read_version()
+    _sign_macos_app(app_bundle)
     env = os.environ.copy()
     env["APP_VERSION"] = version
     dmg_suffix = os.getenv("LARKSYNC_MACOS_DMG_SUFFIX", "").strip()
@@ -568,7 +589,47 @@ def _build_dmg() -> None:
         env["APP_ARCH_SUFFIX"] = dmg_suffix
     env["APP_BUNDLE"] = str(app_bundle)
     run(["bash", str(create_dmg_script)], cwd=PROJECT_ROOT, env=env)
+    dmg_name = f"LarkSync-{version}{f'-{dmg_suffix}' if dmg_suffix else ''}.dmg"
+    dmg_path = OUTPUT_DIR / dmg_name
+    if not dmg_path.is_file():
+        raise FileNotFoundError(f"DMG 脚本未生成预期产物: {dmg_path}")
+    _notarize_macos_dmg(dmg_path)
     print("  ✓ DMG 已生成")
+
+
+def _sign_macos_app(app_bundle: Path) -> None:
+    """对完整 App Bundle 签名并执行严格校验；无证书时使用 CI 可验证的 ad-hoc 签名。"""
+    identity = os.getenv("LARKSYNC_MACOS_CODESIGN_IDENTITY", "").strip() or "-"
+    command = ["codesign", "--force", "--deep", "--sign", identity]
+    if identity != "-":
+        command.extend(["--options", "runtime", "--timestamp"])
+    if MACOS_ENTITLEMENTS.is_file():
+        command.extend(["--entitlements", str(MACOS_ENTITLEMENTS)])
+    command.append(str(app_bundle))
+    run(command, cwd=PROJECT_ROOT)
+    run(["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_bundle)])
+
+
+def _notarize_macos_dmg(dmg_path: Path) -> bool:
+    """提交 Apple 公证并 staple；开发/PR 构建可显式不要求公证。"""
+    required = os.getenv("LARKSYNC_REQUIRE_MACOS_NOTARIZATION", "").strip().lower() in {"1", "true", "yes", "on"}
+    profile = os.getenv("LARKSYNC_NOTARYTOOL_PROFILE", "").strip()
+    apple_id = os.getenv("APPLE_ID", "").strip()
+    team_id = os.getenv("APPLE_TEAM_ID", "").strip()
+    password = os.getenv("APPLE_APP_SPECIFIC_PASSWORD", "").strip()
+    if profile:
+        auth_args = ["--keychain-profile", profile]
+    elif apple_id and team_id and password:
+        auth_args = ["--apple-id", apple_id, "--team-id", team_id, "--password", password]
+    else:
+        if required:
+            raise RuntimeError("正式 macOS 发布要求 Apple 公证凭证，但当前环境未配置。")
+        print("  ! 未配置 Apple 公证凭证，跳过 notarization（仅允许开发/PR 构建）")
+        return False
+    run(["xcrun", "notarytool", "submit", str(dmg_path), *auth_args, "--wait"], cwd=PROJECT_ROOT)
+    run(["xcrun", "stapler", "staple", str(dmg_path)], cwd=PROJECT_ROOT)
+    run(["xcrun", "stapler", "validate", str(dmg_path)], cwd=PROJECT_ROOT)
+    return True
 
 
 def _read_version() -> str:
@@ -630,6 +691,7 @@ def main() -> None:
     print("  LarkSync 安装包构建")
     print("=" * 50)
     _print_build_environment_summary(summary)
+    os.environ["LARKSYNC_BUNDLE_VERSION"] = _read_version()
 
     if not args.skip_frontend:
         step_build_frontend()

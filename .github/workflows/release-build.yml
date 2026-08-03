@@ -131,7 +131,7 @@ jobs:
       - name: Run macOS-targeted backend tests
         working-directory: apps/backend
         run: |
-          python -m pytest tests/test_build_installer.py tests/test_update_service.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_backend_manager.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q
+          python -m pytest tests/test_build_installer.py tests/test_macos_installer_smoke.py tests/test_icon_generator.py tests/test_desktop_window.py tests/test_launcher.py tests/test_tray_notifier.py tests/test_update_service.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_backend_manager.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q
 
       - name: Build macOS installer smoke
         env:
@@ -275,6 +275,30 @@ jobs:
         working-directory: apps/frontend
         run: npm ci
 
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        shell: bash
+        run: |
+          test -n "$MACOS_CERTIFICATE_P12_BASE64"
+          test -n "$MACOS_CERTIFICATE_PASSWORD"
+          test -n "$MACOS_CODESIGN_IDENTITY"
+          CERTIFICATE_PATH="$RUNNER_TEMP/larksync-signing.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/larksync-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          rm -f "$CERTIFICATE_PATH"
+          echo "LARKSYNC_MACOS_CODESIGN_IDENTITY=$MACOS_CODESIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo "LARKSYNC_SIGNING_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
       - name: Verify version matches tag
         shell: bash
         run: |
@@ -294,10 +318,30 @@ jobs:
           LARKSYNC_VERSION: ${{ github.ref_name }}
           LARKSYNC_MACOS_TARGET_ARCH: ${{ matrix.arch }}
           LARKSYNC_MACOS_DMG_SUFFIX: ${{ matrix.arch }}
+          LARKSYNC_REQUIRE_MACOS_NOTARIZATION: "1"
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: python scripts/build_installer.py --dmg
 
       - name: Run macOS install-launch smoke
         run: python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}
+
+      - name: Verify notarization and Gatekeeper acceptance
+        shell: bash
+        run: |
+          for dmg in dist/LarkSync-*.dmg; do
+            xcrun stapler validate "$dmg"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          done
+
+      - name: Remove temporary signing keychain
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          if [[ -n "${LARKSYNC_SIGNING_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$LARKSYNC_SIGNING_KEYCHAIN" || true
+          fi
 
       - name: Generate checksum assets
         shell: bash
@@ -324,7 +368,6 @@ jobs:
           ls -la dist
 
       - name: Upload workflow artifact
-        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: macos-installer-${{ matrix.arch }}

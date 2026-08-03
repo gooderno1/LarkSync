@@ -49,7 +49,12 @@ frontend_dist = project_root / "apps" / "frontend" / "dist"
 tray_icons = project_root / "apps" / "tray" / "icons"
 branding_dir = project_root / "assets" / "branding"
 win_icon = branding_dir / "LarkSync.ico"
+macos_icon = branding_dir / "LarkSync.icns"
+macos_entitlements = project_root / "scripts" / "installer" / "macos" / "LarkSync.entitlements"
 backend_pyproject = project_root / "apps" / "backend" / "pyproject.toml"
+bundle_version = os.getenv("LARKSYNC_BUNDLE_VERSION", "0.0.0").lstrip("v")
+bundle_short_version = bundle_version.split("-")[0]
+codesign_identity = os.getenv("LARKSYNC_MACOS_CODESIGN_IDENTITY", "").strip() or None
 
 datas = []
 if frontend_dist.is_dir():
@@ -121,6 +126,8 @@ exe = EXE(
     upx=True,
     console=False,
     target_arch=_resolve_macos_target_arch(),
+    codesign_identity=codesign_identity if sys.platform == "darwin" else None,
+    entitlements_file=str(macos_entitlements) if sys.platform == "darwin" and macos_entitlements.is_file() else None,
     icon=str(win_icon) if sys.platform == "win32" and win_icon.is_file() else None,
 )
 
@@ -139,6 +146,16 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="LarkSync.app",
-        icon=None,
+        icon=str(macos_icon),
         bundle_identifier="com.larksync.app",
+        info_plist={
+            "CFBundleDisplayName": "LarkSync",
+            "CFBundleName": "LarkSync",
+            "CFBundleShortVersionString": bundle_short_version,
+            "CFBundleVersion": bundle_short_version,
+            "LSApplicationCategoryType": "public.app-category.productivity",
+            "LSMinimumSystemVersion": "12.0",
+            "NSHighResolutionCapable": True,
+            "NSHumanReadableCopyright": "Copyright © LarkSync contributors",
+        },
     )

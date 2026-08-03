@@ -7,6 +7,7 @@ LarkSync 打包入口（受版本控制）。
 from __future__ import annotations
 
 import os
+import secrets
 import socket
 import sys
 import time
@@ -102,8 +103,38 @@ def _run_backend() -> None:
     )
 
 
+def _run_keychain_smoke(result_path: Path) -> int:
+    """验证安装版能通过系统 Keychain 完成凭证写入、读取和清理。"""
+    import json
+    import keyring
+
+    account = f"ci-{os.getpid()}-{secrets.token_hex(4)}"
+    value = secrets.token_urlsafe(32)
+    payload: dict[str, object]
+    try:
+        keyring.set_password("com.larksync.app.smoke", account, value)
+        payload = {"ok": keyring.get_password("com.larksync.app.smoke", account) == value}
+    except Exception as exc:
+        payload = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        try:
+            keyring.delete_password("com.larksync.app.smoke", account)
+        except Exception:
+            pass
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return 0 if payload.get("ok") else 1
+
+
 def entrypoint(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if "--keychain-smoke-result" in args:
+        index = args.index("--keychain-smoke-result")
+        try:
+            result_path = Path(args[index + 1]).expanduser().resolve()
+        except IndexError as exc:
+            raise ValueError("--keychain-smoke-result 缺少输出路径") from exc
+        return _run_keychain_smoke(result_path)
     if "--backend" in args:
         _run_backend()
         return 0

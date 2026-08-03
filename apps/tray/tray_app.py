@@ -65,7 +65,7 @@ from apps.tray.desktop_window import (
     open_desktop_window,
     send_desktop_window_command,
 )
-from apps.tray.icon_generator import generate_icons, get_icon_path
+from apps.tray.icon_generator import generate_icons, get_icon_path, get_macos_icon_path
 from apps.tray.autostart import is_autostart_enabled, repair_autostart_if_needed, toggle_autostart
 from apps.tray import notifier
 from apps.tray import windows_install_helper
@@ -591,7 +591,7 @@ class LarkSyncTray:
             menu=self._build_menu(),
         )
         try:
-            self._icon.run()
+            self._icon.run(setup=self._on_tray_ready)
         finally:
             # pystray.run() 退出后（无论是正常退出还是异常），清理所有子进程
             self._cleanup_all()
@@ -1082,10 +1082,30 @@ class LarkSyncTray:
         if self._icon:
             self._icon.icon = self._load_icon(state)
             self._icon.title = self._status_text()
+            self._mark_macos_template_icon()
+
+    def _on_tray_ready(self, icon: Any) -> None:
+        """让托盘后端显示图标，并在 macOS 上启用系统 Template 渲染。"""
+        icon.visible = True
+        self._mark_macos_template_icon()
+
+    def _mark_macos_template_icon(self) -> bool:
+        if sys.platform != "darwin" or self._icon is None:
+            return False
+        native_image = getattr(self._icon, "_icon_image", None)
+        setter = getattr(native_image, "setTemplate_", None)
+        if not callable(setter):
+            return False
+        setter(True)
+        return True
 
     def _load_icon(self, state: str) -> "Image.Image":
         """加载指定状态的图标。"""
-        icon_path = get_icon_path(state)
+        icon_path = (
+            get_macos_icon_path(state)
+            if sys.platform == "darwin"
+            else get_icon_path(state)
+        )
         if icon_path and icon_path.is_file():
             return Image.open(str(icon_path))
         # fallback: 生成一个简单的彩色方块

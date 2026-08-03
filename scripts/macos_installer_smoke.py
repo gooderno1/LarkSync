@@ -5,14 +5,16 @@ macOS DMG 安装 / 启动 smoke 检查。
 流程：
 1. 挂载 DMG
 2. 将 LarkSync.app 复制到临时 Applications 目录
-3. 启动 .app 内可执行文件的 `--backend` 模式
-4. 轮询 /health，确认安装后的 bundle 可真实启动
+3. 校验 Bundle 图标、Info.plist 与代码签名
+4. 启动后端并配置隔离的 OAuth smoke 凭证
+5. 启动真实 Cocoa/WKWebView，确认引导页和二维码可见
 """
 
 from __future__ import annotations
 
 import argparse
 import http.client
+import json
 import os
 import plistlib
 import shutil
@@ -90,6 +92,88 @@ def _assert_backend_port_available() -> None:
         sock.settimeout(1)
         if sock.connect_ex(("127.0.0.1", 18765)) == 0:
             raise RuntimeError("127.0.0.1:18765 已被占用，无法执行 macOS 安装启动 smoke")
+
+
+def _assert_bundle_metadata(app_bundle: Path) -> dict[str, object]:
+    info_path = app_bundle / "Contents" / "Info.plist"
+    if not info_path.is_file():
+        raise FileNotFoundError(f"App Bundle 缺少 Info.plist: {info_path}")
+    with info_path.open("rb") as stream:
+        info = plistlib.load(stream)
+    expected = {
+        "CFBundleIdentifier": "com.larksync.app",
+        "CFBundleDisplayName": "LarkSync",
+        "CFBundleName": "LarkSync",
+        "NSHighResolutionCapable": True,
+    }
+    for key, value in expected.items():
+        if info.get(key) != value:
+            raise RuntimeError(f"Info.plist 字段异常: {key}={info.get(key)!r}, expected={value!r}")
+    if not str(info.get("CFBundleShortVersionString") or "").strip():
+        raise RuntimeError("Info.plist 缺少 CFBundleShortVersionString")
+    icon_name = str(info.get("CFBundleIconFile") or "").strip()
+    if not icon_name:
+        raise RuntimeError("Info.plist 缺少 CFBundleIconFile")
+    icon_path = app_bundle / "Contents" / "Resources" / icon_name
+    if not icon_path.suffix:
+        icon_path = icon_path.with_suffix(".icns")
+    if not icon_path.is_file() or icon_path.stat().st_size <= 0:
+        raise FileNotFoundError(f"App Bundle 图标无效: {icon_path}")
+    return info
+
+
+def _assert_code_signature(app_bundle: Path) -> None:
+    subprocess.run(
+        ["codesign", "--verify", "--deep", "--strict", "--verbose=2", str(app_bundle)],
+        check=True,
+        capture_output=True,
+    )
+
+
+def _put_json(path: str, payload: dict[str, object]) -> dict[str, object]:
+    body = json.dumps(payload).encode("utf-8")
+    connection = http.client.HTTPConnection("127.0.0.1", 18765, timeout=5)
+    connection.request("PUT", path, body=body, headers={"Content-Type": "application/json"})
+    response = connection.getresponse()
+    raw = response.read()
+    connection.close()
+    if response.status < 200 or response.status >= 300:
+        raise RuntimeError(f"{path} 返回 HTTP {response.status}: {raw.decode('utf-8', errors='replace')}")
+    decoded = json.loads(raw.decode("utf-8"))
+    if not isinstance(decoded, dict):
+        raise RuntimeError(f"{path} 未返回 JSON 对象")
+    return decoded
+
+
+def _wait_for_gui_result(result_path: Path, process: subprocess.Popen, timeout_seconds: float) -> dict[str, object]:
+    deadline = time.time() + max(timeout_seconds, 0.1)
+    while time.time() < deadline:
+        if result_path.is_file():
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict) or not payload.get("ok"):
+                raise RuntimeError(f"WKWebView GUI smoke 未通过: {payload}")
+            return payload
+        if process.poll() is not None:
+            raise RuntimeError(f"WKWebView GUI 进程提前退出: exit={process.poll()}")
+        time.sleep(0.25)
+    raise TimeoutError(f"WKWebView GUI smoke 超时，未生成结果: {result_path}")
+
+
+def _run_keychain_smoke(executable: Path, *, env: dict[str, str], cwd: Path, result_path: Path) -> dict[str, object]:
+    completed = subprocess.run(
+        [str(executable), "--keychain-smoke-result", str(result_path)],
+        env=env,
+        cwd=str(cwd),
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if not result_path.is_file():
+        raise RuntimeError(f"Keychain smoke 未生成结果，exit={completed.returncode}")
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    if completed.returncode != 0 or not isinstance(payload, dict) or not payload.get("ok"):
+        raise RuntimeError(f"Keychain smoke 未通过: {payload}")
+    return payload
 
 
 def _read_log_tail(path: Path, *, max_chars: int = _LOG_TAIL_MAX_CHARS) -> str:
@@ -189,6 +273,7 @@ def run_macos_installer_smoke(
 
     mount_point: Path | None = None
     process: subprocess.Popen | None = None
+    gui_process: subprocess.Popen | None = None
     temp_root = Path(tempfile.mkdtemp(prefix="larksync-macos-smoke-"))
     install_root = temp_root / "Applications"
     data_root = temp_root / "AppData"
@@ -201,6 +286,8 @@ def run_macos_installer_smoke(
         mount_point = _attach_dmg(dmg_path)
         app_drop_link = _assert_app_drop_link(mount_point)
         app_bundle = _copy_app_bundle(mount_point, install_root)
+        info = _assert_bundle_metadata(app_bundle)
+        _assert_code_signature(app_bundle)
         executable = app_bundle / "Contents" / "MacOS" / "LarkSync"
         if not executable.is_file():
             raise FileNotFoundError(f"安装后的 bundle 缺少可执行文件: {executable}")
@@ -208,6 +295,12 @@ def run_macos_installer_smoke(
         env = dict(os.environ)
         env["LARKSYNC_DATA_DIR"] = str(data_root)
         env["LARKSYNC_BACKEND_BIND_HOST"] = "127.0.0.1"
+        keychain_result = _run_keychain_smoke(
+            executable,
+            env=env,
+            cwd=app_bundle,
+            result_path=temp_root / "keychain-result.json",
+        )
         stdout_handle = stdout_path.open("wb")
         stderr_handle = stderr_path.open("wb")
         process = subprocess.Popen(
@@ -226,6 +319,32 @@ def run_macos_installer_smoke(
             stderr_path=stderr_path,
             data_root=data_root,
         )
+        _put_json(
+            "/config",
+            {
+                "auth_client_id": "cli_macos_smoke",
+                "auth_client_secret": "macos-smoke-secret",
+                "auth_redirect_uri": "http://127.0.0.1:18765/auth/callback",
+            },
+        )
+        gui_result_path = temp_root / "wkwebview-result.json"
+        gui_process = subprocess.Popen(
+            [
+                str(executable),
+                "--desktop-window",
+                "--url",
+                "http://127.0.0.1:18765/",
+                "--smoke-result",
+                str(gui_result_path),
+            ],
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            env=env,
+            cwd=str(app_bundle),
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+        )
+        gui_result = _wait_for_gui_result(gui_result_path, gui_process, timeout_seconds)
         return {
             "dmg_path": str(dmg_path),
             "mount_point": str(mount_point),
@@ -235,8 +354,18 @@ def run_macos_installer_smoke(
             "data_root": str(data_root),
             "stdout_path": str(stdout_path),
             "stderr_path": str(stderr_path),
+            "bundle_version": str(info.get("CFBundleShortVersionString")),
+            "gui_result": json.dumps(gui_result, ensure_ascii=False),
+            "keychain_result": json.dumps(keychain_result, ensure_ascii=False),
         }
     finally:
+        if gui_process is not None and gui_process.poll() is None:
+            gui_process.send_signal(signal.SIGTERM)
+            try:
+                gui_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                gui_process.kill()
+                gui_process.wait(timeout=5)
         if process is not None and process.poll() is None:
             process.send_signal(signal.SIGTERM)
             try:

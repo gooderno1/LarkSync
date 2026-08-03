@@ -29,7 +29,7 @@ def is_autostart_enabled() -> bool:
     if sys.platform == "win32":
         return _win_is_enabled()
     elif sys.platform == "darwin":
-        return _mac_plist_path().is_file()
+        return _mac_is_enabled()
     return False
 
 
@@ -71,14 +71,21 @@ def toggle_autostart() -> bool:
 
 def repair_autostart_if_needed() -> bool:
     """修复已存在但已过时的自启动配置。"""
-    if sys.platform != "win32":
-        return False
-    shortcut = _win_shortcut_path()
-    if not shortcut.is_file():
-        return False
-    if _win_shortcut_matches_expected():
-        return False
-    return _win_enable()
+    if sys.platform == "win32":
+        shortcut = _win_shortcut_path()
+        if not shortcut.is_file() or _win_shortcut_matches_expected():
+            return False
+        return _win_enable()
+    if sys.platform == "darwin":
+        plist_path = _mac_plist_path()
+        if not plist_path.is_file():
+            return False
+        if _mac_plist_matches_expected() and _mac_launchctl(
+            ["print", _mac_service_target()], allow_failure=True
+        ):
+            return False
+        return _mac_enable()
+    return False
 
 
 # ---- Windows ----
@@ -325,17 +332,23 @@ def _mac_plist_path() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{_APP_ID}.plist"
 
 
-def _mac_enable() -> bool:
-    """macOS: 创建 LaunchAgent plist。"""
-    plist_path = _mac_plist_path()
-    plist_path.parent.mkdir(parents=True, exist_ok=True)
+def _mac_domain_target() -> str:
+    getuid = getattr(os, "getuid", None)
+    if not callable(getuid):
+        raise RuntimeError("当前平台无法读取 macOS 用户 UID")
+    return f"gui/{getuid()}"
+
+
+def _mac_service_target() -> str:
+    return f"{_mac_domain_target()}/{_APP_ID}"
+
+
+def _mac_plist_content() -> str:
     log_dir = logs_dir()
-    log_dir.mkdir(parents=True, exist_ok=True)
     program_args_xml = "\n".join(
         f"        {_plist_string(arg)}" for arg in _mac_program_arguments()
     )
-
-    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -351,6 +364,8 @@ def _mac_enable() -> bool:
     <true/>
     <key>KeepAlive</key>
     <false/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
     <key>StandardOutPath</key>
     {_plist_string(str(log_dir / "tray-stdout.log"))}
     <key>StandardErrorPath</key>
@@ -358,9 +373,45 @@ def _mac_enable() -> bool:
 </dict>
 </plist>
 """
-    plist_path.write_text(plist_content, encoding="utf-8")
 
-    subprocess.run(["launchctl", "load", str(plist_path)], capture_output=True)
+
+def _mac_plist_matches_expected() -> bool:
+    path = _mac_plist_path()
+    if not path.is_file():
+        return False
+    try:
+        return path.read_text(encoding="utf-8") == _mac_plist_content()
+    except OSError:
+        return False
+
+
+def _mac_launchctl(args: list[str], *, allow_failure: bool = False) -> bool:
+    result = subprocess.run(["launchctl", *args], capture_output=True, text=True)
+    if result.returncode == 0:
+        return True
+    if allow_failure:
+        return False
+    detail = (result.stderr or result.stdout or "unknown launchctl error").strip()
+    raise RuntimeError(f"launchctl {' '.join(args)} 失败: {detail}")
+
+
+def _mac_is_enabled() -> bool:
+    if not _mac_plist_matches_expected():
+        return False
+    return _mac_launchctl(["print", _mac_service_target()], allow_failure=True)
+
+
+def _mac_enable() -> bool:
+    """macOS: 创建 LaunchAgent plist。"""
+    plist_path = _mac_plist_path()
+    plist_path.parent.mkdir(parents=True, exist_ok=True)
+    log_dir = logs_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    plist_path.write_text(_mac_plist_content(), encoding="utf-8")
+
+    _mac_launchctl(["bootout", _mac_service_target()], allow_failure=True)
+    _mac_launchctl(["bootstrap", _mac_domain_target(), str(plist_path)])
+    _mac_launchctl(["kickstart", "-k", _mac_service_target()])
     return True
 
 
@@ -368,6 +419,6 @@ def _mac_disable() -> bool:
     """macOS: 移除 LaunchAgent。"""
     plist_path = _mac_plist_path()
     if plist_path.is_file():
-        subprocess.run(["launchctl", "unload", str(plist_path)], capture_output=True)
+        _mac_launchctl(["bootout", _mac_service_target()], allow_failure=True)
         plist_path.unlink()
     return True

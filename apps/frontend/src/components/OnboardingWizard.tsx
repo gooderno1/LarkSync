@@ -128,6 +128,15 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
 
   const authorizeUrl = authorizeQuery.data?.authorize_url ?? "";
   const larkCliStatus = larkCliQuery.data;
+  const qrState = !oauthConfigured
+    ? "configuration-required"
+    : authorizeQuery.isLoading
+      ? "loading"
+      : authorizeQuery.error || qrError
+        ? "error"
+        : qrDataUrl
+          ? "ready"
+          : "waiting";
 
   useEffect(() => {
     let cancelled = false;
@@ -215,7 +224,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
   const windowHost = getWindowHostStatus();
 
   return (
-    <div className="grid h-full grid-rows-[64px_minmax(0,1fr)] overflow-hidden bg-[linear-gradient(180deg,#f5f9ff_0%,#eef5ff_100%)] text-[#102033]">
+    <div data-onboarding-root="true" className="grid h-full grid-rows-[64px_minmax(0,1fr)] overflow-hidden bg-[linear-gradient(180deg,#f5f9ff_0%,#eef5ff_100%)] text-[#102033]">
       <header className="flex h-16 items-center justify-between border-b border-[#d7e6ff] bg-white/88 px-6 backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-4">
           <img src="/logo-horizontal.png" alt="LarkSync" className="h-8 w-auto object-contain" draggable={false} />
@@ -231,8 +240,8 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
         </div>
       </header>
 
-      <main className="grid min-h-0 grid-cols-[310px_minmax(0,1fr)_360px] gap-5 overflow-hidden px-6 py-6">
-        <aside className="showcase-scroll-region min-h-0 min-w-0 space-y-4 overflow-y-auto pr-1" data-onboarding-scroll-column="status">
+      <main data-onboarding-layout="responsive" className="flex min-h-0 flex-col gap-5 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6 xl:grid xl:grid-cols-[310px_minmax(0,1fr)_360px] xl:overflow-hidden">
+        <aside className="showcase-scroll-region order-3 min-h-0 min-w-0 shrink-0 space-y-4 pr-1 xl:order-none xl:overflow-y-auto" data-onboarding-scroll-column="status">
           <Panel
             title="启动状态"
             hint="逐项确认桌面应用卡在哪一步。"
@@ -272,7 +281,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
           </Panel>
         </aside>
 
-        <section className="showcase-scroll-region min-h-0 min-w-0 space-y-5 overflow-y-auto pr-1" data-onboarding-scroll-column="authorization">
+        <section className="showcase-scroll-region order-1 min-h-0 min-w-0 shrink-0 space-y-5 pr-1 xl:order-none xl:overflow-y-auto" data-onboarding-scroll-column="authorization">
           <Panel
             title="扫码授权"
             hint="二维码承载 LarkSync 原生 OAuth 授权 URL；浏览器打开是可靠 fallback。"
@@ -287,17 +296,29 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
               </button>
             }
           >
-            <div className="grid grid-cols-[280px_minmax(0,1fr)] gap-5">
-              <div className="rounded-lg border border-[#d7e4f5] bg-[#f8fbff] p-4">
-                <div className="grid aspect-square place-items-center rounded-xl border border-[#d7e4f5] bg-white p-3">
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <div className="mx-auto w-full max-w-[360px] rounded-lg border border-[#d7e4f5] bg-[#f8fbff] p-4 lg:mx-0 lg:max-w-none">
+                <div data-testid="oauth-qr-panel" data-qr-state={qrState} aria-live="polite" className="grid aspect-square place-items-center rounded-xl border border-[#d7e4f5] bg-white p-3">
                   {!oauthConfigured ? (
-                    <QrPlaceholder title="待配置" hint="保存 App ID 和 App Secret 后生成二维码" />
+                    <div className="text-center">
+                      <QrPlaceholder title="需要先配置应用" hint="保存 App ID 和 App Secret 后会自动生成二维码" />
+                      <button
+                        type="button"
+                        className="mt-3 rounded-lg border border-[#c9d8ec] px-3 py-2 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]"
+                        onClick={() => {
+                          setAdvancedOpen(true);
+                          document.getElementById("advanced-oauth-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }}
+                      >
+                        前往配置 OAuth
+                      </button>
+                    </div>
                   ) : authorizeQuery.isLoading ? (
                     <QrPlaceholder title="生成中" hint="正在获取授权 URL" loading />
                   ) : authorizeQuery.error ? (
                     <QrPlaceholder title="生成失败" hint={authorizeQuery.error.message} tone="danger" />
                   ) : qrDataUrl ? (
-                    <img src={qrDataUrl} alt="飞书 OAuth 授权二维码" className="h-full w-full object-contain" draggable={false} />
+                    <img data-testid="oauth-qr-image" src={qrDataUrl} alt="飞书 OAuth 授权二维码" className="h-full w-full object-contain" draggable={false} />
                   ) : (
                     <QrPlaceholder title="暂无二维码" hint={qrError || "授权 URL 尚未生成"} tone={qrError ? "danger" : "neutral"} />
                   )}
@@ -378,7 +399,8 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
           ) : null}
         </section>
 
-        <aside className="showcase-scroll-region min-h-0 min-w-0 space-y-4 overflow-y-auto pr-1" data-onboarding-scroll-column="advanced">
+        <aside className="showcase-scroll-region order-2 min-h-0 min-w-0 shrink-0 space-y-4 pr-1 xl:order-none xl:overflow-y-auto" data-onboarding-scroll-column="advanced">
+          <div id="advanced-oauth-config">
           <Panel
             title="高级 OAuth 配置"
             hint={advancedOpen ? "填写飞书企业自建应用参数。" : "配置已收起，可随时修改。"}
@@ -440,6 +462,7 @@ export function OnboardingWizard({ oauthConfigured, connected }: Props) {
               </div>
             )}
           </Panel>
+          </div>
 
           <Panel
             title="CLI 辅助授权"

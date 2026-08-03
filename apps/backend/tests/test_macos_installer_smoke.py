@@ -88,7 +88,7 @@ def test_assert_app_drop_link_rejects_missing_or_wrong_target(
         smoke._assert_app_drop_link(mount_point)
 
 
-def test_run_macos_installer_smoke_installs_and_launches_backend(
+def test_run_macos_installer_smoke_installs_and_launches_backend_and_wkwebview(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -107,11 +107,27 @@ def test_run_macos_installer_smoke_installs_and_launches_backend(
     monkeypatch.setattr(smoke, "_attach_dmg", lambda dmg_path: mount_point)
     monkeypatch.setattr(smoke, "_assert_app_drop_link", lambda _mount_point: mount_point / "Applications")
     monkeypatch.setattr(smoke, "_copy_app_bundle", lambda _mount_point, _target_root: copied_app)
+    monkeypatch.setattr(smoke, "_assert_bundle_metadata", lambda _app: {"CFBundleShortVersionString": "1.0.0"})
+    monkeypatch.setattr(smoke, "_assert_code_signature", lambda _app: None)
+    monkeypatch.setattr(smoke, "_run_keychain_smoke", lambda *args, **kwargs: {"ok": True})
     monkeypatch.setattr(smoke, "_wait_for_health", lambda timeout_seconds, **kwargs: None)
+    configured: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(smoke, "_put_json", lambda path, payload: configured.append((path, payload)) or {})
+    monkeypatch.setattr(
+        smoke,
+        "_wait_for_gui_result",
+        lambda result_path, process, timeout_seconds: {
+            "ok": True,
+            "onboarding_visible": True,
+            "qr_state": "ready",
+            "qr_visible": True,
+            "qr_is_data_url": True,
+        },
+    )
     detached: list[Path] = []
     monkeypatch.setattr(smoke, "_detach_dmg", lambda path: detached.append(path))
 
-    captured: dict[str, object] = {}
+    captured: dict[str, object] = {"calls": [], "signals": 0}
 
     class DummyProcess:
         def __init__(self) -> None:
@@ -122,6 +138,7 @@ def test_run_macos_installer_smoke_installs_and_launches_backend(
 
         def send_signal(self, sig):
             captured["signal"] = sig
+            captured["signals"] = int(captured["signals"]) + 1
             self._poll = 0
 
         def wait(self, timeout=None):
@@ -134,8 +151,7 @@ def test_run_macos_installer_smoke_installs_and_launches_backend(
             self._poll = 0
 
     def fake_popen(args, **kwargs):
-        captured["args"] = args
-        captured["kwargs"] = kwargs
+        captured["calls"].append((args, kwargs))
         return DummyProcess()
 
     monkeypatch.setattr(smoke.subprocess, "Popen", fake_popen)
@@ -150,14 +166,47 @@ def test_run_macos_installer_smoke_installs_and_launches_backend(
     assert result["app_bundle"] == str(copied_app)
     assert result["stdout_path"].endswith("bundle-stdout.log")
     assert result["stderr_path"].endswith("bundle-stderr.log")
-    assert captured["args"] == [str(copied_exec), "--backend"]
-    kwargs = captured["kwargs"]
+    calls = captured["calls"]
+    assert calls[0][0] == [str(copied_exec), "--backend"]
+    assert calls[1][0][:4] == [
+        str(copied_exec),
+        "--desktop-window",
+        "--url",
+        "http://127.0.0.1:18765/",
+    ]
+    assert "--smoke-result" in calls[1][0]
+    kwargs = calls[0][1]
     assert kwargs["env"]["LARKSYNC_BACKEND_BIND_HOST"] == "127.0.0.1"
     assert "LARKSYNC_DATA_DIR" in kwargs["env"]
     assert kwargs["cwd"] == str(copied_app)
     assert kwargs["stdin"] == smoke.subprocess.DEVNULL
     assert captured["signal"] == signal.SIGTERM
+    assert captured["signals"] == 2
+    assert configured[0][0] == "/config"
+    assert configured[0][1]["auth_client_id"] == "cli_macos_smoke"
     assert detached == [mount_point]
+
+
+def test_assert_bundle_metadata_requires_real_icon(tmp_path: Path) -> None:
+    app = tmp_path / "LarkSync.app"
+    resources = app / "Contents" / "Resources"
+    resources.mkdir(parents=True)
+    info = {
+        "CFBundleIdentifier": "com.larksync.app",
+        "CFBundleDisplayName": "LarkSync",
+        "CFBundleName": "LarkSync",
+        "CFBundleShortVersionString": "1.2.3",
+        "CFBundleIconFile": "LarkSync.icns",
+        "NSHighResolutionCapable": True,
+    }
+    with (app / "Contents" / "Info.plist").open("wb") as stream:
+        smoke.plistlib.dump(info, stream)
+
+    with pytest.raises(FileNotFoundError, match="图标无效"):
+        smoke._assert_bundle_metadata(app)
+
+    (resources / "LarkSync.icns").write_bytes(b"icns")
+    assert smoke._assert_bundle_metadata(app)["CFBundleIdentifier"] == "com.larksync.app"
 
 
 def test_run_macos_installer_smoke_rejects_non_macos(tmp_path: Path) -> None:

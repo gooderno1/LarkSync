@@ -1,5 +1,7 @@
+// @vitest-environment jsdom
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OnboardingWizard } from "./OnboardingWizard";
 
@@ -79,6 +81,7 @@ const mockState = vi.hoisted(() => ({
     },
   },
 }));
+const mockQrToDataURL = vi.hoisted(() => vi.fn());
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: (options: { queryKey?: readonly unknown[] }) => (
@@ -112,12 +115,18 @@ vi.mock("./ui/toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+vi.mock("./ThemeToggle", () => ({
+  ThemeToggle: () => <button type="button">主题</button>,
+}));
+
 vi.mock("qrcode", () => ({
-  toDataURL: vi.fn(),
+  toDataURL: mockQrToDataURL,
 }));
 
 describe("OnboardingWizard smoke", () => {
   beforeEach(() => {
+    mockQrToDataURL.mockReset();
+    mockQrToDataURL.mockResolvedValue("data:image/png;base64,macos-qr");
     mockState.config = {};
     mockState.auth = {
       loading: false,
@@ -157,6 +166,8 @@ describe("OnboardingWizard smoke", () => {
     };
   });
 
+  afterEach(() => cleanup());
+
   it("renders the light OAuth configuration workspace before app credentials exist", () => {
     const html = renderToStaticMarkup(<OnboardingWizard oauthConfigured={false} connected={false} />);
 
@@ -172,11 +183,42 @@ describe("OnboardingWizard smoke", () => {
     expect(html).toContain("Redirect URI");
     expect(html).toContain("CLI 辅助授权");
     expect(html).toContain("未检测到 lark-cli");
-    expect(html).toContain("grid-cols-[310px_minmax(0,1fr)_360px]");
+    expect(html).toContain("xl:grid-cols-[310px_minmax(0,1fr)_360px]");
+    expect(html).toContain('data-onboarding-layout="responsive"');
+    expect(html).toContain("需要先配置应用");
+    expect(html).toContain("前往配置 OAuth");
     expect(html).toContain("grid-rows-[64px_minmax(0,1fr)]");
     expect((html.match(/data-onboarding-scroll-column=/g) || [])).toHaveLength(3);
     expect(html).not.toContain("min-[1440px]");
     expect(html).not.toContain("bg-zinc-900/70");
+  });
+
+  it("generates and renders a real QR image after OAuth is configured", async () => {
+    mockState.config = { auth_client_id: "cli_test" };
+
+    const view = render(<OnboardingWizard oauthConfigured connected={false} />);
+
+    await waitFor(() => {
+      expect(view.getByTestId("oauth-qr-panel").getAttribute("data-qr-state")).toBe("ready");
+    });
+    const image = view.getByTestId("oauth-qr-image");
+    expect(image.getAttribute("src")).toBe("data:image/png;base64,macos-qr");
+    expect(mockQrToDataURL).toHaveBeenCalledWith(
+      "https://open.feishu.cn/oauth?state=state-1",
+      expect.objectContaining({ width: 236 })
+    );
+  });
+
+  it("shows a recoverable QR error state", async () => {
+    mockState.config = { auth_client_id: "cli_test" };
+    mockQrToDataURL.mockRejectedValue(new Error("WebKit canvas unavailable"));
+
+    const view = render(<OnboardingWizard oauthConfigured connected={false} />);
+
+    await waitFor(() => {
+      expect(view.getByTestId("oauth-qr-panel").getAttribute("data-qr-state")).toBe("error");
+    });
+    expect(view.getByText("WebKit canvas unavailable")).toBeTruthy();
   });
 
   it("renders browser fallback and local callback warning after OAuth is configured", () => {

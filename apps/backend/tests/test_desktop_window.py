@@ -250,6 +250,51 @@ def test_bring_desktop_window_to_front_uses_temporary_topmost_fallback(monkeypat
     ) < calls.index(("window_pos", desktop_window._HWND_NOTOPMOST))
 
 
+def test_bring_desktop_window_to_front_activates_macos_app(monkeypatch) -> None:
+    calls: list[object] = []
+
+    class FakeApplication:
+        def activateIgnoringOtherApps_(self, value: bool) -> None:
+            calls.append(("activate", value))
+
+    class FakeNSApplication:
+        @staticmethod
+        def sharedApplication():
+            return FakeApplication()
+
+    class FakeAppKit:
+        NSApplication = FakeNSApplication
+
+    class FakeNative:
+        def makeKeyAndOrderFront_(self, sender) -> None:
+            calls.append(("front", sender))
+
+    class FakeWindow:
+        native = FakeNative()
+
+    monkeypatch.setattr(desktop_window.sys, "platform", "darwin")
+
+    assert desktop_window.bring_desktop_window_to_front(FakeWindow(), appkit=FakeAppKit()) is True
+    assert calls == [("activate", True), ("front", None)]
+
+
+def test_ui_smoke_probe_writes_success_result(tmp_path: Path) -> None:
+    result_path = tmp_path / "result.json"
+
+    class FakeWindow:
+        def evaluate_js(self, _script: str):
+            return {
+                "onboarding_visible": True,
+                "qr_state": "ready",
+                "qr_visible": True,
+                "qr_is_data_url": True,
+            }
+
+    desktop_window._run_ui_smoke_probe(FakeWindow(), result_path, timeout=0.1)
+
+    assert '"ok": true' in result_path.read_text(encoding="utf-8")
+
+
 def test_control_server_restores_and_navigates_existing_window(tmp_path: Path) -> None:
     actions: list[tuple[str, str | None]] = []
 

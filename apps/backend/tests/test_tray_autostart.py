@@ -57,6 +57,7 @@ def test_mac_autostart_uses_launcher_script_in_dev_mode(
     commands: list[list[str]] = []
 
     monkeypatch.setattr(autostart.sys, "platform", "darwin")
+    monkeypatch.setattr(autostart.os, "getuid", lambda: 501, raising=False)
     monkeypatch.setattr(autostart.sys, "executable", str(python_executable), raising=False)
     monkeypatch.setattr(autostart.sys, "frozen", False, raising=False)
     monkeypatch.setattr(autostart, "_PROJECT_ROOT", repo_root)
@@ -75,7 +76,11 @@ def test_mac_autostart_uses_launcher_script_in_dev_mode(
     assert f"<string>{launcher_path}</string>" in content
     assert str(runtime_logs / "tray-stdout.log") in content
     assert str(runtime_logs / "tray-stderr.log") in content
-    assert commands == [["launchctl", "load", str(plist_path)]]
+    assert commands == [
+        ["launchctl", "bootout", "gui/501/com.larksync.agent"],
+        ["launchctl", "bootstrap", "gui/501", str(plist_path)],
+        ["launchctl", "kickstart", "-k", "gui/501/com.larksync.agent"],
+    ]
 
 
 def test_mac_autostart_uses_bundled_executable_when_frozen(
@@ -91,6 +96,7 @@ def test_mac_autostart_uses_bundled_executable_when_frozen(
     commands: list[list[str]] = []
 
     monkeypatch.setattr(autostart.sys, "platform", "darwin")
+    monkeypatch.setattr(autostart.os, "getuid", lambda: 501, raising=False)
     monkeypatch.setattr(autostart.sys, "executable", str(executable), raising=False)
     monkeypatch.setattr(autostart.sys, "frozen", True, raising=False)
     monkeypatch.setattr(autostart, "_PROJECT_ROOT", repo_root)
@@ -107,7 +113,43 @@ def test_mac_autostart_uses_bundled_executable_when_frozen(
     content = plist_path.read_text(encoding="utf-8")
     assert f"<string>{executable}</string>" in content
     assert "launcher.py" not in content
-    assert commands == [["launchctl", "load", str(plist_path)]]
+    assert commands == [
+        ["launchctl", "bootout", "gui/501/com.larksync.agent"],
+        ["launchctl", "bootstrap", "gui/501", str(plist_path)],
+        ["launchctl", "kickstart", "-k", "gui/501/com.larksync.agent"],
+    ]
+
+
+def test_mac_repair_rewrites_stale_launch_agent(monkeypatch, tmp_path: Path) -> None:
+    plist_path = tmp_path / "Library" / "LaunchAgents" / "com.larksync.agent.plist"
+    plist_path.parent.mkdir(parents=True)
+    plist_path.write_text("<plist>stale path</plist>", encoding="utf-8")
+    repaired: list[bool] = []
+
+    monkeypatch.setattr(autostart.sys, "platform", "darwin")
+    monkeypatch.setattr(autostart, "_mac_plist_path", lambda: plist_path)
+    monkeypatch.setattr(autostart, "_mac_enable", lambda: repaired.append(True) or True)
+    monkeypatch.setattr(autostart, "_mac_plist_content", lambda: "expected")
+
+    assert autostart.repair_autostart_if_needed() is True
+    assert repaired == [True]
+
+
+def test_mac_repair_reloads_matching_but_unregistered_agent(monkeypatch, tmp_path: Path) -> None:
+    plist_path = tmp_path / "Library" / "LaunchAgents" / "com.larksync.agent.plist"
+    plist_path.parent.mkdir(parents=True)
+    plist_path.write_text("expected", encoding="utf-8")
+    repaired: list[bool] = []
+
+    monkeypatch.setattr(autostart.sys, "platform", "darwin")
+    monkeypatch.setattr(autostart.os, "getuid", lambda: 501, raising=False)
+    monkeypatch.setattr(autostart, "_mac_plist_path", lambda: plist_path)
+    monkeypatch.setattr(autostart, "_mac_plist_content", lambda: "expected")
+    monkeypatch.setattr(autostart, "_mac_launchctl", lambda args, allow_failure=False: False)
+    monkeypatch.setattr(autostart, "_mac_enable", lambda: repaired.append(True) or True)
+
+    assert autostart.repair_autostart_if_needed() is True
+    assert repaired == [True]
 
 
 def test_win_autostart_uses_tracked_launcher_in_dev_mode(

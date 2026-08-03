@@ -90,6 +90,8 @@
 - 活动管理按任务和运行记录查看上传、下载、删除、跳过、失败、待删除和冲突事件；问题中心集中完成诊断、证据查看、冲突决策、任务重试和后续验证。
 - Windows 桌面壳已接入统一浅色科技风导航与命令栏，以及总览工作台、表格化同步任务页、独立任务详情页、活动与问题、冲突处理、设置和更新维护入口。
 - OAuth token 本地保存，支持自动续期；详见 [安全与隐私说明](docs/SECURITY_AND_PRIVACY.md)。
+- macOS 安装版提供专用 `.icns` 应用图标和深浅色自适应菜单栏 Template 图标；首次授权页在窄窗口自动切为单列，明确区分“需要配置、生成中、二维码可用、生成失败”四种状态。
+- macOS PR 构建会用 ad-hoc 签名执行 Bundle、Keychain 和真实 Cocoa/WKWebView 二维码 smoke；正式 Release 必须使用 Developer ID、Apple notarization、stapling 和 Gatekeeper 校验，配置方式见 [macOS 发布与验收](docs/operations/macos-release.md)。
 - 内置 CLI 和 OpenClaw Skill 模板，适合 Agent / 自动化工作流读取本地飞书缓存。
 - 新增 `production`、`synthetic_test`、`snapshot_test`、`live_readonly`、`live_bidirectional` 五类运行配置档；测试配置使用独立端口、实例锁、数据目录和 Token Store，桌面侧栏常驻显示非生产环境标识。
 - 新增正式数据库 SQLite online backup 脱敏快照、快照配置校验和只读查询基准脚本；快照会停用全部任务、终止遗留 `running`、重映射本地路径、伪名化云端 Token，并且不导出 keyring 凭据。

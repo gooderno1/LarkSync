@@ -1,5 +1,31 @@
 # DEVELOPMENT LOG
 
+## v0.8.20-dev.2 (2026-08-03)
+
+- 开发原因：
+  - v0.8.19 的 macOS Bundle 配置为`icon=None`，Finder、Dock 和 DMG 无法稳定显示品牌图标。
+  - macOS CI 只启动`LarkSync --backend`并检查`/health`，没有执行 Cocoa、WKWebView、引导页或二维码。
+  - 首次授权页固定使用`310px + 主区 + 360px`三栏；窗口低于`1280px`时操作区会被压缩。
+  - LaunchAgent 使用旧版`launchctl load/unload`且不校验返回码；macOS 自启动配置也不会在应用升级或移动后自动修复。
+- 实现方式：
+  - 构建阶段从品牌 PNG 生成`assets/branding/LarkSync.icns`；PyInstaller BUNDLE 写入图标、版本、最低系统`macOS 12.0`和高分辨率元数据。
+  - 菜单栏新增四个单色 Template 状态图标；有效图形高度至少占`64px`画布的`48px`，并通过 Cocoa`setTemplate_(True)`适配系统明暗外观。
+  - OAuth 引导页在`1280px`以下改为单列滚动；二维码面板输出`configuration-required/loading/waiting/ready/error`状态，未配置时提供直达 OAuth 表单的操作。
+  - 桌面宿主在 macOS 使用`NSApplication.activateIgnoringOtherApps_`置前；隐藏窗口在 Dock 再次激活后自动恢复。
+  - LaunchAgent 改用`bootstrap/bootout/kickstart`，服务域固定为`gui/<uid>`；每条命令校验退出码，并在 plist 路径过期时自动重建。
+  - 通知降级链路新增`/usr/bin/osascript`；安装 smoke 新增临时 Keychain 写入/读取/删除验证。
+  - DMG 构建先执行严格`codesign`校验；正式发布要求 Developer ID 凭证和 Apple 公证凭证，公证完成后执行`stapler validate`与 Gatekeeper assessment。
+- 当前结果：
+  - macOS arm64、x86_64 使用同一套可追踪图标、Bundle 元数据和签名规则。
+  - CI 中的安装验收会挂载 DMG、复制 App、校验 Info.plist/图标/签名、验证 Keychain、启动后端、配置隔离 OAuth，再启动真实 WKWebView 并断言二维码 PNG 可见。
+  - 二维码 React effect 已由 DOM 测试直接覆盖；生成成功与 WebKit/canvas 异常均有回归用例。
+- 验证方式：
+  - 后端 macOS 定向测试覆盖构建、Bundle、安装 smoke、图标、桌面窗口、Keychain、LaunchAgent、通知和发布工作流。
+  - 前端执行`npm run lint`、`npm run typecheck`、`npm run test`和`npm run build`；生产依赖`npm audit --omit=dev`为 0 个漏洞，完整依赖审计经安全范围更新后为 0 个漏洞。
+  - Windows 本机可验证跨平台单元测试和浏览器页面；Cocoa、Keychain、签名公证及 Gatekeeper 的最终结果由 macOS GitHub runner 强制验证。
+- 遗留问题：
+  - Windows 主机不能直接执行 Cocoa、Apple Keychain、notarytool 或 Gatekeeper；正式 DMG 是否完成全部真机验收以 GitHub macOS 工作流结果为准。
+
 ## v0.8.20-dev.1 (2026-08-03)
 
 - 开发原因：

@@ -64,3 +64,17 @@ def test_packaged_launcher_fast_paths_desktop_window_without_tray_import(monkeyp
     assert result == 0
     assert calls == [["--url", "http://127.0.0.1:18765/", "--debug-window"]]
     assert "apps.tray.tray_app" not in sys.modules
+
+
+def test_packaged_launcher_keychain_smoke_round_trips_and_deletes(monkeypatch, tmp_path: Path) -> None:
+    values: dict[tuple[str, str], str] = {}
+    fake_keyring = types.ModuleType("keyring")
+    fake_keyring.set_password = lambda service, account, value: values.__setitem__((service, account), value)  # type: ignore[attr-defined]
+    fake_keyring.get_password = lambda service, account: values.get((service, account))  # type: ignore[attr-defined]
+    fake_keyring.delete_password = lambda service, account: values.pop((service, account), None)  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "keyring", fake_keyring)
+    result_path = tmp_path / "keychain.json"
+
+    assert launcher.entrypoint(["--keychain-smoke-result", str(result_path)]) == 0
+    assert '"ok": true' in result_path.read_text(encoding="utf-8")
+    assert values == {}

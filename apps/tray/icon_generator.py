@@ -14,6 +14,7 @@ from pathlib import Path
 ICONS_DIR = Path(__file__).resolve().parent / "icons"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BRAND_ICON = PROJECT_ROOT / "assets" / "branding" / "LarkSync_Logo_Icon_FullColor.png"
+MACOS_APP_ICON = PROJECT_ROOT / "assets" / "branding" / "LarkSync.icns"
 
 
 def generate_icons(size: int = 64, force: bool = False) -> dict[str, Path]:
@@ -67,6 +68,113 @@ def generate_icons(size: int = 64, force: bool = False) -> dict[str, Path]:
         gray.save(str(paused_path), "PNG")
     result["paused"] = paused_path
 
+    # macOS 菜单栏使用单色 Template 图标。状态通过形状右下角的小徽标区分，
+    # 颜色由系统根据浅色/深色菜单栏自动决定。
+    result.update(_generate_macos_template_icons(original, size=size, force=force))
+
+    return result
+
+
+def generate_macos_app_icon(force: bool = False) -> Path | None:
+    """从品牌图生成包含多分辨率表示的 macOS ICNS 应用图标。"""
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    if not BRAND_ICON.is_file():
+        return None
+    if MACOS_APP_ICON.is_file() and not force:
+        return MACOS_APP_ICON
+
+    MACOS_APP_ICON.parent.mkdir(parents=True, exist_ok=True)
+    source = Image.open(str(BRAND_ICON)).convert("RGBA")
+    canvas = _prepare_macos_app_icon(source, 1024)
+    # Pillow 的 ICNS writer 会从 1024px 主图生成 macOS 需要的多尺寸表示。
+    canvas.save(str(MACOS_APP_ICON), format="ICNS")
+    return MACOS_APP_ICON
+
+
+def _prepare_macos_app_icon(source: "Image.Image", size: int) -> "Image.Image":
+    """生成符合 macOS 视觉习惯的圆角方形底板，避免横向标识在 Dock 中过小。"""
+    from PIL import Image, ImageDraw
+
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    inset = int(size * 0.055)
+    radius = int(size * 0.22)
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (inset, inset, size - inset, size - inset),
+        radius=radius,
+        fill=255,
+    )
+    background = Image.new("RGBA", (size, size))
+    pixels = background.load()
+    top = (235, 246, 255)
+    bottom = (218, 250, 241)
+    for y in range(size):
+        blend = y / max(size - 1, 1)
+        color = tuple(int(top[index] * (1 - blend) + bottom[index] * blend) for index in range(3))
+        for x in range(size):
+            pixels[x, y] = (*color, 255)
+    background.putalpha(mask)
+    canvas.alpha_composite(background)
+
+    rgba = source.convert("RGBA")
+    bbox = rgba.getchannel("A").getbbox()
+    mark = rgba.crop(bbox) if bbox else rgba
+    target_width = int(size * 0.72)
+    target_height = int(size * 0.38)
+    ratio = min(target_width / max(mark.width, 1), target_height / max(mark.height, 1))
+    mark = mark.resize(
+        (max(1, int(mark.width * ratio)), max(1, int(mark.height * ratio))),
+        Image.LANCZOS,
+    )
+    canvas.alpha_composite(mark, ((size - mark.width) // 2, (size - mark.height) // 2))
+    return canvas
+
+
+def _generate_macos_template_icons(
+    original: "Image.Image",
+    *,
+    size: int,
+    force: bool,
+) -> dict[str, Path]:
+    """生成适合 18–22pt 菜单栏的高占比单色图标。"""
+    from PIL import Image, ImageDraw
+
+    alpha = original.getchannel("A")
+    bbox = alpha.getbbox()
+    if bbox:
+        alpha = alpha.crop(bbox)
+    target_height = max(1, int(size * 0.82))
+    target_width = max(1, min(size - 4, int(alpha.width * target_height / max(alpha.height, 1))))
+    alpha = alpha.resize((target_width, target_height), Image.LANCZOS)
+
+    states = {"idle": None, "syncing": "sync", "error": "error", "paused": "pause"}
+    result: dict[str, Path] = {}
+    for state, badge in states.items():
+        path = ICONS_DIR / f"icon_macos_{state}Template.png"
+        if not path.is_file() or force:
+            image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+            glyph = Image.new("RGBA", alpha.size, (0, 0, 0, 255))
+            glyph.putalpha(alpha)
+            image.alpha_composite(glyph, ((size - target_width) // 2, (size - target_height) // 2))
+            draw = ImageDraw.Draw(image)
+            if badge:
+                radius = max(5, size // 7)
+                cx, cy = size - radius - 2, size - radius - 2
+                draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=(0, 0, 0, 255))
+                if badge == "pause":
+                    bar = max(1, radius // 3)
+                    draw.rectangle((cx - radius // 2, cy - radius // 2, cx - radius // 2 + bar, cy + radius // 2), fill=(255, 255, 255, 255))
+                    draw.rectangle((cx + radius // 2 - bar, cy - radius // 2, cx + radius // 2, cy + radius // 2), fill=(255, 255, 255, 255))
+                elif badge == "error":
+                    draw.line((cx, cy - radius // 2, cx, cy + radius // 5), fill=(255, 255, 255, 255), width=max(1, radius // 3))
+                    draw.ellipse((cx - 1, cy + radius // 2 - 1, cx + 1, cy + radius // 2 + 1), fill=(255, 255, 255, 255))
+                else:
+                    draw.arc((cx - radius // 2, cy - radius // 2, cx + radius // 2, cy + radius // 2), 30, 300, fill=(255, 255, 255, 255), width=max(1, radius // 3))
+            image.save(str(path), "PNG")
+        result[f"macos_{state}"] = path
     return result
 
 
@@ -185,8 +293,20 @@ def get_icon_path(state: str) -> Path | None:
     return icons.get(state)
 
 
+def get_macos_icon_path(state: str) -> Path | None:
+    """获取 macOS Template 状态图标。"""
+    icon_path = ICONS_DIR / f"icon_macos_{state}Template.png"
+    if icon_path.is_file():
+        return icon_path
+    icons = generate_icons()
+    return icons.get(f"macos_{state}")
+
+
 if __name__ == "__main__":
     icons = generate_icons(size=64, force=True)
+    app_icon = generate_macos_app_icon(force=True)
     for name, path in icons.items():
         print(f"  {name}: {path}")
     print(f"\n生成了 {len(icons)} 个图标到 {ICONS_DIR}")
+    if app_icon:
+        print(f"macOS 应用图标: {app_icon}")
