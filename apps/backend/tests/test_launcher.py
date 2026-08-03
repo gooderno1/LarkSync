@@ -66,6 +66,23 @@ def test_packaged_launcher_fast_paths_desktop_window_without_tray_import(monkeyp
     assert "apps.tray.tray_app" not in sys.modules
 
 
+def test_packaged_launcher_enables_frozen_multiprocessing_before_argument_routing(
+    monkeypatch,
+) -> None:
+    calls: list[str] = []
+    fake_desktop = types.ModuleType("apps.tray.desktop_window")
+    fake_desktop.main = lambda _args: calls.append("desktop") or 0  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "apps.tray.desktop_window", fake_desktop)
+    monkeypatch.setattr(
+        launcher.multiprocessing,
+        "freeze_support",
+        lambda: calls.append("freeze_support"),
+    )
+
+    assert launcher.entrypoint(["--desktop-window", "--url", "http://127.0.0.1:18765/"]) == 0
+    assert calls == ["freeze_support", "desktop"]
+
+
 def test_packaged_launcher_keychain_smoke_round_trips_and_deletes(monkeypatch, tmp_path: Path) -> None:
     values: dict[tuple[str, str], str] = {}
     fake_keyring = types.ModuleType("keyring")

@@ -26,6 +26,7 @@
   - 首轮双架构 runner 暴露“非 macOS 拒绝”测试依赖宿主平台的问题；用例现显式模拟 Linux，不再在真实 macOS 上误挂载不存在的测试 DMG。
   - 第二轮 arm64 runner 已通过定向测试、DMG 构建、Bundle 元数据、签名、Keychain 和后端健康检查；直接执行 Bundle 二进制创建 Cocoa/WKWebView 时以`SIGTRAP(-5)`退出。
   - GUI 安装验收改为使用系统 LaunchServices 的`open -W -n LarkSync.app --args ...`启动真实 App；结果写入后主动关闭窗口，并在提前退出时输出 LaunchServices、Cocoa、后端和 bootstrap 日志尾部。
+  - 第三轮 arm64 runner 证明 LaunchServices 已正常拉起 Bundle，但 WKWebView 的`multiprocessing.resource_tracker`冻结子进程被托盘参数解析器误拦截；打包入口现于任何参数路由前执行`multiprocessing.freeze_support()`。
 - 遗留问题：
   - Windows 主机不能直接执行 Cocoa、Apple Keychain、notarytool 或 Gatekeeper；正式 DMG 是否完成全部真机验收以 GitHub macOS 工作流结果为准。
 

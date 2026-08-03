@@ -6,6 +6,7 @@ LarkSync 打包入口（受版本控制）。
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 import secrets
 import socket
@@ -127,6 +128,10 @@ def _run_keychain_smoke(result_path: Path) -> int:
 
 
 def entrypoint(argv: list[str] | None = None) -> int:
+    # PyInstaller replaces this function on every supported platform. It must
+    # run before our own argument routing so Cocoa/WKWebView resource tracker
+    # children (``-B -S -I -c ...``) do not fall through to the tray parser.
+    multiprocessing.freeze_support()
     args = list(sys.argv[1:] if argv is None else argv)
     if "--keychain-smoke-result" in args:
         index = args.index("--keychain-smoke-result")
