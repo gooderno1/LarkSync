@@ -591,6 +591,7 @@ def run_desktop_window(
 
 def _write_ui_smoke_state(result_path: Path, payload: dict[str, Any]) -> None:
     """Atomically publish native UI progress for the external DMG smoke."""
+    payload = {**payload, "pid": int(payload.get("pid") or os.getpid())}
     result_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = result_path.with_suffix(f"{result_path.suffix}.tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")

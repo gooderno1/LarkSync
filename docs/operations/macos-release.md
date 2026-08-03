@@ -44,7 +44,8 @@ PR/main 的 macOS 构建允许 ad-hoc 签名，用于尽早检查 Bundle 结构�
 - 使用随机临时账户完成 Keychain 写入、读取和删除。
 - 启动安装版后端并检查`127.0.0.1:18765/health`。
 - 写入隔离 OAuth 测试配置。
-- 启动真实 Cocoa/WKWebView。
-- 断言授权首屏存在、二维码状态为`ready`、图片可见且来源是 PNG data URL。
+- 通过 LaunchServices 启动真实 App，并确认 Cocoa/WKWebView 事件循环和原生 PID 存活。
+- 交互式 Mac 直接在原生 WKWebView 断言授权首屏和二维码。
+- GitHub 托管 runner 无交互式 WindowServer 时，仅在 App 停留`webview_starting`且 PID 仍存活后启用 headless Playwright WebKit；继续断言 1080×720 授权首屏存在、二维码状态为`ready`、图片可见且来源是 PNG data URL。
 
 任何步骤失败都会阻止发布。

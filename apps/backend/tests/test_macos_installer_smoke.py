@@ -1,3 +1,4 @@
+import json
 import signal
 import sys
 import threading
@@ -224,6 +225,22 @@ def test_run_macos_installer_smoke_rejects_non_macos(
         smoke.run_macos_installer_smoke(dmg_path=tmp_path / "demo.dmg")
 
 
+def test_macos_ci_installs_webkit_and_checks_visible_qr_contract() -> None:
+    workflow = (PROJECT_ROOT / ".github" / "workflows" / "release-build.yml").read_text(
+        encoding="utf-8"
+    )
+    webkit_script = (PROJECT_ROOT / "scripts" / "macos_webkit_smoke.mjs").read_text(
+        encoding="utf-8"
+    )
+
+    assert workflow.count("npx playwright install webkit") == 2
+    assert 'webkit.launch({ headless: true })' in webkit_script
+    assert 'data-onboarding-root="true"' in webkit_script
+    assert 'data-testid="oauth-qr-panel"' in webkit_script
+    assert 'data-testid="oauth-qr-image"' in webkit_script
+    assert 'data:image/png;base64,' in webkit_script
+
+
 def test_assert_backend_port_available_raises_when_port_is_busy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -348,3 +365,41 @@ def test_wait_for_gui_result_does_not_treat_successful_open_helper_as_app_exit(
     payload = smoke._wait_for_gui_result(result_path, SuccessfulOpenHelper(), 1.0)
 
     assert payload["ok"] is True
+
+
+def test_wait_for_gui_result_uses_webkit_fallback_for_stable_headless_native_loop(
+    tmp_path: Path,
+) -> None:
+    result_path = tmp_path / "result.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "completed": False,
+                "ok": False,
+                "stage": "webview_starting",
+                "pid": smoke.os.getpid(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class SuccessfulOpenHelper:
+        def poll(self):
+            return 0
+
+    payload = smoke._wait_for_gui_result(
+        result_path,
+        SuccessfulOpenHelper(),
+        1.0,
+        headless_webkit_runner=lambda: {
+            "ok": True,
+            "qr_state": "ready",
+            "qr_visible": True,
+        },
+        headless_fallback_delay=0.0,
+    )
+
+    assert payload["ok"] is True
+    assert payload["validation_mode"] == "native-loop+headless-webkit"
+    assert payload["native_stage"] == "webview_starting"
+    assert payload["webkit"]["qr_state"] == "ready"

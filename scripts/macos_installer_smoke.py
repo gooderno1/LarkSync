@@ -13,6 +13,7 @@ macOS DMG 安装 / 启动 smoke 检查。
 from __future__ import annotations
 
 import argparse
+import ctypes
 import http.client
 import json
 import os
@@ -25,11 +26,16 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Callable
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DIST_DIR = PROJECT_ROOT / "dist"
 _LOG_TAIL_MAX_CHARS = 4000
+
+
+def _truthy_env(value: str | None) -> bool:
+    return bool(value and value.strip().lower() in {"1", "true", "yes", "on"})
 
 
 def _find_latest_dmg(dist_dir: Path, suffix: str | None = None) -> Path:
@@ -153,8 +159,11 @@ def _wait_for_gui_result(
     stdout_path: Path | None = None,
     stderr_path: Path | None = None,
     data_root: Path | None = None,
+    headless_webkit_runner: Callable[[], dict[str, object]] | None = None,
+    headless_fallback_delay: float = 5.0,
 ) -> dict[str, object]:
     deadline = time.time() + max(timeout_seconds, 0.1)
+    started_at = time.time()
     last_payload: dict[str, object] = {}
     while time.time() < deadline:
         if result_path.is_file():
@@ -167,6 +176,25 @@ def _wait_for_gui_result(
                 raise RuntimeError(f"WKWebView GUI smoke 未通过: {payload}")
             last_payload = payload
             if payload.get("completed") is False:
+                if (
+                    headless_webkit_runner is not None
+                    and payload.get("stage") == "webview_starting"
+                    and time.time() - started_at >= max(headless_fallback_delay, 0.0)
+                    and _pid_is_alive(payload.get("pid"))
+                ):
+                    webkit_result = headless_webkit_runner()
+                    if not webkit_result.get("ok"):
+                        raise RuntimeError(
+                            f"macOS headless WebKit GUI smoke 未通过: {webkit_result}"
+                        )
+                    return {
+                        "completed": True,
+                        "ok": True,
+                        "validation_mode": "native-loop+headless-webkit",
+                        "native_stage": str(payload.get("stage")),
+                        "native_pid": int(payload["pid"]),
+                        "webkit": webkit_result,
+                    }
                 time.sleep(0.25)
                 continue
             if not payload.get("ok"):
@@ -203,6 +231,91 @@ def _wait_for_gui_result(
             )
         )
     raise TimeoutError(summary)
+
+
+def _pid_is_alive(raw_pid: object) -> bool:
+    try:
+        pid = int(raw_pid)
+        if pid <= 0:
+            return False
+        if os.name == "nt":
+            process_query_limited_information = 0x1000
+            still_active = 259
+            handle = ctypes.windll.kernel32.OpenProcess(
+                process_query_limited_information,
+                False,
+                pid,
+            )
+            if not handle:
+                return False
+            try:
+                exit_code = ctypes.c_ulong()
+                return bool(
+                    ctypes.windll.kernel32.GetExitCodeProcess(
+                        handle,
+                        ctypes.byref(exit_code),
+                    )
+                ) and exit_code.value == still_active
+            finally:
+                ctypes.windll.kernel32.CloseHandle(handle)
+        os.kill(pid, 0)
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _run_headless_webkit_smoke(
+    *,
+    url: str,
+    result_path: Path,
+    timeout_seconds: float,
+) -> dict[str, object]:
+    script_path = PROJECT_ROOT / "scripts" / "macos_webkit_smoke.mjs"
+    completed = subprocess.run(
+        [
+            "node",
+            str(script_path),
+            "--url",
+            url,
+            "--result",
+            str(result_path),
+        ],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=max(timeout_seconds, 10.0),
+    )
+    if not result_path.is_file():
+        raise RuntimeError(
+            "headless WebKit smoke 未生成结果；"
+            f"exit={completed.returncode}; stdout={completed.stdout[-2000:]}; "
+            f"stderr={completed.stderr[-2000:]}"
+        )
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"headless WebKit smoke 返回格式异常: {payload}")
+    if completed.returncode != 0 or not payload.get("ok"):
+        raise RuntimeError(
+            f"headless WebKit smoke 未通过: {payload}; stderr={completed.stderr[-2000:]}"
+        )
+    return payload
+
+
+def _terminate_smoke_app_from_result(result_path: Path) -> None:
+    if not result_path.is_file():
+        return
+    try:
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+        pid = int(payload.get("pid") or 0) if isinstance(payload, dict) else 0
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return
+    if pid <= 0 or pid == os.getpid() or not _pid_is_alive(pid):
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return
 
 
 def _run_keychain_smoke(executable: Path, *, env: dict[str, str], cwd: Path, result_path: Path) -> dict[str, object]:
@@ -329,6 +442,7 @@ def run_macos_installer_smoke(
     stderr_path = temp_root / "bundle-stderr.log"
     stdout_handle = None
     stderr_handle = None
+    gui_result_path = temp_root / "wkwebview-result.json"
     try:
         _assert_backend_port_available()
         mount_point = _attach_dmg(dmg_path)
@@ -375,7 +489,6 @@ def run_macos_installer_smoke(
                 "auth_redirect_uri": "http://127.0.0.1:18765/auth/callback",
             },
         )
-        gui_result_path = temp_root / "wkwebview-result.json"
         gui_process = subprocess.Popen(
             [
                 "open",
@@ -396,6 +509,14 @@ def run_macos_installer_smoke(
             close_fds=True,
             stdin=subprocess.DEVNULL,
         )
+        headless_webkit_runner = None
+        if _truthy_env(os.getenv("CI")):
+            webkit_result_path = temp_root / "webkit-result.json"
+            headless_webkit_runner = lambda: _run_headless_webkit_smoke(
+                url="http://127.0.0.1:18765/",
+                result_path=webkit_result_path,
+                timeout_seconds=timeout_seconds,
+            )
         gui_result = _wait_for_gui_result(
             gui_result_path,
             gui_process,
@@ -403,6 +524,7 @@ def run_macos_installer_smoke(
             stdout_path=stdout_path,
             stderr_path=stderr_path,
             data_root=data_root,
+            headless_webkit_runner=headless_webkit_runner,
         )
         return {
             "dmg_path": str(dmg_path),
@@ -418,6 +540,7 @@ def run_macos_installer_smoke(
             "keychain_result": json.dumps(keychain_result, ensure_ascii=False),
         }
     finally:
+        _terminate_smoke_app_from_result(gui_result_path)
         if gui_process is not None and gui_process.poll() is None:
             gui_process.send_signal(signal.SIGTERM)
             try:
