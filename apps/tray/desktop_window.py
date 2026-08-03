@@ -503,6 +503,7 @@ def run_desktop_window(
     webview_module: Any | None = None,
 ) -> int:
     """Run a blocking pywebview window process."""
+    smoke_path = Path(smoke_result) if smoke_result is not None else None
     webview = webview_module or importlib.import_module("webview")
     window_kwargs: dict[str, Any] = {
         "width": width,
@@ -520,6 +521,11 @@ def run_desktop_window(
     except TypeError:
         window_kwargs.pop("confirm_close", None)
         window = webview.create_window(title, url, **window_kwargs)
+    if smoke_path is not None:
+        _write_ui_smoke_state(
+            smoke_path,
+            {"completed": False, "ok": False, "stage": "window_created"},
+        )
     if sys.platform == "win32" and getattr(getattr(window, "events", None), "shown", None) is not None:
         window.events.shown += _apply_windows_titlebar_palette
     if sys.platform == "darwin" and getattr(getattr(window, "events", None), "shown", None) is not None:
@@ -537,13 +543,23 @@ def run_desktop_window(
     if control_server is not None and shown_event is not None:
         window.events.shown += control_server.start
     loaded_event = getattr(getattr(window, "events", None), "loaded", None)
-    if smoke_result is not None and loaded_event is not None:
-        window.events.loaded += lambda: _schedule_daemon(
-            lambda: _run_ui_smoke_probe(window, Path(smoke_result))
-        )
+    if smoke_path is not None and loaded_event is not None:
+        def _on_smoke_page_loaded() -> None:
+            _write_ui_smoke_state(
+                smoke_path,
+                {"completed": False, "ok": False, "stage": "page_loaded"},
+            )
+            _schedule_daemon(lambda: _run_ui_smoke_probe(window, smoke_path))
+
+        window.events.loaded += _on_smoke_page_loaded
     start_kwargs: dict[str, Any] = {"debug": debug}
     if sys.platform == "win32":
         start_kwargs["gui"] = "edgechromium"
+    if smoke_path is not None:
+        _write_ui_smoke_state(
+            smoke_path,
+            {"completed": False, "ok": False, "stage": "webview_starting"},
+        )
     try:
         try:
             webview.start(**start_kwargs)
@@ -553,7 +569,32 @@ def run_desktop_window(
     finally:
         if control_server is not None:
             control_server.stop()
+    if smoke_path is not None:
+        try:
+            existing = json.loads(smoke_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+        if isinstance(existing, dict) and existing.get("completed") and existing.get("ok"):
+            return 0
+        _write_ui_smoke_state(
+            smoke_path,
+            {
+                "completed": True,
+                "ok": False,
+                "stage": "webview_exited",
+                "error": "native WebView event loop exited before UI verification completed",
+            },
+        )
+        return 1
     return 0
+
+
+def _write_ui_smoke_state(result_path: Path, payload: dict[str, Any]) -> None:
+    """Atomically publish native UI progress for the external DMG smoke."""
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = result_path.with_suffix(f"{result_path.suffix}.tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    temporary.replace(result_path)
 
 
 def _run_ui_smoke_probe(window: Any, result_path: Path, timeout: float = 30.0) -> None:
@@ -586,9 +627,14 @@ def _run_ui_smoke_probe(window: Any, result_path: Path, timeout: float = 30.0) -
         except Exception as exc:  # pragma: no cover - native WebView only
             last_error = f"{type(exc).__name__}: {exc}"
         time.sleep(0.25)
-    result = {**last_result, "ok": _ui_smoke_result_ok(last_result), "error": last_error}
-    result_path.parent.mkdir(parents=True, exist_ok=True)
-    result_path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    result = {
+        **last_result,
+        "completed": True,
+        "ok": _ui_smoke_result_ok(last_result),
+        "stage": "ui_verified" if _ui_smoke_result_ok(last_result) else "ui_probe_timeout",
+        "error": last_error,
+    }
+    _write_ui_smoke_state(result_path, result)
     # The installed-app smoke is launched through LaunchServices. Closing the
     # native window lets ``open -W`` return cleanly and avoids leaving a Cocoa
     # process behind on shared macOS runners.
@@ -625,17 +671,35 @@ def parse_desktop_window_args(argv: list[str] | None = None) -> argparse.Namespa
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_desktop_window_args(argv)
-    return run_desktop_window(
-        args.url,
-        title=args.title,
-        width=args.width,
-        height=args.height,
-        min_width=args.min_width,
-        min_height=args.min_height,
-        debug=args.debug,
-        control_file=args.control_file,
-        smoke_result=args.smoke_result,
-    )
+    if args.smoke_result is not None:
+        _write_ui_smoke_state(
+            args.smoke_result,
+            {"completed": False, "ok": False, "stage": "arguments_parsed"},
+        )
+    try:
+        return run_desktop_window(
+            args.url,
+            title=args.title,
+            width=args.width,
+            height=args.height,
+            min_width=args.min_width,
+            min_height=args.min_height,
+            debug=args.debug,
+            control_file=args.control_file,
+            smoke_result=args.smoke_result,
+        )
+    except Exception as exc:
+        if args.smoke_result is not None:
+            _write_ui_smoke_state(
+                args.smoke_result,
+                {
+                    "completed": True,
+                    "ok": False,
+                    "stage": "desktop_exception",
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+            )
+        raise
 
 
 if __name__ == "__main__":

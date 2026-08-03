@@ -155,13 +155,27 @@ def _wait_for_gui_result(
     data_root: Path | None = None,
 ) -> dict[str, object]:
     deadline = time.time() + max(timeout_seconds, 0.1)
+    last_payload: dict[str, object] = {}
     while time.time() < deadline:
         if result_path.is_file():
-            payload = json.loads(result_path.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict) or not payload.get("ok"):
+            try:
+                payload = json.loads(result_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                time.sleep(0.05)
+                continue
+            if not isinstance(payload, dict):
+                raise RuntimeError(f"WKWebView GUI smoke 未通过: {payload}")
+            last_payload = payload
+            if payload.get("completed") is False:
+                time.sleep(0.25)
+                continue
+            if not payload.get("ok"):
                 raise RuntimeError(f"WKWebView GUI smoke 未通过: {payload}")
             return payload
-        if process.poll() is not None:
+        helper_exit = process.poll()
+        # ``open`` is a LaunchServices helper. A zero exit code only means the
+        # launch request was accepted; the actual App can remain alive.
+        if helper_exit not in (None, 0):
             if stdout_path is not None and stderr_path is not None and data_root is not None:
                 raise RuntimeError(
                     _build_launch_failure_message(
@@ -174,7 +188,21 @@ def _wait_for_gui_result(
                 )
             raise RuntimeError(f"WKWebView GUI 进程提前退出: exit={process.poll()}")
         time.sleep(0.25)
-    raise TimeoutError(f"WKWebView GUI smoke 超时，未生成结果: {result_path}")
+    summary = (
+        f"WKWebView GUI smoke 超时，未生成完成结果: {result_path}; "
+        f"last_payload={last_payload}"
+    )
+    if stdout_path is not None and stderr_path is not None and data_root is not None:
+        raise RuntimeError(
+            _build_launch_failure_message(
+                summary,
+                process=process,
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+                data_root=data_root,
+            )
+        )
+    raise TimeoutError(summary)
 
 
 def _run_keychain_smoke(executable: Path, *, env: dict[str, str], cwd: Path, result_path: Path) -> dict[str, object]:

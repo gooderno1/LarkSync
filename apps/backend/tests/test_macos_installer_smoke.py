@@ -1,5 +1,7 @@
 import signal
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -326,3 +328,23 @@ def test_wait_for_gui_result_reports_native_logs_on_early_exit(tmp_path: Path) -
     assert "launchservices-out" in message
     assert "cocoa-trap" in message
     assert "webview-bootstrap" in message
+
+
+def test_wait_for_gui_result_does_not_treat_successful_open_helper_as_app_exit(
+    tmp_path: Path,
+) -> None:
+    result_path = tmp_path / "result.json"
+
+    class SuccessfulOpenHelper:
+        def poll(self):
+            return 0
+
+    def publish_result() -> None:
+        time.sleep(0.05)
+        result_path.write_text('{"completed": true, "ok": true}', encoding="utf-8")
+
+    threading.Thread(target=publish_result, daemon=True).start()
+
+    payload = smoke._wait_for_gui_result(result_path, SuccessfulOpenHelper(), 1.0)
+
+    assert payload["ok"] is True

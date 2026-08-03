@@ -1,3 +1,4 @@
+import json
 import sys
 import time
 from pathlib import Path
@@ -298,6 +299,43 @@ def test_ui_smoke_probe_writes_success_result(tmp_path: Path) -> None:
 
     assert '"ok": true' in result_path.read_text(encoding="utf-8")
     assert destroyed == [True]
+
+
+def test_run_desktop_window_records_smoke_failure_if_native_loop_returns_early(
+    tmp_path: Path,
+) -> None:
+    result_path = tmp_path / "result.json"
+
+    class FakeEvent:
+        def __iadd__(self, _callback):
+            return self
+
+    class FakeWindow:
+        class Events:
+            shown = FakeEvent()
+            closing = FakeEvent()
+            loaded = FakeEvent()
+
+        events = Events()
+
+    class FakeWebview:
+        def create_window(self, *_args, **_kwargs):
+            return FakeWindow()
+
+        def start(self, **_kwargs):
+            return None
+
+    exit_code = desktop_window.run_desktop_window(
+        "http://127.0.0.1:18765/",
+        smoke_result=result_path,
+        webview_module=FakeWebview(),
+    )
+
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert payload["completed"] is True
+    assert payload["ok"] is False
+    assert payload["stage"] == "webview_exited"
 
 
 def test_control_server_restores_and_navigates_existing_window(tmp_path: Path) -> None:

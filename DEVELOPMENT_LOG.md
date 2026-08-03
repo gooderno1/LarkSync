@@ -27,6 +27,7 @@
   - 第二轮 arm64 runner 已通过定向测试、DMG 构建、Bundle 元数据、签名、Keychain 和后端健康检查；直接执行 Bundle 二进制创建 Cocoa/WKWebView 时以`SIGTRAP(-5)`退出。
   - GUI 安装验收改为使用系统 LaunchServices 的`open -W -n LarkSync.app --args ...`启动真实 App；结果写入后主动关闭窗口，并在提前退出时输出 LaunchServices、Cocoa、后端和 bootstrap 日志尾部。
   - 第三轮 arm64 runner 证明 LaunchServices 已正常拉起 Bundle，但 WKWebView 的`multiprocessing.resource_tracker`冻结子进程被托盘参数解析器误拦截；打包入口现于任何参数路由前执行`multiprocessing.freeze_support()`。
+  - 第四轮 arm64 runner 的冻结子进程错误已消失，LaunchServices helper 以 0 正常返回；安装验收不再把 helper 生命周期等同于 App 生命周期，并原子记录`arguments_parsed/window_created/webview_starting/page_loaded/ui_verified`阶段。
 - 遗留问题：
   - Windows 主机不能直接执行 Cocoa、Apple Keychain、notarytool 或 Gatekeeper；正式 DMG 是否完成全部真机验收以 GitHub macOS 工作流结果为准。
 
