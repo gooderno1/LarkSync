@@ -34,6 +34,9 @@ class SyncLink(Base):
     resource_sync_revision: Mapped[str | None] = mapped_column(
         String, nullable=True, default=None
     )
+    placeholder_refresh_revision: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None
+    )
 
 
 class SyncTombstone(Base):

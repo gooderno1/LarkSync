@@ -26,6 +26,18 @@ GenericFilename = Callable[[str], str]
 ExtractExportSubId = Callable[[str | None, str], str | None]
 GetLocalSignature = Callable[[Path], tuple[str, int, float] | None]
 
+LEGACY_DOCX_PLACEHOLDER_REFRESH_VERSION = "sheet-preview-v1"
+
+
+def build_legacy_docx_placeholder_refresh_revision(
+    cloud_token: str,
+    cloud_mtime: float,
+) -> str:
+    return (
+        f"{cloud_token.strip()}@{int(max(0.0, cloud_mtime) * 1000)}"
+        f"#{LEGACY_DOCX_PLACEHOLDER_REFRESH_VERSION}"
+    )
+
 
 @dataclass(frozen=True)
 class DownloadCandidate:
@@ -81,7 +93,12 @@ class SyncDownloadSupportService:
         if effective_type in {"doc", "docx"} and self._contains_legacy_docx_placeholder(
             local_path
         ):
-            return False
+            expected_refresh_revision = build_legacy_docx_placeholder_refresh_revision(
+                effective_token,
+                cloud_mtime,
+            )
+            if persisted.placeholder_refresh_revision != expected_refresh_revision:
+                return False
         if persisted.cloud_mtime is not None and persisted.cloud_mtime >= (cloud_mtime - 1.0):
             if persisted.local_hash:
                 signature = self._get_local_signature(local_path)
@@ -382,4 +399,9 @@ class SyncDownloadSupportService:
         raise RuntimeError(f"导出任务超时{status_hint}")
 
 
-__all__ = ["DownloadCandidate", "SyncDownloadSupportService"]
+__all__ = [
+    "DownloadCandidate",
+    "LEGACY_DOCX_PLACEHOLDER_REFRESH_VERSION",
+    "SyncDownloadSupportService",
+    "build_legacy_docx_placeholder_refresh_revision",
+]

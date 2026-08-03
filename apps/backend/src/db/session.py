@@ -30,7 +30,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 6
+CURRENT_SCHEMA_VERSION = 7
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -472,6 +472,16 @@ async def _apply_schema_v6(conn) -> None:
     )
 
 
+async def _apply_schema_v7(conn) -> None:
+    await _ensure_column(
+        conn,
+        table="sync_links",
+        column="placeholder_refresh_revision",
+        column_type="TEXT",
+        default_value=None,
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     SchemaMigration(
         version=1,
@@ -502,6 +512,11 @@ _SCHEMA_MIGRATIONS = [
         version=6,
         description="补齐问题人工忽略时间与状态查询索引",
         upgrade=_apply_schema_v6,
+    ),
+    SchemaMigration(
+        version=7,
+        description="记录 Docx 占位符回刷版本，避免同一云端版本无限重转",
+        upgrade=_apply_schema_v7,
     ),
 ]
 

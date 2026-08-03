@@ -98,10 +98,10 @@ async def test_schema_v6_adds_ignored_at_without_changing_existing_problem_state
         ).scalar_one()
     await dispose_engines()
 
-    assert CURRENT_SCHEMA_VERSION == 6
+    assert CURRENT_SCHEMA_VERSION == 7
     assert "ignored_at" in columns
     assert (row.state, row.ignored_reason, row.ignored_at) == ("open", None, None)
-    assert version == "6"
+    assert version == "7"
 
 
 @pytest.mark.asyncio
@@ -224,7 +224,12 @@ async def test_init_db_upgrades_legacy_schema_with_versioned_migrations(tmp_path
     await dispose_engines()
 
     assert {"update_mode", "ignored_subpaths", "last_run_at"}.issubset(sync_task_columns)
-    assert {"local_hash", "cloud_revision", "resource_sync_revision"}.issubset(sync_link_columns)
+    assert {
+        "local_hash",
+        "cloud_revision",
+        "resource_sync_revision",
+        "placeholder_refresh_revision",
+    }.issubset(sync_link_columns)
     assert "idx_sync_runs_task_started_updated" in sync_run_indexes
     assert version == str(CURRENT_SCHEMA_VERSION)
 

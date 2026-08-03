@@ -66,6 +66,7 @@ async def test_sync_link_service_persists_fingerprints(tmp_path) -> None:
         local_mtime=120.0,
         cloud_revision="doc-1@123000",
         cloud_mtime=123.0,
+        placeholder_refresh_revision="doc-1@123000#sheet-preview-v1",
     )
 
     item = await service.get_by_local_path("/tmp/a.md")
@@ -74,6 +75,7 @@ async def test_sync_link_service_persists_fingerprints(tmp_path) -> None:
     assert item.local_size == 10
     assert item.cloud_revision == "doc-1@123000"
     assert item.cloud_mtime == 123.0
+    assert item.placeholder_refresh_revision == "doc-1@123000#sheet-preview-v1"
 
     deleted = await service.delete_by_local_path("/tmp/a.md")
     assert deleted is True

@@ -132,6 +132,7 @@ class FakeLinkService:
         cloud_mtime: float | None = None,
         local_resource_signature: str | None = None,
         resource_sync_revision: str | None = None,
+        placeholder_refresh_revision: str | None = None,
     ):
         item = SyncLinkItem(
             local_path=local_path,
@@ -147,6 +148,7 @@ class FakeLinkService:
             cloud_mtime=cloud_mtime,
             local_resource_signature=local_resource_signature,
             resource_sync_revision=resource_sync_revision,
+            placeholder_refresh_revision=placeholder_refresh_revision,
         )
         self.links[local_path] = item
         self.calls.append(item)

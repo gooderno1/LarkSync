@@ -13,7 +13,10 @@ from src.services.export_task_service import ExportTaskService
 from src.services.file_downloader import FileDownloader
 from src.services.file_uploader import FileUploader
 from src.services.sheet_service import SheetService
-from src.services.sync_download_support_service import DownloadCandidate
+from src.services.sync_download_support_service import (
+    DownloadCandidate,
+    build_legacy_docx_placeholder_refresh_revision,
+)
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_runner_state import SyncFileEvent, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
@@ -414,6 +417,9 @@ class SyncDownloadOrchestrationService:
             cloud_mtime=mtime,
             local_resource_signature=resource_signature,
             resource_sync_revision=cloud_revision,
+            placeholder_refresh_revision=(
+                build_legacy_docx_placeholder_refresh_revision(effective_token, mtime)
+            ),
         )
         if task.sync_mode in {"bidirectional", "upload_only"} and ((task.update_mode or "auto") != "full"):
             await self._rebuild_block_state(

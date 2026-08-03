@@ -27,6 +27,7 @@ class SyncLinkItem:
     cloud_mtime: float | None = None
     local_resource_signature: str | None = None
     resource_sync_revision: str | None = None
+    placeholder_refresh_revision: str | None = None
 
 
 class SyncLinkService:
@@ -50,6 +51,7 @@ class SyncLinkService:
         cloud_mtime: float | None = None,
         local_resource_signature: str | None = None,
         resource_sync_revision: str | None = None,
+        placeholder_refresh_revision: str | None = None,
     ) -> SyncLinkItem:
         session_maker = self._session_maker or get_session_maker()
         updated_at = updated_at if updated_at is not None else time.time()
@@ -77,6 +79,8 @@ class SyncLinkService:
                         record.local_resource_signature = local_resource_signature
                     if resource_sync_revision is not None:
                         record.resource_sync_revision = resource_sync_revision
+                    if placeholder_refresh_revision is not None:
+                        record.placeholder_refresh_revision = placeholder_refresh_revision
                 else:
                     session.add(
                         SyncLink(
@@ -93,6 +97,7 @@ class SyncLinkService:
                             cloud_mtime=cloud_mtime,
                             local_resource_signature=local_resource_signature,
                             resource_sync_revision=resource_sync_revision,
+                            placeholder_refresh_revision=placeholder_refresh_revision,
                         )
                     )
                 await session.commit()
@@ -112,6 +117,7 @@ class SyncLinkService:
             cloud_mtime=cloud_mtime,
             local_resource_signature=local_resource_signature,
             resource_sync_revision=resource_sync_revision,
+            placeholder_refresh_revision=placeholder_refresh_revision,
         )
 
     async def get_by_local_path(self, local_path: str) -> SyncLinkItem | None:
@@ -193,6 +199,7 @@ class SyncLinkService:
             cloud_mtime=record.cloud_mtime,
             local_resource_signature=record.local_resource_signature,
             resource_sync_revision=record.resource_sync_revision,
+            placeholder_refresh_revision=record.placeholder_refresh_revision,
         )
 
 

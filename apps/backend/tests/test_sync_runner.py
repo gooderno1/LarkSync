@@ -240,6 +240,7 @@ class FakeLinkService:
             cloud_mtime=kwargs.get("cloud_mtime"),
             local_resource_signature=kwargs.get("local_resource_signature"),
             resource_sync_revision=kwargs.get("resource_sync_revision"),
+            placeholder_refresh_revision=kwargs.get("placeholder_refresh_revision"),
         )
         self.items.append(item)
         self._persisted = [link for link in self._persisted if link.local_path != local_path]
@@ -1261,6 +1262,120 @@ async def test_runner_redownloads_docx_when_legacy_sheet_placeholder_present(
     assert status.skipped_files == 0
     assert status.completed_files == 1
     assert local_path.read_text(encoding="utf-8") == "# doc-legacy"
+
+
+@pytest.mark.asyncio
+async def test_runner_does_not_repeat_legacy_sheet_placeholder_refresh_for_same_revision(
+    tmp_path: Path,
+) -> None:
+    cloud_mtime = 1700000000
+    tree = DriveNode(
+        token="root",
+        name="根目录",
+        type="folder",
+        children=[
+            DriveNode(
+                token="doc-legacy",
+                name="历史文档",
+                type="docx",
+                modified_time=str(cloud_mtime),
+            )
+        ],
+    )
+    placeholder = "阶段清单（sheet_token: unresolved_sheet）"
+    local_path = tmp_path / "历史文档.md"
+    local_path.write_text(placeholder, encoding="utf-8")
+
+    persisted = [
+        SyncLinkItem(
+            local_path=str(local_path),
+            cloud_token="doc-legacy",
+            cloud_type="docx",
+            task_id="task-legacy-loop",
+            updated_at=float(cloud_mtime),
+        )
+    ]
+
+    class PlaceholderTranscoder(FakeTranscoder):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def to_markdown(
+            self,
+            document_id: str,
+            blocks: list[dict],
+            *,
+            base_dir=None,
+            link_map=None,
+        ) -> str:
+            self.calls += 1
+            return placeholder
+
+    transcoder = PlaceholderTranscoder()
+    link_service = FakeLinkService(persisted)
+    runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=transcoder,
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=link_service,
+        export_task_service=FakeExportTaskService(),
+    )
+    task = SyncTaskItem(
+        id="task-legacy-loop",
+        name="测试任务",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="download_only",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+
+    await runner.run_task(task)
+    first_status = runner.get_status(task.id)
+
+    assert first_status.completed_files == 1
+    assert first_status.skipped_files == 0
+    assert transcoder.calls == 1
+    assert link_service.items[-1].placeholder_refresh_revision is not None
+
+    second_runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=transcoder,
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=link_service,
+        export_task_service=FakeExportTaskService(),
+    )
+    await second_runner.run_task(task)
+    second_status = second_runner.get_status(task.id)
+
+    assert second_status.completed_files == 0
+    assert second_status.skipped_files == 1
+    assert transcoder.calls == 1
+
+    tree.children[0].modified_time = str(cloud_mtime + 10)
+    third_runner = SyncTaskRunner(
+        drive_service=FakeDriveService(tree),
+        docx_service=FakeDocxService(),
+        transcoder=transcoder,
+        file_downloader=FakeFileDownloader(),
+        file_writer=FileWriter(),
+        link_service=link_service,
+        export_task_service=FakeExportTaskService(),
+    )
+    await third_runner.run_task(task)
+    third_status = third_runner.get_status(task.id)
+
+    assert third_status.completed_files == 1
+    assert third_status.skipped_files == 0
+    assert transcoder.calls == 2
 
 
 @pytest.mark.asyncio
