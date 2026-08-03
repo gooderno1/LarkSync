@@ -589,6 +589,15 @@ def _run_ui_smoke_probe(window: Any, result_path: Path, timeout: float = 30.0) -
     result = {**last_result, "ok": _ui_smoke_result_ok(last_result), "error": last_error}
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    # The installed-app smoke is launched through LaunchServices. Closing the
+    # native window lets ``open -W`` return cleanly and avoids leaving a Cocoa
+    # process behind on shared macOS runners.
+    destroy = getattr(window, "destroy", None)
+    if callable(destroy):
+        try:
+            destroy()
+        except Exception:  # pragma: no cover - native WebView cleanup only
+            pass
 
 
 def _ui_smoke_result_ok(payload: dict[str, Any]) -> bool:

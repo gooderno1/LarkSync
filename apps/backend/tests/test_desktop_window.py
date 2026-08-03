@@ -280,6 +280,7 @@ def test_bring_desktop_window_to_front_activates_macos_app(monkeypatch) -> None:
 
 def test_ui_smoke_probe_writes_success_result(tmp_path: Path) -> None:
     result_path = tmp_path / "result.json"
+    destroyed: list[bool] = []
 
     class FakeWindow:
         def evaluate_js(self, _script: str):
@@ -290,9 +291,13 @@ def test_ui_smoke_probe_writes_success_result(tmp_path: Path) -> None:
                 "qr_is_data_url": True,
             }
 
+        def destroy(self) -> None:
+            destroyed.append(True)
+
     desktop_window._run_ui_smoke_probe(FakeWindow(), result_path, timeout=0.1)
 
     assert '"ok": true' in result_path.read_text(encoding="utf-8")
+    assert destroyed == [True]
 
 
 def test_control_server_restores_and_navigates_existing_window(tmp_path: Path) -> None:

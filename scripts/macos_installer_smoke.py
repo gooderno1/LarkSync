@@ -145,7 +145,15 @@ def _put_json(path: str, payload: dict[str, object]) -> dict[str, object]:
     return decoded
 
 
-def _wait_for_gui_result(result_path: Path, process: subprocess.Popen, timeout_seconds: float) -> dict[str, object]:
+def _wait_for_gui_result(
+    result_path: Path,
+    process: subprocess.Popen,
+    timeout_seconds: float,
+    *,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+    data_root: Path | None = None,
+) -> dict[str, object]:
     deadline = time.time() + max(timeout_seconds, 0.1)
     while time.time() < deadline:
         if result_path.is_file():
@@ -154,6 +162,16 @@ def _wait_for_gui_result(result_path: Path, process: subprocess.Popen, timeout_s
                 raise RuntimeError(f"WKWebView GUI smoke 未通过: {payload}")
             return payload
         if process.poll() is not None:
+            if stdout_path is not None and stderr_path is not None and data_root is not None:
+                raise RuntimeError(
+                    _build_launch_failure_message(
+                        "WKWebView GUI 进程提前退出",
+                        process=process,
+                        stdout_path=stdout_path,
+                        stderr_path=stderr_path,
+                        data_root=data_root,
+                    )
+                )
             raise RuntimeError(f"WKWebView GUI 进程提前退出: exit={process.poll()}")
         time.sleep(0.25)
     raise TimeoutError(f"WKWebView GUI smoke 超时，未生成结果: {result_path}")
@@ -212,6 +230,8 @@ def _build_launch_failure_message(
             _read_log_tail(stderr_path),
             f"backend_log={data_root / 'logs' / 'larksync.log'}",
             _read_log_tail(data_root / "logs" / "larksync.log"),
+            f"bootstrap_log={data_root / 'logs' / 'bootstrap-error.log'}",
+            _read_log_tail(data_root / "logs" / "bootstrap-error.log"),
         ]
     )
     return "\n".join(details)
@@ -330,7 +350,11 @@ def run_macos_installer_smoke(
         gui_result_path = temp_root / "wkwebview-result.json"
         gui_process = subprocess.Popen(
             [
-                str(executable),
+                "open",
+                "-W",
+                "-n",
+                str(app_bundle),
+                "--args",
                 "--desktop-window",
                 "--url",
                 "http://127.0.0.1:18765/",
@@ -344,7 +368,14 @@ def run_macos_installer_smoke(
             close_fds=True,
             stdin=subprocess.DEVNULL,
         )
-        gui_result = _wait_for_gui_result(gui_result_path, gui_process, timeout_seconds)
+        gui_result = _wait_for_gui_result(
+            gui_result_path,
+            gui_process,
+            timeout_seconds,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            data_root=data_root,
+        )
         return {
             "dmg_path": str(dmg_path),
             "mount_point": str(mount_point),

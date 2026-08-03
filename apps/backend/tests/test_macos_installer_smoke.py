@@ -116,7 +116,7 @@ def test_run_macos_installer_smoke_installs_and_launches_backend_and_wkwebview(
     monkeypatch.setattr(
         smoke,
         "_wait_for_gui_result",
-        lambda result_path, process, timeout_seconds: {
+        lambda result_path, process, timeout_seconds, **kwargs: {
             "ok": True,
             "onboarding_visible": True,
             "qr_state": "ready",
@@ -168,12 +168,16 @@ def test_run_macos_installer_smoke_installs_and_launches_backend_and_wkwebview(
     assert result["stderr_path"].endswith("bundle-stderr.log")
     calls = captured["calls"]
     assert calls[0][0] == [str(copied_exec), "--backend"]
-    assert calls[1][0][:4] == [
-        str(copied_exec),
+    assert calls[1][0][:7] == [
+        "open",
+        "-W",
+        "-n",
+        str(copied_app),
+        "--args",
         "--desktop-window",
         "--url",
-        "http://127.0.0.1:18765/",
     ]
+    assert "http://127.0.0.1:18765/" in calls[1][0]
     assert "--smoke-result" in calls[1][0]
     kwargs = calls[0][1]
     assert kwargs["env"]["LARKSYNC_BACKEND_BIND_HOST"] == "127.0.0.1"
@@ -291,3 +295,34 @@ def test_wait_for_health_reports_early_process_exit(tmp_path: Path) -> None:
         )
 
     assert "process=exited(9)" in str(excinfo.value)
+
+
+def test_wait_for_gui_result_reports_native_logs_on_early_exit(tmp_path: Path) -> None:
+    stdout_path = tmp_path / "stdout.log"
+    stderr_path = tmp_path / "stderr.log"
+    data_root = tmp_path / "AppData"
+    bootstrap_log = data_root / "logs" / "bootstrap-error.log"
+    stdout_path.write_text("launchservices-out", encoding="utf-8")
+    stderr_path.write_text("cocoa-trap", encoding="utf-8")
+    bootstrap_log.parent.mkdir(parents=True, exist_ok=True)
+    bootstrap_log.write_text("webview-bootstrap", encoding="utf-8")
+
+    class ExitedProcess:
+        def poll(self):
+            return -5
+
+    with pytest.raises(RuntimeError, match="WKWebView GUI 进程提前退出") as excinfo:
+        smoke._wait_for_gui_result(
+            tmp_path / "missing.json",
+            ExitedProcess(),
+            1.0,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            data_root=data_root,
+        )
+
+    message = str(excinfo.value)
+    assert "process=exited(-5)" in message
+    assert "launchservices-out" in message
+    assert "cocoa-trap" in message
+    assert "webview-bootstrap" in message
