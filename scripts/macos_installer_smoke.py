@@ -271,21 +271,28 @@ def _run_headless_webkit_smoke(
     timeout_seconds: float,
 ) -> dict[str, object]:
     script_path = PROJECT_ROOT / "scripts" / "macos_webkit_smoke.mjs"
-    completed = subprocess.run(
-        [
-            "node",
-            str(script_path),
-            "--url",
-            url,
-            "--result",
-            str(result_path),
-        ],
-        cwd=str(PROJECT_ROOT),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=max(timeout_seconds, 10.0),
-    )
+    try:
+        completed = subprocess.run(
+            [
+                "node",
+                str(script_path),
+                "--url",
+                url,
+                "--result",
+                str(result_path),
+            ],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=max(timeout_seconds, 10.0),
+        )
+    except subprocess.TimeoutExpired as exc:
+        last_payload = _read_log_tail(result_path, max_chars=2000)
+        raise RuntimeError(
+            "headless WebKit smoke 子进程超时；"
+            f"last_payload={last_payload}; stdout={exc.stdout}; stderr={exc.stderr}"
+        ) from exc
     if not result_path.is_file():
         raise RuntimeError(
             "headless WebKit smoke 未生成结果；"

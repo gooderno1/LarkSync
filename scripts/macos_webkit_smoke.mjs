@@ -19,8 +19,23 @@ const screenshotPath = resultPath.replace(/\.json$/u, ".png");
 let browser;
 let payload;
 
+async function publish(value) {
+  await fs.mkdir(path.dirname(resultPath), { recursive: true });
+  const temporaryPath = `${resultPath}.tmp`;
+  await fs.writeFile(temporaryPath, JSON.stringify(value), "utf8");
+  await fs.rename(temporaryPath, resultPath);
+}
+
+await publish({ ok: false, completed: false, stage: "starting", engine: "playwright-webkit" });
+
 try {
-  browser = await webkit.launch({ headless: true });
+  browser = await webkit.launch({ headless: true, timeout: 15000 });
+  await publish({
+    ok: false,
+    completed: false,
+    stage: "browser_launched",
+    engine: "playwright-webkit",
+  });
   const page = await browser.newPage({ viewport: { width: 1080, height: 720 } });
   // The runner Keychain can retain credentials between local diagnostic runs.
   // Keep the smoke deterministic by exercising the first-run UI while leaving
@@ -32,7 +47,13 @@ try {
       body: JSON.stringify({ connected: false, expires_at: null }),
     }),
   );
-  await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+  await page.goto(url, { waitUntil: "networkidle", timeout: 15000 });
+  await publish({
+    ok: false,
+    completed: false,
+    stage: "page_loaded",
+    engine: "playwright-webkit",
+  });
   await page.waitForFunction(
     () => {
       const panel = document.querySelector('[data-testid="oauth-qr-panel"]');
@@ -48,7 +69,7 @@ try {
       );
     },
     undefined,
-    { timeout: 30000 },
+    { timeout: 15000 },
   );
   payload = await page.evaluate(() => {
     const root = document.querySelector('[data-onboarding-root="true"]');
@@ -65,6 +86,8 @@ try {
         image?.getAttribute("src")?.startsWith("data:image/png;base64,"),
       ),
       viewport: { width: window.innerWidth, height: window.innerHeight },
+      completed: true,
+      stage: "qr_verified",
     };
   });
   await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -72,16 +95,20 @@ try {
 } catch (error) {
   payload = {
     ok: false,
+    completed: true,
+    stage: "webkit_exception",
     engine: "playwright-webkit",
     error: `${error?.name ?? "Error"}: ${error?.message ?? String(error)}`,
   };
 } finally {
-  await browser?.close();
+  if (browser) {
+    await Promise.race([
+      browser.close().catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 5000)),
+    ]);
+  }
 }
 
-await fs.mkdir(path.dirname(resultPath), { recursive: true });
-const temporaryPath = `${resultPath}.tmp`;
-await fs.writeFile(temporaryPath, JSON.stringify(payload), "utf8");
-await fs.rename(temporaryPath, resultPath);
+await publish(payload);
 process.stdout.write(`${JSON.stringify(payload)}\n`);
-process.exitCode = payload.ok ? 0 : 1;
+process.exit(payload.ok ? 0 : 1);

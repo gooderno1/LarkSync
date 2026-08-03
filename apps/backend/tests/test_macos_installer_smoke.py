@@ -234,7 +234,7 @@ def test_macos_ci_installs_webkit_and_checks_visible_qr_contract() -> None:
     )
 
     assert workflow.count("npx playwright install webkit") == 2
-    assert 'webkit.launch({ headless: true })' in webkit_script
+    assert 'webkit.launch({ headless: true, timeout: 15000 })' in webkit_script
     assert 'data-onboarding-root="true"' in webkit_script
     assert 'data-testid="oauth-qr-panel"' in webkit_script
     assert 'data-testid="oauth-qr-image"' in webkit_script
