@@ -233,7 +233,9 @@ def test_macos_ci_installs_webkit_and_checks_visible_qr_contract() -> None:
         encoding="utf-8"
     )
 
-    assert workflow.count("npx playwright install webkit") == 2
+    assert workflow.count("npx playwright install --with-deps webkit") == 1
+    assert workflow.count("needs: [quality, quality-webkit]") == 2
+    assert workflow.count('LARKSYNC_CI_WEBKIT_EVIDENCE: "1"') == 2
     assert 'webkit.launch({ headless: true, timeout: 15000 })' in webkit_script
     assert 'data-onboarding-root="true"' in webkit_script
     assert 'data-testid="oauth-qr-panel"' in webkit_script

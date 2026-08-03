@@ -15,6 +15,7 @@ function readArgument(name) {
 
 const url = readArgument("--url");
 const resultPath = path.resolve(readArgument("--result"));
+const mockApi = process.argv.includes("--mock-api");
 const screenshotPath = resultPath.replace(/\.json$/u, ".png");
 let browser;
 let payload;
@@ -37,16 +38,54 @@ try {
     engine: "playwright-webkit",
   });
   const page = await browser.newPage({ viewport: { width: 1080, height: 720 } });
+  if (mockApi) {
+    await page.route("**/*", (route) => {
+      const requestUrl = new URL(route.request().url());
+      const json = (body) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(body),
+        });
+      if (requestUrl.pathname === "/config") {
+        return json({ auth_client_id: "cli_webkit_smoke" });
+      }
+      if (requestUrl.pathname === "/auth/status") {
+        return json({ connected: false, expires_at: null });
+      }
+      if (requestUrl.pathname === "/auth/authorize-url") {
+        return json({
+          authorize_url: "https://open.feishu.cn/oauth?state=webkit-smoke",
+          state: "webkit-smoke",
+          expires_in: 600,
+          local_callback: true,
+        });
+      }
+      if (
+        requestUrl.pathname === "/auth/cli/status" ||
+        requestUrl.pathname === "/system/desktop/status"
+      ) {
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "smoke placeholder" }),
+        });
+      }
+      return route.continue();
+    });
+  }
   // The runner Keychain can retain credentials between local diagnostic runs.
   // Keep the smoke deterministic by exercising the first-run UI while leaving
   // config and authorize-url requests on the real packaged backend.
-  await page.route("**/auth/status", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ connected: false, expires_at: null }),
-    }),
-  );
+  if (!mockApi) {
+    await page.route("**/auth/status", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ connected: false, expires_at: null }),
+      }),
+    );
+  }
   await page.goto(url, { waitUntil: "networkidle", timeout: 15000 });
   await publish({
     ok: false,

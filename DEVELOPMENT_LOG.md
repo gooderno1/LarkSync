@@ -30,6 +30,7 @@
   - 第四轮 arm64 runner 的冻结子进程错误已消失，LaunchServices helper 以 0 正常返回；安装验收不再把 helper 生命周期等同于 App 生命周期，并原子记录`arguments_parsed/window_created/webview_starting/page_loaded/ui_verified`阶段。
   - 第五、六轮 arm64 runner 证明安装版 App 已进入`webview_starting`，但托管 runner 无交互式 WindowServer，随后会结束原生进程且不会触发`loaded`；CI 降级仅在 App 自身写入该阶段后启用 headless Playwright WebKit，并继续断言 1080×720 首屏、二维码 ready、可见尺寸和 PNG data URL，不把托管环境结果表述为原生窗口持续存活。
   - 第七轮 headless WebKit 子进程在总超时边界未退出；脚本现为 browser launch、页面加载、二维码等待和 browser close 分别设置上限，逐阶段原子输出`starting/browser_launched/page_loaded/qr_verified/webkit_exception`，最终结果落盘后强制退出 Node。
+  - 第八轮确认 macOS 托管 runner 的 Playwright WebKit 也只能到`browser_launched`，无法创建页面；WebKit 引擎验收迁移到独立 Linux headless 任务，Mac 双架构任务显式依赖其成功，并继续独立验证 App 已到`webview_starting`。
 - 遗留问题：
   - Windows 主机不能直接执行 Cocoa、Apple Keychain、notarytool 或 Gatekeeper；正式 DMG 是否完成全部真机验收以 GitHub macOS 工作流结果为准。
 
