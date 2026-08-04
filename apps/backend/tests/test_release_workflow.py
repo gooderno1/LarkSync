@@ -123,3 +123,37 @@ def test_release_workflow_imports_p12_with_macos_base64_flag() -> None:
 
     assert "base64 -D" in import_command
     assert "base64 --decode" not in import_command
+
+
+def test_release_workflow_supports_branch_credentials_preflight() -> None:
+    workflow = _load_release_workflow()
+    raw = WORKFLOW_FILE.read_text(encoding="utf-8")
+    job = workflow["jobs"]["validate-macos-release-credentials"]
+    steps = {step["name"]: step for step in job["steps"]}
+
+    assert "validate_macos_credentials:" in raw
+    assert job["runs-on"] == "macos-14"
+    assert "workflow_dispatch" in job["if"]
+    assert "validate_macos_credentials" in job["if"]
+    assert "validate_macos_credentials" in workflow["jobs"]["quality"]["if"]
+
+    assert set(steps["Check required secrets"]["env"]) == {
+        "MACOS_CERTIFICATE_P12_BASE64",
+        "MACOS_CERTIFICATE_PASSWORD",
+        "MACOS_CODESIGN_IDENTITY",
+        "APPLE_ID",
+        "APPLE_TEAM_ID",
+        "APPLE_APP_SPECIFIC_PASSWORD",
+    }
+
+    certificate_check = steps["Import and validate Developer ID certificate"]["run"]
+    assert "base64 -D" in certificate_check
+    assert "security import" in certificate_check
+    assert "security find-identity" in certificate_check
+    assert "codesign --verify --strict" in certificate_check
+
+    notary_check = steps["Validate Apple notarization credentials"]["run"]
+    assert "xcrun notarytool history" in notary_check
+    assert '--apple-id "$APPLE_ID"' in notary_check
+    assert '--team-id "$APPLE_TEAM_ID"' in notary_check
+    assert '--password "$APPLE_APP_SPECIFIC_PASSWORD"' in notary_check

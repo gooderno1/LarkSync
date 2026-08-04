@@ -41,7 +41,7 @@
 
 ## 核心能力
 
-- v0.8.20-dev.3 增加 macOS 正式发布凭据解阻工具：在本机交互读取 Developer ID P12 密码和 Apple 应用专用密码，通过标准输入写入六项 GitHub Actions Secrets，不把敏感值写进文件或命令参数；独立手动工作流会在打 Tag 前验证 Developer ID 私钥可签名、时间戳服务可用以及 `notarytool` 公证账户有效，正式发布命令缺少任一 Secret 时会在改版本、提交或打 Tag 前停止，并同步冻结前端 lockfile 版本元数据。
+- v0.8.20-dev.3 增加 macOS 正式发布凭据解阻工具：在本机交互读取 Developer ID P12 密码和 Apple 应用专用密码，通过标准输入写入六项 GitHub Actions Secrets，不把敏感值写进文件或命令参数；`Release Build`手动凭据预检模式可在当前发布分支验证 Developer ID 私钥可签名、时间戳服务可用以及`notarytool`公证账户有效，正式发布命令缺少任一 Secret 时会在改版本、提交或打 Tag 前停止，并同步冻结前端 lockfile 版本元数据。
 - v0.8.20-dev.2 补齐 macOS App/Finder/Dock/DMG 与菜单栏图标、响应式 OAuth 引导和二维码状态、Cocoa 窗口恢复、现代 LaunchAgent、原生通知与 Keychain/WKWebView 安装验收；正式 DMG 强制 Developer ID 签名、Apple notarization、stapling 和 Gatekeeper 校验。
 - v0.8.20-dev.1 修复内嵌 Sheet 转码失败后的周期性重复下载：历史 `sheet_token` 占位仅针对同一云端文档版本和同一转码迁移版本回刷一次；若回刷后仍为占位，后续内容未变化的扫描按正常规则跳过，云端更新时间或转码迁移版本变化后才重新尝试。
 - v0.8.19 正式补齐 v0.8.18 的历史问题迁移：未解决或已忽略的问题只要最新证据严格匹配`完成: total=N ok=N failed=N skipped=N`运行汇总，就自动以`workflow_summary_not_problem`结案并保留原始活动证据；扫描同时兼容已被旧迁移改成`task_run`且分类器已是 v3 的记录，真实下载、认证和对象错误不会被误结案。

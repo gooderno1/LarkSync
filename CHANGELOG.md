@@ -1,6 +1,6 @@
 # CHANGELOG
 
-[2026-08-04] v0.8.20-dev.3 feat(release): 增加 macOS Developer ID 与公证凭据安全注入、独立预检工作流、正式发布前 Secret 门禁及前端 lockfile 版本同步
+[2026-08-04] v0.8.20-dev.3 feat(release): 增加 macOS Developer ID 与公证凭据安全注入、当前分支预检模式、正式发布前 Secret 门禁及前端 lockfile 版本同步
 [2026-08-03] v0.8.20-dev.2 fix(macos): 补齐应用与菜单栏图标、响应式 OAuth 二维码、Cocoa 窗口恢复、现代 LaunchAgent、原生通知、Keychain/WKWebView 安装验收及 Developer ID 签名公证链路
 [2026-08-03] v0.8.20-dev.1 fix(sync): 内嵌 Sheet 占位按云端文档版本和转码迁移版本限次回刷，避免内容未变化时被周期性重复下载
 [2026-07-31] v0.8.19 release: 自动结案 v0.8.18 遗留的历史空运行汇总误报；保留真实问题和原始活动证据

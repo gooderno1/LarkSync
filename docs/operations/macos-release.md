@@ -52,11 +52,14 @@ Secrets 只注入临时 runner。构建结束后删除临时 P12 和签名 keych
    python scripts/configure_macos_release_secrets.py --check --repo gooderno1/LarkSync
    ```
 
-10. 推送本工作流后，在 GitHub Actions 手动运行`Validate macOS Release Credentials`，或使用：
+10. 在 GitHub Actions 手动运行`Release Build`，将`validate_macos_credentials`设为`true`。该模式只运行凭据预检，不执行常规质量门或安装包构建；也可在当前发布分支直接使用：
 
     ```bash
-    gh workflow run "Validate macOS Release Credentials" --repo gooderno1/LarkSync
-    gh run list --workflow "Validate macOS Release Credentials" --limit 1 --repo gooderno1/LarkSync
+    gh workflow run release-build.yml \
+      --repo gooderno1/LarkSync \
+      --ref codex/desktop-app-refactor-v0.8 \
+      -f validate_macos_credentials=true
+    gh run list --workflow release-build.yml --limit 1 --repo gooderno1/LarkSync
     ```
 
 只有该工作流同时通过测试二进制签名和`notarytool history`认证，才允许创建正式 Tag。`python scripts/release.py --publish`也会在任何版本文件变更前检查六项 Secret 名称。

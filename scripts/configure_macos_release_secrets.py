@@ -173,7 +173,7 @@ def configure_secrets(args: argparse.Namespace, *, runner: CommandRunner = run_c
     if missing:
         raise RuntimeError("写入后仍缺少 GitHub Secrets：" + ", ".join(missing))
     print("[ok] 凭据已安全写入；敏感值未写入文件或命令参数。")
-    print("下一步：在 GitHub Actions 手动运行“Validate macOS Release Credentials”。")
+    print("下一步：手动运行 Release Build，并设置 validate_macos_credentials=true。")
 
 
 def main() -> int:
