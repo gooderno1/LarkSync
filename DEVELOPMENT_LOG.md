@@ -1,5 +1,33 @@
 # DEVELOPMENT LOG
 
+## v0.8.20-dev.3 (2026-08-04)
+
+- 开发原因：
+  - v0.8.20 正式 DMG 已强制 Developer ID 签名与 Apple notarization，但 GitHub 仓库没有配置任何 Actions Secret，本机也没有可复用的 Apple 证书私钥。
+  - 直接创建正式 Tag 会让 Windows 构建继续、macOS 双架构在导入证书阶段必然失败，产生不完整 Release。
+  - 手工执行`gh secret set ... --body <密码>`容易把 P12 密码或 Apple 应用专用密码留在 shell 历史和进程参数中。
+- 实现方式：
+  - 新增`scripts/configure_macos_release_secrets.py`；P12 只在内存中编码，两个密码使用无回显输入，六项值统一通过 stdin 交给`gh secret set`。
+  - 工具支持`--check`只读取 Secret 名称，不读取或回显 Secret 内容；写入后再次核对六个名称是否齐全。
+  - 新增手动工作流`Validate macOS Release Credentials`；临时导入 P12 到隔离 Keychain，实际签名并验证测试 Mach-O，再用`notarytool history`验证 Apple ID、Team ID 与应用专用密码。
+  - P12 解码统一使用 macOS BSD`base64 -D`参数，避免正式 Mac runner 因 GNU 风格`--decode`不兼容而在证书导入前失败。
+  - `scripts/release.py --publish`在改版本、提交和创建 Tag 前检查六项 macOS Secret；任一缺失即停止，不改变仓库状态。
+  - 正式版版本冻结同步更新根包、后端、前端和`package-lock.json`顶层/根包元数据，避免发布提交内出现`package.json`与 lockfile 版本不一致。
+  - `docs/operations/macos-release.md`补齐从 CSR、Developer ID Application、P12 导出、应用专用密码到 GitHub 注入和 CI 预检的完整路径。
+- 当前结果：
+  - macOS 发布凭据从“靠人工复制六个 Secret”收敛为一次交互式注入、一次只读名称检查和一次 macOS runner 实值验证。
+  - P12、P12 密码和 Apple 应用专用密码不会写入仓库、临时配置文件或命令行参数。
+  - 在 Apple 账户持有人完成证书签发并运行注入工具前，正式发布仍会被安全门禁阻止，不会生成不完整 Tag/Release。
+- 验证方式：
+  - TDD 新增凭据清单、P12 Base64、stdin 写入、缺失项排序、手动工作流触发范围、证书签名验证和`notarytool`参数测试。
+  - 定向测试`python -m pytest apps/backend/tests/test_release.py apps/backend/tests/test_configure_macos_release_secrets.py apps/backend/tests/test_macos_credentials_workflow.py -q`：15 项通过。
+  - 后端全量`python -m pytest -q`：679 项通过；`python -m pip install --dry-run -e apps/backend`解析版本为`larksync-backend==0.8.20.dev3`。
+  - 前端`npm run lint`、`npm run typecheck`、`npm run test`和`npm run build`：通过；35 个测试文件、114 项测试通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
+  - Windows`python scripts/update_install_smoke.py`：通过；bootstrap/worker 正确推进到预期`launch_failed`交接阶段并产出完整诊断记录。
+  - 在当前 0 Secret 仓库运行`python scripts/configure_macos_release_secrets.py --check --repo gooderno1/LarkSync`：按预期返回退出码 1，并列出六个缺失名称，不输出任何敏感值。
+- 遗留问题：
+  - Developer ID Application 只能由有效 Apple Developer Program 团队的授权角色签发；证书私钥与 Apple 应用专用密码属于用户持有的外部凭据，仓库代码无法代替账户持有人生成。
+
 ## v0.8.20-dev.2 (2026-08-03)
 
 - 开发原因：

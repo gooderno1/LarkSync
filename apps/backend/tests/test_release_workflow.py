@@ -110,3 +110,16 @@ def test_release_workflow_uses_native_dual_arch_macos_matrix() -> None:
     assert release_build_env["LARKSYNC_MACOS_DMG_SUFFIX"] == "${{ matrix.arch }}"
     assert quality_install_smoke == "python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}"
     assert release_install_smoke == "python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}"
+
+
+def test_release_workflow_imports_p12_with_macos_base64_flag() -> None:
+    workflow = _load_release_workflow()
+
+    import_command = _step_run(
+        workflow,
+        "build-macos",
+        "Import Developer ID certificate",
+    )
+
+    assert "base64 -D" in import_command
+    assert "base64 --decode" not in import_command

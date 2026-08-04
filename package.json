@@ -1,13 +1,14 @@
 {
   "name": "larksync-root",
   "private": true,
-  "version": "v0.8.20-dev.2",
+  "version": "v0.8.20-dev.3",
   "scripts": {
     "dev": "python apps/tray/tray_app.py --dev",
     "dev:test": "node scripts/start_dev_test.mjs",
     "cli": "python scripts/larksync_cli.py",
     "smoke:update-install": "python scripts/update_install_smoke.py",
     "sync:feishu-docs": "python scripts/sync_feishu_docs.py",
+    "release:macos-secrets": "python scripts/configure_macos_release_secrets.py",
     "release:dev": "python scripts/release.py",
     "release:publish": "python scripts/release.py --publish"
   }

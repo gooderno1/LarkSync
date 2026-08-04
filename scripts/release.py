@@ -8,6 +8,11 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable
 
+try:
+    from scripts import configure_macos_release_secrets as macos_secrets
+except ModuleNotFoundError:  # 兼容直接执行 python scripts/release.py
+    import configure_macos_release_secrets as macos_secrets
+
 VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$")
 
 
@@ -97,6 +102,16 @@ def update_json_version(path: Path, new_version: str) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def update_frontend_lock_version(path: Path, new_version: str) -> None:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["version"] = new_version
+    packages = data.get("packages")
+    if not isinstance(packages, dict) or not isinstance(packages.get(""), dict):
+        raise ValueError("frontend package-lock is missing packages[''] metadata")
+    packages[""]["version"] = new_version
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def update_pyproject_version(path: Path, new_version: str) -> None:
     text = path.read_text(encoding="utf-8")
     updated, count = re.subn(
@@ -144,6 +159,10 @@ def sync_versions(repo_root: Path, new_version: str) -> None:
     frontend_current = str(frontend_data.get("version", ""))
     frontend_next = new_version if frontend_current.startswith("v") else _strip_v(new_version)
     update_json_version(frontend_package, frontend_next)
+    update_frontend_lock_version(
+        repo_root / "apps/frontend/package-lock.json",
+        frontend_next,
+    )
     update_pyproject_version(repo_root / "apps/backend/pyproject.toml", new_version)
 
 
@@ -158,6 +177,20 @@ def read_current_version(repo_root: Path) -> str:
     if isinstance(version, str):
         return version
     raise ValueError("unable to read current version")
+
+
+def verify_publish_prerequisites(repo_root: Path) -> None:
+    del repo_root  # 保留参数，明确该门禁属于当前发布仓库。
+    repository = macos_secrets.resolve_repository("")
+    existing = macos_secrets.list_repository_secrets(repository)
+    missing = macos_secrets.missing_required_secrets(existing)
+    if missing:
+        command = "python scripts/configure_macos_release_secrets.py --check"
+        raise RuntimeError(
+            "正式发布缺少 macOS 签名/公证 GitHub Secrets："
+            + ", ".join(missing)
+            + f"。配置完成后运行 {command}。"
+        )
 
 
 def run_git(commands: Iterable[list[str]], *, cwd: Path | None = None) -> None:
@@ -184,6 +217,10 @@ def main() -> int:
     repo_root = get_repo_root()
     current_version = read_current_version(repo_root)
     if args.publish:
+        try:
+            verify_publish_prerequisites(repo_root)
+        except RuntimeError as exc:
+            parser.error(str(exc))
         next_version = args.version or compute_next_stable_version(repo_root, current_version)
         commit_msg = args.commit_msg or f"release: {next_version}"
     else:

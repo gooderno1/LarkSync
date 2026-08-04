@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -60,3 +61,72 @@ def test_update_files(tmp_path: Path) -> None:
     lines = changelog.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "# CHANGELOG"
     assert lines[2].startswith("[2026-01-27] v0.1.0-dev.2 feat: bump")
+
+
+def test_sync_versions_updates_frontend_lockfile(tmp_path: Path) -> None:
+    backend = tmp_path / "apps" / "backend"
+    frontend = tmp_path / "apps" / "frontend"
+    backend.mkdir(parents=True)
+    frontend.mkdir(parents=True)
+    (tmp_path / "package.json").write_text(
+        '{"name":"root","version":"v0.8.20-dev.3"}',
+        encoding="utf-8",
+    )
+    (backend / "pyproject.toml").write_text(
+        '[project]\nversion = "v0.8.20-dev.3"\n',
+        encoding="utf-8",
+    )
+    (frontend / "package.json").write_text(
+        '{"name":"frontend","version":"0.8.20-dev.3"}',
+        encoding="utf-8",
+    )
+    (frontend / "package-lock.json").write_text(
+        '{"name":"frontend","version":"0.8.20-dev.3","packages":{"":{"name":"frontend","version":"0.8.20-dev.3"}}}',
+        encoding="utf-8",
+    )
+
+    release.sync_versions(tmp_path, "v0.8.20")
+
+    assert json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))["version"] == "v0.8.20"
+    assert 'version = "v0.8.20"' in (backend / "pyproject.toml").read_text(encoding="utf-8")
+    assert json.loads((frontend / "package.json").read_text(encoding="utf-8"))["version"] == "0.8.20"
+    lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
+    assert lock["version"] == "0.8.20"
+    assert lock["packages"][""]["version"] == "0.8.20"
+
+
+def test_verify_publish_prerequisites_accepts_complete_macos_secrets(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        release.macos_secrets,
+        "resolve_repository",
+        lambda _raw: "gooderno1/LarkSync",
+    )
+    monkeypatch.setattr(
+        release.macos_secrets,
+        "list_repository_secrets",
+        lambda _repo: set(release.macos_secrets.REQUIRED_SECRETS),
+    )
+
+    release.verify_publish_prerequisites(tmp_path)
+
+
+def test_verify_publish_prerequisites_rejects_missing_macos_secrets(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        release.macos_secrets,
+        "resolve_repository",
+        lambda _raw: "gooderno1/LarkSync",
+    )
+    monkeypatch.setattr(
+        release.macos_secrets,
+        "list_repository_secrets",
+        lambda _repo: {"APPLE_ID"},
+    )
+
+    with pytest.raises(RuntimeError, match="MACOS_CERTIFICATE_P12_BASE64"):
+        release.verify_publish_prerequisites(tmp_path)
