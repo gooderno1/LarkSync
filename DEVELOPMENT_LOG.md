@@ -1,5 +1,49 @@
 # DEVELOPMENT LOG
 
+## v0.8.20 release (2026-08-04)
+
+- 开发原因：
+  - 将`v0.8.20-dev.1`至`v0.8.20-dev.4`已完成的同步重复下载修复、macOS 全面配适、签名凭据工具和无 Apple 凭据发布模式交付为正式版本。
+  - LarkSync 作为开源项目需要先提供可下载安装的双架构 Mac 应用，不再把付费 Developer ID 与 Apple 公证作为发布硬门槛。
+- 实现方式：
+  - 根包、后端、前端和前端 lockfile 版本统一冻结为`v0.8.20`；正式 Tag 固定为`v0.8.20`。
+  - 正式 Tag 默认构建 Windows NSIS、macOS arm64 DMG 和 macOS x86_64 DMG，并为每个安装包生成 SHA256 资产。
+  - GitHub 未配置 Apple 凭据时发布 ad-hoc 签名 DMG；后续六项凭据齐全时，同一工作流自动启用 Developer ID 签名、notarization、stapling 和 Gatekeeper assessment。
+  - Release Notes 明确记录无公证版本的首次打开方式：仅对官方 Release 且 SHA256 匹配的安装包，在「系统设置 → 隐私与安全性」选择「仍要打开」。
+- 当前结果：
+  - 正式源码版本已冻结为`v0.8.20`，本地发布候选 Tag 已生成且尚未推送。
+  - macOS 应用包含品牌 App/Dock/Finder/DMG 图标、菜单栏 Template 图标、响应式 OAuth 引导与二维码、Cocoa 窗口恢复、现代 LaunchAgent、原生通知和 Keychain 安全存储。
+  - 无 Apple 证书不再阻止正式发布；产物仍须通过双架构 DMG 构建和安装启动 smoke 才能进入 GitHub Release。
+- 验证方式：
+  - 继承`v0.8.20-dev.1`至`v0.8.20-dev.4`的后端全量、前端 lint/typecheck/test/build、Linux WebKit 二维码、macOS 双架构 DMG 与安装 smoke 验证。
+  - 正式提交本机后端全量`python -m pytest -q`：679 项通过。
+  - 前端`npm run lint`、`npm run typecheck`、`npm run test`、`npm run build`：通过；35 个测试文件、114 项测试通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
+  - `python scripts/update_install_smoke.py`与后端 editable 安装元数据 dry-run：通过；正式版本解析为`larksync-backend==0.8.20`。
+  - GitHub Tag 构建结果在发布完成后补记工作流地址、资产大小和 SHA256。
+- 遗留问题：
+  - 本次无 Apple 凭据的 DMG 不带 Developer ID 身份和公证票据，首次打开需要用户手动放行；未来配置 Apple 凭据即可原地升级发布链路，无需修改应用代码。
+
+## v0.8.20-dev.4 (2026-08-04)
+
+- 开发原因：
+  - LarkSync 是开源项目，当前 GitHub 仓库没有 Apple Developer 证书；把付费 Developer ID 与公证凭据设为正式版硬前提，会阻止已经通过双架构安装 smoke 的应用交付。
+  - macOS 允许用户对可信来源的未公证应用执行一次性安全例外，因此无 Apple 凭据时仍可提供可安装 DMG，但必须清楚说明首次打开步骤和安全边界。
+- 实现方式：
+  - 正式 macOS job 在构建前统计六项 Apple Secret：全部缺失时输出`enabled=false`并继续构建 ad-hoc 签名 DMG；全部存在时导入 Developer ID 并强制 notarization；部分存在时失败，避免产物签名状态不明确。
+  - notarization、stapler 与 Gatekeeper assessment 仅在 Developer ID 模式执行；无凭据模式继续执行严格`codesign`结构校验、DMG 安装复制、Keychain、后端健康和 UI 首屏 smoke。
+  - `scripts/release.py --publish`不再因缺少 Apple Secret 停止；会在控制台明确说明发布 ad-hoc DMG 或签名公证 DMG。
+  - 快速开始、使用文档和 macOS 发布文档新增「系统设置 → 隐私与安全性 → 仍要打开」步骤，并要求只放行官方 Release 且 SHA256 匹配的安装包。
+- 当前结果：
+  - 无 Apple Developer 账户也可以发布 Windows 安装包与 macOS arm64、x86_64 DMG，不再阻塞开源版本交付。
+  - 后续配置完整 Apple 凭据时无需改代码，同一工作流会自动升级为 Developer ID 签名公证产物。
+  - 用户首次打开无公证版本会看到 macOS 安全提示；在「系统设置 → 隐私与安全性」选择「仍要打开」并确认一次后可正常启动。
+- 验证方式：
+  - TDD 覆盖缺少 Apple Secret 时允许发布、凭据完整时识别签名模式、部分配置失败、证书导入条件和 notarization/Gatekeeper 条件执行。
+  - 后端全量`python -m pytest -q`：679 项通过；前端 lint、typecheck、35 个测试文件 114 项测试、生产构建与生产依赖审计通过。
+  - Windows 静默安装交接 smoke 与`larksync-backend==0.8.20`editable 元数据解析通过。
+- 遗留问题：
+  - ad-hoc 签名不提供 Apple 开发者身份背书和公证恶意软件扫描；这是免 Apple Developer 凭据发布的明确取舍，不应在文案中描述为已签名公证。
+
 ## v0.8.20-dev.3 (2026-08-04)
 
 - 开发原因：
@@ -17,7 +61,7 @@
 - 当前结果：
   - macOS 发布凭据从“靠人工复制六个 Secret”收敛为一次交互式注入、一次只读名称检查和一次可在当前发布分支执行的 macOS runner 实值验证。
   - P12、P12 密码和 Apple 应用专用密码不会写入仓库、临时配置文件或命令行参数。
-  - 在 Apple 账户持有人完成证书签发并运行注入工具前，正式发布仍会被安全门禁阻止，不会生成不完整 Tag/Release。
+  - `v0.8.20-dev.3`阶段曾将 Apple 凭据作为正式发布门禁；`v0.8.20-dev.4`已按开源发布策略改为可选增强，无凭据时发布 ad-hoc 签名 DMG。
 - 验证方式：
   - TDD 新增凭据清单、P12 Base64、stdin 写入、缺失项排序、手动工作流触发范围、证书签名验证和`notarytool`参数测试。
   - 定向测试`python -m pytest apps/backend/tests/test_release_workflow.py apps/backend/tests/test_release.py apps/backend/tests/test_configure_macos_release_secrets.py -q`：19 项通过。

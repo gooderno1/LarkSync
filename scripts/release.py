@@ -179,18 +179,24 @@ def read_current_version(repo_root: Path) -> str:
     raise ValueError("unable to read current version")
 
 
-def verify_publish_prerequisites(repo_root: Path) -> None:
-    del repo_root  # 保留参数，明确该门禁属于当前发布仓库。
+def macos_signing_mode() -> bool:
     repository = macos_secrets.resolve_repository("")
     existing = macos_secrets.list_repository_secrets(repository)
     missing = macos_secrets.missing_required_secrets(existing)
-    if missing:
-        command = "python scripts/configure_macos_release_secrets.py --check"
-        raise RuntimeError(
-            "正式发布缺少 macOS 签名/公证 GitHub Secrets："
-            + ", ".join(missing)
-            + f"。配置完成后运行 {command}。"
-        )
+    return not missing
+
+
+def report_macos_signing_mode() -> bool:
+    try:
+        signed = macos_signing_mode()
+    except Exception as exc:  # 凭据探测不可阻止开源安装包发布。
+        print(f"[warn] 无法检查 macOS 发布凭据，将发布 ad-hoc 签名 DMG：{exc}")
+        return False
+    if signed:
+        print("[info] macOS Developer ID 与公证凭据齐全，将发布签名公证 DMG。")
+    else:
+        print("[warn] macOS 发布凭据未配置，将发布可安装的 ad-hoc 签名 DMG；首次打开需用户手动放行 Gatekeeper。")
+    return signed
 
 
 def run_git(commands: Iterable[list[str]], *, cwd: Path | None = None) -> None:
@@ -217,10 +223,7 @@ def main() -> int:
     repo_root = get_repo_root()
     current_version = read_current_version(repo_root)
     if args.publish:
-        try:
-            verify_publish_prerequisites(repo_root)
-        except RuntimeError as exc:
-            parser.error(str(exc))
+        report_macos_signing_mode()
         next_version = args.version or compute_next_stable_version(repo_root, current_version)
         commit_msg = args.commit_msg or f"release: {next_version}"
     else:

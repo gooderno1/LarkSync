@@ -1,6 +1,6 @@
 # LarkSync 快速开始
 
-更新时间：2026-05-28
+更新时间：2026-08-04
 
 本文面向第一次试用 LarkSync 的用户。推荐先用小型测试目录和 `download_only` 模式完成一次闭环，再决定是否启用双向同步。
 
@@ -23,7 +23,9 @@ OAuth 配置到连接成功动图：![OAuth 连接流程](../assets/promotion/oa
 1. 打开发布页：<https://github.com/gooderno1/LarkSync/releases>
 2. Windows 下载 `LarkSync-Setup-*.exe`。
 3. macOS 下载与你机器架构匹配的 `LarkSync-*.dmg`。
-4. 安装后启动 LarkSync，系统托盘会出现 LarkSync 图标。
+4. macOS 打开 DMG 后，将`LarkSync.app`拖入`Applications`。
+5. 若 macOS 提示无法验证开发者：先尝试打开一次，再进入「系统设置 → 隐私与安全性」，在安全区域点击「仍要打开」并确认。
+6. 启动 LarkSync，系统托盘或菜单栏会出现 LarkSync 图标。
 
 如果你从源码运行，请参考 [使用教程](USAGE.md) 中的本地开发流程。
 

@@ -125,6 +125,26 @@ def test_release_workflow_imports_p12_with_macos_base64_flag() -> None:
     assert "base64 --decode" not in import_command
 
 
+def test_release_workflow_allows_unsigned_macos_release() -> None:
+    workflow = _load_release_workflow()
+
+    detect = _step(workflow, "build-macos", "Detect macOS release signing credentials")
+    import_certificate = _step(workflow, "build-macos", "Import Developer ID certificate")
+    build_dmg = _step(workflow, "build-macos", "Build DMG")
+    verify_notarization = _step(
+        workflow,
+        "build-macos",
+        "Verify notarization and Gatekeeper acceptance",
+    )
+
+    assert detect["id"] == "signing"
+    assert "enabled=false" in detect["run"]
+    assert "部分配置" in detect["run"]
+    assert "steps.signing.outputs.enabled == 'true'" in import_certificate["if"]
+    assert build_dmg["env"]["LARKSYNC_REQUIRE_MACOS_NOTARIZATION"] == "${{ steps.signing.outputs.enabled == 'true' && '1' || '0' }}"
+    assert "steps.signing.outputs.enabled == 'true'" in verify_notarization["if"]
+
+
 def test_release_workflow_supports_branch_credentials_preflight() -> None:
     workflow = _load_release_workflow()
     raw = WORKFLOW_FILE.read_text(encoding="utf-8")

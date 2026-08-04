@@ -5,8 +5,8 @@
 </p>
 
 本地优先的飞书文档同步工具：把飞书云文档稳定同步到本地 Markdown / 文件系统，同时保留继续在飞书协作的工作方式。
-当前稳定版本：`v0.8.19`（2026-07-31）。核心运行形态为 Windows 桌面壳 + 托盘常驻。
-当前代码基线：`v0.8.20-dev.3`。
+当前稳定版本：`v0.8.20`（2026-08-04）。核心运行形态为 Windows / macOS 桌面壳 + 托盘或菜单栏常驻。
+当前代码基线：`v0.8.20`。
 
 ## 快速入口
 
@@ -41,6 +41,7 @@
 
 ## 核心能力
 
+- v0.8.20-dev.4 将 Apple Developer 凭据改为可选：未配置时正式 Release 仍会生成经过 ad-hoc 签名和安装 smoke 的 macOS arm64、x86_64 DMG；凭据六项齐全时自动启用 Developer ID、notarization、stapling 和 Gatekeeper 校验。无公证版本首次打开需在 macOS「系统设置 → 隐私与安全性」选择「仍要打开」。
 - v0.8.20-dev.3 增加 macOS 正式发布凭据解阻工具：在本机交互读取 Developer ID P12 密码和 Apple 应用专用密码，通过标准输入写入六项 GitHub Actions Secrets，不把敏感值写进文件或命令参数；`Release Build`手动凭据预检模式可在当前发布分支验证 Developer ID 私钥可签名、时间戳服务可用以及`notarytool`公证账户有效，正式发布命令缺少任一 Secret 时会在改版本、提交或打 Tag 前停止，并同步冻结前端 lockfile 版本元数据。
 - v0.8.20-dev.2 补齐 macOS App/Finder/Dock/DMG 与菜单栏图标、响应式 OAuth 引导和二维码状态、Cocoa 窗口恢复、现代 LaunchAgent、原生通知与 Keychain/WKWebView 安装验收；正式 DMG 强制 Developer ID 签名、Apple notarization、stapling 和 Gatekeeper 校验。
 - v0.8.20-dev.1 修复内嵌 Sheet 转码失败后的周期性重复下载：历史 `sheet_token` 占位仅针对同一云端文档版本和同一转码迁移版本回刷一次；若回刷后仍为占位，后续内容未变化的扫描按正常规则跳过，云端更新时间或转码迁移版本变化后才重新尝试。
@@ -93,7 +94,7 @@
 - Windows 桌面壳已接入统一浅色科技风导航与命令栏，以及总览工作台、表格化同步任务页、独立任务详情页、活动与问题、冲突处理、设置和更新维护入口。
 - OAuth token 本地保存，支持自动续期；详见 [安全与隐私说明](docs/SECURITY_AND_PRIVACY.md)。
 - macOS 安装版提供专用 `.icns` 应用图标和深浅色自适应菜单栏 Template 图标；首次授权页在窄窗口自动切为单列，明确区分“需要配置、生成中、二维码可用、生成失败”四种状态。
-- macOS PR 构建会用 ad-hoc 签名执行 Bundle、Keychain 与 LaunchServices/Cocoa 启动阶段 smoke；交互式 Mac 直接验证 WKWebView，GitHub 托管 Mac 在 App 自身进入`webview_starting`后依赖独立 Linux headless Playwright WebKit 门禁验证相同首屏。正式 Release 必须使用 Developer ID、Apple notarization、stapling 和 Gatekeeper 校验，配置方式见 [macOS 发布与验收](docs/operations/macos-release.md)。
+- macOS PR 与无 Apple 凭据的正式构建会用 ad-hoc 签名执行 Bundle、Keychain 与 LaunchServices/Cocoa 启动阶段 smoke；交互式 Mac 直接验证 WKWebView，GitHub 托管 Mac 在 App 自身进入`webview_starting`后依赖独立 Linux headless Playwright WebKit 门禁验证相同首屏。配置完整 Apple 凭据后，正式 Release 自动增加 Developer ID、notarization、stapling 和 Gatekeeper 校验，详见 [macOS 发布与验收](docs/operations/macos-release.md)。
 - 内置 CLI 和 OpenClaw Skill 模板，适合 Agent / 自动化工作流读取本地飞书缓存。
 - 新增 `production`、`synthetic_test`、`snapshot_test`、`live_readonly`、`live_bidirectional` 五类运行配置档；测试配置使用独立端口、实例锁、数据目录和 Token Store，桌面侧栏常驻显示非生产环境标识。
 - 新增正式数据库 SQLite online backup 脱敏快照、快照配置校验和只读查询基准脚本；快照会停用全部任务、终止遗留 `running`、重映射本地路径、伪名化云端 Token，并且不导出 keyring 凭据。

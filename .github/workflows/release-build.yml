@@ -393,7 +393,47 @@ jobs:
         working-directory: apps/frontend
         run: npm ci
 
+      - name: Detect macOS release signing credentials
+        id: signing
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        shell: bash
+        run: |
+          values=(
+            "$MACOS_CERTIFICATE_P12_BASE64"
+            "$MACOS_CERTIFICATE_PASSWORD"
+            "$MACOS_CODESIGN_IDENTITY"
+            "$APPLE_ID"
+            "$APPLE_TEAM_ID"
+            "$APPLE_APP_SPECIFIC_PASSWORD"
+          )
+          configured=0
+          missing=0
+          for value in "${values[@]}"; do
+            if [[ -n "$value" ]]; then
+              configured=$((configured + 1))
+            else
+              missing=$((missing + 1))
+            fi
+          done
+          if [[ "$configured" -eq 0 ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::未配置 Apple 发布凭据，将生成可安装的 ad-hoc 签名 DMG。"
+          elif [[ "$missing" -eq 0 ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Developer ID 与 notarization 凭据齐全。"
+          else
+            echo "::error::Apple 发布凭据只有部分配置；请补齐六项或全部删除后发布 ad-hoc 签名 DMG。"
+            exit 1
+          fi
+
       - name: Import Developer ID certificate
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
         env:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -436,7 +476,7 @@ jobs:
           LARKSYNC_VERSION: ${{ github.ref_name }}
           LARKSYNC_MACOS_TARGET_ARCH: ${{ matrix.arch }}
           LARKSYNC_MACOS_DMG_SUFFIX: ${{ matrix.arch }}
-          LARKSYNC_REQUIRE_MACOS_NOTARIZATION: "1"
+          LARKSYNC_REQUIRE_MACOS_NOTARIZATION: ${{ steps.signing.outputs.enabled == 'true' && '1' || '0' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -448,6 +488,7 @@ jobs:
         run: python scripts/macos_installer_smoke.py --arch-suffix ${{ matrix.arch }}
 
       - name: Verify notarization and Gatekeeper acceptance
+        if: ${{ steps.signing.outputs.enabled == 'true' }}
         shell: bash
         run: |
           for dmg in dist/LarkSync-*.dmg; do

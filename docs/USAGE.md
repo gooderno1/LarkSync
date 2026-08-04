@@ -336,6 +336,7 @@ npm run release:publish -- "release: v0.5.45"
 - 标签不能包含 `-dev`，否则构建任务会被 `if` 条件跳过。
 - 如需手动重跑某个稳定版 tag 的 macOS 构建，可触发 `workflow_dispatch` 并将 `build_macos` 勾选为 `true`（同时选择稳定版 tag 作为 ref）。
 - macOS 工作流会按 runner 原生架构构建：`macos-13 -> x86_64`、`macos-14 -> arm64`；稳定版 tag 会上传 `LarkSync-<version>-x86_64.dmg` 与 `LarkSync-<version>-arm64.dmg` 两个产物，自动更新会优先匹配当前机器架构。
+- 未配置 Apple 发布凭据时，稳定版仍生成 ad-hoc 签名 DMG 并执行完整安装 smoke；用户首次打开需在 macOS「系统设置 → 隐私与安全性」选择「仍要打开」。六项 Apple 凭据全部配置后，工作流自动升级为 Developer ID 签名、公证、stapling 和 Gatekeeper 验证；只配置部分凭据会直接失败，避免误以为产物已公证。
 
 产物上传结果：
 - Windows：`dist/LarkSync-Setup-*.exe`
@@ -350,6 +351,8 @@ npm run release:publish -- "release: v0.5.45"
 - 发布页：<https://github.com/gooderno1/LarkSync/releases>
 - Windows：下载 `LarkSync-Setup-*.exe`
 - macOS：下载 `LarkSync-*.dmg`
+
+macOS 若提示无法验证开发者：先尝试打开应用一次，再前往「系统设置 → 隐私与安全性」，点击「仍要打开」。只应对从本项目官方 Release 下载且校验 SHA256 一致的安装包执行该操作。
 
 说明：
 - 自动更新依赖公开可访问的 GitHub Release；若仓库私有、暂无 Release 或无稳定版 tag，客户端会显示“暂无稳定版 Release”，不会继续下载更新包。

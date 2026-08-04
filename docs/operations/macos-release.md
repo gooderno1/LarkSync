@@ -4,11 +4,11 @@
 
 - 架构：`arm64`、`x86_64`。
 - 最低系统：macOS 12.0。
-- 安装包：Developer ID 签名并完成 Apple notarization/stapling 的 DMG。
+- 安装包：默认可发布 ad-hoc 签名 DMG；配置 Apple 凭据后自动升级为 Developer ID 签名并完成 notarization/stapling 的 DMG。
 
 ## GitHub Secrets
 
-正式 tag 构建必须配置：
+以下六项为可选增强配置。全部不配置时，正式 tag 仍发布 ad-hoc 签名 DMG；六项全部配置时启用 Developer ID 签名与 Apple 公证；只配置部分字段会阻止 macOS job，避免产生签名状态不明确的产物：
 
 - `MACOS_CERTIFICATE_P12_BASE64`：Developer ID Application 证书 P12 的 Base64。
 - `MACOS_CERTIFICATE_PASSWORD`：P12 密码。
@@ -19,7 +19,7 @@
 
 Secrets 只注入临时 runner。构建结束后删除临时 P12 和签名 keychain。
 
-## 首次配置：从 Apple 证书到 GitHub Secrets
+## 可选增强：从 Apple 证书到 GitHub Secrets
 
 以下步骤必须在受信任的 Mac 上执行。签发 Developer ID Application 证书需要有效的 Apple Developer Program 团队及相应账户权限；不要把 P12、P12 密码或 Apple 应用专用密码发送到聊天、Issue、PR 或仓库文件。
 
@@ -62,7 +62,18 @@ Secrets 只注入临时 runner。构建结束后删除临时 P12 和签名 keych
     gh run list --workflow release-build.yml --limit 1 --repo gooderno1/LarkSync
     ```
 
-只有该工作流同时通过测试二进制签名和`notarytool history`认证，才允许创建正式 Tag。`python scripts/release.py --publish`也会在任何版本文件变更前检查六项 Secret 名称。
+该预检通过后，正式 Tag 会自动生成 Developer ID 签名公证版本。未配置凭据也允许创建正式 Tag，发布脚本和 CI 会明确记录使用 ad-hoc 签名。
+
+## 无 Apple 凭据的安装方式
+
+ad-hoc 签名版本仍会经过双架构构建、Bundle 校验、DMG 挂载、安装复制、Keychain、后端健康检查和首屏二维码 smoke，但没有 Apple Developer 身份和公证票据。用户首次打开时：
+
+1. 从本项目官方 GitHub Release 下载与机器架构匹配的 DMG，并核对 SHA256。
+2. 打开 DMG，将`LarkSync.app`拖入`Applications`，然后尝试打开一次。
+3. 如出现“无法验证开发者”或“Apple 无法检查是否包含恶意软件”，进入「系统设置 → 隐私与安全性」。
+4. 在安全区域点击「仍要打开」，再次确认；系统会将该应用保存为例外，后续可正常双击启动。
+
+Apple 官方说明：[安全打开 Mac App](https://support.apple.com/102445)。只应对来源和 SHA256 均已确认的安装包手动放行。
 
 ### 凭据轮换
 
@@ -80,9 +91,9 @@ Secrets 只注入临时 runner。构建结束后删除临时 P12 和签名 keych
 
 ## 构建门禁
 
-PR/main 的 macOS 构建允许 ad-hoc 签名，用于尽早检查 Bundle 结构和运行时；正式 tag 构建设置`LARKSYNC_REQUIRE_MACOS_NOTARIZATION=1`，缺少任一公证凭证立即失败。
+PR/main 的 macOS 构建使用 ad-hoc 签名，用于尽早检查 Bundle 结构和运行时。正式 tag 构建先检测六项 Apple 凭据：全部缺失时继续使用 ad-hoc 签名；全部存在时设置`LARKSYNC_REQUIRE_MACOS_NOTARIZATION=1`；部分存在时立即失败并提示补齐或清空。
 
-正式链路依次执行：
+所有正式 macOS 构建均执行步骤 1-5；仅 Developer ID 模式继续执行步骤 6-8：
 
 1. 生成 `.icns` 与菜单栏 Template 图标。
 2. PyInstaller 构建 App Bundle。

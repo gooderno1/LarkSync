@@ -95,10 +95,7 @@ def test_sync_versions_updates_frontend_lockfile(tmp_path: Path) -> None:
     assert lock["packages"][""]["version"] == "0.8.20"
 
 
-def test_verify_publish_prerequisites_accepts_complete_macos_secrets(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
+def test_macos_signing_mode_detects_complete_secrets(monkeypatch) -> None:
     monkeypatch.setattr(
         release.macos_secrets,
         "resolve_repository",
@@ -110,13 +107,10 @@ def test_verify_publish_prerequisites_accepts_complete_macos_secrets(
         lambda _repo: set(release.macos_secrets.REQUIRED_SECRETS),
     )
 
-    release.verify_publish_prerequisites(tmp_path)
+    assert release.macos_signing_mode() is True
 
 
-def test_verify_publish_prerequisites_rejects_missing_macos_secrets(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
+def test_macos_signing_mode_allows_missing_secrets(monkeypatch) -> None:
     monkeypatch.setattr(
         release.macos_secrets,
         "resolve_repository",
@@ -128,5 +122,4 @@ def test_verify_publish_prerequisites_rejects_missing_macos_secrets(
         lambda _repo: {"APPLE_ID"},
     )
 
-    with pytest.raises(RuntimeError, match="MACOS_CERTIFICATE_P12_BASE64"):
-        release.verify_publish_prerequisites(tmp_path)
+    assert release.macos_signing_mode() is False
