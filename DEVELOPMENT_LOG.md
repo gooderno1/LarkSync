@@ -11,15 +11,19 @@
   - GitHub 未配置 Apple 凭据时发布 ad-hoc 签名 DMG；后续六项凭据齐全时，同一工作流自动启用 Developer ID 签名、notarization、stapling 和 Gatekeeper assessment。
   - Release Notes 明确记录无公证版本的首次打开方式：仅对官方 Release 且 SHA256 匹配的安装包，在「系统设置 → 隐私与安全性」选择「仍要打开」。
 - 当前结果：
-  - 正式源码版本已冻结为`v0.8.20`，本地发布候选 Tag 已生成且尚未推送。
+  - 正式源码版本已冻结为`v0.8.20`，Tag 已推送；GitHub Release 已发布为非草稿、非预发布版本。
   - macOS 应用包含品牌 App/Dock/Finder/DMG 图标、菜单栏 Template 图标、响应式 OAuth 引导与二维码、Cocoa 窗口恢复、现代 LaunchAgent、原生通知和 Keychain 安全存储。
   - 无 Apple 证书不再阻止正式发布；产物仍须通过双架构 DMG 构建和安装启动 smoke 才能进入 GitHub Release。
+  - GitHub Windows 安装包`LarkSync-Setup-v0.8.20.exe`大小为`57,581,847 bytes`，SHA256 为`27bdc0bfec82fbb141511efb8399d4c0bd275a375b835b3d08575d1e29d79daf`。
+  - GitHub macOS arm64 安装包`LarkSync-v0.8.20-arm64.dmg`大小为`65,543,607 bytes`，SHA256 为`3320a953da624a6aa753d83d97128e3d2d0212c3552b168968928c16b543ec52`。
+  - GitHub macOS x86_64 安装包`LarkSync-v0.8.20-x86_64.dmg`大小为`66,477,082 bytes`，SHA256 为`62482dd0a147bbf643d9bb0d5f29e5b2a3fe0412039c2c9c3d9cd194bfa614d1`。
+  - 三个平台的`.sha256`资产内容均与 GitHub 记录的安装包 digest 一致；Release 正文已统一列出三份校验值。
 - 验证方式：
   - 继承`v0.8.20-dev.1`至`v0.8.20-dev.4`的后端全量、前端 lint/typecheck/test/build、Linux WebKit 二维码、macOS 双架构 DMG 与安装 smoke 验证。
   - 正式提交本机后端全量`python -m pytest -q`：679 项通过。
   - 前端`npm run lint`、`npm run typecheck`、`npm run test`、`npm run build`：通过；35 个测试文件、114 项测试通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
   - `python scripts/update_install_smoke.py`与后端 editable 安装元数据 dry-run：通过；正式版本解析为`larksync-backend==0.8.20`。
-  - GitHub Tag 构建结果在发布完成后补记工作流地址、资产大小和 SHA256。
+  - GitHub Actions Release Build`30875691057`通过：quality、Linux WebKit、Windows、macOS arm64 和 macOS x86_64 全部成功；无凭据模式按预期跳过 Developer ID 导入与公证校验。
 - 遗留问题：
   - 本次无 Apple 凭据的 DMG 不带 Developer ID 身份和公证票据，首次打开需要用户手动放行；未来配置 Apple 凭据即可原地升级发布链路，无需修改应用代码。
 
