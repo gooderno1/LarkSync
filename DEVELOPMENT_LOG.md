@@ -1,5 +1,29 @@
 # DEVELOPMENT LOG
 
+## v0.8.21 release (2026-08-14)
+
+- 开发原因：
+  - 将`v0.8.21-dev.1`已经验证的问题中心恢复判断、本地移动上传竞态、历史异常次数迁移和空异常诊断修复交付为正式版本。
+  - 当前问题中心的遗留异常需要通过升级后后台刷新按可审计恢复事实自动结案，不能依赖人工逐条忽略。
+- 实现方式：
+  - 根包、后端、前端和前端 lockfile 版本统一冻结为`v0.8.21`；正式 Tag 为`v0.8.21`。
+  - GitHub Release Build 从正式 Tag 构建 Windows NSIS、macOS arm64 DMG 和 macOS x86_64 DMG，并为三个安装包各生成一份`.sha256`资产。
+  - macOS 仓库未配置 Apple Developer 凭据，本次继续发布经过 ad-hoc 签名、安装复制、后端健康和 WKWebView smoke 的双架构 DMG；Developer ID 导入、notarization 和 Gatekeeper assessment 按设计跳过。
+  - Release 正文由`DEVELOPMENT_LOG.md`生成；三平台并行上传结束后，使用各自`.sha256`实际内容合并校验表，避免最后完成的架构覆盖其他平台校验值。
+- 当前结果：
+  - GitHub Release`v0.8.21`已发布为非草稿、非预发布版本，包含 3 个安装包和 3 个对应校验文件。
+  - Windows 安装包`LarkSync-Setup-v0.8.21.exe`大小为`58,509,198 bytes`，SHA256 为`0e699b80a815b3d3ced8bd1302a4e149c0c8ca7a172fa97da0a1e6a22baca4a6`。
+  - macOS arm64 安装包`LarkSync-v0.8.21-arm64.dmg`大小为`65,579,245 bytes`，SHA256 为`c713cc98ddbbdd1e29522da436b6ca5c4e439e02de65cc6db557a41a39f7d10b`。
+  - macOS x86_64 安装包`LarkSync-v0.8.21-x86_64.dmg`大小为`66,473,205 bytes`，SHA256 为`c1c9ed4f250d2e855bf59068bb5cad4bbaf7ef5167e825fee4a21dadf2a53126`。
+  - 三份`.sha256`内容与 GitHub 对应安装包 digest 一致；Release 正文已列出全部三平台校验值。
+- 验证方式：
+  - 继承`v0.8.21-dev.1`的 686 项后端全量、前端 lint/typecheck/114 项测试/生产构建/生产依赖审计、本地 NSIS 构建、更新安装交接 smoke 和隔离打包后端健康检查。
+  - 正式版本发布脚本测试`python -m pytest -q tests/test_release.py tests/test_release_notes.py tests/test_release_workflow.py tests/test_configure_macos_release_secrets.py`：30 项通过。
+  - GitHub Actions Release Build`31801757497`通过：`quality`、`quality-webkit`、`build-windows`、`build-macos (arm64)`和`build-macos (x86_64)`全部成功；Windows 静默安装 smoke 与两套 macOS 安装启动 smoke 均通过。
+- 遗留问题：
+  - 本次 macOS DMG 没有 Developer ID 身份和 Apple 公证票据，首次打开仍需在「系统设置 → 隐私与安全性」对确认来自官方 Release 且 SHA256 匹配的应用选择「仍要打开」。
+  - 当前三平台 Job 会分别更新同一 Release 正文，最后完成的 Job 可能只保留自身校验值；本次已在发布后合并修正，后续应把 Release 正文更新收敛为所有构建完成后的单一聚合 Job。
+
 ## v0.8.21-dev.1 (2026-08-14)
 
 - 开发原因：
