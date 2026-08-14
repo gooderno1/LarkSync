@@ -6,6 +6,7 @@ from typing import Any, Awaitable, Callable, Iterable
 
 from loguru import logger
 
+from src.core.error_text import describe_exception
 from src.services.bitable_service import BitableService
 from src.services.docx_service import DocxService
 from src.services.drive_service import DriveNode, DriveService
@@ -356,14 +357,18 @@ class SyncDownloadOrchestrationService:
                 None,
             )
         except Exception as exc:
+            error_message = describe_exception(exc)
             status.failed_files += 1
-            status.last_error = str(exc)
+            status.last_error = error_message
             self._record_event(
                 status,
                 SyncFileEvent(
                     path=str(target_path),
                     status="failed",
-                    message=f"type={effective_type} token={effective_token} error={exc}",
+                    message=(
+                        f"type={effective_type} token={effective_token} "
+                        f"error={error_message}"
+                    ),
                 ),
                 None,
             )
@@ -373,7 +378,7 @@ class SyncDownloadOrchestrationService:
                 target_path,
                 effective_type,
                 effective_token,
-                exc,
+                error_message,
             )
 
     async def _download_document_candidate(

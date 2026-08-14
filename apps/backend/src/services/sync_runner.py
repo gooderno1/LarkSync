@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from loguru import logger
 
 from src.core.config import ConfigManager, DeletePolicy
+from src.core.error_text import describe_exception
 from src.services.bitable_service import BitableService
 from src.services.docx_service import (
     DocxService,
@@ -449,6 +450,18 @@ class SyncTaskRunner:
         pending = self._pending_uploads.setdefault(task_id, {})
         pending[str(path)] = time.time() if changed_at is None else changed_at
 
+    def _remove_pending_path_tree(self, task_id: str, root: Path) -> None:
+        pending = self._pending_uploads.get(task_id)
+        if not pending:
+            return
+        resolved_root = root.resolve(strict=False)
+        for candidate in list(pending):
+            try:
+                Path(candidate).resolve(strict=False).relative_to(resolved_root)
+            except ValueError:
+                continue
+            pending.pop(candidate, None)
+
     async def run_conflict_upload(
         self,
         task: SyncTaskItem,
@@ -512,7 +525,7 @@ class SyncTaskRunner:
             return status
         except Exception as exc:
             status.state = "failed"
-            status.last_error = str(exc)
+            status.last_error = describe_exception(exc)
             status.finished_at = time.time()
             self._record_task_failure_event(task, status, exc)
             raise
@@ -600,7 +613,7 @@ class SyncTaskRunner:
             status.finished_at = time.time()
         except Exception as exc:
             status.state = "failed"
-            status.last_error = str(exc)
+            status.last_error = describe_exception(exc)
             status.finished_at = time.time()
             self._record_task_failure_event(task, status, exc)
         finally:
@@ -649,7 +662,7 @@ class SyncTaskRunner:
             status.finished_at = time.time()
         except Exception as exc:
             status.state = "failed"
-            status.last_error = str(exc)
+            status.last_error = describe_exception(exc)
             status.finished_at = time.time()
             self._record_task_failure_event(task, status, exc)
         finally:
@@ -720,7 +733,7 @@ class SyncTaskRunner:
             SyncFileEvent(
                 path=task.local_path,
                 status="failed",
-                message=str(exc),
+                message=describe_exception(exc),
             ),
             task,
         )
@@ -750,7 +763,7 @@ class SyncTaskRunner:
             status.finished_at = time.time()
         except Exception as exc:
             status.state = "failed"
-            status.last_error = str(exc)
+            status.last_error = describe_exception(exc)
             status.finished_at = time.time()
             self._record_task_failure_event(task, status, exc)
         finally:
@@ -2220,6 +2233,29 @@ class SyncTaskRunner:
             return
         path = Path(event.dest_path or event.src_path)
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
+        if event.event_type == "moved" and event.dest_path:
+            source_path = Path(event.src_path)
+            self._remove_pending_path_tree(task.id, source_path)
+            if self._should_ignore_path(task, path):
+                return
+            if event.is_directory:
+                def _collect_destination_files() -> list[Path]:
+                    try:
+                        return [candidate for candidate in path.rglob("*") if candidate.is_file()]
+                    except OSError:
+                        return []
+
+                moved_files = await asyncio.to_thread(_collect_destination_files)
+                for moved_path in moved_files:
+                    if not self._should_ignore_path(task, moved_path):
+                        self.queue_local_change(
+                            task.id,
+                            moved_path,
+                            changed_at=event.timestamp,
+                        )
+                return
+            self.queue_local_change(task.id, path, changed_at=event.timestamp)
+            return
         if self._should_ignore_path(task, path):
             return
         if event.event_type == "deleted":

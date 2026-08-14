@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from src.db.models import (
     ConflictRecord,
+    ProblemOccurrence,
     ProblemRecord,
     SyncMeta,
     SyncRun,
@@ -950,6 +951,280 @@ async def test_reconcile_current_state_uses_current_ignore_and_task_recovery(
     }
     recovered = next(item for item in resolved if item.category == "auth_permission")
     assert recovered.resolved_by_run_id == "run-later-success"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_task_download_failure_requires_later_download_success(
+    tmp_path,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    task_root = tmp_path / "sync-root"
+    task_root.mkdir()
+    async with session_maker() as session:
+        session.add(
+            SyncTask(
+                id="task-directional-recovery",
+                name="任务方向恢复",
+                local_path=task_root.as_posix(),
+                cloud_folder_token="folder-token",
+                sync_mode="bidirectional",
+                update_mode="auto",
+                md_sync_mode="enhanced",
+                owner_device_id="device",
+                is_test=True,
+                enabled=True,
+                created_at=1.0,
+                updated_at=1.0,
+            )
+        )
+        session.add(
+            SyncRun(
+                run_id="run-download-failed",
+                task_id="task-directional-recovery",
+                state="failed",
+                trigger_source="scheduled_download",
+                started_at=9.0,
+                finished_at=10.0,
+                last_event_at=10.0,
+                last_error="获取文件清单失败: unknown error.",
+                run_kind="activity",
+                has_activity=True,
+                created_at=9.0,
+                updated_at=10.0,
+            )
+        )
+        session.add(
+            SyncRun(
+                run_id="run-upload-success",
+                task_id="task-directional-recovery",
+                state="success",
+                trigger_source="scheduled_upload",
+                started_at=19.0,
+                finished_at=20.0,
+                last_event_at=20.0,
+                run_kind="legacy_check",
+                has_activity=False,
+                created_at=19.0,
+                updated_at=20.0,
+            )
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-directional-recovery",
+                task_name="任务方向恢复",
+                status="failed",
+                path=task_root.as_posix(),
+                message="获取文件清单失败: unknown error.",
+                run_id="run-download-failed",
+            )
+        ]
+    )
+    await service.refresh_sources()
+
+    first = await service.reconcile_current_state(batch_size=20, max_batches=1)
+    open_total, open_items = await service.list_problems(
+        state="open", limit=20, offset=0
+    )
+
+    assert first.resolved == 0
+    assert open_total == 1
+    assert open_items[0].object_kind == "task_run"
+    assert open_items[0].operation_family == "download"
+
+    async with session_maker() as session:
+        session.add(
+            SyncRun(
+                run_id="run-download-success",
+                task_id="task-directional-recovery",
+                state="success",
+                trigger_source="scheduled_download",
+                started_at=29.0,
+                finished_at=30.0,
+                last_event_at=30.0,
+                total_files=640,
+                skipped_files=640,
+                run_kind="legacy_check",
+                has_activity=False,
+                created_at=29.0,
+                updated_at=30.0,
+            )
+        )
+        await session.commit()
+
+    second = await service.reconcile_current_state(batch_size=20, max_batches=1)
+    resolved_total, resolved_items = await service.list_problems(
+        state="resolved", limit=20, offset=0
+    )
+
+    assert second.resolved == 1
+    assert resolved_total == 1
+    assert resolved_items[0].resolution_verification == "later_matching_run_succeeded"
+    assert resolved_items[0].resolved_by_run_id == "run-download-success"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_current_state_resolves_missing_local_io_object(tmp_path) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    task_root = tmp_path / "sync-root"
+    task_root.mkdir()
+    missing = task_root / "moved.md"
+    async with session_maker() as session:
+        session.add(
+            SyncTask(
+                id="task-local-move",
+                name="本地移动收敛",
+                local_path=task_root.as_posix(),
+                cloud_folder_token="folder-token",
+                sync_mode="bidirectional",
+                update_mode="auto",
+                md_sync_mode="enhanced",
+                owner_device_id="device",
+                is_test=True,
+                enabled=True,
+                created_at=1.0,
+                updated_at=1.0,
+            )
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-local-move",
+                task_name="本地移动收敛",
+                status="failed",
+                path=missing.as_posix(),
+                message="[WinError 2] 系统找不到指定的文件。",
+                run_id="run-moved",
+            )
+        ]
+    )
+    await service.refresh_sources()
+
+    result = await service.reconcile_current_state(batch_size=20, max_batches=1)
+    resolved_total, resolved_items = await service.list_problems(
+        state="resolved", limit=20, offset=0
+    )
+
+    assert result.resolved == 1
+    assert resolved_total == 1
+    assert resolved_items[0].category == "local_io"
+    assert resolved_items[0].resolution_verification == "target_absent_verified"
+
+
+@pytest.mark.asyncio
+async def test_refresh_sources_recounts_legacy_summary_occurrences(tmp_path) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(session_maker)
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing",
+                message="完成: total=0 ok=0 failed=0 skipped=0",
+                run_id="run-summary",
+            ),
+            SyncEventRecord(
+                timestamp=20.0,
+                task_id="task-1",
+                task_name="市场资料备份",
+                status="failed",
+                path="D:/Work/Marketing",
+                message="获取文件清单失败: internal error",
+                run_id="run-real-error",
+            ),
+        ]
+    )
+    async with session_maker() as session:
+        problem = ProblemRecord(
+            id="legacy-mixed-problem",
+            fingerprint="legacy-mixed-fingerprint",
+            category="download",
+            severity="medium",
+            state="open",
+            title="下载失败 · Marketing",
+            summary="云端内容没有成功写入本地。",
+            task_id="task-1",
+            object_kind="task_run",
+            object_key="d:/work/marketing",
+            object_path="D:/Work/Marketing",
+            first_seen_at=10.0,
+            last_seen_at=20.0,
+            occurrence_count=2,
+            latest_run_id="run-real-error",
+            latest_event_id="legacy-real-event",
+            classifier_version="problem-classifier-v3",
+            operation_family="download",
+            actionability="auto_recovering",
+        )
+        session.add(problem)
+        session.add_all(
+            [
+                ProblemOccurrence(
+                    id="legacy-summary-occurrence",
+                    problem_id=problem.id,
+                    source_kind="sync_event",
+                    source_id="legacy-summary-event",
+                    run_id="run-summary",
+                    event_id="legacy-summary-event",
+                    occurred_at=10.0,
+                    evidence_json="{}",
+                ),
+                ProblemOccurrence(
+                    id="legacy-real-occurrence",
+                    problem_id=problem.id,
+                    source_kind="sync_event",
+                    source_id="legacy-real-event",
+                    run_id="run-real-error",
+                    event_id="legacy-real-event",
+                    occurred_at=20.0,
+                    evidence_json="{}",
+                ),
+            ]
+        )
+        summary_event = await session.get(SyncRunEvent, "legacy-summary-event")
+        real_event = await session.get(SyncRunEvent, "legacy-real-event")
+        assert summary_event is None
+        assert real_event is None
+        session.add_all(
+            [
+                SyncRunEvent(
+                    id="legacy-summary-event",
+                    task_id="task-1",
+                    task_name="市场资料备份",
+                    run_id="run-summary",
+                    timestamp=10.0,
+                    status="failed",
+                    path="D:/Work/Marketing",
+                    message="完成: total=0 ok=0 failed=0 skipped=0",
+                    created_at=10.0,
+                ),
+                SyncRunEvent(
+                    id="legacy-real-event",
+                    task_id="task-1",
+                    task_name="市场资料备份",
+                    run_id="run-real-error",
+                    timestamp=20.0,
+                    status="failed",
+                    path="D:/Work/Marketing",
+                    message="获取文件清单失败: internal error",
+                    created_at=20.0,
+                ),
+            ]
+        )
+        await session.commit()
+
+    await service.refresh_sources(event_limit=1)
+    total, items = await service.list_problems(state="open", limit=20, offset=0)
+
+    assert total == 1
+    assert items[0].occurrence_count == 1
 
 
 @pytest.mark.asyncio

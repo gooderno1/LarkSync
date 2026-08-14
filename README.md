@@ -6,7 +6,7 @@
 
 本地优先的飞书文档同步工具：把飞书云文档稳定同步到本地 Markdown / 文件系统，同时保留继续在飞书协作的工作方式。
 当前稳定版本：`v0.8.20`（2026-08-04）。核心运行形态为 Windows / macOS 桌面壳 + 托盘或菜单栏常驻。
-当前代码基线：`v0.8.20`。
+当前代码基线：`v0.8.21-dev.1`。
 
 ## 快速入口
 
@@ -41,6 +41,7 @@
 
 ## 核心能力
 
+- v0.8.21-dev.1 修复文件或目录移动后的旧路径上传竞态：监听器会撤销源路径及其子项队列并排队新位置，执行中已消失的源文件记为跳过而不是失败；问题中心按上传/下载方向采信后续成功扫描，即使本轮全是未变化跳过项也能自动结案，并一次性排除历史完成汇总对异常次数的污染。无文本异常会显示异常类型，不再生成空白错误。
 - v0.8.20-dev.4 将 Apple Developer 凭据改为可选：未配置时正式 Release 仍会生成经过 ad-hoc 签名和安装 smoke 的 macOS arm64、x86_64 DMG；凭据六项齐全时自动启用 Developer ID、notarization、stapling 和 Gatekeeper 校验。无公证版本首次打开需在 macOS「系统设置 → 隐私与安全性」选择「仍要打开」。
 - v0.8.20-dev.3 增加 macOS 正式发布凭据解阻工具：在本机交互读取 Developer ID P12 密码和 Apple 应用专用密码，通过标准输入写入六项 GitHub Actions Secrets，不把敏感值写进文件或命令参数；`Release Build`手动凭据预检模式可在当前发布分支验证 Developer ID 私钥可签名、时间戳服务可用以及`notarytool`公证账户有效，正式发布命令缺少任一 Secret 时会在改版本、提交或打 Tag 前停止，并同步冻结前端 lockfile 版本元数据。
 - v0.8.20-dev.2 补齐 macOS App/Finder/Dock/DMG 与菜单栏图标、响应式 OAuth 引导和二维码状态、Cocoa 窗口恢复、现代 LaunchAgent、原生通知与 Keychain/WKWebView 安装验收；正式 DMG 强制 Developer ID 签名、Apple notarization、stapling 和 Gatekeeper 校验。

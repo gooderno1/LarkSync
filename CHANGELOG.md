@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-08-14] v0.8.21-dev.1 fix(sync): 收敛已恢复异常并消除本地移动上传竞态
 [2026-08-04] v0.8.20 release: 修复内嵌 Sheet 重复下载并完成 macOS 图标、登录二维码、窗口恢复、自启动、通知与双架构安装适配；无 Apple 凭据也发布可安装 DMG
 [2026-08-04] v0.8.20-dev.4 fix(release): 允许无 Apple 凭据发布可安装的 ad-hoc macOS 双架构 DMG；凭据齐全时自动升级为 Developer ID 签名公证
 [2026-08-04] v0.8.20-dev.3 feat(release): 增加 macOS Developer ID 与公证凭据安全注入、当前分支预检模式、正式发布前 Secret 门禁及前端 lockfile 版本同步

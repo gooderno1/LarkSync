@@ -6,6 +6,7 @@ from typing import Any, Awaitable, Callable, Iterable
 
 from loguru import logger
 
+from src.core.error_text import describe_exception
 from src.services.docx_service import DocxService
 from src.services.drive_service import DriveService
 from src.services.file_uploader import FileUploader
@@ -135,19 +136,43 @@ class SyncUploadOrchestrationService:
                 runtime.import_task_service,
                 force=force,
             )
+        except FileNotFoundError:
+            try:
+                source_absent = not path.exists()
+            except OSError:
+                source_absent = False
+            if not source_absent:
+                raise
+            status.skipped_files += 1
+            self._record_event(
+                status,
+                SyncFileEvent(
+                    path=str(path),
+                    status="skipped",
+                    message="源文件已移动或删除，取消旧路径上传",
+                ),
+                None,
+            )
+            logger.info("源文件已移动或删除，跳过旧路径上传: task_id={} path={}", task.id, path)
         except Exception as exc:
+            error_message = describe_exception(exc)
             status.failed_files += 1
-            status.last_error = str(exc)
+            status.last_error = error_message
             self._record_event(
                 status,
                 SyncFileEvent(
                     path=str(path),
                     status="failed",
-                    message=str(exc),
+                    message=error_message,
                 ),
                 None,
             )
-            logger.error("上传失败: task_id={} path={} error={}", task.id, path, exc)
+            logger.error(
+                "上传失败: task_id={} path={} error={}",
+                task.id,
+                path,
+                error_message,
+            )
 
     @staticmethod
     async def _close_owned_services(runtime: UploadRuntimeServices) -> None:

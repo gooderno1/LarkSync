@@ -46,6 +46,7 @@ RECOVERY_STATUSES = {
 LEGACY_PROBLEM_EVENT_CURSOR_KEY = "problem_event_cursor_v3"
 PROBLEM_HISTORY_CURSOR_KEY = "problem_history_cursor_v3"
 PROBLEM_EVENT_CURSOR_KEY = "problem_event_cursor_v4"
+PROBLEM_OCCURRENCE_RECOUNT_KEY = "problem_occurrence_recount_v1"
 _REQUEST_ID_PATTERN = re.compile(
     r"(?i)(?:request[_ -]?id|x-tt-logid|trace[_ -]?id)\s*[:=]\s*[^\s,;]+"
 )
@@ -248,41 +249,29 @@ class ProblemService:
                             select(SyncTask).where(SyncTask.id.in_(task_ids))
                         )
                         tasks = {item.id: item for item in task_rows.scalars().all()}
-                    latest_success: dict[str, tuple[str, float]] = {}
+                    latest_success: dict[tuple[str, str], tuple[str, float]] = {}
                     if task_ids:
                         min_seen_at = min(item.last_seen_at for item in rows)
-                        ranked_runs = (
+                        run_rows = await session.execute(
                             select(
-                                SyncRun.task_id.label("task_id"),
-                                SyncRun.run_id.label("run_id"),
-                                SyncRun.finished_at.label("finished_at"),
-                                func.row_number()
-                                .over(
-                                    partition_by=SyncRun.task_id,
-                                    order_by=SyncRun.finished_at.desc(),
-                                )
-                                .label("position"),
+                                SyncRun.task_id,
+                                SyncRun.run_id,
+                                SyncRun.finished_at,
+                                SyncRun.trigger_source,
                             )
                             .where(SyncRun.task_id.in_(task_ids))
                             .where(SyncRun.state == "success")
-                            .where(SyncRun.has_activity.is_(True))
                             .where(SyncRun.finished_at.is_not(None))
                             .where(SyncRun.finished_at > min_seen_at)
-                            .subquery()
+                            .order_by(SyncRun.finished_at.desc())
                         )
-                        run_rows = await session.execute(
-                            select(
-                                ranked_runs.c.task_id,
-                                ranked_runs.c.run_id,
-                                ranked_runs.c.finished_at,
-                            )
-                            .where(ranked_runs.c.position == 1)
-                        )
-                        for task_id, run_id, finished_at in run_rows.all():
-                            latest_success[str(task_id)] = (
-                                str(run_id),
-                                float(finished_at),
-                            )
+                        for task_id, run_id, finished_at, trigger_source in run_rows.all():
+                            task_key = str(task_id)
+                            value = (str(run_id), float(finished_at))
+                            latest_success.setdefault((task_key, "any"), value)
+                            direction = self.operation_hint_from_trigger(trigger_source)
+                            if direction in {"upload", "download"}:
+                                latest_success.setdefault((task_key, direction), value)
 
                     ignore_hidden_cache_paths = self._ignore_hidden_cache_paths
                     if ignore_hidden_cache_paths is None:
@@ -316,7 +305,7 @@ class ProblemService:
     def _build_current_state_decisions(
         problems: list[ProblemRecord],
         tasks: dict[str, SyncTask],
-        latest_success: dict[str, tuple[str, float]],
+        latest_success: dict[tuple[str, str], tuple[str, float]],
         ignore_hidden_cache_paths: bool,
     ) -> list[tuple[ProblemRecord, str, float | None, str | None]]:
         decisions: list[tuple[ProblemRecord, str, float | None, str | None]] = []
@@ -328,7 +317,7 @@ class ProblemService:
                 continue
             if task is None:
                 continue
-            successful_run = latest_success.get(task_id)
+            successful_run = latest_success.get((task_id, "any"))
             if (
                 successful_run
                 and successful_run[1] > problem.last_seen_at
@@ -342,6 +331,26 @@ class ProblemService:
                         successful_run[0],
                     )
                 )
+                continue
+            if problem.object_kind == "task_run":
+                direction = problem.operation_family or "any"
+                directional_run = latest_success.get((task_id, direction))
+                if direction not in {"upload", "download"}:
+                    directional_run = successful_run
+                if directional_run and directional_run[1] > problem.last_seen_at:
+                    verification = (
+                        "later_matching_run_succeeded"
+                        if direction in {"upload", "download"}
+                        else "later_run_succeeded"
+                    )
+                    decisions.append(
+                        (
+                            problem,
+                            verification,
+                            directional_run[1],
+                            directional_run[0],
+                        )
+                    )
                 continue
             if (
                 successful_run
@@ -387,7 +396,10 @@ class ProblemService:
             ):
                 decisions.append((problem, "path_excluded", None, None))
                 continue
-            if problem.operation_family in {"upload", "conversion", "delete"}:
+            if (
+                problem.operation_family in {"upload", "conversion", "delete"}
+                or problem.category == "local_io"
+            ):
                 try:
                     task_root_available = Path(task.local_path).is_dir()
                 except OSError:
@@ -421,6 +433,7 @@ class ProblemService:
             task_rows = await session.execute(select(SyncTask.id, SyncTask.local_path))
             task_roots = {str(task_id): str(root) for task_id, root in task_rows.all()}
             await self._migrate_active_event_problems(session, task_roots=task_roots)
+            await self._recount_legacy_occurrences(session)
             cursor_timestamp, cursor_event_id = await self._load_event_cursor(session)
             event_stmt = (
                 select(SyncRunEvent)
@@ -532,6 +545,51 @@ class ProblemService:
                 )
             await session.commit()
         return ProblemRefreshResult(events_seen=len(events), conflicts_seen=len(conflicts))
+
+    async def _recount_legacy_occurrences(self, session: AsyncSession) -> None:
+        """一次性排除历史运行汇总，修正问题中心的异常出现次数。"""
+
+        if await session.get(SyncMeta, PROBLEM_OCCURRENCE_RECOUNT_KEY) is not None:
+            return
+        problem_rows = await session.execute(
+            select(ProblemRecord).where(
+                ProblemRecord.state.in_(["open", "in_progress", "waiting", "ignored"])
+            )
+        )
+        problems = list(problem_rows.scalars().all())
+        if problems:
+            problem_ids = [problem.id for problem in problems]
+            occurrence_rows = await session.execute(
+                select(
+                    ProblemOccurrence.problem_id,
+                    ProblemOccurrence.source_kind,
+                    SyncRunEvent.status,
+                    SyncRunEvent.message,
+                )
+                .outerjoin(
+                    SyncRunEvent,
+                    SyncRunEvent.id == ProblemOccurrence.event_id,
+                )
+                .where(ProblemOccurrence.problem_id.in_(problem_ids))
+            )
+            counts = {problem.id: 0 for problem in problems}
+            for problem_id, source_kind, status, message in occurrence_rows.all():
+                if (
+                    source_kind == "sync_event"
+                    and self.is_failed_run_summary(status or "", message)
+                ):
+                    continue
+                counts[str(problem_id)] += 1
+            for problem in problems:
+                problem.occurrence_count = max(1, counts[problem.id])
+        now = time.time()
+        session.add(
+            SyncMeta(
+                key=PROBLEM_OCCURRENCE_RECOUNT_KEY,
+                value=json.dumps({"completed_at": now}, ensure_ascii=False),
+                updated_at=now,
+            )
+        )
 
     async def _migrate_active_event_problems(
         self,

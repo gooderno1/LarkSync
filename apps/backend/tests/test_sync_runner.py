@@ -1903,6 +1903,90 @@ async def test_handle_local_event_queues_change_without_persisting_transient_eve
 
 
 @pytest.mark.asyncio
+async def test_handle_moved_file_replaces_pending_source_with_destination(
+    tmp_path: Path,
+) -> None:
+    runner = SyncTaskRunner(link_service=FakeLinkService())
+    task = SyncTaskItem(
+        id="task-move-file",
+        name="文件移动测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    source = tmp_path / "old.md"
+    destination = tmp_path / "archive" / "new.md"
+    destination.parent.mkdir()
+    destination.write_text("# moved", encoding="utf-8")
+    runner.queue_local_change(task.id, source, changed_at=100.0)
+
+    await runner._handle_local_event(
+        task,
+        FileChangeEvent(
+            event_type="moved",
+            src_path=str(source),
+            dest_path=str(destination),
+            timestamp=123.0,
+        ),
+    )
+
+    pending = runner._pending_uploads[task.id]
+    assert str(source) not in pending
+    assert pending[str(destination)] == 123.0
+
+
+@pytest.mark.asyncio
+async def test_handle_moved_directory_rebases_pending_descendants(
+    tmp_path: Path,
+) -> None:
+    runner = SyncTaskRunner(link_service=FakeLinkService())
+    task = SyncTaskItem(
+        id="task-move-directory",
+        name="目录移动测试",
+        local_path=tmp_path.as_posix(),
+        cloud_folder_token="root-token",
+        cloud_folder_name=None,
+        base_path=None,
+        sync_mode="bidirectional",
+        update_mode="auto",
+        enabled=True,
+        created_at=0,
+        updated_at=0,
+    )
+    source = tmp_path / "source"
+    destination = tmp_path / "archive" / "source"
+    moved_file = destination / "nested" / "document.md"
+    moved_file.parent.mkdir(parents=True)
+    moved_file.write_text("# moved", encoding="utf-8")
+    runner.queue_local_change(
+        task.id,
+        source / "nested" / "document.md",
+        changed_at=100.0,
+    )
+
+    await runner._handle_local_event(
+        task,
+        FileChangeEvent(
+            event_type="moved",
+            src_path=str(source),
+            dest_path=str(destination),
+            timestamp=123.0,
+            is_directory=True,
+        ),
+    )
+
+    pending = runner._pending_uploads[task.id]
+    assert str(source / "nested" / "document.md") not in pending
+    assert pending[str(moved_file)] == 123.0
+
+
+@pytest.mark.asyncio
 async def test_handle_local_event_ignores_temporary_files(tmp_path: Path) -> None:
     runner = SyncTaskRunner(link_service=FakeLinkService())
     task = SyncTaskItem(

@@ -1,5 +1,34 @@
 # DEVELOPMENT LOG
 
+## v0.8.21-dev.1 (2026-08-14)
+
+- 开发原因：
+  - 问题中心保留了已经恢复的任务级下载异常：原实现只把`operation_family=task_run`或系统分类匹配后续成功，遗漏了`object_kind=task_run`但操作族为`download`的任务根错误。
+  - 原实现仅采信`has_activity=true`的后续成功运行；完整扫描若 640 个对象均未变化，会以`has_activity=false`结束，不能作为任务已恢复的证据。
+  - Watchdog 移动事件只排队目标文件，没有撤销源路径；目录移动直接忽略。调度器若已取得旧路径快照，文件在实际读取前被移动，会产生`FileNotFoundError`并形成无须人工处理的问题。
+  - 部分第三方异常的`str(exc)`为空，活动与问题详情只显示空白；历史运行完成汇总还可能被旧版问题出现记录计入次数。
+- 实现方式：
+  - 任务级问题按`scheduled_upload`和`scheduled_download`方向分别查询最后成功运行；上传失败不能被下载成功结案，下载失败也不能被上传成功结案。无方向的系统、认证与取消问题继续使用任务最新成功运行。
+  - 后续成功查询不再要求`has_activity=true`；适用条件为同一任务、同一操作方向、`state=success`且`finished_at`晚于问题最后发生时间。验证标记为`later_matching_run_succeeded`。
+  - 本地 I/O 问题在任务根目录仍可访问且目标路径已不存在时，以`target_absent_verified`自动结案；这只处理已移动或删除的旧路径，不会隐藏当前仍存在的读写错误。
+  - Watchdog 文件移动先删除源路径待上传项，再排队目标文件；目录移动删除源目录下全部待上传项，并在线程中遍历目标目录，将未被忽略规则排除的现存文件按新路径排队。
+  - 上传阶段单独处理`FileNotFoundError`：仅当源路径当前确实不存在时记为`skipped`，事件消息为“源文件已移动或删除，取消旧路径上传”；路径仍存在时继续抛出，不吞掉真实 I/O 异常。
+  - 新增统一异常文本回退：非空`str(exc)`保持原样，空文本使用`repr(exc)`，例如无参数`RuntimeError()`会明确记录为`RuntimeError()`。
+  - 增加一次性`problem_occurrence_recount_v1`迁移标记；只修正未解决/处理中/等待中/已忽略问题的`occurrence_count`，排除严格匹配`完成: total=N ok=N failed=N skipped=N`的同步事件，原始运行、活动事件和出现证据均保留。
+- 当前结果：
+  - 已恢复的任务级下载异常能由同方向的后续完整成功扫描自动结案；反方向成功不会误结案。
+  - 文件和目录移动不再保留旧路径上传队列；即使移动发生在上传快照之后，旧路径消失也只生成可审计的跳过事件，不再增加失败计数。
+  - 历史混合问题的异常次数只统计真实错误；原始活动仍可查看完整运行汇总。
+  - 空异常消息已改为可诊断的异常类型文本。
+- 验证方式：
+  - TDD 新增 7 项回归：任务级下载方向恢复、全跳过成功恢复、反方向不恢复、本地 I/O 旧路径结案、历史汇总次数重算、上传中路径消失、空异常文本，以及文件/目录移动队列替换场景。
+  - 问题中心完整测试`python -m pytest -q tests/test_problem_service.py`：22 项通过。
+  - 同步调度与上传编排测试`python -m pytest -q tests/test_sync_runner.py tests/test_sync_upload_orchestration_service.py`：68 项通过。
+  - 后端全量`python -m pytest -q`：686 项通过。
+  - 前端`npm run lint`、`npm run typecheck`、`npm run test`、`npm run build`全部通过：35 个测试文件、114 项测试通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
+- 遗留问题：
+  - 本次只处理本地监听到的移动竞态和已有问题的可验证收敛，不新增跨设备云端“移动”语义；云端目录结构变化仍按现有完整扫描与映射规则处理。
+
 ## v0.8.20 release (2026-08-04)
 
 - 开发原因：
