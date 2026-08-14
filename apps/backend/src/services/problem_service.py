@@ -274,6 +274,13 @@ class ProblemService:
                             direction = self.operation_hint_from_trigger(trigger_source)
                             if direction in {"upload", "download"}:
                                 latest_success.setdefault((task_key, direction), value)
+                            elif str(trigger_source or "").strip().lower() == "manual":
+                                task = tasks.get(task_key)
+                                sync_mode = str(task.sync_mode if task else "").lower()
+                                if sync_mode in {"bidirectional", "upload_only"}:
+                                    latest_success.setdefault((task_key, "upload"), value)
+                                if sync_mode in {"bidirectional", "download_only"}:
+                                    latest_success.setdefault((task_key, "download"), value)
                         check_rows = await session.execute(
                             select(
                                 SyncTaskCheckState.task_id,

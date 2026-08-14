@@ -1,5 +1,30 @@
 # DEVELOPMENT LOG
 
+## v0.8.23 release (2026-08-14)
+
+- 开发原因：
+  - v0.8.22 升级后，“算云项目更新”的历史下载异常仍处于`waiting`；用户点击“重试任务”后，手动运行`ef433174-a97f-41b9-8183-0713f0fb510f`于`22:08:28`至`22:10:38`成功完成，统计为`total=1279`、`uploaded=5`、`skipped=1274`、`failed=0`。
+  - 手动双向运行实际依次完成下载和上传，但`SyncRun.trigger_source=manual`不包含方向；v0.8.22 只把明确的`scheduled_upload/scheduled_download`映射为方向恢复证据，导致界面提供的重试动作无法立即关闭对应下载异常。
+- 实现方式：
+  - 问题恢复扫描遇到成功的`manual`运行时读取任务`sync_mode`：`bidirectional`映射为上传与下载，`upload_only`只映射上传，`download_only`只映射下载。
+  - 明确包含上传或下载的运行来源继续使用原方向规则；系统、认证和无方向问题继续使用任务最新成功运行，不改变既有行为。
+  - 方向匹配后的验证标记仍为`later_matching_run_succeeded`，并记录真实手动运行 ID，保留完整审计链路。
+- 当前结果：
+  - 双向任务在问题中心执行“重试任务”并成功后，无须等待下一个两小时下载周期即可自动结案。
+  - v0.8.22 已存在且晚于异常的成功手动双向运行，在升级 v0.8.23 后的后台状态核对中会被识别并自动关闭对应问题。
+  - 上传单向任务的手动成功不会关闭下载异常，下载单向任务同理不会关闭上传异常。
+- 验证方式：
+  - TDD 参数化回归先复现双向`manual`成功无法关闭下载异常，再验证`bidirectional`可结案且`upload_only`保持未解决。
+  - 方向恢复定向测试共 4 项通过，覆盖定时同方向运行、分方向无变化检测、手动双向恢复和手动单向隔离。
+  - 后端全量`python -m pytest -q`：692 项通过。
+  - 前端`npm run lint`、`npm run typecheck`、`npm run test`和`npm run build`全部通过：35 个测试文件、114 项测试通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
+  - 发布脚本测试`python -m pytest tests/test_release.py tests/test_release_notes.py tests/test_release_workflow.py tests/test_configure_macos_release_secrets.py -q`：30 项通过；后端 editable 安装 dry-run 解析为`larksync-backend==0.8.23`。
+  - `python scripts/build_installer.py --nsis`在 Python 3.14.2、Node.js 25.2.1 基线上通过；生成`LarkSync-Setup-v0.8.23.exe`，大小`72,121,388 bytes`，SHA256 为`f724472adf3ab4065a8d18c08346183bb113a3b887ff8f61254730a57f8a0a25`。
+  - `python scripts/update_install_smoke.py`通过；随后以`synthetic_test`、独立数据目录、端口`18023`和锁端口`48923`启动打包后的`LarkSync.exe --backend`，`/health`返回`ok`、桌面状态返回`current_version=v0.8.23`，停止后进程与端口均无残留。
+- 遗留问题：
+  - 本次仍不改写 v0.8.21 已保存的`unknown error.`文本；错误诊断增强只适用于 v0.8.22 及后续新发生的飞书文件清单异常。
+  - macOS DMG 若未配置 Developer ID 与 Apple 公证凭据，首次打开仍需对确认来自官方 Release 且 SHA256 匹配的应用手动放行。
+
 ## v0.8.22 release (2026-08-14)
 
 - 开发原因：

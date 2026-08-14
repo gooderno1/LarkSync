@@ -32,7 +32,12 @@ async def _build_services(tmp_path):
     )
 
 
-async def _insert_task(session_maker, *, task_id: str = "task-1") -> None:
+async def _insert_task(
+    session_maker,
+    *,
+    task_id: str = "task-1",
+    sync_mode: str = "bidirectional",
+) -> None:
     async with session_maker() as session:
         session.add(
             SyncTask(
@@ -40,7 +45,7 @@ async def _insert_task(session_maker, *, task_id: str = "task-1") -> None:
                 name="市场资料备份",
                 local_path="D:/Work/Marketing",
                 cloud_folder_token="folder-token",
-                sync_mode="bidirectional",
+                sync_mode=sync_mode,
                 update_mode="auto",
                 md_sync_mode="enhanced",
                 owner_device_id="device",
@@ -1064,6 +1069,90 @@ async def test_reconcile_task_download_failure_requires_later_download_success(
     assert resolved_total == 1
     assert resolved_items[0].resolution_verification == "later_matching_run_succeeded"
     assert resolved_items[0].resolved_by_run_id == "run-download-success"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("sync_mode", "expected_resolved"),
+    [("bidirectional", 1), ("upload_only", 0)],
+)
+async def test_reconcile_download_failure_maps_manual_success_by_task_mode(
+    tmp_path,
+    sync_mode: str,
+    expected_resolved: int,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    await _insert_task(
+        session_maker,
+        task_id="task-manual-recovery",
+        sync_mode=sync_mode,
+    )
+    async with session_maker() as session:
+        session.add_all(
+            [
+                SyncRun(
+                    run_id="run-download-failed",
+                    task_id="task-manual-recovery",
+                    state="failed",
+                    trigger_source="scheduled_download",
+                    started_at=9.0,
+                    finished_at=10.0,
+                    last_event_at=10.0,
+                    last_error="获取文件清单失败: unknown error.",
+                    run_kind="activity",
+                    has_activity=True,
+                    created_at=9.0,
+                    updated_at=10.0,
+                ),
+                SyncRun(
+                    run_id="run-manual-success",
+                    task_id="task-manual-recovery",
+                    state="success",
+                    trigger_source="manual",
+                    started_at=19.0,
+                    finished_at=20.0,
+                    last_event_at=20.0,
+                    total_files=1279,
+                    completed_files=5,
+                    skipped_files=1274,
+                    uploaded_files=5,
+                    run_kind="activity",
+                    has_activity=True,
+                    created_at=19.0,
+                    updated_at=20.0,
+                ),
+            ]
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-manual-recovery",
+                task_name="手动恢复任务",
+                status="failed",
+                path="D:/Work/Marketing",
+                message="获取文件清单失败: unknown error.",
+                run_id="run-download-failed",
+            )
+        ]
+    )
+    await service.refresh_sources()
+
+    result = await service.reconcile_current_state(batch_size=20, max_batches=1)
+    resolved_total, resolved_items = await service.list_problems(
+        state="resolved", limit=20, offset=0
+    )
+    unresolved_total, _ = await service.list_problems(
+        state="open,in_progress,waiting", limit=20, offset=0
+    )
+
+    assert result.resolved == expected_resolved
+    assert resolved_total == expected_resolved
+    assert unresolved_total == 1 - expected_resolved
+    if expected_resolved:
+        assert resolved_items[0].resolution_verification == "later_matching_run_succeeded"
+        assert resolved_items[0].resolved_by_run_id == "run-manual-success"
 
 
 @pytest.mark.asyncio
