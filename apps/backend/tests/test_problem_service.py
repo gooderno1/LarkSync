@@ -13,6 +13,7 @@ from src.db.models import (
     SyncRun,
     SyncRunEvent,
     SyncTask,
+    SyncTaskCheckState,
 )
 from src.db.session import get_session_maker, init_db
 from src.services.problem_service import ProblemService
@@ -1063,6 +1064,90 @@ async def test_reconcile_task_download_failure_requires_later_download_success(
     assert resolved_total == 1
     assert resolved_items[0].resolution_verification == "later_matching_run_succeeded"
     assert resolved_items[0].resolved_by_run_id == "run-download-success"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_task_download_failure_uses_later_directional_no_change_check(
+    tmp_path,
+) -> None:
+    session_maker, event_service, service = await _build_services(tmp_path)
+    task_root = tmp_path / "sync-root"
+    task_root.mkdir()
+    async with session_maker() as session:
+        session.add(
+            SyncTask(
+                id="task-check-recovery",
+                name="检测事实恢复",
+                local_path=task_root.as_posix(),
+                cloud_folder_token="folder-token",
+                sync_mode="bidirectional",
+                update_mode="auto",
+                md_sync_mode="enhanced",
+                owner_device_id="device",
+                is_test=True,
+                enabled=True,
+                created_at=1.0,
+                updated_at=1.0,
+            )
+        )
+        session.add(
+            SyncTaskCheckState(
+                task_id="task-check-recovery",
+                direction="upload",
+                state="no_change",
+                trigger_source="scheduled_upload",
+                started_at=19.0,
+                finished_at=20.0,
+                change_count=0,
+                consecutive_no_change=1,
+                updated_at=20.0,
+            )
+        )
+        await session.commit()
+    await event_service.append_batch(
+        [
+            SyncEventRecord(
+                timestamp=10.0,
+                task_id="task-check-recovery",
+                task_name="检测事实恢复",
+                status="failed",
+                path=task_root.as_posix(),
+                message="获取文件清单失败: unknown error.",
+                run_id="run-download-failed",
+            )
+        ]
+    )
+    await service.refresh_sources()
+
+    upload_only = await service.reconcile_current_state(batch_size=20, max_batches=1)
+    open_total, _ = await service.list_problems(state="open", limit=20, offset=0)
+
+    assert upload_only.resolved == 0
+    assert open_total == 1
+
+    async with session_maker() as session:
+        session.add(
+            SyncTaskCheckState(
+                task_id="task-check-recovery",
+                direction="download",
+                state="no_change",
+                trigger_source="scheduled_download",
+                started_at=29.0,
+                finished_at=30.0,
+                change_count=0,
+                consecutive_no_change=1,
+                updated_at=30.0,
+            )
+        )
+        await session.commit()
+
+    result = await service.reconcile_current_state(batch_size=20, max_batches=1)
+    total, items = await service.list_problems(state="resolved", limit=20, offset=0)
+
+    assert result.resolved == 1
+    assert total == 1
+    assert items[0].resolution_verification == "later_matching_check_succeeded"
+    assert items[0].resolved_by_run_id is None
 
 
 @pytest.mark.asyncio

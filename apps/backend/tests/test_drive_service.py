@@ -53,6 +53,28 @@ async def test_get_root_folder_meta_supports_root_type() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_files_error_keeps_feishu_diagnostics() -> None:
+    class ErrorClient:
+        async def request(self, method: str, url: str, **kwargs):
+            return httpx.Response(
+                503,
+                headers={"x-tt-logid": "20260814ABCDEF"},
+                json={"code": 99991663, "msg": "unknown error."},
+            )
+
+    service = DriveService(client=ErrorClient())
+
+    with pytest.raises(RuntimeError) as exc_info:
+        await service.list_files("folder-token")
+
+    message = str(exc_info.value)
+    assert "code=99991663" in message
+    assert "http=503" in message
+    assert "request_id=20260814ABCDEF" in message
+    assert "unknown error." in message
+
+
+@pytest.mark.asyncio
 async def test_scan_roots_combines_my_space_and_shared() -> None:
     responses = [
         {

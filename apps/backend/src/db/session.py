@@ -30,7 +30,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -482,6 +482,84 @@ async def _apply_schema_v7(conn) -> None:
     )
 
 
+async def _apply_schema_v8(conn) -> None:
+    table_info = list(
+        await conn.execute(text("PRAGMA table_info(sync_task_check_states)"))
+    )
+    columns = {str(row[1]): row for row in table_info}
+    has_directional_primary_key = (
+        "direction" in columns
+        and int(columns["task_id"][5]) == 1
+        and int(columns["direction"][5]) == 2
+    )
+    if has_directional_primary_key:
+        await _ensure_index(
+            conn,
+            table="sync_task_check_states",
+            index_name="ix_sync_task_check_states_state",
+            columns_sql="state",
+        )
+        return
+
+    await conn.execute(text("DROP TABLE IF EXISTS sync_task_check_states_v8"))
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE sync_task_check_states_v8 (
+                task_id TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'idle',
+                trigger_source TEXT NOT NULL DEFAULT 'scheduled_download',
+                started_at REAL,
+                finished_at REAL,
+                last_change_at REAL,
+                change_count INTEGER NOT NULL DEFAULT 0,
+                consecutive_no_change INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (task_id, direction)
+            )
+            """
+        )
+    )
+    if table_info:
+        direction_sql = (
+            "COALESCE(NULLIF(direction, ''), "
+            "CASE WHEN lower(trigger_source) LIKE '%download%' "
+            "THEN 'download' ELSE 'upload' END)"
+            if "direction" in columns
+            else (
+                "CASE WHEN lower(trigger_source) LIKE '%download%' "
+                "THEN 'download' ELSE 'upload' END"
+            )
+        )
+        await conn.execute(
+            text(
+                f"""
+                INSERT OR REPLACE INTO sync_task_check_states_v8 (
+                    task_id, direction, state, trigger_source, started_at,
+                    finished_at, last_change_at, change_count,
+                    consecutive_no_change, last_error, updated_at
+                )
+                SELECT task_id, {direction_sql}, state, trigger_source, started_at,
+                       finished_at, last_change_at, change_count,
+                       consecutive_no_change, last_error, updated_at
+                FROM sync_task_check_states
+                """
+            )
+        )
+        await conn.execute(text("DROP TABLE sync_task_check_states"))
+    await conn.execute(
+        text("ALTER TABLE sync_task_check_states_v8 RENAME TO sync_task_check_states")
+    )
+    await _ensure_index(
+        conn,
+        table="sync_task_check_states",
+        index_name="ix_sync_task_check_states_state",
+        columns_sql="state",
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     SchemaMigration(
         version=1,
@@ -517,6 +595,11 @@ _SCHEMA_MIGRATIONS = [
         version=7,
         description="记录 Docx 占位符回刷版本，避免同一云端版本无限重转",
         upgrade=_apply_schema_v7,
+    ),
+    SchemaMigration(
+        version=8,
+        description="按同步方向独立保存任务检测结果，避免上传检测覆盖下载恢复事实",
+        upgrade=_apply_schema_v8,
     ),
 ]
 

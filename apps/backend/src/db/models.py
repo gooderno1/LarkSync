@@ -140,6 +140,7 @@ class SyncTaskCheckState(Base):
     __tablename__ = "sync_task_check_states"
 
     task_id: Mapped[str] = mapped_column(String, primary_key=True)
+    direction: Mapped[str] = mapped_column(String, primary_key=True)
     state: Mapped[str] = mapped_column(String, nullable=False, default="idle", index=True)
     trigger_source: Mapped[str] = mapped_column(String, nullable=False, default="scheduled_download")
     started_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)

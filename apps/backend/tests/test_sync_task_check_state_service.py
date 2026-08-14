@@ -67,3 +67,33 @@ async def test_change_and_failure_reset_no_change_counter(tmp_path) -> None:
     assert failed is not None
     assert failed.state == "failed"
     assert failed.consecutive_no_change == 0
+
+
+@pytest.mark.asyncio
+async def test_upload_and_download_check_states_are_kept_separately(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'directional-check-state.db').as_posix()}"
+    await init_db(db_url)
+    service = SyncTaskCheckStateService(get_session_maker(db_url))
+
+    await service.mark_finished(
+        task_id="task-1",
+        trigger_source="scheduled_download",
+        started_at=10.0,
+        finished_at=11.0,
+        change_count=0,
+    )
+    await service.mark_finished(
+        task_id="task-1",
+        trigger_source="scheduled_upload",
+        started_at=20.0,
+        finished_at=21.0,
+        change_count=0,
+    )
+
+    directional = await service.get_directional_many(["task-1"])
+    latest = await service.get_many(["task-1"])
+
+    assert set(directional) == {("task-1", "download"), ("task-1", "upload")}
+    assert directional[("task-1", "download")].finished_at == 11.0
+    assert directional[("task-1", "upload")].finished_at == 21.0
+    assert latest["task-1"].direction == "upload"

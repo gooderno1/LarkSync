@@ -23,6 +23,7 @@ from src.db.models import (
     SyncRun,
     SyncRunEvent,
     SyncTask,
+    SyncTaskCheckState,
 )
 from src.core.config import ConfigManager
 from src.db.session import get_session_maker
@@ -250,6 +251,7 @@ class ProblemService:
                         )
                         tasks = {item.id: item for item in task_rows.scalars().all()}
                     latest_success: dict[tuple[str, str], tuple[str, float]] = {}
+                    latest_successful_check: dict[tuple[str, str], float] = {}
                     if task_ids:
                         min_seen_at = min(item.last_seen_at for item in rows)
                         run_rows = await session.execute(
@@ -272,6 +274,28 @@ class ProblemService:
                             direction = self.operation_hint_from_trigger(trigger_source)
                             if direction in {"upload", "download"}:
                                 latest_success.setdefault((task_key, direction), value)
+                        check_rows = await session.execute(
+                            select(
+                                SyncTaskCheckState.task_id,
+                                SyncTaskCheckState.direction,
+                                SyncTaskCheckState.finished_at,
+                            )
+                            .where(SyncTaskCheckState.task_id.in_(task_ids))
+                            .where(
+                                SyncTaskCheckState.state.in_(["no_change", "changes_found"])
+                            )
+                            .where(SyncTaskCheckState.last_error.is_(None))
+                            .where(SyncTaskCheckState.finished_at.is_not(None))
+                            .where(SyncTaskCheckState.finished_at > min_seen_at)
+                            .order_by(SyncTaskCheckState.finished_at.desc())
+                        )
+                        for task_id, direction, finished_at in check_rows.all():
+                            normalized_direction = str(direction or "").lower()
+                            if normalized_direction in {"upload", "download"}:
+                                latest_successful_check.setdefault(
+                                    (str(task_id), normalized_direction),
+                                    float(finished_at),
+                                )
 
                     ignore_hidden_cache_paths = self._ignore_hidden_cache_paths
                     if ignore_hidden_cache_paths is None:
@@ -283,6 +307,7 @@ class ProblemService:
                         rows,
                         tasks,
                         latest_success,
+                        latest_successful_check,
                         ignore_hidden_cache_paths,
                     )
                     now = time.time()
@@ -306,6 +331,7 @@ class ProblemService:
         problems: list[ProblemRecord],
         tasks: dict[str, SyncTask],
         latest_success: dict[tuple[str, str], tuple[str, float]],
+        latest_successful_check: dict[tuple[str, str], float],
         ignore_hidden_cache_paths: bool,
     ) -> list[tuple[ProblemRecord, str, float | None, str | None]]:
         decisions: list[tuple[ProblemRecord, str, float | None, str | None]] = []
@@ -335,6 +361,7 @@ class ProblemService:
             if problem.object_kind == "task_run":
                 direction = problem.operation_family or "any"
                 directional_run = latest_success.get((task_id, direction))
+                directional_check = latest_successful_check.get((task_id, direction))
                 if direction not in {"upload", "download"}:
                     directional_run = successful_run
                 if directional_run and directional_run[1] > problem.last_seen_at:
@@ -349,6 +376,19 @@ class ProblemService:
                             verification,
                             directional_run[1],
                             directional_run[0],
+                        )
+                    )
+                elif (
+                    direction in {"upload", "download"}
+                    and directional_check is not None
+                    and directional_check > problem.last_seen_at
+                ):
+                    decisions.append(
+                        (
+                            problem,
+                            "later_matching_check_succeeded",
+                            directional_check,
+                            None,
                         )
                     )
                 continue

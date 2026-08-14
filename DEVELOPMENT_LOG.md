@@ -1,5 +1,32 @@
 # DEVELOPMENT LOG
 
+## v0.8.22 release (2026-08-14)
+
+- 开发原因：
+  - “算云项目更新”的任务级下载异常发生于`2026-08-14 14:01:12`；之后实时读取同一飞书目录成功返回 127 个文件夹和 929 个文件，说明原错误已经恢复，但问题中心仍保持未解决。
+  - 定时下载在无文件变化时不会创建`SyncRun`；原`sync_task_check_states`又只以`task_id`为主键，每分钟上传检测会覆盖两小时一次的下载检测结果，导致问题中心找不到同方向恢复事实。
+  - 原文件清单异常只保存飞书`msg`，`code`、HTTP 状态和请求 ID 丢失；历史记录中的`unknown error.`无法继续追查具体服务端原因。
+- 实现方式：
+  - 数据库 schema 从 v7 升级到 v8；`sync_task_check_states`改用`(task_id, direction)`复合主键，上传与下载分别持久化`checking/no_change/changes_found/failed`状态。
+  - v8 迁移重建检测状态表，并根据历史`trigger_source`推导`upload`或`download`；原状态、时间、变化数、连续无变化次数和错误文本全部保留。
+  - 任务概览继续显示同一任务最近更新的检测状态，保持现有 API 兼容；问题中心额外读取分方向状态。
+  - 任务根上传/下载异常可由同任务、同方向、晚于异常且无错误的`no_change`或`changes_found`检测结案，验证标记为`later_matching_check_succeeded`；反方向检测不参与结案。
+  - 飞书文件清单失败文本新增`code`、HTTP 状态与`x-tt-logid/x-request-id`，响应没有请求标识时明确记录`request_id=unknown`。
+- 当前结果：
+  - 后续下载扫描即使 929 个对象全部未变化，也会保留独立下载成功事实并自动关闭对应下载异常；上传检测不会再覆盖该事实。
+  - v0.8.21 现存的下载异常在升级后由下一次同方向成功检测自动结案，无需人工忽略；原始异常和出现记录继续保留供审计。
+  - 后续同类飞书错误可从活动与问题详情直接取得错误码、HTTP 状态和请求 ID。
+- 验证方式：
+  - TDD 新增 4 项回归：上传/下载状态并存、v7 到 v8 无损迁移、上传检测不误关下载异常且下载无变化检测可结案、飞书文件清单错误诊断字段完整。
+  - 后端全量`python -m pytest -q`：690 项通过。
+  - 前端`npm run lint`、`npm run typecheck`、`npm run test`和`npm run build`全部通过：35 个测试文件、114 项测试通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
+  - 发布脚本测试`python -m pytest tests/test_release.py tests/test_release_notes.py tests/test_release_workflow.py tests/test_configure_macos_release_secrets.py -q`：30 项通过；后端 editable 安装 dry-run 解析为`larksync-backend==0.8.22`。
+  - `python scripts/build_installer.py --nsis`在 Python 3.14.2、Node.js 25.2.1 基线上通过；生成`LarkSync-Setup-v0.8.22.exe`，大小`72,118,399 bytes`，SHA256 为`e486380d21709dcd9138a5cf2f40b77b4e1c7340eaa5a8703e5c185d40dc043f`。
+  - `python scripts/update_install_smoke.py`通过，bootstrap、隐藏 worker 和 handoff 状态推进到预期`launch_failed`；随后以`synthetic_test`、独立数据目录、端口`18022`和锁端口`48922`启动打包后的`LarkSync.exe --backend`，`/health`返回`ok`、桌面状态返回`current_version=v0.8.22`，schema v8 数据库成功创建，停止后进程与端口均无残留。
+- 遗留问题：
+  - 本次不追溯改写 v0.8.21 已存异常文本；旧记录仍显示`unknown error.`，新版本发生的同类错误才会带完整诊断字段。
+  - macOS DMG 若仍未配置 Developer ID 与 Apple 公证凭据，首次打开需在「系统设置 → 隐私与安全性」对确认来自官方 Release 且 SHA256 匹配的应用选择「仍要打开」。
+
 ## v0.8.21 release (2026-08-14)
 
 - 开发原因：

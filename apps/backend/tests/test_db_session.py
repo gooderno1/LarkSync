@@ -98,10 +98,75 @@ async def test_schema_v6_adds_ignored_at_without_changing_existing_problem_state
         ).scalar_one()
     await dispose_engines()
 
-    assert CURRENT_SCHEMA_VERSION == 7
+    assert CURRENT_SCHEMA_VERSION == 8
     assert "ignored_at" in columns
     assert (row.state, row.ignored_reason, row.ignored_at) == ("open", None, None)
-    assert version == "7"
+    assert version == "8"
+
+
+@pytest.mark.asyncio
+async def test_schema_v8_splits_task_check_state_by_direction(tmp_path: Path) -> None:
+    db_path = tmp_path / "v7-check-state.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE sync_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at REAL NOT NULL
+            );
+            INSERT INTO sync_meta VALUES ('schema_version', '7', 1);
+            CREATE TABLE sync_task_check_states (
+                task_id TEXT PRIMARY KEY,
+                state TEXT NOT NULL DEFAULT 'idle',
+                trigger_source TEXT NOT NULL DEFAULT 'scheduled_download',
+                started_at REAL,
+                finished_at REAL,
+                last_change_at REAL,
+                change_count INTEGER NOT NULL DEFAULT 0,
+                consecutive_no_change INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                updated_at REAL NOT NULL
+            );
+            INSERT INTO sync_task_check_states VALUES (
+                'task-1', 'no_change', 'scheduled_download', 10, 11, NULL, 0, 5, NULL, 12
+            );
+            """
+        )
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+
+    engine = await init_db(url)
+    async with engine.begin() as conn:
+        columns = {
+            row[1]: row for row in (await conn.execute(text("PRAGMA table_info(sync_task_check_states)"))).all()
+        }
+        row = (
+            await conn.execute(
+                text(
+                    "SELECT task_id, direction, trigger_source, consecutive_no_change "
+                    "FROM sync_task_check_states WHERE task_id='task-1'"
+                )
+            )
+        ).one()
+        await conn.execute(
+            text(
+                "INSERT INTO sync_task_check_states "
+                "(task_id, direction, state, trigger_source, change_count, "
+                "consecutive_no_change, updated_at) "
+                "VALUES ('task-1', 'upload', 'no_change', 'scheduled_upload', 0, 1, 20)"
+            )
+        )
+        count = (
+            await conn.execute(
+                text("SELECT COUNT(*) FROM sync_task_check_states WHERE task_id='task-1'")
+            )
+        ).scalar_one()
+    await dispose_engines()
+
+    assert columns["task_id"][5] == 1
+    assert columns["direction"][5] == 2
+    assert tuple(row) == ("task-1", "download", "scheduled_download", 5)
+    assert count == 2
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,7 @@ from src.db.session import get_session_maker
 @dataclass(frozen=True)
 class SyncTaskCheckStateItem:
     task_id: str
+    direction: str
     state: str
     trigger_source: str
     started_at: float | None
@@ -82,11 +83,37 @@ class SyncTaskCheckStateService:
         try:
             async with self._session_maker() as session:
                 rows = await session.execute(
-                    select(SyncTaskCheckState).where(SyncTaskCheckState.task_id.in_(task_ids))
+                    select(SyncTaskCheckState)
+                    .where(SyncTaskCheckState.task_id.in_(task_ids))
+                    .order_by(SyncTaskCheckState.updated_at.desc())
                 )
-                return {item.task_id: self._to_item(item) for item in rows.scalars().all()}
+                result: dict[str, SyncTaskCheckStateItem] = {}
+                for item in rows.scalars().all():
+                    result.setdefault(item.task_id, self._to_item(item))
+                return result
         except SQLAlchemyError:
             logger.exception("读取任务检测状态失败")
+            return {}
+
+    async def get_directional_many(
+        self,
+        task_ids: list[str],
+    ) -> dict[tuple[str, str], SyncTaskCheckStateItem]:
+        if not task_ids:
+            return {}
+        try:
+            async with self._session_maker() as session:
+                rows = await session.execute(
+                    select(SyncTaskCheckState).where(
+                        SyncTaskCheckState.task_id.in_(task_ids)
+                    )
+                )
+                return {
+                    (item.task_id, item.direction): self._to_item(item)
+                    for item in rows.scalars().all()
+                }
+        except SQLAlchemyError:
+            logger.exception("读取任务分方向检测状态失败")
             return {}
 
     async def _upsert(
@@ -101,12 +128,14 @@ class SyncTaskCheckStateService:
         last_error: str | None,
     ) -> SyncTaskCheckStateItem | None:
         now = time.time()
+        direction = self._direction_from_trigger(trigger_source)
         try:
             async with self._session_maker() as session:
-                record = await session.get(SyncTaskCheckState, task_id)
+                record = await session.get(SyncTaskCheckState, (task_id, direction))
                 if record is None:
                     record = SyncTaskCheckState(
                         task_id=task_id,
+                        direction=direction,
                         state=state,
                         trigger_source=trigger_source,
                         started_at=started_at,
@@ -143,6 +172,7 @@ class SyncTaskCheckStateService:
     def _to_item(record: SyncTaskCheckState) -> SyncTaskCheckStateItem:
         return SyncTaskCheckStateItem(
             task_id=record.task_id,
+            direction=record.direction,
             state=record.state,
             trigger_source=record.trigger_source,
             started_at=record.started_at,
@@ -153,6 +183,11 @@ class SyncTaskCheckStateService:
             last_error=record.last_error,
             updated_at=record.updated_at,
         )
+
+    @staticmethod
+    def _direction_from_trigger(trigger_source: str) -> str:
+        normalized = str(trigger_source or "").strip().lower()
+        return "download" if "download" in normalized else "upload"
 
 
 __all__ = ["SyncTaskCheckStateItem", "SyncTaskCheckStateService"]

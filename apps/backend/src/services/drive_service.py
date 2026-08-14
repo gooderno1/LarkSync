@@ -100,7 +100,18 @@ class DriveService:
         response = await self._client.request("GET", url, params=params)
         payload = response.json()
         if payload.get("code") != 0:
-            raise RuntimeError(f"获取文件清单失败: {payload.get('msg')}")
+            request_id = (
+                response.headers.get("x-tt-logid")
+                or response.headers.get("x-request-id")
+                or payload.get("request_id")
+                or payload.get("log_id")
+                or "unknown"
+            )
+            raise RuntimeError(
+                "获取文件清单失败 "
+                f"(code={payload.get('code')}, http={response.status_code}, "
+                f"request_id={request_id}): {payload.get('msg') or 'unknown error.'}"
+            )
         data = payload.get("data") or {}
         return DriveFileList.model_validate(data)
 
