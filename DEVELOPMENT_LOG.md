@@ -26,6 +26,8 @@
   - 同步调度与上传编排测试`python -m pytest -q tests/test_sync_runner.py tests/test_sync_upload_orchestration_service.py`：68 项通过。
   - 后端全量`python -m pytest -q`：686 项通过。
   - 前端`npm run lint`、`npm run typecheck`、`npm run test`、`npm run build`全部通过：35 个测试文件、114 项测试通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
+  - `python scripts/build_installer.py --nsis`在 Python 3.14.2、Node.js 25.2.1 基线上通过；生成`LarkSync-Setup-v0.8.21-dev.1.exe`，大小`72,120,177 bytes`，SHA256 为`9d9ba42247c8f1afcaaf77596b3ae25d8a88ef062568f000633d789133d9d78e`。
+  - `python scripts/update_install_smoke.py`通过，安装 bootstrap、隐藏 worker 和 handoff 状态推进到预期`launch_failed`；随后用`synthetic_test`、独立数据目录、后端端口`18021`和实例锁端口`48921`启动打包后的`LarkSync.exe --backend`，`/health`返回`{"status":"ok"}`，停止后端口与打包进程均无残留。未覆盖当前正式安装目录，也未读取正式配置或 Token。
 - 遗留问题：
   - 本次只处理本地监听到的移动竞态和已有问题的可验证收敛，不新增跨设备云端“移动”语义；云端目录结构变化仍按现有完整扫描与映射规则处理。
 
