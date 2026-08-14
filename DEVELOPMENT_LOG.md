@@ -13,6 +13,11 @@
   - 双向任务在问题中心执行“重试任务”并成功后，无须等待下一个两小时下载周期即可自动结案。
   - v0.8.22 已存在且晚于异常的成功手动双向运行，在升级 v0.8.23 后的后台状态核对中会被识别并自动关闭对应问题。
   - 上传单向任务的手动成功不会关闭下载异常，下载单向任务同理不会关闭上传异常。
+  - GitHub Release`v0.8.23`已发布为非草稿、非预发布版本，包含 3 个安装包和 3 个对应校验文件。
+  - Windows 安装包`LarkSync-Setup-v0.8.23.exe`大小为`58,511,586 bytes`，SHA256 为`3c5c99977e0427449843d9ab5a99c0a5daad285c5d31b3291a2b3385aeea2ad2`。
+  - macOS arm64 安装包`LarkSync-v0.8.23-arm64.dmg`大小为`65,584,440 bytes`，SHA256 为`248ded88a1af247aa5de3b3d2bd389a50c6bccf843f444e74851b5415d0d4db4`。
+  - macOS x86_64 安装包`LarkSync-v0.8.23-x86_64.dmg`大小为`66,471,742 bytes`，SHA256 为`745fa0823df2b1a90f32f22311f158357d34dab0357b4834c7988995d4af29c4`。
+  - 三份`.sha256`内容与 GitHub 对应安装包 digest 一致；Release 正文已补齐修复说明、验证结果和全部三平台校验值。
 - 验证方式：
   - TDD 参数化回归先复现双向`manual`成功无法关闭下载异常，再验证`bidirectional`可结案且`upload_only`保持未解决。
   - 方向恢复定向测试共 4 项通过，覆盖定时同方向运行、分方向无变化检测、手动双向恢复和手动单向隔离。
@@ -21,9 +26,11 @@
   - 发布脚本测试`python -m pytest tests/test_release.py tests/test_release_notes.py tests/test_release_workflow.py tests/test_configure_macos_release_secrets.py -q`：30 项通过；后端 editable 安装 dry-run 解析为`larksync-backend==0.8.23`。
   - `python scripts/build_installer.py --nsis`在 Python 3.14.2、Node.js 25.2.1 基线上通过；生成`LarkSync-Setup-v0.8.23.exe`，大小`72,121,388 bytes`，SHA256 为`f724472adf3ab4065a8d18c08346183bb113a3b887ff8f61254730a57f8a0a25`。
   - `python scripts/update_install_smoke.py`通过；随后以`synthetic_test`、独立数据目录、端口`18023`和锁端口`48923`启动打包后的`LarkSync.exe --backend`，`/health`返回`ok`、桌面状态返回`current_version=v0.8.23`，停止后进程与端口均无残留。
+  - GitHub Actions Release Build`31809645225`通过：`quality`、`quality-webkit`、`build-windows`、`build-macos (arm64)`和`build-macos (x86_64)`全部成功；Windows 与两套 macOS 安装启动 smoke 均通过。
 - 遗留问题：
   - 本次仍不改写 v0.8.21 已保存的`unknown error.`文本；错误诊断增强只适用于 v0.8.22 及后续新发生的飞书文件清单异常。
   - macOS DMG 若未配置 Developer ID 与 Apple 公证凭据，首次打开仍需对确认来自官方 Release 且 SHA256 匹配的应用手动放行。
+  - 自动 Release Notes 仍无法从仅含稳定版标题的增量区间提取明细；本次已在三平台资产齐全后统一补正，发布工作流后续仍需收敛为单一聚合正文 Job。
 
 ## v0.8.22 release (2026-08-14)
 
