@@ -16,6 +16,11 @@
   - 后续下载扫描即使 929 个对象全部未变化，也会保留独立下载成功事实并自动关闭对应下载异常；上传检测不会再覆盖该事实。
   - v0.8.21 现存的下载异常在升级后由下一次同方向成功检测自动结案，无需人工忽略；原始异常和出现记录继续保留供审计。
   - 后续同类飞书错误可从活动与问题详情直接取得错误码、HTTP 状态和请求 ID。
+  - GitHub Release`v0.8.22`已发布为非草稿、非预发布版本，包含 3 个安装包和 3 个对应校验文件。
+  - Windows 安装包`LarkSync-Setup-v0.8.22.exe`大小为`58,509,399 bytes`，SHA256 为`7dc713352752a44cc8f84e54aa091e7318ea4ad3be62148bdf026969f0c824da`。
+  - macOS arm64 安装包`LarkSync-v0.8.22-arm64.dmg`大小为`65,583,595 bytes`，SHA256 为`afd3fdd316d532340e8fae474a0c0de7487a3ab1cdcae6b4c38416be57f53338`。
+  - macOS x86_64 安装包`LarkSync-v0.8.22-x86_64.dmg`大小为`66,471,105 bytes`，SHA256 为`4b604ba01d167bbdefa0c796aa637da25ce95042a0141bfe0f22fb5efa62c4bd`。
+  - 三份`.sha256`内容与 GitHub 对应安装包 digest 一致；Release 正文已补齐修复说明、验证结果和全部三平台校验值。
 - 验证方式：
   - TDD 新增 4 项回归：上传/下载状态并存、v7 到 v8 无损迁移、上传检测不误关下载异常且下载无变化检测可结案、飞书文件清单错误诊断字段完整。
   - 后端全量`python -m pytest -q`：690 项通过。
@@ -23,9 +28,11 @@
   - 发布脚本测试`python -m pytest tests/test_release.py tests/test_release_notes.py tests/test_release_workflow.py tests/test_configure_macos_release_secrets.py -q`：30 项通过；后端 editable 安装 dry-run 解析为`larksync-backend==0.8.22`。
   - `python scripts/build_installer.py --nsis`在 Python 3.14.2、Node.js 25.2.1 基线上通过；生成`LarkSync-Setup-v0.8.22.exe`，大小`72,118,399 bytes`，SHA256 为`e486380d21709dcd9138a5cf2f40b77b4e1c7340eaa5a8703e5c185d40dc043f`。
   - `python scripts/update_install_smoke.py`通过，bootstrap、隐藏 worker 和 handoff 状态推进到预期`launch_failed`；随后以`synthetic_test`、独立数据目录、端口`18022`和锁端口`48922`启动打包后的`LarkSync.exe --backend`，`/health`返回`ok`、桌面状态返回`current_version=v0.8.22`，schema v8 数据库成功创建，停止后进程与端口均无残留。
+  - GitHub Actions Release Build`31806637744`通过：`quality`、`quality-webkit`、`build-windows`、`build-macos (arm64)`和`build-macos (x86_64)`全部成功；Windows 与两套 macOS 安装启动 smoke 均通过。
 - 遗留问题：
   - 本次不追溯改写 v0.8.21 已存异常文本；旧记录仍显示`unknown error.`，新版本发生的同类错误才会带完整诊断字段。
   - macOS DMG 若仍未配置 Developer ID 与 Apple 公证凭据，首次打开需在「系统设置 → 隐私与安全性」对确认来自官方 Release 且 SHA256 匹配的应用选择「仍要打开」。
+  - 自动 Release Notes 未从仅含稳定版标题的增量区间提取本次明细，且并行平台 Job 仍会更新同一正文；本次已在资产齐全后统一补正，后续应由单一聚合 Job 生成最终正文。
 
 ## v0.8.21 release (2026-08-14)
 
