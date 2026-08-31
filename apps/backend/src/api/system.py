@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -37,6 +38,19 @@ router = APIRouter(prefix="/system", tags=["system"])
 
 class FolderResponse(BaseModel):
     path: str
+
+
+AutostartPlatform = Literal["windows", "macos", "unsupported"]
+
+
+class AutostartStatusResponse(BaseModel):
+    supported: bool
+    enabled: bool
+    platform: AutostartPlatform
+
+
+class AutostartUpdatePayload(BaseModel):
+    enabled: bool
 
 
 class UpdateStatusResponse(UpdateStatus):
@@ -143,6 +157,40 @@ def _select_folder() -> str | None:
         except Exception:
             pass
     return path or None
+
+
+def _autostart_platform() -> AutostartPlatform:
+    if sys.platform == "win32":
+        return "windows"
+    if sys.platform == "darwin":
+        return "macos"
+    return "unsupported"
+
+
+def _autostart_supported() -> bool:
+    return _autostart_platform() != "unsupported"
+
+
+def _ensure_desktop_package_importable() -> None:
+    project_root = Path(__file__).resolve().parents[4]
+    if (project_root / "apps" / "tray" / "autostart.py").is_file():
+        root_value = str(project_root)
+        if root_value not in sys.path:
+            sys.path.insert(0, root_value)
+
+
+def _autostart_enabled() -> bool:
+    _ensure_desktop_package_importable()
+    from apps.tray.autostart import is_autostart_enabled
+
+    return is_autostart_enabled()
+
+
+def _set_autostart_enabled(enabled: bool) -> bool:
+    _ensure_desktop_package_importable()
+    from apps.tray.autostart import disable_autostart, enable_autostart
+
+    return enable_autostart() if enabled else disable_autostart()
 
 
 def _resolve_download_directory(service: UpdateService, raw_path: str | None) -> Path:
@@ -260,6 +308,43 @@ async def select_folder() -> FolderResponse:
     if not path:
         raise HTTPException(status_code=400, detail="未选择文件夹")
     return FolderResponse(path=path)
+
+
+@router.get("/autostart", response_model=AutostartStatusResponse)
+async def get_autostart_status() -> AutostartStatusResponse:
+    platform = _autostart_platform()
+    supported = _autostart_supported()
+    enabled = await asyncio.to_thread(_autostart_enabled) if supported else False
+    return AutostartStatusResponse(
+        supported=supported,
+        enabled=enabled,
+        platform=platform,
+    )
+
+
+@router.put("/autostart", response_model=AutostartStatusResponse)
+async def update_autostart_status(
+    payload: AutostartUpdatePayload,
+) -> AutostartStatusResponse:
+    platform = _autostart_platform()
+    if not _autostart_supported():
+        raise HTTPException(status_code=400, detail="当前平台不支持开机自启动")
+
+    changed = await asyncio.to_thread(_set_autostart_enabled, payload.enabled)
+    enabled = await asyncio.to_thread(_autostart_enabled)
+    if not changed or enabled != payload.enabled:
+        logger.warning(
+            "开机自启动设置未通过系统状态校验: target={} actual={}",
+            payload.enabled,
+            enabled,
+        )
+        raise HTTPException(status_code=500, detail="开机自启动设置失败，请检查系统权限")
+
+    return AutostartStatusResponse(
+        supported=True,
+        enabled=enabled,
+        platform=platform,
+    )
 
 
 @router.get("/desktop/status", response_model=DesktopStatusResponse)

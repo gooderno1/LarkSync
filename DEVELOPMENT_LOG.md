@@ -1,5 +1,31 @@
 # DEVELOPMENT LOG
 
+## v0.8.24-dev.1 (2026-08-31)
+
+- 开发原因：
+  - Windows Startup 快捷方式和 macOS LaunchAgent 已存在，但用户只能从托盘菜单操作，设置页无法查看或修改真实系统状态。
+  - 原托盘菜单层级过平；“暂停同步”只停止托盘状态轮询，没有暂停调度器、Watcher 或正在执行的任务，会给出错误的运行承诺。
+  - 首次授权页二维码只编码本机 OAuth URL；手机扫码后回调到手机自己的`localhost`，无法形成跨设备登录闭环。
+- 实现方式：
+  - 新增`GET/PUT /system/autostart`；Windows 与 macOS 操作放入工作线程，写入后回读并比对目标状态，平台不支持或系统校验失败时返回明确错误。
+  - 设置页“当前设备”增加开机自启动 Switch；页面加载真实系统状态，切换立即生效，不参与右上角批量保存，失败时保留服务端原状态并显示 Toast。
+  - 托盘菜单收敛为只读状态、打开 LarkSync、立即同步、活动与问题、设置、更多和退出；浏览器入口与开机自启动归入“更多”，自启动使用系统原生勾选态。
+  - 删除未接入后端的托盘“暂停同步”及其本地轮询分支；自启动切换失败时不再误报为“已禁用”。
+  - 扫码登录方案采用固定 HTTPS 回调中继 + PKCE S256：中继只短期转交一次性授权码，Token、App Secret 和 PKCE verifier 均保留在本机。
+- 当前结果：
+  - 设置页与托盘共享同一套 Windows Startup / macOS LaunchAgent 状态，系统类型按 API 返回显示为 Windows 或 macOS。
+  - 托盘不再展示无法兑现的全局暂停功能，常用动作和低频入口分层；菜单继续使用原生控件以保留 DPI、键盘、焦点和跨平台稳定性。
+  - 当前二维码仍是同设备 OAuth 辅助入口；跨设备扫码登录尚未上线，实施阶段、接口草案、安全约束和失败验收已记录在`docs/design/v0.8.24-settings-tray-qr-login-plan.md`。
+- 验证方式：
+  - TDD 新增系统自启动状态读取、写入回读、非支持平台和托盘菜单结构测试；后端全量`python -m pytest -q`通过，共 696 项。
+  - 从`apps/backend`独立启动后实测`GET /system/autostart`返回`200`，当前 Windows 状态为`supported=true`、`enabled=false`、`platform=windows`，证明开发工作目录可加载桌面自启动实现。
+  - 前端`npm run lint`、`npm run typecheck`、`npm run test`和`npm run build`全部通过：35 个测试文件、114 项测试通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
+  - `python scripts/build_installer.py --nsis`通过，生成`LarkSync-Setup-v0.8.24-dev.1.exe`，大小`72,283,333 bytes`；`python scripts/update_install_smoke.py`通过预期的缺失安装包失败交接路径。
+  - 以`synthetic_test`、独立临时数据目录、端口`18024`和锁端口`48924`启动打包后的`LarkSync.exe --backend`；`/health`返回`ok`，`/system/desktop/status`返回`current_version=v0.8.24-dev.1`，`/system/autostart`返回 Windows 真实状态，停止后仅清理本次构建目录下的 smoke 进程。
+- 遗留问题：
+  - 真正跨设备扫码登录需要部署最小 HTTPS 中继，并在飞书开发者后台登记固定回调地址；本版本没有创建外部服务，也没有迁移生产 Token 交换链路。
+  - 本地浏览器验收连接在本轮不可用；设置页已通过静态结构、TypeScript、完整前端测试与生产构建，安装包也已构建，但未留存本轮页面截图。
+
 ## v0.8.23 release (2026-08-14)
 
 - 开发原因：

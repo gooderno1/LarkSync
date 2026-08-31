@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from apps.tray import autostart
+from apps.tray import autostart, tray_app
 
 
 class _CompletedProcess:
@@ -227,3 +227,28 @@ def test_toggle_autostart_returns_false_when_enable_fails(monkeypatch) -> None:
     monkeypatch.setattr(autostart, "enable_autostart", lambda: False)
 
     assert autostart.toggle_autostart() is False
+
+
+def test_tray_menu_uses_compact_verified_information_architecture(monkeypatch) -> None:
+    monkeypatch.setattr(tray_app, "is_autostart_enabled", lambda: True)
+    tray = object.__new__(tray_app.LarkSyncTray)
+    tray._current_state = "idle"
+
+    menu = tray._build_menu()
+    items = list(menu.items)
+    labels = [item.text for item in items if item is not tray_app.pystray.Menu.SEPARATOR]
+
+    assert labels == [
+        "LarkSync · 空闲",
+        "打开 LarkSync",
+        "立即同步",
+        "活动与问题",
+        "设置",
+        "更多",
+        "退出 LarkSync",
+    ]
+    assert "暂停同步" not in labels
+    more = next(item for item in items if item is not tray_app.pystray.Menu.SEPARATOR and item.text == "更多")
+    more_items = list(more.submenu.items)
+    assert [item.text for item in more_items] == ["在浏览器中打开", "开机自启动"]
+    assert more_items[1].checked is True

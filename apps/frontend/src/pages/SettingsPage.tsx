@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useConfig } from "../hooks/useConfig";
 import { useTasks } from "../hooks/useTasks";
 import { useAuth } from "../hooks/useAuth";
+import { useAutostart } from "../hooks/useAutostart";
 import { syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
 import { apiFetch } from "../lib/api";
 import { useToast } from "../components/ui/toast";
@@ -21,6 +22,7 @@ function SettingsLivePage() {
   const { config, configLoading, saveConfig, saving, saveError } = useConfig();
   const { tasks, updateIgnoredSubpaths, updatingIgnoredSubpaths } = useTasks();
   const { connected, accountName, deviceId, logout } = useAuth();
+  const { autostart, autostartLoading, setAutostart, updatingAutostart } = useAutostart();
   const { toast } = useToast();
 
   const [authorizeUrl, setAuthorizeUrl] = useState("");
@@ -101,6 +103,15 @@ function SettingsLivePage() {
       return null;
     }
     return normalized.join("/");
+  };
+
+  const handleAutostartChange = async (enabled: boolean) => {
+    try {
+      const status = await setAutostart(enabled);
+      toast(status.enabled ? "已启用开机自启动" : "已关闭开机自启动", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "开机自启动设置失败", "danger");
+    }
   };
 
   const resolvePickedSubpath = (rootPath: string, pickedPath: string): string | null => {
@@ -285,6 +296,12 @@ function SettingsLivePage() {
                 deviceDisplayName={deviceDisplayName}
                 setDeviceDisplayName={setDeviceDisplayName}
                 deviceId={deviceId}
+                autostartEnabled={autostart?.enabled ?? false}
+                autostartSupported={autostart?.supported ?? true}
+                autostartLoading={autostartLoading}
+                updatingAutostart={updatingAutostart}
+                platform={autostart?.platform}
+                onAutostartChange={(enabled) => void handleAutostartChange(enabled)}
               />
             </div>
           </section>

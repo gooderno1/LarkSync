@@ -4,7 +4,7 @@ LarkSync 系统托盘应用 — 主入口
 功能：
 - 启动/管理后端 FastAPI 服务
 - 系统托盘图标（状态可视化）
-- 右键菜单（打开面板/暂停/日志/退出）
+- 右键菜单（打开应用/立即同步/活动与问题/设置/退出）
 - 状态轮询 + 图标动态切换
 - 系统通知（冲突/错误）
 - --dev 模式：同时启动 Vite 前端热重载 + uvicorn --reload
@@ -66,7 +66,12 @@ from apps.tray.desktop_window import (
     send_desktop_window_command,
 )
 from apps.tray.icon_generator import generate_icons, get_icon_path, get_macos_icon_path
-from apps.tray.autostart import is_autostart_enabled, repair_autostart_if_needed, toggle_autostart
+from apps.tray.autostart import (
+    disable_autostart,
+    enable_autostart,
+    is_autostart_enabled,
+    repair_autostart_if_needed,
+)
 from apps.tray import notifier
 from apps.tray import windows_install_helper
 from src.core.paths import update_data_dir, update_logs_dir
@@ -505,7 +510,6 @@ class LarkSyncTray:
         self._desktop_window_control_file: Path | None = None
         self._icon: pystray.Icon | None = None
         self._current_state = "idle"
-        self._global_paused = False
         self._poller_thread: threading.Thread | None = None
         self._running = False
         self._last_conflict_count: int = 0
@@ -712,30 +716,30 @@ class LarkSyncTray:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
-                "打开桌面窗口",
+                "打开 LarkSync",
                 self._on_open_desktop_window,
                 default=True,  # 双击图标的默认动作
-            ),
-            pystray.MenuItem(
-                "在浏览器中打开",
-                self._on_open_browser_dashboard,
             ),
             pystray.MenuItem(
                 "立即同步",
                 self._on_sync_now,
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                lambda _: "恢复同步" if self._global_paused else "暂停同步",
-                self._on_toggle_pause,
-            ),
-            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("活动与问题", self._on_open_logs),
             pystray.MenuItem("设置", self._on_open_settings),
-            pystray.MenuItem("查看日志", self._on_open_logs),
-            pystray.Menu.SEPARATOR,
             pystray.MenuItem(
-                lambda _: "✓ 开机自启动" if is_autostart_enabled() else "  开机自启动",
-                self._on_toggle_autostart,
+                "更多",
+                pystray.Menu(
+                    pystray.MenuItem(
+                        "在浏览器中打开",
+                        self._on_open_browser_dashboard,
+                    ),
+                    pystray.MenuItem(
+                        "开机自启动",
+                        self._on_toggle_autostart,
+                        checked=lambda _: is_autostart_enabled(),
+                    ),
+                ),
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("退出 LarkSync", self._on_quit),
@@ -744,12 +748,12 @@ class LarkSyncTray:
     def _status_text(self, _item=None) -> str:
         """动态生成状态文字。"""
         state_labels = {
-            "idle": "运行中 — 空闲",
-            "syncing": "同步中...",
-            "error": "有错误需要处理",
+            "idle": "空闲",
+            "syncing": "同步中",
+            "error": "需要处理",
             "paused": "已暂停",
         }
-        return f"LarkSync — {state_labels.get(self._current_state, '未知')}"
+        return f"LarkSync · {state_labels.get(self._current_state, '未知')}"
 
     # ---- 菜单回调 ----
 
@@ -827,22 +831,16 @@ class LarkSyncTray:
         except Exception:
             pass  # 静默失败，状态轮询会反映实际情况
 
-    def _on_toggle_pause(self, icon=None, item=None) -> None:
-        """切换全局暂停/恢复。"""
-        self._global_paused = not self._global_paused
-        if self._global_paused:
-            self._set_state("paused")
-        else:
-            self._set_state("idle")
-        # 更新菜单
-        if self._icon:
-            self._icon.update_menu()
-
     def _on_toggle_autostart(self, icon=None, item=None) -> None:
         """切换开机自启动。"""
-        new_state = toggle_autostart()
-        state_text = "已启用" if new_state else "已禁用"
-        self._notify(f"开机自启动{state_text}", f"LarkSync 开机自启动已{state_text}。")
+        target_state = not is_autostart_enabled()
+        changed = enable_autostart() if target_state else disable_autostart()
+        actual_state = is_autostart_enabled()
+        if changed and actual_state == target_state:
+            state_text = "已启用" if actual_state else "已禁用"
+            self._notify(f"开机自启动{state_text}", f"LarkSync 开机自启动已{state_text}。")
+        else:
+            self._notify("开机自启动设置失败", "请检查当前账号的系统权限后重试。")
         if self._icon:
             self._icon.update_menu()
 
@@ -1025,10 +1023,6 @@ class LarkSyncTray:
                 if needs_notify:
                     self._set_state("error")
                     notifier.notify_backend_crash()
-                    time.sleep(STATUS_POLL_INTERVAL)
-                    continue
-
-                if self._global_paused:
                     time.sleep(STATUS_POLL_INTERVAL)
                     continue
 

@@ -50,6 +50,19 @@ vi.mock("../hooks/useAuth", () => ({
   }),
 }));
 
+vi.mock("../hooks/useAutostart", () => ({
+  useAutostart: () => ({
+    autostart: {
+      supported: true,
+      enabled: true,
+      platform: "windows",
+    },
+    autostartLoading: false,
+    updatingAutostart: false,
+    setAutostart: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../components/ui/toast", () => ({
   useToast: () => ({
     toast: vi.fn(),
@@ -67,6 +80,10 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain("飞书账号");
     expect(html).toContain("飞书已连接");
     expect(html).toContain("当前设备");
+    expect(html).toContain("开机自启动");
+    expect(html).toContain("登录当前系统账号后自动启动 LarkSync");
+    expect(html).toContain('role="switch"');
+    expect(html).toContain('aria-checked="true"');
     expect(html).toContain("默认同步策略");
     expect(html).toContain("忽略规则");
     expect(html).toContain("高级 OAuth");
