@@ -56,6 +56,16 @@ try {
         verification_uri: "https://accounts.feishu.cn/device",
         verification_uri_complete: "https://accounts.feishu.cn/device?user_code=WEBKIT",
         expires_at: Math.floor(Date.now() / 1000) + 600,
+        interval: 1,
+      };
+      const deviceSession = {
+        session_id: "device-webkit-smoke",
+        status: "pending",
+        brand: "feishu",
+        user_code: "LOGIN",
+        verification_uri: "https://accounts.feishu.cn/device",
+        verification_uri_complete: "https://accounts.feishu.cn/device?user_code=LOGIN",
+        expires_at: Math.floor(Date.now() / 1000) + 600,
         interval: 60,
       };
       if (requestUrl.pathname === "/accounts/summary") {
@@ -74,7 +84,16 @@ try {
         requestUrl.pathname ===
         "/app-profiles/registration-sessions/registration-webkit-smoke"
       ) {
-        return json(registrationSession);
+        return json({
+          status: "registered",
+          app_profile: { id: "profile-webkit-smoke" },
+          next_session: deviceSession,
+        });
+      }
+      if (
+        requestUrl.pathname === "/auth/device-sessions/device-webkit-smoke"
+      ) {
+        return json(deviceSession);
       }
       if (requestUrl.pathname === "/config") {
         return json({ auth_client_id: "cli_webkit_smoke" });
@@ -123,15 +142,17 @@ try {
     engine: "playwright-webkit",
   });
   if (mockApi) {
-    await page.getByRole("button", { name: "开始扫码连接" }).click();
+    await page.getByTestId("start-two-step-connect").click();
   }
   await page.waitForFunction(
     () => {
       const panel = document.querySelector('[data-testid="device-flow-qr-panel"]');
       const image = document.querySelector('[data-testid="device-flow-qr-image"]');
+      const root = document.querySelector('[data-account-connect-root="true"]');
       const rect = image?.getBoundingClientRect();
       return Boolean(
-        document.querySelector('[data-account-connect-root="true"]') &&
+        root?.getAttribute("data-connect-phase") === "authorizing_account" &&
+          root?.textContent?.includes("步骤 2 / 2") &&
           panel?.getAttribute("data-qr-state") === "ready" &&
           rect &&
           rect.width > 0 &&
@@ -151,6 +172,8 @@ try {
       ok: Boolean(root && rect && rect.width > 0 && rect.height > 0),
       engine: "playwright-webkit",
       account_connect_visible: Boolean(root),
+      connect_phase: root?.getAttribute("data-connect-phase") ?? null,
+      second_step_visible: Boolean(root?.textContent?.includes("步骤 2 / 2")),
       qr_state: panel?.getAttribute("data-qr-state") ?? null,
       qr_visible: Boolean(rect && rect.width > 0 && rect.height > 0),
       qr_is_data_url: Boolean(

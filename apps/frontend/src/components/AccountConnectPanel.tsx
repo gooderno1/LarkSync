@@ -313,7 +313,7 @@ export function AccountConnectPanel({
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#3370ff]">推荐 · 两步扫码</p>
         <h2 className="mt-2 text-xl font-semibold text-[#102033]">自动创建应用并登录账号</h2>
         <p className="mt-2 text-sm leading-6 text-[#52657a]">第一次扫码创建个人应用，第二次扫码登录账号。两个步骤会在当前窗口连续完成。</p>
-        <button type="button" disabled={busy} onClick={() => void beginRegistration()} className="mt-4 rounded-xl bg-[#3370ff] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(51,112,255,0.22)] disabled:opacity-50">{busy ? "正在准备…" : "开始两步扫码"}</button>
+        <button data-testid="start-two-step-connect" type="button" disabled={busy} onClick={() => void beginRegistration()} className="mt-4 rounded-xl bg-[#3370ff] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(51,112,255,0.22)] disabled:opacity-50">{busy ? "正在准备…" : "开始两步扫码"}</button>
       </div>
 
       {(profiles.data?.length ?? 0) > 0 ? (

@@ -30,6 +30,8 @@
   - `python scripts/build_installer.py --nsis`通过，生成`LarkSync-Setup-v0.9.1.exe`，大小`72,380,277 bytes`，SHA256 为`7ABD7DC614DBC3A7D4551FBD36915F2BE4C175CFD1CC4B5E580D60157B89C960`。
   - 打包后的`LarkSync.exe --backend`使用隔离`synthetic_test`数据目录和端口`18192`启动；`/health`返回`ok`，桌面状态返回`packaged=true`、`profile=synthetic_test`和`current_version=v0.9.1`，停止后打包进程和监听端口均无残留。
   - `python scripts/update_install_smoke.py`通过，bootstrap、隐藏 worker 和 handoff 状态推进到预期`launch_failed`，确认更新安装交接链路可执行。
+  - 本机 Playwright WebKit 以`1080×720`视口完成连续扫码门禁；结果为`device_flow_qr_verified`，页面已进入`authorizing_account`，第二步文案与二维码 PNG Data URL 均可见。
+  - 首次 Release Build 暴露 WebKit 脚本仍按旧按钮文案定位；门禁已改用`data-testid=start-two-step-connect`并验证第二步状态，避免界面文案调整造成伪失败。
   - 提交前`git diff --check`通过，`git status -- docs/local_specs`确认本地产品资料目录无待提交变更。
 - 遗留问题：
   - Device Flow 的真实两次扫码仍需用户本人在飞书手机端确认；自动化测试覆盖协议请求、状态迁移和身份保护，正式自动升级后需完成真实账号验收。

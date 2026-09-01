@@ -239,7 +239,9 @@ def test_macos_ci_installs_webkit_and_checks_visible_qr_contract() -> None:
     assert 'webkit.launch({ headless: true, timeout: 15000 })' in webkit_script
     assert 'requestUrl.pathname === "/accounts/summary"' in webkit_script
     assert 'requestUrl.pathname === "/app-profiles/registration-sessions"' in webkit_script
-    assert 'getByRole("button", { name: "开始扫码连接" })' in webkit_script
+    assert 'getByTestId("start-two-step-connect")' in webkit_script
+    assert '"authorizing_account"' in webkit_script
+    assert 'includes("步骤 2 / 2")' in webkit_script
     assert 'data-account-connect-root="true"' in webkit_script
     assert 'data-testid="device-flow-qr-panel"' in webkit_script
     assert 'data-testid="device-flow-qr-image"' in webkit_script
