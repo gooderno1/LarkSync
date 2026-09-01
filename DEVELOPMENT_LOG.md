@@ -1,5 +1,21 @@
 # DEVELOPMENT LOG
 
+## v0.9.4 发布校验修复（2026-09-01）
+
+- 开发原因：
+  - 首次正式发布流水线运行`33510714179`仍按旧契约等待第 1 次扫码后自动进入账号授权，与本版本新增的显式“第 1 步已完成”检查点冲突。
+  - 该冲突使`quality-webkit`在 15 秒后超时；业务页面、后端与 Windows 构建本身均已通过各自质量门禁。
+- 实现方式：
+  - WebKit 冒烟先等待`data-connect-phase=app_registered`，验证“第 1 步已完成”和“继续第 2 次扫码”均可见。
+  - 自动化点击“继续第 2 次扫码”后，模拟`POST /auth/device-sessions`返回第 2 个 Device Session，再校验步骤 2 文案与二维码可见性。
+  - 冒烟异常结果新增`failed_stage`，后续可直接区分失败发生在应用注册检查点还是第 2 个二维码阶段。
+- 当前结果：
+  - Windows 本机 Playwright WebKit 使用生产构建和模拟 API 完成完整两阶段流程；最终状态为`authorizing_account`，二维码状态为`ready`且图片为可见的 PNG Data URL。
+- 验证方式：
+  - `node --check scripts/macos_webkit_smoke.mjs`通过。
+  - `node scripts/macos_webkit_smoke.mjs --url http://127.0.0.1:3666/ --result <临时路径> --mock-api`返回`ok=true`和`stage=device_flow_qr_verified`。
+  - 临时结果与截图已采用可恢复方式移入系统回收站。
+
 ## v0.9.4-dev.1 (2026-09-01)
 
 - 开发原因：

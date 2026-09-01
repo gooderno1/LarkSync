@@ -19,6 +19,7 @@ const mockApi = process.argv.includes("--mock-api");
 const screenshotPath = resultPath.replace(/\.json$/u, ".png");
 let browser;
 let payload;
+let currentStage = "starting";
 
 async function publish(value) {
   await fs.mkdir(path.dirname(resultPath), { recursive: true });
@@ -91,6 +92,12 @@ try {
         });
       }
       if (
+        requestUrl.pathname === "/auth/device-sessions" &&
+        requestMethod === "POST"
+      ) {
+        return json(deviceSession);
+      }
+      if (
         requestUrl.pathname === "/auth/device-sessions/device-webkit-smoke"
       ) {
         return json(deviceSession);
@@ -143,7 +150,22 @@ try {
   });
   if (mockApi) {
     await page.getByTestId("start-two-step-connect").click();
+    currentStage = "waiting_for_app_registered_checkpoint";
+    await page.waitForFunction(
+      () => {
+        const root = document.querySelector('[data-account-connect-root="true"]');
+        return Boolean(
+          root?.getAttribute("data-connect-phase") === "app_registered" &&
+            root?.textContent?.includes("第 1 步已完成") &&
+            root?.textContent?.includes("继续第 2 次扫码"),
+        );
+      },
+      undefined,
+      { timeout: 15000 },
+    );
+    await page.getByRole("button", { name: "继续第 2 次扫码" }).click();
   }
+  currentStage = "waiting_for_second_scan_qr";
   await page.waitForFunction(
     () => {
       const panel = document.querySelector('[data-testid="device-flow-qr-panel"]');
@@ -191,6 +213,7 @@ try {
     ok: false,
     completed: true,
     stage: "webkit_exception",
+    failed_stage: currentStage,
     engine: "playwright-webkit",
     error: `${error?.name ?? "Error"}: ${error?.message ?? String(error)}`,
   };

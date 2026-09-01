@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-09-01] v0.9.4 fix(ci): WebKit 发布冒烟按新流程验证第 1 次扫码完成检查点，再显式进入第 2 次扫码并校验二维码
 [2026-09-01] v0.9.4 release: v0.9.4 multi-account organization experience
 [2026-09-01] v0.9.4-dev.1 feat(accounts): 将自动登录拆为两次扫码与显式成功检查点；按账号隔离查询、写操作和 WebSocket；新增组织元数据、Logo 缓存、组织化侧边栏与账号管理重排
 [2026-09-01] v0.9.3-dev.1 feat(settings): 授权成功后显示 V2 与凭据保存确认页；开机自启动移至当前账号下方，账号管理按身份、授权事实和操作风险重新排布
