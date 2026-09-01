@@ -38,6 +38,7 @@ async def test_accounts_have_isolated_credentials_and_active_preference() -> Non
         account_name="账号 A",
         granted_scopes=["drive:drive"],
         token=TokenData("access-a", "refresh-a", None, open_id="ou_a"),
+        auth_protocol="device_v2",
     )
     account_b = await service.upsert_account(
         app_profile_id=profile.id,
@@ -45,6 +46,7 @@ async def test_accounts_have_isolated_credentials_and_active_preference() -> Non
         account_name="账号 B",
         granted_scopes=["drive:drive"],
         token=TokenData("access-b", "refresh-b", None, open_id="ou_b"),
+        auth_protocol="device_v2",
     )
 
     assert account_a.id != account_b.id
@@ -58,6 +60,72 @@ async def test_accounts_have_isolated_credentials_and_active_preference() -> Non
     assert token_stores[account_b.id].get() is not None
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reauthorize_account_preserves_identity_and_switches_protocol() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    stores: dict[str, MemoryTokenStore] = {}
+    service = AccountService(
+        session_maker=maker,
+        secret_store=MemorySecretStore(),
+        token_store_factory=lambda account_id: stores.setdefault(account_id, MemoryTokenStore()),
+        device_id="device-test",
+    )
+    profile = await service.create_app_profile(
+        app_id="cli_test", app_secret="secret", brand="feishu", source="legacy"
+    )
+    account = await service.upsert_account(
+        app_profile_id=profile.id,
+        open_id="ou_a",
+        account_name="账号 A",
+        granted_scopes=[],
+        token=TokenData("access-v1", "refresh-v1", None, open_id="ou_a", auth_protocol="legacy_v1"),
+        auth_protocol="legacy_v1",
+    )
+
+    updated = await service.reauthorize_account(
+        account_id=account.id,
+        app_profile_id=profile.id,
+        open_id="ou_a",
+        account_name="账号 A 新名称",
+        granted_scopes=["drive:drive"],
+        token=TokenData("access-v2", "refresh-v2", None, open_id="ou_a", auth_protocol="device_v2"),
+    )
+
+    assert updated.id == account.id
+    assert updated.auth_protocol == "device_v2"
+    assert stores[account.id].get().access_token == "access-v2"
+    with pytest.raises(ValueError, match="扫码账号与目标账号不一致"):
+        await service.reauthorize_account(
+            account_id=account.id,
+            app_profile_id=profile.id,
+            open_id="ou_other",
+            account_name="其他账号",
+            granted_scopes=[],
+            token=TokenData("other", "other-refresh", None, open_id="ou_other", auth_protocol="device_v2"),
+        )
+    assert stores[account.id].get().access_token == "access-v2"
+    await engine.dispose()
+
+
+def test_legacy_migration_never_overwrites_scoped_v2_token() -> None:
+    selected = AccountService._select_legacy_migration_token(
+        account_protocol="device_v2",
+        scoped_token=TokenData(
+            "access-v2", "refresh-v2", None, auth_protocol="device_v2"
+        ),
+        legacy_token=TokenData(
+            "access-v1", "refresh-v1", None, auth_protocol="legacy_v1"
+        ),
+    )
+
+    assert selected is not None
+    assert selected.access_token == "access-v2"
+    assert selected.auth_protocol == "device_v2"
 
 
 @pytest.mark.asyncio
@@ -81,6 +149,7 @@ async def test_account_summary_keeps_unread_counts_separate() -> None:
         account_name="账号 A",
         granted_scopes=[],
         token=TokenData("access", "refresh", None, open_id="ou_a"),
+        auth_protocol="device_v2",
     )
     await service.create_notification(
         account_id=account.id,

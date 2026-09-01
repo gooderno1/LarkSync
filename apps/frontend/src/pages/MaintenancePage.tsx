@@ -8,6 +8,7 @@ import { useToast } from "../components/ui/toast";
 import { IconFolder, IconMaintenance, IconRefresh } from "../components/Icons";
 import { MaintenanceShowcasePage } from "../components/showcase/RemainingPagesShowcase";
 import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
+import { Switch } from "../components/ui/switch";
 
 function formatAssetSize(size?: number): string {
   if (!size || size <= 0) return "—";
@@ -392,11 +393,10 @@ function MaintenanceLivePage() {
                     {autoUpdateEnabled ? "已开启" : "已关闭"}
                   </span>
                 </span>
-                <input
-                  aria-label="自动更新"
+                <Switch
+                  label="自动更新"
                   checked={autoUpdateEnabled}
-                  onChange={(event) => setAutoUpdateEnabled(event.target.checked)}
-                  type="checkbox"
+                  onCheckedChange={setAutoUpdateEnabled}
                 />
               </label>
               <label className="min-w-[170px] flex-1 text-xs font-medium text-[#52657A]">

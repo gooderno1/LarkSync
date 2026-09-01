@@ -47,6 +47,8 @@ from src.services.update_scheduler import UpdateScheduler
 from src.api.system import build_desktop_status, desktop_status_to_tray_status
 from src.api.accounts import account_service
 from src.services.account_runtime import account_runtime_registry
+from src.services.upgrade_notice_service import UpgradeNoticeService
+from src.core.version import get_version
 
 InitDbFn = Callable[[], Awaitable[Any]]
 InitLoggingFn = Callable[[], None]
@@ -132,6 +134,12 @@ def _build_lifespan(
                 logger.info("旧版本账号、凭据与任务已自动迁移到多账号数据模型")
         except Exception:
             logger.exception("账号数据自动迁移失败；保留原数据并继续启动")
+        try:
+            notice_count = await UpgradeNoticeService().notify_for_version(get_version())
+            if notice_count:
+                logger.info("已为 {} 个 V1 兼容账号创建升级授权建议", notice_count)
+        except Exception:
+            logger.exception("创建版本升级通知失败；不影响应用继续启动")
         recovered_runs = await recover_runs_fn()
         if recovered_runs:
             logger.warning("已恢复 {} 条上次退出时遗留的运行记录", recovered_runs)

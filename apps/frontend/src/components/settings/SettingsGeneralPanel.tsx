@@ -1,3 +1,5 @@
+import { Switch } from "../ui/switch";
+
 type SettingsGeneralPanelProps = {
   inputCls: string;
   deviceDisplayName: string;
@@ -59,24 +61,12 @@ export function SettingsGeneralPanel({
                   : "当前系统暂不支持由 LarkSync 管理开机自启动。"}
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-label="开机自启动"
-              aria-checked={autostartEnabled}
+            <Switch
+              label="开机自启动"
+              checked={autostartEnabled}
               disabled={!autostartSupported || autostartLoading || updatingAutostart}
-              onClick={() => onAutostartChange?.(!autostartEnabled)}
-              className={`relative h-6 w-11 shrink-0 rounded-full transition ${
-                autostartEnabled ? "bg-[#3370ff]" : "bg-[#c9d8eb]"
-              } disabled:cursor-not-allowed disabled:opacity-60`}
-            >
-              <span
-                aria-hidden="true"
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                  autostartEnabled ? "translate-x-5" : "translate-x-0.5"
-                }`}
-              />
-            </button>
+              onCheckedChange={(enabled) => onAutostartChange?.(enabled)}
+            />
           </div>
         </div>
       </div>

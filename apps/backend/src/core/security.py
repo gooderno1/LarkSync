@@ -23,6 +23,7 @@ class TokenData:
     account_name: Optional[str] = None
     scope: Optional[str] = None
     refresh_expires_at: Optional[float] = None
+    auth_protocol: str = "device_v2"
 
     def is_expired(self, leeway_seconds: int = 60) -> bool:
         if self.expires_at is None:
@@ -131,6 +132,7 @@ class KeyringTokenStore(TokenStore):
             refresh_expires_raw = keyring.get_password(
                 self._service, "refresh_expires_at"
             )
+            auth_protocol_raw = keyring.get_password(self._service, "auth_protocol")
             return TokenData(
                 access_token=access_token,
                 refresh_token=refresh_token,
@@ -141,6 +143,7 @@ class KeyringTokenStore(TokenStore):
                 refresh_expires_at=(
                     float(refresh_expires_raw) if refresh_expires_raw else None
                 ),
+                auth_protocol=(auth_protocol_raw or "device_v2").strip() or "device_v2",
             )
         raw = keyring.get_password(self._service, self._KEY_LEGACY)
         if not raw:
@@ -154,6 +157,7 @@ class KeyringTokenStore(TokenStore):
             account_name=data.get("account_name"),
             scope=data.get("scope"),
             refresh_expires_at=data.get("refresh_expires_at"),
+            auth_protocol=data.get("auth_protocol", "legacy_v1"),
         )
 
     def reload(self) -> Optional[TokenData]:
@@ -193,6 +197,7 @@ class KeyringTokenStore(TokenStore):
                 )
             else:
                 self._delete_key("refresh_expires_at")
+            keyring.set_password(self._service, "auth_protocol", token.auth_protocol)
             self._delete_key(self._KEY_LEGACY)
             self._cached_token = token
             self._cache_loaded = True
@@ -214,6 +219,7 @@ class KeyringTokenStore(TokenStore):
                 self._KEY_LEGACY,
                 "scope",
                 "refresh_expires_at",
+                "auth_protocol",
             ):
                 self._delete_key(key)
             self._cached_token = None
@@ -302,6 +308,12 @@ class FileTokenStore(TokenStore):
                 if isinstance(payload.get("refresh_expires_at"), (int, float))
                 else None
             ),
+            auth_protocol=(
+                payload.get("auth_protocol").strip()
+                if isinstance(payload.get("auth_protocol"), str)
+                and payload.get("auth_protocol").strip()
+                else "device_v2"
+            ),
         )
 
     def reload(self) -> Optional[TokenData]:
@@ -317,6 +329,7 @@ class FileTokenStore(TokenStore):
             "account_name": token.account_name,
             "scope": token.scope,
             "refresh_expires_at": token.refresh_expires_at,
+            "auth_protocol": token.auth_protocol,
         }
         tmp_path = self._path.with_suffix(self._path.suffix + ".tmp")
         tmp_path.write_text(

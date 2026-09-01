@@ -19,6 +19,7 @@ class AccountRuntime:
     brand: str
     app_id: str
     app_secret: str
+    auth_protocol: str
 
     def app_config(self) -> AppConfig:
         base = ConfigManager.get().config
@@ -27,7 +28,11 @@ class AccountRuntime:
             update={
                 "auth_client_id": self.app_id,
                 "auth_client_secret": self.app_secret,
-                "auth_token_url": f"{open_base}/open-apis/authen/v2/oauth/token",
+                "auth_token_url": (
+                    f"{open_base}/open-apis/authen/v1/access_token"
+                    if self.auth_protocol == "legacy_v1"
+                    else f"{open_base}/open-apis/authen/v2/oauth/token"
+                ),
             }
         )
 
@@ -63,6 +68,7 @@ class AccountRuntimeRegistry:
                 brand=account.brand,
                 app_id=profile.app_id,
                 app_secret=secret,
+                auth_protocol=account.auth_protocol,
             )
         with self._lock:
             self._items = items

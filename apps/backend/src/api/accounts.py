@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 from src.services.account_runtime import account_runtime_registry
 from src.services.account_service import AccountService
 from src.services.auth_session_service import AuthSessionService, PendingSession
+from src.services.auth_service import AuthError, AuthService
+from src.core.account_context import account_scope
 
 
 router = APIRouter(tags=["accounts"])
@@ -49,6 +51,13 @@ def _session_response(session: PendingSession) -> dict[str, object]:
         "expires_at": session.expires_at,
         "interval": session.interval,
     }
+
+
+def _refresh_requires_reauthorization(exc: AuthError) -> bool:
+    return exc.code in {"20026", "20064", "20073"} or any(
+        marker in str(exc)
+        for marker in ("缺少登录凭证", "refresh_token 不可用", "请重新连接")
+    )
 
 
 @router.get("/accounts")
@@ -189,10 +198,41 @@ async def begin_reauthorize_session(account_id: str) -> dict[str, object]:
             account_id
         )
         return _session_response(
-            await auth_sessions.begin_device(account.app_profile_id)
+            await auth_sessions.begin_device(
+                account.app_profile_id, target_account_id=account.id
+            )
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/accounts/{account_id}/refresh")
+async def refresh_account_token(account_id: str) -> dict[str, object]:
+    account = await account_service.get_account(account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    try:
+        with account_scope(account_id):
+            token = await AuthService().refresh()
+        await account_service.record_auth_result(account_id, state="connected")
+        return {
+            "account_id": account_id,
+            "status": "refreshed",
+            "auth_protocol": account.auth_protocol,
+            "expires_at": token.expires_at,
+            "refresh_expires_at": token.refresh_expires_at,
+        }
+    except AuthError as exc:
+        await account_service.record_auth_result(
+            account_id,
+            state=(
+                "auth_required"
+                if _refresh_requires_reauthorization(exc)
+                else account.state
+            ),
+            error=str(exc),
+        )
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/notifications")

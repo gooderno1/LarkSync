@@ -33,6 +33,8 @@ class PendingSession:
     verification_uri_complete: str
     app_profile_id: str | None = None
     scopes: list[str] | None = None
+    target_account_id: str | None = None
+    terminal_result: dict[str, object] | None = None
 
 
 class AuthSessionService:
@@ -55,7 +57,9 @@ class AuthSessionService:
         self._sessions: dict[str, PendingSession] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
-    async def begin_device(self, app_profile_id: str) -> PendingSession:
+    async def begin_device(
+        self, app_profile_id: str, *, target_account_id: str | None = None
+    ) -> PendingSession:
         profile, secret = await self._accounts.get_app_profile_credentials(
             app_profile_id
         )
@@ -72,11 +76,14 @@ class AuthSessionService:
             brand=profile.brand,
             app_profile_id=profile.id,
             scopes=scopes,
+            target_account_id=target_account_id,
         )
 
     async def poll_device(self, session_id: str) -> dict[str, object]:
         session = self._require(session_id, "device")
         async with self._lock(session_id):
+            if session.terminal_result is not None:
+                return session.terminal_result
             now = self._clock()
             if now >= session.expires_at:
                 self.cancel(session_id)
@@ -117,19 +124,30 @@ class AuthSessionService:
                 account_name=str(profile_data.get("name") or "").strip() or None,
                 scope=result.token.scope,
                 refresh_expires_at=now + result.token.refresh_expires_in,
+                auth_protocol="device_v2",
             )
-            account = await self._accounts.upsert_account(
-                app_profile_id=profile.id,
-                open_id=open_id,
-                account_name=token.account_name,
-                granted_scopes=(result.token.scope.split() or session.scopes or []),
-                token=token,
-                avatar_url=str(profile_data.get("avatar_url") or "").strip() or None,
-                tenant_name=str(profile_data.get("tenant_name") or "").strip() or None,
-            )
+            account_payload = {
+                "app_profile_id": profile.id,
+                "open_id": open_id,
+                "account_name": token.account_name,
+                "granted_scopes": (result.token.scope.split() or session.scopes or []),
+                "token": token,
+                "avatar_url": str(profile_data.get("avatar_url") or "").strip() or None,
+                "tenant_name": str(profile_data.get("tenant_name") or "").strip() or None,
+            }
+            if session.target_account_id:
+                account = await self._accounts.reauthorize_account(
+                    account_id=session.target_account_id,
+                    **account_payload,
+                )
+            else:
+                account = await self._accounts.upsert_account(
+                    auth_protocol="device_v2",
+                    **account_payload,
+                )
             await account_runtime_registry.reload()
-            self.cancel(session_id)
-            return {"status": "authorized", "account": account}
+            session.terminal_result = {"status": "authorized", "account": account}
+            return session.terminal_result
 
     async def begin_registration(self, brand: str) -> PendingSession:
         authorization = await self._registration.begin(brand=brand)
@@ -142,6 +160,8 @@ class AuthSessionService:
     async def poll_registration(self, session_id: str) -> dict[str, object]:
         session = self._require(session_id, "registration")
         async with self._lock(session_id):
+            if session.terminal_result is not None:
+                return session.terminal_result
             now = self._clock()
             if now >= session.expires_at:
                 self.cancel(session_id)
@@ -172,8 +192,13 @@ class AuthSessionService:
                 source="official_registration",
                 display_name="LarkSync 自动创建的个人应用",
             )
-            self.cancel(session_id)
-            return {"status": "registered", "app_profile": profile}
+            next_session = await self.begin_device(profile.id)
+            session.terminal_result = {
+                "status": "registered",
+                "app_profile": profile,
+                "next_session": self._public_session(next_session),
+            }
+            return session.terminal_result
 
     def cancel(self, session_id: str) -> bool:
         removed = self._sessions.pop(session_id, None)
@@ -188,6 +213,7 @@ class AuthSessionService:
         brand: str,
         app_profile_id: str | None = None,
         scopes: list[str] | None = None,
+        target_account_id: str | None = None,
     ) -> PendingSession:
         now = self._clock()
         item = PendingSession(
@@ -203,9 +229,23 @@ class AuthSessionService:
             verification_uri_complete=authorization.verification_uri_complete,
             app_profile_id=app_profile_id,
             scopes=scopes,
+            target_account_id=target_account_id,
         )
         self._sessions[item.id] = item
         return item
+
+    @staticmethod
+    def _public_session(session: PendingSession) -> dict[str, object]:
+        return {
+            "session_id": session.id,
+            "status": "pending",
+            "brand": session.brand,
+            "user_code": session.user_code,
+            "verification_uri": session.verification_uri,
+            "verification_uri_complete": session.verification_uri_complete,
+            "expires_at": session.expires_at,
+            "interval": session.interval,
+        }
 
     def _require(self, session_id: str, kind: str) -> PendingSession:
         session = self._sessions.get(session_id)

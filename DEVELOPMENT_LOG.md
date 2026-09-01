@@ -1,5 +1,41 @@
 # DEVELOPMENT LOG
 
+## v0.9.1 release (2026-09-01)
+
+- 开发原因：
+  - v0.9.0 将升级迁移账号的 V1 凭据放入账号命名空间，但账号运行时错误地固定请求 V2 token 端点；access token 到期后刷新返回飞书`code=20026`。
+  - 设置页没有手动刷新和重新授权入口；用户无法主动恢复失效授权，也无法把迁移账号原地升级为 Device Flow V2。
+  - 自动创建个人应用的第一次扫码结束后，前端仍轮询已结束的注册会话，第二次账号扫码只能退出后重新进入。
+  - 开机自启动、自动更新和任务启用使用多套开关实现；绝对定位圆点在开启态越出轨道。
+- 实现方式：
+  - schema v10 为`accounts`新增`auth_protocol`；升级迁移账号标记为`legacy_v1`，新账号标记为`device_v2`。
+  - 账号运行时根据`auth_protocol`选择`/open-apis/authen/v1/access_token`或`/open-apis/authen/v2/oauth/token`；手动刷新保持当前协议。
+  - 重新授权会话绑定目标`account_id`和原应用配置；只有扫码`open_id`一致并完成安全存储写入后才原地切换到 V2，身份不一致时拒绝覆盖。
+  - 启动迁移优先使用账号级凭据；已重新授权的 V2 凭据不会被仍保留的 v0.8 全局 V1 凭据覆盖。
+  - 注册会话成功响应直接携带下一阶段 Device Flow 会话；注册和账号授权终态响应可幂等读取，前端改用串行`setTimeout`轮询并提供当前步骤取消、失败重试和浏览器打开入口。
+  - 新版本首次启动时，仅为仍使用 V1 的账号创建一次升级通知；通知动作直达对应账号的重新授权弹窗。
+  - 设置页逐账号显示认证协议、访问凭据有效期和最近授权错误，并提供`刷新授权`与`重新授权`按钮；首次页检测到已有失效账号时直接进入原账号重授权，不创建重复账号。
+  - 设置、维护、任务列表、任务详情和新建向导统一复用语义`Switch`组件；轨道使用固定内边距和受控位移，圆点始终位于轨道内。
+- 当前结果：
+  - V1 兼容是可持续使用的保底路径；用户可选择只刷新继续使用，也可重新授权一次升级到 V2。
+  - 账号重授权不会改变任务归属、账号 ID、历史运行、状态和通知隔离；多账号并行同步与左侧账号切换行为保持不变。
+  - 第一次扫码创建应用成功后会在同一窗口自动展示第二次账号登录二维码；已有应用和手动 App ID/Secret 直接进入账号扫码。
+  - 带确认与保存时间的完整方案保存在本地开发资料`docs/local_specs/LarkSync v0.9.1 认证兼容与账号连接流程修改方案.md`；该目录按仓库规范不提交 Git。
+  - 实现完成记录时间：`2026-09-01 16:08:08 +08:00`。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`成功同步飞书开发资料，`docs/feishu/_manifest.json`已记录本次检查。
+  - 后端全量`python -m pytest -q`通过，共 715 项；覆盖 V1/V2 runtime 路由、schema v10、V2 凭据防回退、目标账号重授权、连续会话终态、升级通知去重及瞬时刷新错误不强制退出。
+  - 前端 TypeScript、ESLint、生产构建和 36 个测试文件共 117 项全部通过；新增测试验证第一次扫码后自动进入第二次扫码以及原账号重授权说明。
+  - `npm audit --omit=dev`返回 0 个生产依赖漏洞。
+  - `python scripts/build_installer.py --nsis`通过，生成`LarkSync-Setup-v0.9.1.exe`，大小`72,380,277 bytes`，SHA256 为`7ABD7DC614DBC3A7D4551FBD36915F2BE4C175CFD1CC4B5E580D60157B89C960`。
+  - 打包后的`LarkSync.exe --backend`使用隔离`synthetic_test`数据目录和端口`18192`启动；`/health`返回`ok`，桌面状态返回`packaged=true`、`profile=synthetic_test`和`current_version=v0.9.1`，停止后打包进程和监听端口均无残留。
+  - `python scripts/update_install_smoke.py`通过，bootstrap、隐藏 worker 和 handoff 状态推进到预期`launch_failed`，确认更新安装交接链路可执行。
+  - 提交前`git diff --check`通过，`git status -- docs/local_specs`确认本地产品资料目录无待提交变更。
+- 遗留问题：
+  - Device Flow 的真实两次扫码仍需用户本人在飞书手机端确认；自动化测试覆盖协议请求、状态迁移和身份保护，正式自动升级后需完成真实账号验收。
+  - V1 兼容授权仍依赖原 refresh token 有效；若 refresh token 已撤销或过期，手动刷新会明确失败并将账号标记为需重新授权。
+  - 本次本机只生成和验证 Windows NSIS；macOS 双架构 DMG、签名模式和安装启动 smoke 由正式 Release 工作流在 GitHub 托管 Runner 上执行。
+
 ## v0.9.0 release (2026-09-01)
 
 - 开发原因：

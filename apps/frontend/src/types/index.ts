@@ -147,6 +147,10 @@ export type AccountSummary = {
   state: "connected" | "auth_required" | "migration_pending" | "removed";
   granted_scopes: string[];
   paused: boolean;
+  auth_protocol: "legacy_v1" | "device_v2";
+  access_expires_at?: number | null;
+  refresh_expires_at?: number | null;
+  last_auth_error?: string | null;
   unread_total: number;
   unread_errors: number;
   unread_messages: number;

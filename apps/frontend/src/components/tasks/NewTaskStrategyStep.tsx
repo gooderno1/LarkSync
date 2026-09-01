@@ -7,6 +7,7 @@ import {
 import { cn } from "../../lib/utils";
 import { IconArrowDown, IconArrowRightLeft, IconArrowUp } from "../Icons";
 import type { CloudSelection } from "../../types";
+import { Switch } from "../ui/switch";
 
 type NewTaskStrategyStepProps = {
   view?: "all" | "mode" | "rules" | "confirm";
@@ -223,16 +224,7 @@ export function NewTaskStrategyStep({
           <p className="text-sm font-medium text-[#334762]">创建后立即启用</p>
           <p className="mt-0.5 text-[11px] text-[#6b7f96]">关闭时仅保存配置，不会自动执行同步。</p>
         </div>
-        <button
-          aria-checked={taskEnabled}
-          aria-label="创建后立即启用"
-          className={cn("h-6 w-11 rounded-full p-0.5 transition", taskEnabled ? "bg-[#3370ff]" : "bg-[#c9d8ec]")}
-          onClick={() => onTaskEnabledChange(!taskEnabled)}
-          role="switch"
-          type="button"
-        >
-          <span className={cn("block h-5 w-5 rounded-full bg-white transition", taskEnabled && "translate-x-5")} />
-        </button>
+        <Switch label="创建后立即启用" checked={taskEnabled} onCheckedChange={onTaskEnabledChange} />
       </div>
         <div className="rounded-lg border border-[#d7e4f5] bg-[#f8fbff] p-3 text-xs leading-5 text-[#52657a]">
           默认忽略隐藏路径、缓存目录和临时文件；任务创建后可在设置中追加任务级忽略目录。

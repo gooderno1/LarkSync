@@ -98,10 +98,10 @@ async def test_schema_v6_adds_ignored_at_without_changing_existing_problem_state
         ).scalar_one()
     await dispose_engines()
 
-    assert CURRENT_SCHEMA_VERSION == 9
+    assert CURRENT_SCHEMA_VERSION == 10
     assert "ignored_at" in columns
     assert (row.state, row.ignored_reason, row.ignored_at) == ("open", None, None)
-    assert version == "9"
+    assert version == "10"
 
 
 @pytest.mark.asyncio
@@ -179,18 +179,22 @@ async def test_schema_v9_automatically_backs_up_and_scopes_legacy_data(
             row[1]: row[5]
             for row in (await conn.execute(text("PRAGMA table_info(sync_links)"))).all()
         }
-        account_count = (
-            await conn.execute(text("SELECT COUNT(*) FROM accounts"))
+        account_count = (await conn.execute(text("SELECT COUNT(*) FROM accounts"))).scalar_one()
+        auth_protocol = (
+            await conn.execute(
+                text("SELECT auth_protocol FROM accounts WHERE id='legacy-default-account'")
+            )
         ).scalar_one()
     await dispose_engines()
 
-    backups = list(tmp_path.glob("v8-single-account.db.pre-v9-*.bak"))
+    backups = list(tmp_path.glob("v8-single-account.db.pre-v10-*.bak"))
     assert len(backups) == 1
     assert task_account == "legacy-default-account"
     assert tuple(link) == ("legacy-default-account", "D:/Sync/a.md")
     assert link_pk["account_id"] == 1
     assert link_pk["local_path"] == 2
     assert account_count == 1
+    assert auth_protocol == "legacy_v1"
 
 
 @pytest.mark.asyncio

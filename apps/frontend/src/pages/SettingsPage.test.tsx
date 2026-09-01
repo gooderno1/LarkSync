@@ -52,8 +52,8 @@ vi.mock("../hooks/useAuth", () => ({
 
 vi.mock("../hooks/useAccounts", () => ({
   useAccounts: () => ({
-    accounts: [{ id: "account-1", account_name: "张三", state: "connected", paused: false, brand: "feishu" }],
-    activeAccount: { id: "account-1", account_name: "张三", state: "connected", paused: false, brand: "feishu" },
+    accounts: [{ id: "account-1", account_name: "张三", state: "connected", paused: false, brand: "feishu", auth_protocol: "legacy_v1" }],
+    activeAccount: { id: "account-1", account_name: "张三", state: "connected", paused: false, brand: "feishu", auth_protocol: "legacy_v1" },
     switchAccount: vi.fn(),
     refreshAccounts: vi.fn().mockResolvedValue(undefined),
   }),
@@ -97,6 +97,9 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain("忽略规则");
     expect(html).toContain("账号管理");
     expect(html).toContain("每个账号的凭据、任务、状态和通知相互隔离");
+    expect(html).toContain("V1 兼容");
+    expect(html).toContain("刷新授权");
+    expect(html).toContain("重新授权");
     expect(html).toContain("同步策略");
     expect(html).toContain("本地忽略目录");
     expect(html).toContain('data-settings-context="true"');

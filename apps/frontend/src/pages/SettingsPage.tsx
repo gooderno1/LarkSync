@@ -17,6 +17,7 @@ import { IconCircleCheck } from "../components/Icons";
 import { SettingsShowcasePage } from "../components/showcase/RemainingPagesShowcase";
 import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
 import { useAccounts } from "../hooks/useAccounts";
+import { AccountConnectPanel } from "../components/AccountConnectPanel";
 
 function SettingsLivePage() {
   const { config, configLoading, saveConfig, saving } = useConfig();
@@ -40,6 +41,8 @@ function SettingsLivePage() {
   const [ignoredPathDrafts, setIgnoredPathDrafts] = useState<Record<string, string>>({});
   const [ignoredSubpathsMap, setIgnoredSubpathsMap] = useState<Record<string, string[]>>({});
   const [pickingIgnoredTaskId, setPickingIgnoredTaskId] = useState<string | null>(null);
+  const [reauthorizeAccountId, setReauthorizeAccountId] = useState<string | null>(null);
+  const [refreshingAccountId, setRefreshingAccountId] = useState<string | null>(null);
   const uploadEnabled = syncModeSupportsUpload(syncMode);
   const downloadEnabled = syncModeSupportsDownload(syncMode);
 
@@ -69,6 +72,13 @@ function SettingsLivePage() {
       return next;
     });
   }, [tasks]);
+
+  useEffect(() => {
+    const requestedId = window.localStorage.getItem("larksync.reauthorize-account-id");
+    if (!requestedId || !accounts.some((account) => account.id === requestedId)) return;
+    window.localStorage.removeItem("larksync.reauthorize-account-id");
+    setReauthorizeAccountId(requestedId);
+  }, [accounts]);
 
   const normalizeIgnoredSubpath = (value: string): string | null => {
     const normalized = value
@@ -184,6 +194,25 @@ function SettingsLivePage() {
     } catch (err) {
       toast(err instanceof Error ? err.message : "账号操作失败", "danger");
     }
+  };
+
+  const refreshAccountAuthorization = async (accountId: string) => {
+    setRefreshingAccountId(accountId);
+    try {
+      await apiFetch(`/accounts/${accountId}/refresh`, { method: "POST" });
+      await refreshAccounts();
+      toast("授权信息已刷新", "success");
+    } catch (err) {
+      await refreshAccounts();
+      toast(err instanceof Error ? err.message : "授权刷新失败，请重新授权", "danger");
+    } finally {
+      setRefreshingAccountId(null);
+    }
+  };
+
+  const formatExpiry = (timestamp?: number | null) => {
+    if (!timestamp) return "有效期未知";
+    return `访问凭据有效至 ${new Date(timestamp * 1000).toLocaleString()}`;
   };
 
   const handlePickIgnoredSubpath = async (taskId: string, localPath: string) => {
@@ -317,8 +346,10 @@ function SettingsLivePage() {
               {accounts.map((account) => (
                 <div key={account.id} className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${account.id === activeAccount?.id ? "border-[#9fc0ee] bg-[#f5f9ff]" : "border-[#dce6f2]"}`}>
                   <span className="grid h-9 w-9 place-items-center rounded-full bg-[#eaf3ff] text-xs font-bold text-[#3370ff]">{(account.account_name || "飞").slice(0, 1)}</span>
-                  <div className="min-w-[150px] flex-1"><p className="truncate text-sm font-semibold text-[#102033]">{account.account_name || "飞书账号"}</p><p className="mt-0.5 text-xs text-[#71869d]">{account.state === "connected" ? account.paused ? "已暂停" : "同步中" : "需要重新授权"} · {account.brand === "lark" ? "Lark" : "飞书"}</p></div>
+                  <div className="min-w-[210px] flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-[#102033]">{account.account_name || "飞书账号"}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${account.auth_protocol === "device_v2" ? "bg-[#ecfdf5] text-[#047857]" : "bg-[#fff7ed] text-[#b45309]"}`}>{account.auth_protocol === "device_v2" ? "Device Flow V2" : "V1 兼容"}</span></div><p className="mt-0.5 text-xs text-[#71869d]">{account.state === "connected" ? account.paused ? "已暂停" : "同步中" : "需要重新授权"} · {account.brand === "lark" ? "Lark" : "飞书"} · {formatExpiry(account.access_expires_at)}</p>{account.last_auth_error ? <p className="mt-1 text-xs text-[#be123c]">最近授权错误：{account.last_auth_error}</p> : null}</div>
                   {account.id !== activeAccount?.id ? <button type="button" onClick={() => void switchAccount(account.id)} className="rounded-lg border border-[#c9d8eb] px-3 py-1.5 text-xs font-semibold text-[#3370ff]">切换</button> : <span className="rounded-full bg-[#eaf3ff] px-2 py-1 text-[11px] font-semibold text-[#3370ff]">当前</span>}
+                  <button type="button" disabled={refreshingAccountId === account.id} onClick={() => void refreshAccountAuthorization(account.id)} className="rounded-lg border border-[#b9cfee] px-3 py-1.5 text-xs font-semibold text-[#3370ff] disabled:opacity-50">{refreshingAccountId === account.id ? "刷新中…" : "刷新授权"}</button>
+                  <button type="button" onClick={() => setReauthorizeAccountId(account.id)} className="rounded-lg bg-[#3370ff] px-3 py-1.5 text-xs font-semibold text-white">重新授权</button>
                   <button type="button" onClick={() => void accountAction(account.id, account.paused ? "resume" : "pause")} className="rounded-lg border border-[#c9d8eb] px-3 py-1.5 text-xs text-[#52657a]">{account.paused ? "恢复" : "暂停"}</button>
                   <button type="button" onClick={() => void accountAction(account.id, "disconnect")} className="rounded-lg border border-[#f4c7a1] px-3 py-1.5 text-xs text-[#b45309]">断开本机</button>
                   <button type="button" onClick={() => void accountAction(account.id, "remove")} className="rounded-lg border border-[#fecdd3] px-3 py-1.5 text-xs text-[#be123c]">移除</button>
@@ -358,6 +389,7 @@ function SettingsLivePage() {
           </section>
         </aside>
       </div>
+      {reauthorizeAccountId ? <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[#102033]/25 p-6 backdrop-blur-[2px]" onMouseDown={() => setReauthorizeAccountId(null)}><div className="w-full max-w-3xl rounded-3xl border border-[#d6e3f3] bg-[#f8fbff] p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="mb-5 flex items-center justify-between"><div><h2 className="text-xl font-semibold text-[#102033]">重新授权账号</h2><p className="mt-1 text-xs text-[#71869d]">成功后将切换到 Device Flow V2，账号数据保持不变。</p></div><button type="button" onClick={() => setReauthorizeAccountId(null)} className="rounded-lg border border-[#cbd9ea] px-3 py-1.5 text-sm text-[#52657a]">关闭</button></div><AccountConnectPanel mode="reauthorize" accountId={reauthorizeAccountId} onCancel={() => setReauthorizeAccountId(null)} onConnected={() => { setReauthorizeAccountId(null); toast("账号已重新授权并升级为 V2", "success"); }} /></div></div> : null}
     </section>
   );
 }

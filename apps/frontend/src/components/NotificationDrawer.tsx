@@ -31,6 +31,17 @@ export function NotificationDrawer({ open, onClose }: { open: boolean; onClose: 
     },
   });
 
+  const openAction = (item: AccountNotification) => {
+    const prefix = "account:reauthorize:";
+    if (!item.action_target?.startsWith(prefix)) return;
+    const accountId = item.action_target.slice(prefix.length).trim();
+    if (!accountId) return;
+    window.localStorage.setItem("larksync.reauthorize-account-id", accountId);
+    if (!item.read_at) readMutation.mutate(item.id);
+    window.location.hash = "#settings";
+    onClose();
+  };
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[80] flex justify-end bg-[#102033]/20 backdrop-blur-[2px]" onMouseDown={onClose}>
@@ -43,11 +54,12 @@ export function NotificationDrawer({ open, onClose }: { open: boolean; onClose: 
         <div className="mt-4 grid gap-3">
           {query.isLoading ? <p className="py-10 text-center text-sm text-[#71869d]">正在读取通知…</p> : null}
           {query.data?.map((item) => (
-            <button key={item.id} type="button" onClick={() => !item.read_at && readMutation.mutate(item.id)} className={`rounded-2xl border p-4 text-left shadow-sm ${item.read_at ? "border-[#dce6f2] bg-white/70" : "border-[#bcd2f0] bg-white"}`}>
+            <article key={item.id} onClick={() => !item.read_at && readMutation.mutate(item.id)} className={`rounded-2xl border p-4 text-left shadow-sm ${item.read_at ? "border-[#dce6f2] bg-white/70" : "border-[#bcd2f0] bg-white"}`}>
               <div className="flex items-center justify-between gap-3"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${item.category === "sync_error" ? "bg-[#fff1f2] text-[#be123c]" : "bg-[#eaf3ff] text-[#3370ff]"}`}>{item.category === "sync_error" ? "同步错误" : "消息"}</span><span className="text-[11px] text-[#8ca0b6]">{new Date(item.created_at * 1000).toLocaleString()}</span></div>
               <h3 className="mt-3 text-sm font-semibold text-[#102033]">{item.title}</h3>
               <p className="mt-1 text-xs leading-5 text-[#52657a]">{item.body}</p>
-            </button>
+              {item.action_target?.startsWith("account:reauthorize:") ? <button type="button" onClick={(event) => { event.stopPropagation(); openAction(item); }} className="mt-3 rounded-lg bg-[#3370ff] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2563eb]">立即重新授权</button> : null}
+            </article>
           ))}
           {!query.isLoading && !query.data?.length ? <p className="rounded-2xl border border-dashed border-[#cbd9ea] bg-white p-8 text-center text-sm text-[#71869d]">当前没有通知</p> : null}
         </div>

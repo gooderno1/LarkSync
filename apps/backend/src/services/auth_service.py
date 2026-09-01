@@ -205,6 +205,7 @@ class AuthService:
                     account_name=resolved_account_name,
                     scope=latest.scope,
                     refresh_expires_at=latest.refresh_expires_at,
+                    auth_protocol=latest.auth_protocol,
                 )
                 await asyncio.to_thread(self._token_store.set, updated)
                 return updated
@@ -262,6 +263,11 @@ class AuthService:
             account_name=resolved_account_name,
             scope=previous.scope if previous else None,
             refresh_expires_at=(previous.refresh_expires_at if previous else None),
+            auth_protocol=(
+                previous.auth_protocol
+                if previous
+                else ("device_v2" if self._uses_v2_oauth() else "legacy_v1")
+            ),
         )
         persist_started = time.perf_counter()
         await asyncio.to_thread(self._token_store.set, stored)

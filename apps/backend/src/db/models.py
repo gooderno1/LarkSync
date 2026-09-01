@@ -54,6 +54,9 @@ class Account(Base):
     granted_scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
     paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_auth_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auth_protocol: Mapped[str] = mapped_column(
+        String, nullable=False, default="device_v2", server_default="device_v2", index=True
+    )
     created_at: Mapped[float] = mapped_column(Float, nullable=False)
     updated_at: Mapped[float] = mapped_column(Float, nullable=False)
     removed_at: Mapped[float | None] = mapped_column(Float, nullable=True)

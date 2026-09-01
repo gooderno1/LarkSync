@@ -31,7 +31,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 10
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -652,6 +652,28 @@ async def _apply_schema_v9(conn) -> None:
         )
 
 
+async def _apply_schema_v10(conn) -> None:
+    await _ensure_column(
+        conn,
+        table="accounts",
+        column="auth_protocol",
+        column_type="TEXT",
+        default_value="device_v2",
+    )
+    await conn.execute(
+        text(
+            "UPDATE accounts SET auth_protocol='legacy_v1' "
+            "WHERE id='legacy-default-account'"
+        )
+    )
+    await _ensure_index(
+        conn,
+        table="accounts",
+        index_name="idx_accounts_auth_protocol",
+        columns_sql="auth_protocol",
+    )
+
+
 async def _rebuild_sync_links_v9(conn, *, legacy_account_id: str) -> None:
     table_info = list(await conn.execute(text("PRAGMA table_info(sync_links)")))
     columns = {str(row[1]): row for row in table_info}
@@ -831,6 +853,11 @@ _SCHEMA_MIGRATIONS = [
         version=9,
         description="自动备份并升级为账号级数据隔离、复合同步映射和通知模型",
         upgrade=_apply_schema_v9,
+    ),
+    SchemaMigration(
+        version=10,
+        description="记录账号 OAuth 协议，兼容迁移账号 V1 刷新并支持 Device Flow V2",
+        upgrade=_apply_schema_v10,
     ),
 ]
 

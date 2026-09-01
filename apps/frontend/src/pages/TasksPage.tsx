@@ -22,6 +22,7 @@ import { formatTimestamp } from "../lib/formatters";
 import { confirm } from "../components/ui/confirm-dialog";
 import { useToast } from "../components/ui/toast";
 import type { SyncTask, SyncTaskStatus } from "../types";
+import { Switch } from "../components/ui/switch";
 import {
   TASK_PAGE_SHOWCASE_COUNTS,
   TASK_PAGE_SHOWCASE_DURATIONS,
@@ -458,17 +459,12 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
                               >
                                 <IconPlay className="h-3.5 w-3.5" />
                               </button>
-                              <button
-                                aria-label={task.enabled ? "停用任务" : "启用任务"}
-                                aria-checked={task.enabled}
-                                className={`relative h-5 w-9 shrink-0 rounded-full border p-0.5 shadow-inner transition ${task.enabled ? "border-[#3370ff] bg-[#3370ff]" : "border-[#afc1d5] bg-[#c9d8ec]"}`}
-                                onClick={() => handleToggleTask(task)}
-                                role="switch"
-                                title={task.enabled ? "停用任务" : "启用任务"}
-                                type="button"
-                              >
-                                <span className={`block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${task.enabled ? "translate-x-4" : "translate-x-0"}`} />
-                              </button>
+                              <Switch
+                                label={task.enabled ? "停用任务" : "启用任务"}
+                                checked={task.enabled}
+                                onCheckedChange={() => handleToggleTask(task)}
+                                size="sm"
+                              />
                               {onOpenTaskDetail ? (
                                 <button
                                   aria-label="查看任务详情"

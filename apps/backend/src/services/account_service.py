@@ -52,6 +52,10 @@ class AccountItem:
     state: str
     granted_scopes: list[str]
     paused: bool
+    auth_protocol: str
+    access_expires_at: float | None
+    refresh_expires_at: float | None
+    last_auth_error: str | None
     created_at: float
     updated_at: float
 
@@ -159,15 +163,26 @@ class AccountService:
                 profile.app_id = app_id
             if app_secret:
                 self._secret_store.set(profile.secret_ref, app_secret)
-            token = self._token_store_factory("").get()
-            if token is not None:
-                self._token_store_factory(LEGACY_ACCOUNT_ID).set(token)
-                if token.open_id:
-                    account.open_id = token.open_id
-                account.account_name = token.account_name or account.account_name
+            scoped_store = self._token_store_factory(LEGACY_ACCOUNT_ID)
+            scoped_token = scoped_store.get()
+            legacy_token = self._token_store_factory("").get()
+            # V2 重新授权后，账号命名空间中的凭据就是新的事实来源。后续启动
+            # 不能再用仍留在全局命名空间中的 v0.8 凭据把它覆盖回 V1。
+            migrated_token = self._select_legacy_migration_token(
+                account_protocol=account.auth_protocol,
+                scoped_token=scoped_token,
+                legacy_token=legacy_token,
+            )
+            if migrated_token is not None:
+                protocol = migrated_token.auth_protocol
+                scoped_store.set(migrated_token)
+                if migrated_token.open_id:
+                    account.open_id = migrated_token.open_id
+                account.account_name = migrated_token.account_name or account.account_name
                 account.state = "connected"
+                account.auth_protocol = protocol
                 account.granted_scopes = self._serialize_scopes(
-                    (token.scope or "").split()
+                    (migrated_token.scope or "").split()
                 )
             elif app_id and app_secret:
                 account.state = "auth_required"
@@ -188,6 +203,32 @@ class AccountService:
             payload["auth_client_secret"] = ""
             config_manager.save_config(payload)
         return True
+
+    @staticmethod
+    def _select_legacy_migration_token(
+        *,
+        account_protocol: str,
+        scoped_token: TokenData | None,
+        legacy_token: TokenData | None,
+    ) -> TokenData | None:
+        token = scoped_token or legacy_token
+        if token is None:
+            return None
+        protocol = (
+            "device_v2"
+            if account_protocol == "device_v2" and scoped_token is not None
+            else "legacy_v1"
+        )
+        return TokenData(
+            access_token=token.access_token,
+            refresh_token=token.refresh_token,
+            expires_at=token.expires_at,
+            open_id=token.open_id,
+            account_name=token.account_name,
+            scope=token.scope,
+            refresh_expires_at=token.refresh_expires_at,
+            auth_protocol=protocol,
+        )
 
     async def list_app_profiles(self) -> list[AppProfileItem]:
         async with self._session_maker() as session:
@@ -231,6 +272,7 @@ class AccountService:
         account_name: str | None,
         granted_scopes: list[str],
         token: TokenData,
+        auth_protocol: str = "device_v2",
         avatar_url: str | None = None,
         tenant_name: str | None = None,
     ) -> AccountItem:
@@ -262,6 +304,7 @@ class AccountService:
                     granted_scopes=self._serialize_scopes(granted_scopes),
                     paused=False,
                     last_auth_error=None,
+                    auth_protocol=auth_protocol,
                     created_at=now,
                     updated_at=now,
                     removed_at=None,
@@ -274,6 +317,7 @@ class AccountService:
                 record.state = "connected"
                 record.granted_scopes = self._serialize_scopes(granted_scopes)
                 record.last_auth_error = None
+                record.auth_protocol = auth_protocol
                 record.removed_at = None
                 record.updated_at = now
             await session.flush()
@@ -285,6 +329,7 @@ class AccountService:
                 account_name=record.account_name,
                 scope=token.scope,
                 refresh_expires_at=token.refresh_expires_at,
+                auth_protocol=auth_protocol,
             )
             self._token_store_factory(record.id).set(persisted)
             await session.commit()
@@ -292,6 +337,49 @@ class AccountService:
         if await self.get_active_account_id() is None:
             await self.set_active_account(account.id)
         return account
+
+    async def reauthorize_account(
+        self,
+        *,
+        account_id: str,
+        app_profile_id: str,
+        open_id: str,
+        account_name: str | None,
+        granted_scopes: list[str],
+        token: TokenData,
+        avatar_url: str | None = None,
+        tenant_name: str | None = None,
+    ) -> AccountItem:
+        async with self._session_maker() as session:
+            record = await session.get(Account, account_id)
+            if record is None or record.removed_at is not None:
+                raise ValueError("账号不存在")
+            if record.app_profile_id != app_profile_id:
+                raise ValueError("重新授权必须使用原应用配置")
+            if record.open_id != open_id.strip():
+                raise ValueError("扫码账号与目标账号不一致，请使用原账号重新扫码")
+            now = time.time()
+            record.account_name = (account_name or "").strip() or record.account_name
+            record.avatar_url = avatar_url or record.avatar_url
+            record.tenant_name = tenant_name or record.tenant_name
+            record.state = "connected"
+            record.auth_protocol = "device_v2"
+            record.granted_scopes = self._serialize_scopes(granted_scopes)
+            record.last_auth_error = None
+            record.updated_at = now
+            persisted = TokenData(
+                access_token=token.access_token,
+                refresh_token=token.refresh_token,
+                expires_at=token.expires_at,
+                open_id=record.open_id,
+                account_name=record.account_name,
+                scope=token.scope,
+                refresh_expires_at=token.refresh_expires_at,
+                auth_protocol="device_v2",
+            )
+            self._token_store_factory(record.id).set(persisted)
+            await session.commit()
+            return self._account_item(record)
 
     async def list_accounts(self, *, include_removed: bool = False) -> list[AccountItem]:
         stmt = select(Account).order_by(Account.created_at.asc())
@@ -349,6 +437,18 @@ class AccountService:
     async def disconnect(self, account_id: str) -> None:
         self._token_store_factory(account_id).clear()
         await self._set_account_state(account_id, state="auth_required")
+
+    async def record_auth_result(
+        self, account_id: str, *, state: str, error: str | None = None
+    ) -> None:
+        async with self._session_maker() as session:
+            record = await session.get(Account, account_id)
+            if record is None or record.removed_at is not None:
+                raise ValueError("账号不存在")
+            record.state = state
+            record.last_auth_error = error
+            record.updated_at = time.time()
+            await session.commit()
 
     async def set_paused(self, account_id: str, paused: bool) -> None:
         async with self._session_maker() as session:
@@ -505,8 +605,8 @@ class AccountService:
             has_secret=bool(self._secret_store.get(record.secret_ref)),
         )
 
-    @classmethod
-    def _account_item(cls, record: Account) -> AccountItem:
+    def _account_item(self, record: Account) -> AccountItem:
+        token = self._token_store_factory(record.id).get()
         return AccountItem(
             id=record.id,
             app_profile_id=record.app_profile_id,
@@ -516,8 +616,12 @@ class AccountService:
             avatar_url=record.avatar_url,
             tenant_name=record.tenant_name,
             state=record.state,
-            granted_scopes=cls._parse_scopes(record.granted_scopes),
+            granted_scopes=self._parse_scopes(record.granted_scopes),
             paused=bool(record.paused),
+            auth_protocol=record.auth_protocol,
+            access_expires_at=token.expires_at if token else None,
+            refresh_expires_at=token.refresh_expires_at if token else None,
+            last_auth_error=record.last_auth_error,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )

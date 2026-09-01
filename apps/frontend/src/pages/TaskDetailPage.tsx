@@ -20,6 +20,7 @@ import {
 import { useConflicts } from "../hooks/useConflicts";
 import { useTasks } from "../hooks/useTasks";
 import { apiFetch } from "../lib/api";
+import { Switch } from "../components/ui/switch";
 import {
   mdSyncModeLabels,
   modeLabels,
@@ -454,7 +455,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 <span className="text-xs font-medium text-[#334762]">启用</span>
-                <button aria-checked={task.enabled} aria-label="切换任务启用状态" className={`h-6 w-11 rounded-full p-0.5 transition ${task.enabled ? "bg-[#3370ff]" : "bg-[#c9d8ec]"}`} onClick={handleToggleTask} role="switch" type="button"><span className={`block h-5 w-5 rounded-full bg-white transition ${task.enabled ? "translate-x-5" : ""}`} /></button>
+                <Switch label="切换任务启用状态" checked={task.enabled} onCheckedChange={handleToggleTask} />
                 <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#bfd3ee] px-3.5 text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]" onClick={() => setSettingsOpen(true)} type="button"><IconSettings className="h-4 w-4" />编辑策略</button>
               </div>
             </div>

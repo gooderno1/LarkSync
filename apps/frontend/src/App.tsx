@@ -112,9 +112,9 @@ export default function App() {
           <div className="grid h-full place-items-center overflow-y-auto px-6 py-10">
             <div className="w-full max-w-3xl rounded-3xl border border-[#d6e3f3] bg-white p-7 shadow-[0_24px_70px_rgba(51,112,255,0.12)]">
               <img src="/logo-horizontal.png" alt="LarkSync" className="h-9 w-auto" />
-              <h1 className="mt-7 text-3xl font-semibold text-[#102033]">连接你的第一个飞书账号</h1>
-              <p className="mb-6 mt-3 text-sm leading-6 text-[#52657a]">安装完成后直接扫码即可。已有但授权失效的账号也可以在这里重新连接，原任务与历史数据不会丢失。</p>
-              <AccountConnectPanel />
+              <h1 className="mt-7 text-3xl font-semibold text-[#102033]">{activeAccount ? "重新连接飞书账号" : "连接你的第一个飞书账号"}</h1>
+              <p className="mb-6 mt-3 text-sm leading-6 text-[#52657a]">{activeAccount ? "当前账号授权已失效。重新扫码后原任务、状态与历史数据都会保留。" : "安装完成后直接扫码即可，应用创建与账号登录会在当前窗口连续完成。"}</p>
+              <AccountConnectPanel mode={activeAccount ? "reauthorize" : "add"} accountId={activeAccount?.id} />
             </div>
           </div>
         </div>
