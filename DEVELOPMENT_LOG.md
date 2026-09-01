@@ -14,6 +14,7 @@
   - 用户可在同一客户端添加并同时保持多个飞书/Lark账号登录，左侧快速切换只改变当前视图，其他账号继续后台同步。
   - 登录凭据、同步任务、运行状态、映射、冲突、问题和未读通知均按账号隔离；账号可独立暂停、恢复、断开或软移除。
   - 设置页保留真实系统开机自启动控制；首次使用页改为 Device Flow 扫码登录，并提供已有 App ID/App Secret 的手动接入入口。
+  - GitHub Release`v0.9.0`已发布为 Latest，状态为非草稿、非预发布，包含 Windows、macOS arm64、macOS x86_64 三个安装包及各自校验文件。
 - 验证方式：
   - 后端全量`python -m pytest -q`通过，共 709 项；覆盖 Device Flow 状态机、schema v9 自动备份迁移及多账号隔离。
   - 前端 TypeScript、ESLint、生产构建和 35 个测试文件共 115 项全部通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
@@ -22,6 +23,10 @@
   - `python scripts/build_installer.py --nsis`通过，生成`LarkSync-Setup-v0.9.0.exe`，大小`72,357,625 bytes`，SHA256 为`983e071c30fc0c043ef3f5262e28d9b832c0cde6fa3e32949a5b9d656d70183b`。
   - 正式打包版使用独立数据目录与端口`18190`启动，`/health`返回`ok`，桌面状态返回`packaged=true`和`current_version=v0.9.0`；`python scripts/update_install_smoke.py`也通过预期 handoff 路径。
   - 本机 Playwright WebKit 以`1080×720`视口完成新首次连接页验收，结果为`device_flow_qr_verified`，二维码状态为`ready`且 PNG Data URL 可见。
+  - GitHub Actions`33476317461`通过全量质量门禁、WebKit 首次扫码验收、Windows 构建及 macOS 双架构安装启动 smoke。
+  - Windows Release 安装包大小为`58,578,668 bytes`，SHA256 为`d797cc0812a6199543a72ff3c73a31d8ac95e7b000e0c0bb1c68dfc6d26f4eb4`。
+  - macOS arm64 DMG 大小为`65,621,639 bytes`，SHA256 为`128984f0f1ceff2665dbd0727d828e37d870f72475807cf33452cda40f075143`。
+  - macOS x86_64 DMG 大小为`66,538,843 bytes`，SHA256 为`8007033bc6021bc0bfef71b0de8d188b7432d0bb3b9cb2ed271402901fe9e89c`；三份`.sha256`内容均与 GitHub 资产 digest 一致。
 - 遗留问题：
   - 真实扫码仍需用户本人在手机端确认授权；代码侧已按官方协议和 MockTransport 自动化测试验证，正式升级后需完成一次真实账号端到端验收。
   - 未配置 Apple Developer ID 与公证凭据时，macOS 正式包使用 ad-hoc 签名，首次打开需在系统隐私与安全设置中手动放行。
