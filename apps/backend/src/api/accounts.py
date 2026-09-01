@@ -10,6 +10,7 @@ from src.services.account_service import AccountService
 from src.services.auth_session_service import AuthSessionService, PendingSession
 from src.services.auth_service import AuthError, AuthService
 from src.core.account_context import account_scope
+from src.core.security import CredentialStorageError
 
 
 router = APIRouter(tags=["accounts"])
@@ -233,6 +234,17 @@ async def refresh_account_token(account_id: str) -> dict[str, object]:
             error=str(exc),
         )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except CredentialStorageError as exc:
+        message = (
+            "飞书已返回新的授权信息，但本机安全凭据保存失败。"
+            "账号数据未删除，请重新授权后再试。"
+        )
+        await account_service.record_auth_result(
+            account_id,
+            state=account.state,
+            error=message,
+        )
+        raise HTTPException(status_code=503, detail=message) from exc
 
 
 @router.get("/notifications")

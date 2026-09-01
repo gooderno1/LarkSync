@@ -23,6 +23,7 @@ type ConnectPhase =
   | "preparing_account_auth"
   | "authorizing_account"
   | "authorized"
+  | "credential_storage_failed"
   | "failed"
   | "expired"
   | "denied";
@@ -148,6 +149,13 @@ export function AccountConnectPanel({
         if (status === "denied" || status === "expired") {
           setPhase(status);
           setError(status === "denied" ? "你取消了授权，可以重新开始当前步骤。" : "二维码已过期，请重新生成。 ");
+          setSession(null);
+          setSessionKind(null);
+          return;
+        }
+        if (status === "credential_storage_failed") {
+          setPhase("credential_storage_failed");
+          setError(String(result.message || "飞书授权已完成，但新凭据未能安全保存。原授权仍保留。"));
           setSession(null);
           setSessionKind(null);
           return;
@@ -302,7 +310,7 @@ export function AccountConnectPanel({
             {onCancel ? <button type="button" onClick={onCancel} className="rounded-xl border border-[#cbd9ea] px-5 py-2.5 text-sm font-semibold text-[#52657a]">取消</button> : null}
           </div>
         </div>
-        {error ? <ErrorPanel message={error} busy={busy} onRetry={() => void retryCurrent()} /> : null}
+        {error ? <ErrorPanel message={error} busy={busy} storageFailure={phase === "credential_storage_failed"} onRetry={() => void retryCurrent()} /> : null}
       </div>
     );
   }
@@ -339,16 +347,16 @@ export function AccountConnectPanel({
           <button type="button" disabled={busy} onClick={() => void saveManual()} className="w-fit rounded-lg bg-[#102033] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">保存并扫码登录</button>
         </div>
       ) : null}
-      {error ? <ErrorPanel message={error} busy={busy} onRetry={() => void retryCurrent()} /> : null}
+      {error ? <ErrorPanel message={error} busy={busy} storageFailure={phase === "credential_storage_failed"} onRetry={() => void retryCurrent()} /> : null}
     </div>
   );
 }
 
-function ErrorPanel({ message, busy, onRetry }: { message: string; busy: boolean; onRetry: () => void }) {
+function ErrorPanel({ message, busy, storageFailure, onRetry }: { message: string; busy: boolean; storageFailure: boolean; onRetry: () => void }) {
   return (
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#fecdd3] bg-[#fff1f2] px-4 py-3 text-sm text-[#be123c]">
-      <span>{message}</span>
-      <button type="button" disabled={busy} onClick={onRetry} className="rounded-lg border border-[#fda4af] bg-white px-3 py-1.5 text-xs font-semibold disabled:opacity-50">重试当前步骤</button>
+      <span>{storageFailure ? <strong className="mb-1 block">飞书授权已完成</strong> : null}{message}</span>
+      <button type="button" disabled={busy} onClick={onRetry} className="rounded-lg border border-[#fda4af] bg-white px-3 py-1.5 text-xs font-semibold disabled:opacity-50">{storageFailure ? "重新扫码授权" : "重试当前步骤"}</button>
     </div>
   );
 }

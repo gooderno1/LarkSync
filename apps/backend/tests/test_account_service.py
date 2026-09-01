@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from src.core.security import MemorySecretStore, MemoryTokenStore, TokenData
+from src.core.security import (
+    CredentialStorageError,
+    MemorySecretStore,
+    MemoryTokenStore,
+    TokenData,
+)
 from src.db.base import Base
 from src.services.account_service import AccountService
 
@@ -109,6 +116,84 @@ async def test_reauthorize_account_preserves_identity_and_switches_protocol() ->
             token=TokenData("other", "other-refresh", None, open_id="ou_other", auth_protocol="device_v2"),
         )
     assert stores[account.id].get().access_token == "access-v2"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reauthorize_restores_previous_token_when_database_commit_fails() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    stores: dict[str, MemoryTokenStore] = {}
+    secret_store = MemorySecretStore()
+
+    def token_store_factory(account_id: str) -> MemoryTokenStore:
+        return stores.setdefault(account_id, MemoryTokenStore())
+
+    service = AccountService(
+        session_maker=maker,
+        secret_store=secret_store,
+        token_store_factory=token_store_factory,
+        device_id="device-test",
+    )
+    profile = await service.create_app_profile(
+        app_id="cli_test", app_secret="secret", brand="feishu", source="legacy"
+    )
+    account = await service.upsert_account(
+        app_profile_id=profile.id,
+        open_id="ou_a",
+        account_name="账号 A",
+        granted_scopes=[],
+        token=TokenData(
+            "access-v1",
+            "refresh-v1",
+            None,
+            open_id="ou_a",
+            auth_protocol="legacy_v1",
+        ),
+        auth_protocol="legacy_v1",
+    )
+
+    @asynccontextmanager
+    async def failing_session_maker():
+        async with maker() as session:
+            async def fail_commit() -> None:
+                raise RuntimeError("database commit failed")
+
+            session.commit = fail_commit  # type: ignore[method-assign]
+            yield session
+
+    failing_service = AccountService(
+        session_maker=failing_session_maker,  # type: ignore[arg-type]
+        secret_store=secret_store,
+        token_store_factory=token_store_factory,
+        device_id="device-test",
+    )
+
+    with pytest.raises(CredentialStorageError, match="新凭据已安全回退"):
+        await failing_service.reauthorize_account(
+            account_id=account.id,
+            app_profile_id=profile.id,
+            open_id="ou_a",
+            account_name="账号 A",
+            granted_scopes=["drive:drive"],
+            token=TokenData(
+                "access-v2",
+                "refresh-v2",
+                None,
+                open_id="ou_a",
+                auth_protocol="device_v2",
+            ),
+        )
+
+    restored = stores[account.id].get()
+    assert restored is not None
+    assert restored.access_token == "access-v1"
+    assert restored.auth_protocol == "legacy_v1"
+    unchanged = await service.get_account(account.id)
+    assert unchanged is not None
+    assert unchanged.auth_protocol == "legacy_v1"
     await engine.dispose()
 
 

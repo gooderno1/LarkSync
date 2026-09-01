@@ -95,4 +95,41 @@ describe("AccountConnectPanel", () => {
     expect(screen.getByText(/原账号、任务和历史数据保持不变/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "开始重新授权" })).toBeTruthy();
   });
+
+  it("区分飞书授权成功后的本机凭据保存失败并可创建新会话重试", async () => {
+    apiFetchMock.mockImplementation((endpoint: string, init?: RequestInit) => {
+      if (endpoint === "/accounts/account-1/reauthorize-sessions" && init?.method === "POST") {
+        return Promise.resolve(deviceSession);
+      }
+      if (endpoint === "/auth/device-sessions/device-1") {
+        return Promise.resolve({
+          status: "credential_storage_failed",
+          message: "飞书授权已完成，但新凭据未能安全保存。原授权仍保留。",
+        });
+      }
+      return Promise.resolve({ cancelled: true });
+    });
+
+    render(<AccountConnectPanel mode="reauthorize" accountId="account-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "开始重新授权" }));
+    await act(async () => Promise.resolve());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(screen.getByText("飞书授权已完成，但新凭据未能安全保存。原授权仍保留。")).toBeTruthy();
+    expect(screen.getByText("飞书授权已完成")).toBeTruthy();
+    expect(refreshAccounts).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新扫码授权" }));
+    await act(async () => Promise.resolve());
+
+    expect(
+      apiFetchMock.mock.calls.filter(
+        ([endpoint, init]) =>
+          endpoint === "/accounts/account-1/reauthorize-sessions" &&
+          (init as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toHaveLength(2);
+  });
 });

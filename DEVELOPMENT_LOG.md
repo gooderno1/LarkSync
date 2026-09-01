@@ -1,5 +1,37 @@
 # DEVELOPMENT LOG
 
+## v0.9.2-dev.1 (2026-09-01)
+
+- 开发原因：
+  - v0.9.1 的 Device Flow 已在飞书端完成授权和身份读取，但 Windows 凭据管理器在保存 V2 Token 时返回`CredWrite WinError 1783`。
+  - v0.9.1 虽把 Token 按字段拆成多条凭据，单个 Access Token 或 Refresh Token 仍可能超过 Windows 单条凭据约 2560 字节的限制。
+  - 逐字段覆盖不是原子操作；中途失败时存在部分字段为新值、部分字段为旧值的风险。
+- 实现方式：
+  - `KeyringTokenStore`将完整`TokenData`序列化为 UTF-8 JSON，再编码为 URL-safe Base64，并按每片 900 个 ASCII 字符写入独立 generation。
+  - `token_bundle.active`只保存 generation、分片数、编码长度和 SHA-256；全部分片写入和回读校验成功后才切换活动清单。
+  - `token_bundle.staging`记录正在写入的 generation；进程异常退出或系统断电后，下一次首次读取会清理未完成分片，已经切换成功时只清理 staging 清单。
+  - 写入、回读、摘要或活动清单切换失败时保留旧 generation；账号数据库提交失败时恢复旧 Token，新账号提交失败时清理未绑定凭据。
+  - 读取顺序继续兼容 v0.9.1 分字段格式和更早的`oauth_tokens`合并格式；旧格式在下一次成功刷新、重新授权或新增账号时自动转为分片格式，不要求启动时手工迁移。
+  - 授权会话新增`credential_storage_failed`终态；前端明确提示“飞书授权已完成，但本机凭据未能安全保存”，并用“重新扫码授权”创建全新 Device Flow 会话。
+  - 凭据和数据库均已成功保存但运行时热重载失败时，授权仍返回成功并记录`runtime_reload_pending`，避免把已完成授权误报为失败；重启后会按持久化状态正常加载。
+  - 手动刷新遇到系统凭据保存错误时返回 HTTP 503 和明确说明，账号数据不被删除。
+- 当前结果：
+  - 4200 字符 Access Token 和 4600 字符 Refresh Token 已在真实 Windows 凭据管理器完成写入、新实例回读和清理，不再触发`CredWrite 1783`。
+  - 账号只有在 V2 Token 完整写入并校验、数据库提交成功后才切换为`device_v2`；失败时原`legacy_v1`账号和任务数据保持不变。
+  - 正常异常、活动清单切换失败、数据库提交失败和强制中断恢复均有明确回退路径，不再读取混合 Token。
+  - 详细方案保存在本地开发资料`docs/local_specs/LarkSync v0.9.2 Windows V2 凭据原子存储修复方案.md`；创建时间`2026-09-01 17:08:42 +08:00`，完成时间`2026-09-01 17:35:00 +08:00`。
+- 验证方式：
+  - `python scripts/sync_feishu_docs.py`完成最新飞书开发资料入口检查，清单写入`docs/feishu/_manifest.json`。
+  - 后端全量`python -m pytest -q`通过，共 723 项；覆盖超长 Token、Windows 2560 字节限制模拟、原子切换、写入失败回退、摘要损坏拒绝、staging 中断恢复、旧格式读取、数据库提交回退和授权终态。
+  - 前端 36 个测试文件共 118 项通过；TypeScript、ESLint 和生产构建全部通过。
+  - 真实 Windows keyring 隔离探针完成长 Token 回读，测试凭据已清理，没有读取或修改用户真实飞书账号凭据。
+  - `python scripts/build_installer.py --nsis`通过，生成`LarkSync-Setup-v0.9.2-dev.1.exe`，大小`72,390,507 bytes`，SHA256 为`EEDA47C4AC15A1C51B1B03081D13BEA5B5DC53F963D76DE3F29EAC3C90732C17`。
+  - 最终打包后的`LarkSync.exe --backend`使用隔离`synthetic_test`数据目录和端口`18194`启动；`/health`返回`ok`，桌面状态返回`packaged=true`、`profile=synthetic_test`和`current_version=v0.9.2-dev.1`，停止后进程、端口和 smoke 数据目录均已清理。
+- 遗留问题：
+  - 真实飞书重新授权仍需要用户本人扫码确认；自动化与 Windows keyring 实测覆盖授权完成后的本机保存链路，正式发布后需再执行一次真实账号端到端验收。
+  - v0.9.1 失败尝试可能已留下分字段格式的部分覆盖；v0.9.2-dev.1 成功重新授权会用完整分片 Token 包替代并清理这些旧字段。
+  - 本次只生成和验证 Windows NSIS；macOS Keychain 与双架构 DMG 由后续正式 Release 工作流验证。
+
 ## v0.9.1 release (2026-09-01)
 
 - 开发原因：

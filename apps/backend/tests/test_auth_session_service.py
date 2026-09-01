@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import httpx
 import pytest
 
+from src.core.security import CredentialStorageError
 from src.services.auth_session_service import AuthSessionService
 from src.services.device_flow_service import (
     DeviceAuthorization,
@@ -126,6 +127,86 @@ async def test_reauthorize_session_updates_exact_target_account(monkeypatch) -> 
     assert result["status"] == "authorized"
     assert accounts.saved["account_id"] == "account-existing"
     assert accounts.saved["token"].auth_protocol == "device_v2"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reauthorize_session_returns_stable_storage_failure(monkeypatch) -> None:
+    class FailingAccounts(_Accounts):
+        async def reauthorize_account(self, **kwargs):
+            self.saved = kwargs
+            raise CredentialStorageError("Windows 凭据管理器拒绝保存新凭据")
+
+    accounts = FailingAccounts()
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            request=request,
+            json={"code": 0, "data": {"open_id": "ou_1", "name": "测试用户"}},
+        )
+    )
+    client = httpx.AsyncClient(transport=transport)
+    service = AuthSessionService(
+        account_service=accounts,  # type: ignore[arg-type]
+        device_protocol=_DeviceProtocol(),  # type: ignore[arg-type]
+        http_client=client,
+        clock=lambda: 1000.0,
+    )
+    monkeypatch.setattr(
+        "src.services.auth_session_service.account_runtime_registry.reload",
+        lambda: _async_none(),
+    )
+
+    session = await service.begin_device(
+        "profile-1", target_account_id="account-existing"
+    )
+    result = await service.poll_device(session.id)
+
+    assert result == {
+        "status": "credential_storage_failed",
+        "message": (
+            "飞书授权已完成，但新凭据未能安全保存。原授权仍保留，"
+            "请重新开始授权；如果持续出现，请检查 Windows 凭据管理器。"
+        ),
+    }
+    assert await service.poll_device(session.id) == result
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_saved_authorization_stays_successful_when_runtime_reload_is_deferred(
+    monkeypatch,
+) -> None:
+    accounts = _Accounts()
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            request=request,
+            json={"code": 0, "data": {"open_id": "ou_1", "name": "测试用户"}},
+        )
+    )
+    client = httpx.AsyncClient(transport=transport)
+    service = AuthSessionService(
+        account_service=accounts,  # type: ignore[arg-type]
+        device_protocol=_DeviceProtocol(),  # type: ignore[arg-type]
+        http_client=client,
+        clock=lambda: 1000.0,
+    )
+
+    async def fail_reload() -> None:
+        raise RuntimeError("runtime reload failed")
+
+    monkeypatch.setattr(
+        "src.services.auth_session_service.account_runtime_registry.reload",
+        fail_reload,
+    )
+
+    session = await service.begin_device("profile-1")
+    result = await service.poll_device(session.id)
+
+    assert result["status"] == "authorized"
+    assert result["runtime_reload_pending"] is True
+    assert await service.poll_device(session.id) == result
     await client.aclose()
 
 

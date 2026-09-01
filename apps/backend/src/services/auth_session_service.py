@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from typing import Callable
 
 import httpx
+from loguru import logger
 
 from src.core.config import ConfigManager
-from src.core.security import TokenData
+from src.core.security import CredentialStorageError, TokenData
 from src.services.account_runtime import account_runtime_registry
 from src.services.account_service import AccountService
 from src.services.device_flow_service import (
@@ -135,18 +136,48 @@ class AuthSessionService:
                 "avatar_url": str(profile_data.get("avatar_url") or "").strip() or None,
                 "tenant_name": str(profile_data.get("tenant_name") or "").strip() or None,
             }
-            if session.target_account_id:
-                account = await self._accounts.reauthorize_account(
-                    account_id=session.target_account_id,
-                    **account_payload,
+            try:
+                if session.target_account_id:
+                    account = await self._accounts.reauthorize_account(
+                        account_id=session.target_account_id,
+                        **account_payload,
+                    )
+                else:
+                    account = await self._accounts.upsert_account(
+                        auth_protocol="device_v2",
+                        **account_payload,
+                    )
+            except CredentialStorageError as exc:
+                logger.error(
+                    "飞书授权完成但系统安全凭据保存失败: session_id={} "
+                    "target_account_id={} error_type={}",
+                    session.id,
+                    session.target_account_id or "new-account",
+                    type(exc.__cause__ or exc).__name__,
                 )
-            else:
-                account = await self._accounts.upsert_account(
-                    auth_protocol="device_v2",
-                    **account_payload,
+                session.terminal_result = {
+                    "status": "credential_storage_failed",
+                    "message": (
+                        "飞书授权已完成，但新凭据未能安全保存。原授权仍保留，"
+                        "请重新开始授权；如果持续出现，请检查 Windows 凭据管理器。"
+                    ),
+                }
+                return session.terminal_result
+            runtime_reload_pending = False
+            try:
+                await account_runtime_registry.reload()
+            except Exception as exc:
+                runtime_reload_pending = True
+                logger.error(
+                    "账号凭据已保存但运行时重载延后: account_id={} error_type={}",
+                    account.id,
+                    type(exc).__name__,
                 )
-            await account_runtime_registry.reload()
-            session.terminal_result = {"status": "authorized", "account": account}
+            session.terminal_result = {
+                "status": "authorized",
+                "account": account,
+                "runtime_reload_pending": runtime_reload_pending,
+            }
             return session.terminal_result
 
     async def begin_registration(self, brand: str) -> PendingSession:

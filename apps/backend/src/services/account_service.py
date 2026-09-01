@@ -6,12 +6,14 @@ import uuid
 from dataclasses import dataclass
 from typing import Callable
 
+from loguru import logger
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.device import current_device_id
 from src.core.config import ConfigManager
 from src.core.security import (
+    CredentialStorageError,
     SecretStore,
     TokenData,
     TokenStore,
@@ -331,8 +333,9 @@ class AccountService:
                 refresh_expires_at=token.refresh_expires_at,
                 auth_protocol=auth_protocol,
             )
-            self._token_store_factory(record.id).set(persisted)
-            await session.commit()
+            await self._persist_token_and_commit(
+                session, self._token_store_factory(record.id), persisted
+            )
             account = self._account_item(record)
         if await self.get_active_account_id() is None:
             await self.set_active_account(account.id)
@@ -377,9 +380,36 @@ class AccountService:
                 refresh_expires_at=token.refresh_expires_at,
                 auth_protocol="device_v2",
             )
-            self._token_store_factory(record.id).set(persisted)
-            await session.commit()
+            await self._persist_token_and_commit(
+                session, self._token_store_factory(record.id), persisted
+            )
             return self._account_item(record)
+
+    @staticmethod
+    async def _persist_token_and_commit(
+        session: AsyncSession, token_store: TokenStore, token: TokenData
+    ) -> None:
+        previous = token_store.reload()
+        token_store.set(token)
+        try:
+            await session.commit()
+        except Exception as commit_exc:
+            try:
+                if previous is None:
+                    token_store.clear()
+                else:
+                    token_store.set(previous)
+            except Exception as rollback_exc:
+                logger.error(
+                    "账号数据库提交失败后旧凭据恢复失败: error_type={}",
+                    type(rollback_exc).__name__,
+                )
+                raise CredentialStorageError(
+                    "账号状态保存失败，旧凭据恢复也失败"
+                ) from rollback_exc
+            raise CredentialStorageError(
+                "账号状态保存失败，新凭据已安全回退"
+            ) from commit_exc
 
     async def list_accounts(self, *, include_removed: bool = False) -> list[AccountItem]:
         stmt = select(Account).order_by(Account.created_at.asc())
