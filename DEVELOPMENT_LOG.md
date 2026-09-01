@@ -1,5 +1,18 @@
 # DEVELOPMENT LOG
 
+## v0.9.4 正式发布（2026-09-01）
+
+- 当前结果：
+  - 正式标签`v0.9.4`指向提交`3fe51fe96388a087c5097f587b4a8f54b2aeba74`，该提交同时位于`main`。
+  - GitHub Release 已公开发布：`https://github.com/gooderno1/LarkSync/releases/tag/v0.9.4`。
+  - Windows 安装包`LarkSync-Setup-v0.9.4.exe`大小`58,603,997 bytes`，SHA256 为`067629EEA3A4A6329011618515C375813517B90D85C9786CE411E4303FAB9902`。
+  - Apple Silicon 安装包`LarkSync-v0.9.4-arm64.dmg`大小`65,701,406 bytes`，SHA256 为`7C5E113559E90B8DC435D2B9E705AE6E9FA2E3F2F2CE69BA4AE260FD71CE52E6`。
+  - Intel 安装包`LarkSync-v0.9.4-x86_64.dmg`大小`66,605,731 bytes`，SHA256 为`C302E4A972542026572B6F02AE4D9C9A77715D7885F25C2E38239EAEE4147236`。
+  - 三个平台安装包均附带独立`.sha256`校验文件；macOS 因仓库未配置 Developer ID 与公证凭据，继续使用 ad-hoc 签名，首次打开可能需要用户手动放行 Gatekeeper。
+- 验证方式：
+  - GitHub Actions 正式发布流水线`33511842340`成功；基础质量门禁、WebKit 两阶段扫码、Windows NSIS、macOS arm64 与 x86_64 构建和安装启动冒烟均通过。
+  - Release 不是草稿或预发布，六个正式资产均处于`uploaded`状态。
+
 ## v0.9.4 发布校验修复（2026-09-01）
 
 - 开发原因：
