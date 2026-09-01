@@ -8,6 +8,8 @@ import pytest
 from src.core.security import CredentialStorageError
 from src.services.auth_session_service import AuthSessionService
 from src.services.device_flow_service import (
+    AppRegistrationAuthorization,
+    AppRegistrationPollResult,
     DeviceAuthorization,
     DevicePollResult,
     DeviceToken,
@@ -36,6 +38,19 @@ class _Accounts:
         self.saved = kwargs
         return type("Account", (), {"id": kwargs["account_id"], "state": "connected"})()
 
+    async def create_app_profile(self, **kwargs):
+        self.saved = kwargs
+        return type(
+            "AppProfile",
+            (),
+            {
+                "id": "profile-created",
+                "app_id": kwargs["app_id"],
+                "brand": kwargs["brand"],
+                "display_name": kwargs["display_name"],
+            },
+        )()
+
 
 class _DeviceProtocol:
     async def begin(self, **_kwargs):
@@ -60,6 +75,46 @@ class _DeviceProtocol:
             ),
         )
 
+
+class _RegistrationProtocol:
+    async def begin(self, **_kwargs):
+        return AppRegistrationAuthorization(
+            device_code="registration-code",
+            user_code="REG-1",
+            verification_uri="https://example.test/register",
+            verification_uri_complete="https://example.test/register?code=REG-1",
+            expires_in=300,
+            interval=1,
+            brand="feishu",
+        )
+
+    async def poll_once(self, **_kwargs):
+        return AppRegistrationPollResult(
+            status="registered",
+            brand="feishu",
+            app_id="cli_created",
+            app_secret="created-secret",
+        )
+
+
+@pytest.mark.asyncio
+async def test_registration_stops_at_explicit_success_checkpoint() -> None:
+    accounts = _Accounts()
+    service = AuthSessionService(
+        account_service=accounts,  # type: ignore[arg-type]
+        device_protocol=_DeviceProtocol(),  # type: ignore[arg-type]
+        registration_protocol=_RegistrationProtocol(),  # type: ignore[arg-type]
+        clock=lambda: 1000.0,
+    )
+
+    session = await service.begin_registration("feishu")
+    result = await service.poll_registration(session.id)
+
+    assert result["status"] == "registered"
+    assert result["app_profile"].id == "profile-created"
+    assert "next_session" not in result
+    assert accounts.saved["display_name"] == "LarkSync"
+    assert await service.poll_registration(session.id) == result
 
 @pytest.mark.asyncio
 async def test_device_session_finishes_and_persists_identity(monkeypatch) -> None:

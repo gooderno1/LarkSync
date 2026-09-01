@@ -71,7 +71,10 @@ export default function App() {
   }, []);
 
   /* ---------- 连接与配置状态检测 ---------- */
-  const { activeAccount, loading: accountLoading } = useAccounts();
+  const { activeAccount, activeAccountId, loading: accountLoading } = useAccounts();
+  useEffect(() => {
+    setSelectedTaskId(null);
+  }, [activeAccountId]);
   const connected = activeAccount?.state === "connected";
   const { summary: problemSummary } = useProblemSummary(Boolean(activeAccount));
   const unresolvedConflicts = problemSummary?.unresolved ?? 0;

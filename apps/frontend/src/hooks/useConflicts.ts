@@ -3,18 +3,19 @@
 /* ------------------------------------------------------------------ */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch, getActiveAccountId } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
 import type { ConflictItem, ConflictResolutionAction } from "../types";
+import { useAccounts } from "./useAccounts";
 
 export function useConflicts(enabled = true) {
   const qc = useQueryClient();
-  const accountId = getActiveAccountId();
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
 
   const conflictsQuery = useQuery<ConflictItem[]>({
     queryKey: ["conflicts", accountId],
-    queryFn: () => apiFetch<ConflictItem[]>("/conflicts"),
-    enabled,
-    placeholderData: [],
+    queryFn: ({ signal }) => apiFetchForAccount<ConflictItem[]>("/conflicts", accountId, { signal }),
+    enabled: enabled && Boolean(accountId),
     staleTime: 30_000,
   });
 
@@ -25,12 +26,12 @@ export function useConflicts(enabled = true) {
     id: string;
     action: ConflictResolutionAction;
   }) => {
-    const result = await apiFetch(`/conflicts/${id}/resolve`, {
+    const result = await apiFetchForAccount(`/conflicts/${id}/resolve`, accountId, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
     });
-    await qc.invalidateQueries({ queryKey: ["conflicts"] });
+    await qc.invalidateQueries({ queryKey: ["conflicts", accountId] });
     return result;
   };
 
@@ -38,7 +39,7 @@ export function useConflicts(enabled = true) {
     conflicts: conflictsQuery.data || [],
     conflictLoading: conflictsQuery.isLoading,
     conflictError: conflictsQuery.error?.message ?? null,
-    refreshConflicts: () => qc.invalidateQueries({ queryKey: ["conflicts"] }),
+    refreshConflicts: () => qc.invalidateQueries({ queryKey: ["conflicts", accountId] }),
     resolveConflictAsync,
   };
 }

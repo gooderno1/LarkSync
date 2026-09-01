@@ -20,6 +20,7 @@ import { useAccounts } from "../hooks/useAccounts";
 import { AccountConnectPanel } from "../components/AccountConnectPanel";
 import { SettingsAccountCard } from "../components/settings/SettingsAccountCard";
 import { Switch } from "../components/ui/switch";
+import { organizationDisplayName } from "../components/OrganizationAvatar";
 
 function SettingsLivePage() {
   const { config, configLoading, saveConfig, saving } = useConfig();
@@ -45,6 +46,7 @@ function SettingsLivePage() {
   const [pickingIgnoredTaskId, setPickingIgnoredTaskId] = useState<string | null>(null);
   const [reauthorizeAccountId, setReauthorizeAccountId] = useState<string | null>(null);
   const [refreshingAccountId, setRefreshingAccountId] = useState<string | null>(null);
+  const [refreshingTenantAccountId, setRefreshingTenantAccountId] = useState<string | null>(null);
   const uploadEnabled = syncModeSupportsUpload(syncMode);
   const downloadEnabled = syncModeSupportsDownload(syncMode);
 
@@ -212,6 +214,35 @@ function SettingsLivePage() {
     }
   };
 
+  const refreshTenantMetadata = async (accountId: string) => {
+    setRefreshingTenantAccountId(accountId);
+    try {
+      const result = await apiFetch<{ status?: string }>(`/accounts/${accountId}/tenant-metadata/refresh`, { method: "POST" });
+      await refreshAccounts();
+      toast(result.status === "permission_required" ? "组织信息权限未开放，已保留无配置登录方式" : "组织信息已更新", result.status === "permission_required" ? "info" : "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "组织信息更新失败", "danger");
+    } finally {
+      setRefreshingTenantAccountId(null);
+    }
+  };
+
+  const editAccountAlias = async (accountId: string, currentAlias?: string | null) => {
+    const value = window.prompt("输入组织显示名；留空将恢复官方组织名称。", currentAlias || "");
+    if (value === null) return;
+    try {
+      await apiFetch(`/accounts/${accountId}/display`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account_alias: value.trim() || null }),
+      });
+      await refreshAccounts();
+      toast(value.trim() ? "组织显示名已更新" : "已恢复官方组织名称", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "组织显示名更新失败", "danger");
+    }
+  };
+
   const handlePickIgnoredSubpath = async (taskId: string, localPath: string) => {
     setPickingIgnoredTaskId(taskId);
     try {
@@ -290,7 +321,7 @@ function SettingsLivePage() {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[#102033]">{activeAccount?.state === "connected" ? "飞书已连接" : "飞书需重新授权"}</p>
                       <p className="mt-1 truncate text-xs text-[#6b7f96]">
-                        {activeAccount?.account_name || "当前账号"} · {activeAccount?.auth_protocol === "device_v2" ? "Device Flow V2" : "OAuth V1 兼容"} · 共 {accounts.length} 个账号
+                        {organizationDisplayName(activeAccount)} · {activeAccount?.account_name || "飞书成员"} · {activeAccount?.auth_protocol === "device_v2" ? "Device Flow V2" : "OAuth V1 兼容"}
                       </p>
                     </div>
                 </div>
@@ -321,8 +352,11 @@ function SettingsLivePage() {
                   account={account}
                   active={account.id === activeAccount?.id}
                   refreshing={refreshingAccountId === account.id}
+                  refreshingTenant={refreshingTenantAccountId === account.id}
                   onSwitch={() => void switchAccount(account.id)}
                   onRefresh={() => void refreshAccountAuthorization(account.id)}
+                  onRefreshTenant={() => void refreshTenantMetadata(account.id)}
+                  onEditAlias={() => void editAccountAlias(account.id, account.account_alias)}
                   onReauthorize={() => setReauthorizeAccountId(account.id)}
                   onAction={(action) => void accountAction(account.id, action)}
                 />

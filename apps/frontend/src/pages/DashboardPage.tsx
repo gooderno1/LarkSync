@@ -9,7 +9,8 @@ import { useAuth } from "../hooks/useAuth";
 import { useTasks } from "../hooks/useTasks";
 import { useConflicts } from "../hooks/useConflicts";
 import { useWebSocketLog } from "../hooks/useWebSocketLog";
-import { apiFetch } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
+import { useAccounts } from "../hooks/useAccounts";
 import { formatShortTime, isSameDay } from "../lib/formatters";
 import { shortPath } from "../lib/logCenter";
 import { modeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
@@ -578,15 +579,17 @@ function RunningRowIcon({ variant }: { variant?: DashboardRunningRow["iconVarian
 }
 
 export function DashboardPage({ onNavigate }: Props) {
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
   const { connected } = useAuth();
   const { tasks, taskLoading, statusMap, runTask } = useTasks();
   const { conflicts } = useConflicts();
-  const { entries: wsEntries } = useWebSocketLog(connected);
+  const { entries: wsEntries } = useWebSocketLog(accountId, connected);
 
   const syncLogsQuery = useQuery<SyncLogResponse>({
-    queryKey: ["sync-logs-dashboard"],
-    queryFn: async () => {
-      const raw = await apiFetch<SyncLogResponseRaw>("/sync/logs/sync?limit=200&order=desc");
+    queryKey: ["sync-logs-dashboard", accountId],
+    queryFn: async ({ signal }) => {
+      const raw = await apiFetchForAccount<SyncLogResponseRaw>("/sync/logs/sync?limit=200&order=desc", accountId, { signal });
       return {
         total: raw.total,
         items: raw.items.map((item) => ({
@@ -599,6 +602,7 @@ export function DashboardPage({ onNavigate }: Props) {
         })),
       };
     },
+    enabled: Boolean(accountId),
     staleTime: 5_000,
   });
 

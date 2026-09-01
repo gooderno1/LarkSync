@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { apiFetch } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
+import { useAccounts } from "./useAccounts";
 import {
   buildTaskEventQueryPath,
   shouldPollTaskEventTimeline,
@@ -29,6 +30,8 @@ export function useTaskEventTimeline({
   activeRunId,
   activeRunState,
 }: UseTaskEventTimelineOptions) {
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
   const [eventFilter, setEventFilter] = useState<EventFilter>("activity");
   const [eventSearch, setEventSearch] = useState("");
   const [eventPage, setEventPage] = useState(1);
@@ -39,6 +42,7 @@ export function useTaskEventTimeline({
   const selectedEventsQuery = useQuery<SyncLogResponse>({
     queryKey: [
       "sync-log-task-events",
+      accountId,
       selectedTaskId,
       activeRunId,
       detailTab,
@@ -49,8 +53,8 @@ export function useTaskEventTimeline({
       eventSince,
       eventUntil,
     ],
-    queryFn: async () => {
-      const raw = await apiFetch<SyncLogResponseRaw>(
+    queryFn: async ({ signal }) => {
+      const raw = await apiFetchForAccount<SyncLogResponseRaw>(
         buildTaskEventQueryPath({
           selectedTaskId,
           activeRunId,
@@ -61,10 +65,12 @@ export function useTaskEventTimeline({
           since: eventSince,
           until: eventUntil,
         }),
+        accountId,
+        { signal },
       );
       return mapSyncLogResponse(raw);
     },
-    enabled: enabled && detailTab === "events" && Boolean(selectedTaskId) && Boolean(activeRunId),
+    enabled: enabled && Boolean(accountId) && detailTab === "events" && Boolean(selectedTaskId) && Boolean(activeRunId),
     staleTime: 5_000,
     refetchInterval: shouldPollTaskEventTimeline({
       enabled,

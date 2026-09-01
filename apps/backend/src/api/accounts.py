@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from src.services.account_runtime import account_runtime_registry
 from src.services.account_service import AccountService
 from src.services.auth_session_service import AuthSessionService, PendingSession
 from src.services.auth_service import AuthError, AuthService
+from src.services.tenant_metadata_service import TenantMetadataService
 from src.core.account_context import account_scope
+from src.core.paths import data_dir
 from src.core.security import CredentialStorageError
 
 
@@ -39,6 +43,10 @@ class ActiveAccountRequest(BaseModel):
 
 class NotificationReadRequest(BaseModel):
     read: bool = True
+
+
+class AccountDisplayRequest(BaseModel):
+    account_alias: str | None = Field(default=None, max_length=120)
 
 
 def _session_response(session: PendingSession) -> dict[str, object]:
@@ -245,6 +253,37 @@ async def refresh_account_token(account_id: str) -> dict[str, object]:
             error=message,
         )
         raise HTTPException(status_code=503, detail=message) from exc
+
+
+@router.post("/accounts/{account_id}/tenant-metadata/refresh")
+async def refresh_tenant_metadata(account_id: str) -> dict[str, object]:
+    if await account_service.get_account(account_id) is None:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    return await TenantMetadataService(accounts=account_service).refresh_account(account_id)
+
+
+@router.get("/accounts/{account_id}/tenant-avatar")
+async def get_tenant_avatar(account_id: str) -> FileResponse:
+    account = await account_service.get_account(account_id)
+    if account is None or not account.tenant_avatar_cache_path:
+        raise HTTPException(status_code=404, detail="组织头像缓存不存在")
+    target = Path(account.tenant_avatar_cache_path).resolve()
+    allowed_root = (data_dir() / "accounts" / account_id / "tenant").resolve()
+    if not target.is_file() or target.parent != allowed_root:
+        raise HTTPException(status_code=404, detail="组织头像缓存不存在")
+    return FileResponse(target, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.patch("/accounts/{account_id}/display")
+async def update_account_display(
+    account_id: str, payload: AccountDisplayRequest
+) -> dict[str, object]:
+    try:
+        return asdict(
+            await account_service.set_account_alias(account_id, payload.account_alias)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/notifications")

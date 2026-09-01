@@ -144,6 +144,14 @@ export type AccountSummary = {
   account_name?: string | null;
   avatar_url?: string | null;
   tenant_name?: string | null;
+  tenant_key?: string | null;
+  tenant_display_id?: string | null;
+  tenant_tag?: number | null;
+  tenant_avatar_url?: string | null;
+  tenant_avatar_cache_path?: string | null;
+  tenant_metadata_status?: "ready" | "permission_required" | "unavailable" | "failed" | null;
+  tenant_metadata_updated_at?: number | null;
+  account_alias?: string | null;
   state: "connected" | "auth_required" | "migration_pending" | "removed";
   granted_scopes: string[];
   paused: boolean;
@@ -282,6 +290,7 @@ export type NavKey =
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
 
 export type SyncLogEntry = {
+  account_id?: string;
   eventId?: string | null;
   taskId: string;
   taskName: string;

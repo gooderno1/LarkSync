@@ -8,7 +8,7 @@ import type { SyncLogEntry } from "../types";
 
 const MAX_ENTRIES = 500;
 
-export function useWebSocketLog(enabled = true) {
+export function useWebSocketLog(accountId: string, enabled = true) {
   const [entries, setEntries] = useState<SyncLogEntry[]>([]);
   const [status, setStatus] = useState<"connecting" | "connected" | "disconnected">(
     "disconnected"
@@ -17,11 +17,11 @@ export function useWebSocketLog(enabled = true) {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connect = useCallback(() => {
-    if (!enabled) return;
+    if (!enabled || !accountId) return;
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const base = `${protocol}//${window.location.host}`;
-    const url = `${base}/ws/events`;
+    const url = `${base}/ws/events?account_id=${encodeURIComponent(accountId)}`;
 
     setStatus("connecting");
 
@@ -34,6 +34,7 @@ export function useWebSocketLog(enabled = true) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as SyncLogEntry;
+          if (data.account_id && data.account_id !== accountId) return;
           setEntries((prev) => [data, ...prev].slice(0, MAX_ENTRIES));
         } catch {
           // ignore malformed messages
@@ -54,9 +55,10 @@ export function useWebSocketLog(enabled = true) {
       setStatus("disconnected");
       reconnectTimer.current = setTimeout(connect, 5000);
     }
-  }, [enabled]);
+  }, [accountId, enabled]);
 
   useEffect(() => {
+    setEntries([]);
     connect();
     return () => {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);

@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiFetch, getActiveAccountId } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
 import type {
   ProblemActionRecord,
   ProblemDetail,
   ProblemItem,
   ProblemSummary,
 } from "../types";
+import { useAccounts } from "./useAccounts";
 
 export type ProblemFilters = {
   state: string;
@@ -40,12 +41,12 @@ export function buildProblemQuery(filters: ProblemFilters): string {
 }
 
 export function useProblemSummary(enabled = true) {
-  const accountId = getActiveAccountId();
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
   const query = useQuery<ProblemSummary>({
     queryKey: ["problems-summary", accountId],
-    queryFn: () => apiFetch<ProblemSummary>("/problems/summary?refresh=false"),
-    enabled,
-    placeholderData: (previous) => previous,
+    queryFn: ({ signal }) => apiFetchForAccount<ProblemSummary>("/problems/summary?refresh=false", accountId, { signal }),
+    enabled: enabled && Boolean(accountId),
     staleTime: 5_000,
     refetchInterval: enabled ? 10_000 : false,
   });
@@ -61,79 +62,77 @@ export function useProblems(
   enabled = true,
 ) {
   const queryClient = useQueryClient();
-  const accountId = getActiveAccountId();
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
   const listQuery = useQuery<ProblemListResponse>({
     queryKey: ["problems", accountId, filters],
-    queryFn: () => apiFetch<ProblemListResponse>(buildProblemQuery(filters)),
-    enabled,
-    placeholderData: (previous) => previous,
+    queryFn: ({ signal }) => apiFetchForAccount<ProblemListResponse>(buildProblemQuery(filters), accountId, { signal }),
+    enabled: enabled && Boolean(accountId),
     staleTime: 5_000,
     refetchInterval: enabled ? 10_000 : false,
   });
   const summaryQuery = useQuery<ProblemSummary>({
     queryKey: ["problems-summary", accountId],
-    queryFn: () => apiFetch<ProblemSummary>("/problems/summary?refresh=false"),
-    enabled,
-    placeholderData: (previous) => previous,
+    queryFn: ({ signal }) => apiFetchForAccount<ProblemSummary>("/problems/summary?refresh=false", accountId, { signal }),
+    enabled: enabled && Boolean(accountId),
     staleTime: 5_000,
     refetchInterval: enabled ? 10_000 : false,
   });
   const detailQuery = useQuery<ProblemDetail>({
     queryKey: ["problem-detail", accountId, selectedProblemId],
-    queryFn: () => apiFetch<ProblemDetail>(`/problems/${selectedProblemId}`),
-    enabled: enabled && Boolean(selectedProblemId),
-    placeholderData: (previous) => previous,
+    queryFn: ({ signal }) => apiFetchForAccount<ProblemDetail>(`/problems/${selectedProblemId}`, accountId, { signal }),
+    enabled: enabled && Boolean(accountId) && Boolean(selectedProblemId),
     staleTime: 3_000,
   });
   const actionMutation = useMutation({
     mutationFn: ({ problemId, actionKey }: { problemId: string; actionKey: string }) =>
-      apiFetch<ProblemActionRecord>(`/problems/${problemId}/actions`, {
+      apiFetchForAccount<ProblemActionRecord>(`/problems/${problemId}/actions`, accountId, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action_key: actionKey }),
       }),
     onSettled: async (_data, _error, variables) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["problems"] }),
-        queryClient.invalidateQueries({ queryKey: ["problems-summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["problem-detail", variables.problemId] }),
+        queryClient.invalidateQueries({ queryKey: ["problems", accountId] }),
+        queryClient.invalidateQueries({ queryKey: ["problems-summary", accountId] }),
+        queryClient.invalidateQueries({ queryKey: ["problem-detail", accountId, variables.problemId] }),
       ]);
     },
   });
   const verifyMutation = useMutation({
     mutationFn: (problemId: string) =>
-      apiFetch<ProblemItem>(`/problems/${problemId}/verify`, { method: "POST" }),
+      apiFetchForAccount<ProblemItem>(`/problems/${problemId}/verify`, accountId, { method: "POST" }),
     onSettled: async (_data, _error, problemId) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["problems"] }),
-        queryClient.invalidateQueries({ queryKey: ["problems-summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["problem-detail", problemId] }),
+        queryClient.invalidateQueries({ queryKey: ["problems", accountId] }),
+        queryClient.invalidateQueries({ queryKey: ["problems-summary", accountId] }),
+        queryClient.invalidateQueries({ queryKey: ["problem-detail", accountId, problemId] }),
       ]);
     },
   });
   const ignoreMutation = useMutation({
     mutationFn: ({ problemId, reason }: { problemId: string; reason: string }) =>
-      apiFetch<ProblemItem>(`/problems/${problemId}/ignore`, {
+      apiFetchForAccount<ProblemItem>(`/problems/${problemId}/ignore`, accountId, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason }),
       }),
     onSettled: async (_data, _error, variables) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["problems"] }),
-        queryClient.invalidateQueries({ queryKey: ["problems-summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["problem-detail", variables.problemId] }),
+        queryClient.invalidateQueries({ queryKey: ["problems", accountId] }),
+        queryClient.invalidateQueries({ queryKey: ["problems-summary", accountId] }),
+        queryClient.invalidateQueries({ queryKey: ["problem-detail", accountId, variables.problemId] }),
       ]);
     },
   });
   const restoreMutation = useMutation({
     mutationFn: (problemId: string) =>
-      apiFetch<ProblemItem>(`/problems/${problemId}/restore`, { method: "POST" }),
+      apiFetchForAccount<ProblemItem>(`/problems/${problemId}/restore`, accountId, { method: "POST" }),
     onSettled: async (_data, _error, problemId) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["problems"] }),
-        queryClient.invalidateQueries({ queryKey: ["problems-summary"] }),
-        queryClient.invalidateQueries({ queryKey: ["problem-detail", problemId] }),
+        queryClient.invalidateQueries({ queryKey: ["problems", accountId] }),
+        queryClient.invalidateQueries({ queryKey: ["problems-summary", accountId] }),
+        queryClient.invalidateQueries({ queryKey: ["problem-detail", accountId, problemId] }),
       ]);
     },
   });

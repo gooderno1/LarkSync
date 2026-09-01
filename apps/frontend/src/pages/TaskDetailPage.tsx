@@ -19,7 +19,8 @@ import {
 } from "../components/Icons";
 import { useConflicts } from "../hooks/useConflicts";
 import { useTasks } from "../hooks/useTasks";
-import { apiFetch } from "../lib/api";
+import { useAccounts } from "../hooks/useAccounts";
+import { apiFetchForAccount } from "../lib/api";
 import { Switch } from "../components/ui/switch";
 import {
   mdSyncModeLabels,
@@ -268,6 +269,8 @@ function CurrentRunPanel({
 }
 
 export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps) {
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
   const {
     tasks,
     statusMap,
@@ -299,14 +302,14 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
   const status = showcaseData?.status ?? sourceStatus;
 
   const diagnosticsQuery = useQuery<SyncTaskDiagnostics>({
-    queryKey: ["task-detail-diagnostics", taskId],
-    queryFn: () => apiFetch<SyncTaskDiagnostics>(buildTaskDiagnosticsQueryPath({
+    queryKey: ["task-detail-diagnostics", accountId, taskId],
+    queryFn: ({ signal }) => apiFetchForAccount<SyncTaskDiagnostics>(buildTaskDiagnosticsQueryPath({
       selectedTaskId: taskId,
       selectedRunId: null,
       includeProblems: true,
       limit: 120,
-    })),
-    enabled: Boolean(taskId) && !showcaseMode,
+    }), accountId, { signal }),
+    enabled: Boolean(accountId) && Boolean(taskId) && !showcaseMode,
     refetchInterval: status?.state === "running" ? 5_000 : 10_000,
   });
 
@@ -374,7 +377,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
       return;
     }
     try {
-      await apiFetch<{ path: string }>(`/sync/tasks/${task.id}/open-local-folder`, { method: "POST" });
+      await apiFetchForAccount<{ path: string }>(`/sync/tasks/${task.id}/open-local-folder`, accountId, { method: "POST" });
       toast("已在文件管理器中打开本地目录", "success");
     } catch (error) {
       toast(error instanceof Error ? error.message : "打开本地目录失败", "danger");

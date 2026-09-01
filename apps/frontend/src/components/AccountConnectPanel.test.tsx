@@ -7,6 +7,7 @@ import { AccountConnectPanel } from "./AccountConnectPanel";
 
 const apiFetchMock = vi.fn();
 const refreshAccounts = vi.fn().mockResolvedValue(undefined);
+const switchAccount = vi.fn().mockResolvedValue(undefined);
 const refetchProfiles = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("../lib/api", () => ({
@@ -17,6 +18,7 @@ vi.mock("../hooks/useAccounts", () => ({
   useAccounts: () => ({
     accounts: [{ id: "account-1", account_name: "测试账号" }],
     refreshAccounts,
+    switchAccount,
   }),
 }));
 
@@ -62,7 +64,7 @@ describe("AccountConnectPanel", () => {
     vi.useRealTimers();
   });
 
-  it("第一次扫码完成后在原流程自动进入第二次账号扫码", async () => {
+  it("第一次扫码完成后停留在检查点，点击后才进入第二次账号扫码", async () => {
     apiFetchMock.mockImplementation((endpoint: string, init?: RequestInit) => {
       if (endpoint === "/app-profiles/registration-sessions" && init?.method === "POST") {
         return Promise.resolve(registrationSession);
@@ -70,15 +72,17 @@ describe("AccountConnectPanel", () => {
       if (endpoint === "/app-profiles/registration-sessions/registration-1") {
         return Promise.resolve({
           status: "registered",
-          app_profile: { id: "profile-1" },
-          next_session: deviceSession,
+          app_profile: { id: "profile-1", app_id: "cli_created", display_name: "LarkSync" },
         });
+      }
+      if (endpoint === "/auth/device-sessions" && init?.method === "POST") {
+        return Promise.resolve(deviceSession);
       }
       return Promise.resolve({ cancelled: true });
     });
 
     render(<AccountConnectPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "开始两步扫码" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始第 1 次扫码" }));
     await act(async () => Promise.resolve());
     expect(screen.getByText(/步骤 1 \/ 2/)).toBeTruthy();
 
@@ -86,8 +90,28 @@ describe("AccountConnectPanel", () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
 
-    expect(screen.getByText(/步骤 2 \/ 2/)).toBeTruthy();
+    expect(screen.getByText("第 1 步已完成")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "继续第 2 次扫码" })).toBeTruthy();
+    expect(
+      apiFetchMock.mock.calls.filter(
+        ([endpoint]) => endpoint === "/auth/device-sessions",
+      ),
+    ).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "继续第 2 次扫码" }));
+    await act(async () => Promise.resolve());
+
+    expect(screen.getByText(/第 2 次扫码/)).toBeTruthy();
     expect(screen.getByText("备用验证码：AUTH-2")).toBeTruthy();
+  });
+
+  it("使用已有应用时明确显示本次只扫码一次", async () => {
+    vi.mocked(refetchProfiles).mockResolvedValue(undefined);
+    apiFetchMock.mockResolvedValue(deviceSession);
+
+    render(<AccountConnectPanel />);
+
+    expect(screen.getByText(/已有应用和手动配置都只需要扫码 1 次/)).toBeTruthy();
   });
 
   it("重新授权模式明确保留原账号数据", () => {

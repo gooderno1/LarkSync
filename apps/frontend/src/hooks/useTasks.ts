@@ -3,24 +3,26 @@
 /* ------------------------------------------------------------------ */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch, getActiveAccountId } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
 import type { SyncTask, SyncTaskStatus } from "../types";
+import { useAccounts } from "./useAccounts";
 
 export function useTasks() {
   const qc = useQueryClient();
-  const accountId = getActiveAccountId();
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
 
   const tasksQuery = useQuery<SyncTask[]>({
     queryKey: ["tasks", accountId],
-    queryFn: () => apiFetch<SyncTask[]>("/sync/tasks"),
-    placeholderData: [],
+    queryFn: ({ signal }) => apiFetchForAccount<SyncTask[]>("/sync/tasks", accountId, { signal }),
+    enabled: Boolean(accountId),
     staleTime: 10_000,
   });
 
   const statusQuery = useQuery<Record<string, SyncTaskStatus>>({
     queryKey: ["task-status", accountId],
-    queryFn: async () => {
-      const data = await apiFetch<SyncTaskStatus[]>("/sync/tasks/status");
+    queryFn: async ({ signal }) => {
+      const data = await apiFetchForAccount<SyncTaskStatus[]>("/sync/tasks/status", accountId, { signal });
       if (!Array.isArray(data)) return {};
       const mapped: Record<string, SyncTaskStatus> = {};
       for (const item of data) {
@@ -29,38 +31,38 @@ export function useTasks() {
       return mapped;
     },
     refetchInterval: tasksQuery.data && tasksQuery.data.length > 0 ? 5000 : false,
-    placeholderData: {},
+    enabled: Boolean(accountId),
   });
 
   const createMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
-      apiFetch("/sync/tasks", {
+      apiFetchForAccount("/sync/tasks", accountId, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      qc.invalidateQueries({ queryKey: ["task-status"] });
+      qc.invalidateQueries({ queryKey: ["tasks", accountId] });
+      qc.invalidateQueries({ queryKey: ["task-status", accountId] });
     },
   });
 
   const toggleMutation = useMutation({
     mutationFn: (task: SyncTask) =>
-      apiFetch(`/sync/tasks/${task.id}`, {
+      apiFetchForAccount(`/sync/tasks/${task.id}`, accountId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: !task.enabled }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      qc.invalidateQueries({ queryKey: ["task-status"] });
+      qc.invalidateQueries({ queryKey: ["tasks", accountId] });
+      qc.invalidateQueries({ queryKey: ["task-status", accountId] });
     },
   });
 
   const updateSyncModeMutation = useMutation({
     mutationFn: ({ id, sync_mode }: { id: string; sync_mode: string }) =>
-      apiFetch<SyncTask>(`/sync/tasks/${id}`, {
+      apiFetchForAccount<SyncTask>(`/sync/tasks/${id}`, accountId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sync_mode }),
@@ -74,25 +76,25 @@ export function useTasks() {
 
   const updateModeMutation = useMutation({
     mutationFn: ({ id, update_mode }: { id: string; update_mode: string }) =>
-      apiFetch(`/sync/tasks/${id}`, {
+      apiFetchForAccount(`/sync/tasks/${id}`, accountId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ update_mode }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["tasks", accountId] });
     },
   });
 
   const updateMdSyncModeMutation = useMutation({
     mutationFn: ({ id, md_sync_mode }: { id: string; md_sync_mode: string }) =>
-      apiFetch(`/sync/tasks/${id}`, {
+      apiFetchForAccount(`/sync/tasks/${id}`, accountId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ md_sync_mode }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["tasks", accountId] });
     },
   });
 
@@ -106,19 +108,19 @@ export function useTasks() {
       delete_policy: "off" | "safe" | "strict";
       delete_grace_minutes: number;
     }) =>
-      apiFetch(`/sync/tasks/${id}`, {
+      apiFetchForAccount(`/sync/tasks/${id}`, accountId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ delete_policy, delete_grace_minutes }),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["tasks", accountId] });
     },
   });
 
   const updateTaskSettingsMutation = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Record<string, unknown> }) =>
-      apiFetch<SyncTask>(`/sync/tasks/${id}`, {
+      apiFetchForAccount<SyncTask>(`/sync/tasks/${id}`, accountId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -127,13 +129,13 @@ export function useTasks() {
       qc.setQueryData<SyncTask[]>(["tasks", accountId], (prev) =>
         (prev || []).map((task) => (task.id === updated.id ? updated : task))
       );
-      qc.invalidateQueries({ queryKey: ["task-status"] });
+      qc.invalidateQueries({ queryKey: ["task-status", accountId] });
     },
   });
 
   const updateIgnoredSubpathsMutation = useMutation({
     mutationFn: ({ id, ignored_subpaths }: { id: string; ignored_subpaths: string[] }) =>
-      apiFetch<SyncTask>(`/sync/tasks/${id}`, {
+      apiFetchForAccount<SyncTask>(`/sync/tasks/${id}`, accountId, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ignored_subpaths }),
@@ -147,29 +149,30 @@ export function useTasks() {
 
   const runMutation = useMutation({
     mutationFn: (task: SyncTask) =>
-      apiFetch(`/sync/tasks/${task.id}/run`, { method: "POST" }),
+      apiFetchForAccount(`/sync/tasks/${task.id}/run`, accountId, { method: "POST" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["task-status"] });
+      qc.invalidateQueries({ queryKey: ["task-status", accountId] });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (task: SyncTask) =>
-      apiFetch(`/sync/tasks/${task.id}`, { method: "DELETE" }),
+      apiFetchForAccount(`/sync/tasks/${task.id}`, accountId, { method: "DELETE" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["tasks"] });
-      qc.invalidateQueries({ queryKey: ["task-status"] });
+      qc.invalidateQueries({ queryKey: ["tasks", accountId] });
+      qc.invalidateQueries({ queryKey: ["task-status", accountId] });
     },
   });
 
   const resetLinksMutation = useMutation({
     mutationFn: (taskId: string) =>
-      apiFetch<{ status: string; deleted_links: number }>(
+      apiFetchForAccount<{ status: string; deleted_links: number }>(
         `/sync/tasks/${taskId}/reset-links`,
+        accountId,
         { method: "POST" }
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["task-status"] });
+      qc.invalidateQueries({ queryKey: ["task-status", accountId] });
     },
   });
 
@@ -178,8 +181,8 @@ export function useTasks() {
     taskLoading: tasksQuery.isLoading,
     taskError: tasksQuery.error?.message ?? null,
     statusMap: statusQuery.data || {},
-    refreshTasks: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
-    refreshStatus: () => qc.invalidateQueries({ queryKey: ["task-status"] }),
+    refreshTasks: () => qc.invalidateQueries({ queryKey: ["tasks", accountId] }),
+    refreshStatus: () => qc.invalidateQueries({ queryKey: ["task-status", accountId] }),
     createTask: createMutation.mutateAsync,
     toggleTask: toggleMutation.mutate,
     updateSyncMode: updateSyncModeMutation.mutate,

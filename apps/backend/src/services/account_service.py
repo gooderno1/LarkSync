@@ -51,6 +51,14 @@ class AccountItem:
     account_name: str | None
     avatar_url: str | None
     tenant_name: str | None
+    tenant_key: str | None
+    tenant_display_id: str | None
+    tenant_tag: int | None
+    tenant_avatar_url: str | None
+    tenant_avatar_cache_path: str | None
+    tenant_metadata_status: str | None
+    tenant_metadata_updated_at: float | None
+    account_alias: str | None
     state: str
     granted_scopes: list[str]
     paused: bool
@@ -489,6 +497,50 @@ class AccountService:
             record.updated_at = time.time()
             await session.commit()
 
+    async def update_tenant_metadata(
+        self,
+        account_id: str,
+        *,
+        tenant_key: str | None = None,
+        tenant_name: str | None = None,
+        tenant_display_id: str | None = None,
+        tenant_tag: int | None = None,
+        tenant_avatar_url: str | None = None,
+        tenant_avatar_cache_path: str | None = None,
+        tenant_metadata_status: str,
+    ) -> AccountItem:
+        async with self._session_maker() as session:
+            record = await session.get(Account, account_id)
+            if record is None or record.removed_at is not None:
+                raise ValueError("账号不存在")
+            if tenant_key is not None:
+                record.tenant_key = tenant_key.strip() or record.tenant_key
+            if tenant_name is not None:
+                record.tenant_name = tenant_name.strip() or record.tenant_name
+            if tenant_display_id is not None:
+                record.tenant_display_id = tenant_display_id.strip() or record.tenant_display_id
+            if tenant_tag is not None:
+                record.tenant_tag = int(tenant_tag)
+            if tenant_avatar_url is not None:
+                record.tenant_avatar_url = tenant_avatar_url.strip() or record.tenant_avatar_url
+            if tenant_avatar_cache_path is not None:
+                record.tenant_avatar_cache_path = tenant_avatar_cache_path.strip() or record.tenant_avatar_cache_path
+            record.tenant_metadata_status = tenant_metadata_status
+            record.tenant_metadata_updated_at = time.time()
+            record.updated_at = time.time()
+            await session.commit()
+            return self._account_item(record)
+
+    async def set_account_alias(self, account_id: str, alias: str | None) -> AccountItem:
+        async with self._session_maker() as session:
+            record = await session.get(Account, account_id)
+            if record is None or record.removed_at is not None:
+                raise ValueError("账号不存在")
+            record.account_alias = (alias or "").strip() or None
+            record.updated_at = time.time()
+            await session.commit()
+            return self._account_item(record)
+
     async def remove(self, account_id: str) -> None:
         self._token_store_factory(account_id).clear()
         async with self._session_maker() as session:
@@ -645,6 +697,14 @@ class AccountService:
             account_name=record.account_name,
             avatar_url=record.avatar_url,
             tenant_name=record.tenant_name,
+            tenant_key=record.tenant_key,
+            tenant_display_id=record.tenant_display_id,
+            tenant_tag=record.tenant_tag,
+            tenant_avatar_url=record.tenant_avatar_url,
+            tenant_avatar_cache_path=record.tenant_avatar_cache_path,
+            tenant_metadata_status=record.tenant_metadata_status,
+            tenant_metadata_updated_at=record.tenant_metadata_updated_at,
+            account_alias=record.account_alias,
             state=record.state,
             granted_scopes=self._parse_scopes(record.granted_scopes),
             paused=bool(record.paused),

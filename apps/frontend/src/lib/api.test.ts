@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { apiFetch, getCurrentAppUrl, getLoginUrl } from "./api";
+import { apiFetch, apiFetchForAccount, getCurrentAppUrl, getLoginUrl } from "./api";
 
 describe("api helpers", () => {
   afterEach(() => {
@@ -41,5 +41,23 @@ describe("api helpers", () => {
 
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     expect(new Headers(request.headers).get("X-LarkSync-Account-ID")).toBe("account-a");
+  });
+
+  it("binds explicit scoped requests independently from the active account", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("window", {
+      localStorage: { getItem: () => "account-a" },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetchForAccount("/sync/tasks", "account-b");
+
+    const request = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(request.headers).get("X-LarkSync-Account-ID")).toBe("account-b");
   });
 });

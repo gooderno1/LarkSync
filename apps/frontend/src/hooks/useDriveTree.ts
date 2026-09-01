@@ -3,16 +3,19 @@
 /* ------------------------------------------------------------------ */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
 import type { DriveNode } from "../types";
+import { useAccounts } from "./useAccounts";
 
 export function useDriveTree(enabled: boolean) {
   const qc = useQueryClient();
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
 
   const treeQuery = useQuery<DriveNode>({
-    queryKey: ["drive-tree"],
-    queryFn: () => apiFetch<DriveNode>("/drive/tree"),
-    enabled,
+    queryKey: ["drive-tree", accountId],
+    queryFn: ({ signal }) => apiFetchForAccount<DriveNode>("/drive/tree", accountId, { signal }),
+    enabled: enabled && Boolean(accountId),
     staleTime: 60_000,
   });
 
@@ -20,6 +23,6 @@ export function useDriveTree(enabled: boolean) {
     tree: treeQuery.data ?? null,
     treeLoading: treeQuery.isLoading,
     treeError: treeQuery.error?.message ?? null,
-    refreshTree: () => qc.invalidateQueries({ queryKey: ["drive-tree"] }),
+    refreshTree: () => qc.invalidateQueries({ queryKey: ["drive-tree", accountId] }),
   };
 }

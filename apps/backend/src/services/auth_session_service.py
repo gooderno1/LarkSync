@@ -18,6 +18,7 @@ from src.services.device_flow_service import (
     DeviceFlowProtocol,
     open_base_url,
 )
+from src.services.tenant_metadata_service import TenantMetadataService
 
 
 @dataclass
@@ -173,10 +174,25 @@ class AuthSessionService:
                     account.id,
                     type(exc).__name__,
                 )
+            tenant_metadata_status = "pending"
+            try:
+                tenant_result = await TenantMetadataService(
+                    accounts=self._accounts,
+                    http_client=self._http_client,
+                ).refresh_account(account.id)
+                tenant_metadata_status = str(tenant_result.get("status") or "failed")
+            except Exception as exc:
+                tenant_metadata_status = "failed"
+                logger.warning(
+                    "账号授权成功但组织信息补全延后: account_id={} error_type={}",
+                    account.id,
+                    type(exc).__name__,
+                )
             session.terminal_result = {
                 "status": "authorized",
                 "account": account,
                 "runtime_reload_pending": runtime_reload_pending,
+                "tenant_metadata_status": tenant_metadata_status,
             }
             return session.terminal_result
 
@@ -221,13 +237,11 @@ class AuthSessionService:
                 app_secret=result.app_secret or "",
                 brand=result.brand,
                 source="official_registration",
-                display_name="LarkSync 自动创建的个人应用",
+                display_name="LarkSync",
             )
-            next_session = await self.begin_device(profile.id)
             session.terminal_result = {
                 "status": "registered",
                 "app_profile": profile,
-                "next_session": self._public_session(next_session),
             }
             return session.terminal_result
 

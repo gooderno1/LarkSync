@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { apiFetch } from "../lib/api";
+import { apiFetch, apiFetchForAccount } from "../lib/api";
 import {
   buildCreateTaskPayload,
   getWizardMaxAccessibleStep,
@@ -12,6 +12,7 @@ import {
 } from "../lib/newTaskWizard";
 import { useDriveTree } from "../hooks/useDriveTree";
 import { useAuth } from "../hooks/useAuth";
+import { useAccounts } from "../hooks/useAccounts";
 import { syncModeSupportsUpload } from "../lib/constants";
 import { useToast } from "./ui/toast";
 import type { CloudSelection } from "../types";
@@ -29,6 +30,8 @@ type Props = {
 
 export function NewTaskModal({ open, onClose, onCreated }: Props) {
   const { connected } = useAuth();
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
   const { tree, treeLoading, treeError, refreshTree } = useDriveTree(open && connected);
   const { toast } = useToast();
 
@@ -95,7 +98,7 @@ export function NewTaskModal({ open, onClose, onCreated }: Props) {
     setError(null);
     setCreating(true);
     try {
-      await apiFetch("/sync/tasks", {
+      await apiFetchForAccount("/sync/tasks", accountId, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(

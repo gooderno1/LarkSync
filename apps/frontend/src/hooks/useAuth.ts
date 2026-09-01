@@ -3,7 +3,8 @@
 /* ------------------------------------------------------------------ */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
+import { useAccounts } from "./useAccounts";
 
 type AuthStatus = {
   connected: boolean;
@@ -20,10 +21,13 @@ export function getAuthStatusRefetchInterval(data?: AuthStatus | null): number |
 
 export function useAuth() {
   const qc = useQueryClient();
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
 
   const { data, isLoading } = useQuery<AuthStatus>({
-    queryKey: ["auth-status"],
-    queryFn: () => apiFetch<AuthStatus>("/auth/status"),
+    queryKey: ["auth-status", accountId],
+    queryFn: ({ signal }) => apiFetchForAccount<AuthStatus>("/auth/status", accountId, { signal }),
+    enabled: Boolean(accountId),
     retry: false,
     staleTime: 30_000,
     refetchInterval: (query) => getAuthStatusRefetchInterval(query.state.data),
@@ -31,9 +35,9 @@ export function useAuth() {
   });
 
   const logoutMutation = useMutation({
-    mutationFn: () => apiFetch("/auth/logout", { method: "POST" }),
+    mutationFn: () => apiFetchForAccount("/auth/logout", accountId, { method: "POST" }),
     onSettled: () => {
-      qc.setQueryData<AuthStatus>(["auth-status"], {
+      qc.setQueryData<AuthStatus>(["auth-status", accountId], {
         connected: false,
         expires_at: null,
       });

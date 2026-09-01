@@ -98,10 +98,10 @@ async def test_schema_v6_adds_ignored_at_without_changing_existing_problem_state
         ).scalar_one()
     await dispose_engines()
 
-    assert CURRENT_SCHEMA_VERSION == 10
+    assert CURRENT_SCHEMA_VERSION == 11
     assert "ignored_at" in columns
     assert (row.state, row.ignored_reason, row.ignored_at) == ("open", None, None)
-    assert version == "10"
+    assert version == "11"
 
 
 @pytest.mark.asyncio
@@ -187,7 +187,7 @@ async def test_schema_v9_automatically_backs_up_and_scopes_legacy_data(
         ).scalar_one()
     await dispose_engines()
 
-    backups = list(tmp_path.glob("v8-single-account.db.pre-v10-*.bak"))
+    backups = list(tmp_path.glob("v8-single-account.db.pre-v11-*.bak"))
     assert len(backups) == 1
     assert task_account == "legacy-default-account"
     assert tuple(link) == ("legacy-default-account", "D:/Sync/a.md")
@@ -195,6 +195,33 @@ async def test_schema_v9_automatically_backs_up_and_scopes_legacy_data(
     assert link_pk["local_path"] == 2
     assert account_count == 1
     assert auth_protocol == "legacy_v1"
+
+
+@pytest.mark.asyncio
+async def test_schema_v11_adds_optional_tenant_identity_fields(tmp_path: Path) -> None:
+    db_path = tmp_path / "v10-accounts.db"
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+    engine = await init_db(url)
+    async with engine.begin() as conn:
+        columns = {
+            row[1] for row in (await conn.execute(text("PRAGMA table_info(accounts)"))).all()
+        }
+        version = (
+            await conn.execute(text("SELECT value FROM sync_meta WHERE key='schema_version'"))
+        ).scalar_one()
+    await dispose_engines()
+
+    assert version == "11"
+    assert {
+        "tenant_key",
+        "tenant_display_id",
+        "tenant_tag",
+        "tenant_avatar_url",
+        "tenant_avatar_cache_path",
+        "tenant_metadata_status",
+        "tenant_metadata_updated_at",
+        "account_alias",
+    }.issubset(columns)
 
 
 @pytest.mark.asyncio

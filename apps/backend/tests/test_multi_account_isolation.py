@@ -36,7 +36,7 @@ async def test_services_isolate_records_for_one_long_lived_instance(tmp_path) ->
             cloud_type="docx",
             task_id=task_a.id,
         )
-        await conflicts.add_conflict(
+        conflict_a = await conflicts.add_conflict(
             local_path=str(tmp_path / "a.md"),
             cloud_token="doc-a",
             local_hash="a",
@@ -59,7 +59,7 @@ async def test_services_isolate_records_for_one_long_lived_instance(tmp_path) ->
             cloud_type="docx",
             task_id=task_b.id,
         )
-        await conflicts.add_conflict(
+        conflict_b = await conflicts.add_conflict(
             local_path=str(tmp_path / "b.md"),
             cloud_token="doc-b",
             local_hash="b",
@@ -70,10 +70,16 @@ async def test_services_isolate_records_for_one_long_lived_instance(tmp_path) ->
 
     with account_scope("account-a"):
         assert [item.id for item in await tasks.list_tasks()] == [task_a.id]
+        assert await tasks.get_task(task_b.id) is None
         assert (await links.get_by_local_path(str(tmp_path / "shared.md"))).cloud_token == "doc-a"  # type: ignore[union-attr]
         assert {item.account_id for item in await conflicts.list_conflicts()} == {"account-a"}
+        assert await conflicts.get_conflict(conflict_a.id) is not None
+        assert await conflicts.get_conflict(conflict_b.id) is None
 
     with account_scope("account-b"):
         assert [item.id for item in await tasks.list_tasks()] == [task_b.id]
+        assert await tasks.get_task(task_a.id) is None
         assert (await links.get_by_local_path(str(tmp_path / "shared.md"))).cloud_token == "doc-b"  # type: ignore[union-attr]
         assert {item.account_id for item in await conflicts.list_conflicts()} == {"account-b"}
+        assert await conflicts.get_conflict(conflict_b.id) is not None
+        assert await conflicts.get_conflict(conflict_a.id) is None

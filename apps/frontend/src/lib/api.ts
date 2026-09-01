@@ -53,3 +53,13 @@ export async function apiFetch<T = unknown>(
   }
   return res.json() as Promise<T>;
 }
+
+export function apiFetchForAccount<T = unknown>(
+  path: string,
+  accountId: string,
+  init?: RequestInit,
+): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (accountId) headers.set("X-LarkSync-Account-ID", accountId);
+  return apiFetch<T>(path, { ...init, headers });
+}

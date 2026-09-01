@@ -1,4 +1,5 @@
 import type { AccountSummary } from "../../types";
+import { OrganizationAvatar, organizationDisplayName } from "../OrganizationAvatar";
 
 type AccountAction = "pause" | "resume" | "disconnect" | "remove";
 
@@ -6,8 +7,11 @@ type SettingsAccountCardProps = {
   account: AccountSummary;
   active: boolean;
   refreshing: boolean;
+  refreshingTenant: boolean;
   onSwitch: () => void;
   onRefresh: () => void;
+  onRefreshTenant: () => void;
+  onEditAlias: () => void;
   onReauthorize: () => void;
   onAction: (action: AccountAction) => void;
 };
@@ -37,13 +41,22 @@ export function SettingsAccountCard({
   account,
   active,
   refreshing,
+  refreshingTenant,
   onSwitch,
   onRefresh,
+  onRefreshTenant,
+  onEditAlias,
   onReauthorize,
   onAction,
 }: SettingsAccountCardProps) {
   const state = accountState(account);
   const protocolV2 = account.auth_protocol === "device_v2";
+  const organizationName = organizationDisplayName(account);
+  const organizationStatus = account.tenant_metadata_status === "ready"
+    ? "官方组织信息"
+    : account.tenant_metadata_status === "permission_required"
+      ? "未授权组织信息权限"
+      : "等待获取组织信息";
 
   return (
     <article
@@ -53,27 +66,19 @@ export function SettingsAccountCard({
       }`}
     >
       <div data-account-identity="true" className="flex min-w-0 items-center gap-3 px-4 py-3.5">
-        {account.avatar_url ? (
-          <img
-            src={account.avatar_url}
-            alt=""
-            className="h-11 w-11 shrink-0 rounded-full border border-[#d7e4f5] bg-[#eef5ff] object-cover"
-          />
-        ) : (
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#eaf3ff] text-sm font-bold text-[#3370ff]">
-            {(account.account_name || "飞").slice(0, 1)}
-          </span>
-        )}
+        <OrganizationAvatar account={account} className="h-12 w-12 shrink-0 rounded-xl border border-[#d7e4f5] bg-[#eef5ff] object-cover" fallbackClassName="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#eaf3ff] text-sm font-bold text-[#3370ff]" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-[#102033]">{account.account_name || "飞书账号"}</h3>
+            <h3 className="truncate text-sm font-semibold text-[#102033]">{organizationName}</h3>
             {active ? <span className="rounded-full bg-[#eaf3ff] px-2 py-0.5 text-[10px] font-semibold text-[#3370ff]">当前账号</span> : null}
           </div>
-          <p className="mt-1 truncate text-xs text-[#71869d]">
-            {account.brand === "lark" ? "Lark" : "飞书"}
-            {account.tenant_name ? ` · ${account.tenant_name}` : ""}
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-xs text-[#71869d]">
+            {account.avatar_url ? <img src={account.avatar_url} alt="" className="h-4 w-4 shrink-0 rounded-full object-cover" /> : null}
+            <span className="truncate">{account.account_name || "飞书成员"} · {account.brand === "lark" ? "Lark" : "飞书"}</span>
           </p>
+          <p className={`mt-1 text-[10px] ${account.tenant_metadata_status === "ready" ? "text-[#047857]" : "text-[#8a6a28]"}`}>{organizationStatus}</p>
         </div>
+        <button type="button" onClick={onEditAlias} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs text-[#52657a] hover:bg-[#eef5ff]">编辑显示名</button>
       </div>
 
       <dl data-account-facts="true" className="grid grid-cols-3 border-y border-[#e4edf8] bg-[#f8fbff]">
@@ -116,6 +121,9 @@ export function SettingsAccountCard({
           </button>
           <button type="button" onClick={onReauthorize} className="rounded-lg bg-[#3370ff] px-3 py-1.5 text-xs font-semibold text-white shadow-[0_6px_16px_rgba(51,112,255,0.18)]">
             重新授权
+          </button>
+          <button type="button" disabled={refreshingTenant} onClick={onRefreshTenant} className="rounded-lg border border-[#d1dfef] px-3 py-1.5 text-xs font-medium text-[#52657a] disabled:opacity-50">
+            {refreshingTenant ? "获取中…" : "更新组织信息"}
           </button>
         </div>
         <div data-account-maintenance-actions="true" className="flex flex-wrap items-center gap-1.5 border-l border-[#dce6f2] pl-3">

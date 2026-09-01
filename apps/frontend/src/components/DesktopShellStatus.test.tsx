@@ -72,6 +72,16 @@ vi.mock("../hooks/useTasks", () => ({
   }),
 }));
 
+vi.mock("../hooks/useAccounts", () => ({
+  useAccounts: () => ({
+    accounts: [{ id: "account-1", account_name: "Alex", tenant_name: "Acme 飞书组织", tenant_metadata_status: "ready", unread_total: 3, paused: false }],
+    activeAccount: { id: "account-1", account_name: "Alex", tenant_name: "Acme 飞书组织", tenant_metadata_status: "ready", unread_total: 3, paused: false },
+    activeAccountId: "account-1",
+    switchingAccountId: null,
+    switchAccount: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("./ui/toast", () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
@@ -95,6 +105,8 @@ describe("desktop shell status", () => {
     expect(html).toContain("2 个正在运行");
     expect(html).toContain("3 个待处理");
     expect(html).toContain("Alex");
+    expect(html).toContain("Acme 飞书组织");
+    expect(html).toContain('aria-controls="sidebar-account-list"');
     expect(html).toContain("后端服务");
     expect(html).toContain("最近同步");
     expect(html).toContain("v0.8.0-dev.1");

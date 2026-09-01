@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { computeTaskProgress } from "../lib/progress";
-import { apiFetch } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
 import {
   buildTaskDiagnosticsQueryPath,
   shouldIncludeDiagnosticProblems,
@@ -20,21 +20,23 @@ import {
 import type { SyncTaskDiagnostics, SyncTaskOverview } from "../types";
 import { useTaskDiagnosticsSelection } from "./useTaskDiagnosticsSelection";
 import { useTaskEventTimeline } from "./useTaskEventTimeline";
+import { useAccounts } from "./useAccounts";
 
 export type DetailTab = "overview" | "problems" | "events";
 
 const EMPTY_OVERVIEWS: SyncTaskOverview[] = [];
 
 export function useLogCenterTaskDiagnostics(enabled: boolean) {
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
 
   const overviewQuery = useQuery<SyncTaskOverview[]>({
-    queryKey: ["sync-task-overview"],
-    queryFn: () => apiFetch<SyncTaskOverview[]>("/sync/tasks/overview"),
-    enabled,
+    queryKey: ["sync-task-overview", accountId],
+    queryFn: ({ signal }) => apiFetchForAccount<SyncTaskOverview[]>("/sync/tasks/overview", accountId, { signal }),
+    enabled: enabled && Boolean(accountId),
     staleTime: 5_000,
     refetchInterval: enabled ? 10_000 : false,
-    placeholderData: (previousData) => previousData,
   });
 
   const overviewItems = overviewQuery.data ?? EMPTY_OVERVIEWS;
@@ -66,17 +68,16 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
   const includeProblems = shouldIncludeDiagnosticProblems(detailTab);
 
   const diagnosticsQuery = useQuery<SyncTaskDiagnostics>({
-    queryKey: ["sync-task-diagnostics", selectedTaskId, selectedRunId, includeProblems],
-    queryFn: async () => {
-      const raw = await apiFetch<SyncTaskDiagnosticsRaw>(buildTaskDiagnosticsQueryPath({
+    queryKey: ["sync-task-diagnostics", accountId, selectedTaskId, selectedRunId, includeProblems],
+    queryFn: async ({ signal }) => {
+      const raw = await apiFetchForAccount<SyncTaskDiagnosticsRaw>(buildTaskDiagnosticsQueryPath({
         selectedTaskId: selectedTaskId!,
         selectedRunId,
         includeProblems,
-      }));
+      }), accountId, { signal });
       return mapSyncTaskDiagnostics(raw);
     },
-    enabled: enabled && Boolean(selectedTaskId),
-    placeholderData: (previousData) => previousData,
+    enabled: enabled && Boolean(accountId) && Boolean(selectedTaskId),
     staleTime: 5_000,
     refetchInterval: shouldPollTaskDiagnostics({
       enabled,

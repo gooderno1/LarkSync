@@ -31,7 +31,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 10
+CURRENT_SCHEMA_VERSION = 11
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -674,6 +674,33 @@ async def _apply_schema_v10(conn) -> None:
     )
 
 
+async def _apply_schema_v11(conn) -> None:
+    fields = (
+        ("tenant_key", "TEXT", None),
+        ("tenant_display_id", "TEXT", None),
+        ("tenant_tag", "INTEGER", None),
+        ("tenant_avatar_url", "TEXT", None),
+        ("tenant_avatar_cache_path", "TEXT", None),
+        ("tenant_metadata_status", "TEXT", None),
+        ("tenant_metadata_updated_at", "REAL", None),
+        ("account_alias", "TEXT", None),
+    )
+    for column, column_type, default_value in fields:
+        await _ensure_column(
+            conn,
+            table="accounts",
+            column=column,
+            column_type=column_type,
+            default_value=default_value,
+        )
+    await _ensure_index(
+        conn,
+        table="accounts",
+        index_name="idx_accounts_tenant_key",
+        columns_sql="tenant_key",
+    )
+
+
 async def _rebuild_sync_links_v9(conn, *, legacy_account_id: str) -> None:
     table_info = list(await conn.execute(text("PRAGMA table_info(sync_links)")))
     columns = {str(row[1]): row for row in table_info}
@@ -858,6 +885,11 @@ _SCHEMA_MIGRATIONS = [
         version=10,
         description="记录账号 OAuth 协议，兼容迁移账号 V1 刷新并支持 Device Flow V2",
         upgrade=_apply_schema_v10,
+    ),
+    SchemaMigration(
+        version=11,
+        description="补充账号组织标识、组织头像和本地组织别名",
+        upgrade=_apply_schema_v11,
     ),
 ]
 

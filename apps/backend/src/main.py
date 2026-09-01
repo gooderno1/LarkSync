@@ -44,6 +44,7 @@ from src.services.sync_log_maintenance_service import SyncLogMaintenanceService
 from src.services.sync_run_service import SyncRunService
 from src.services.sync_scheduler import SyncScheduler
 from src.services.update_scheduler import UpdateScheduler
+from src.services.tenant_metadata_service import TenantMetadataService
 from src.api.system import build_desktop_status, desktop_status_to_tray_status
 from src.api.accounts import account_service
 from src.services.account_runtime import account_runtime_registry
@@ -162,13 +163,22 @@ def _build_lifespan(
             _backfill_problem_sources(app),
             name="problem-source-backfill",
         )
+        tenant_backfill_task = asyncio.create_task(
+            _backfill_tenant_metadata(),
+            name="tenant-metadata-backfill",
+        )
         _log_frontend_mount_status()
         try:
             yield
         finally:
             problem_backfill_task.cancel()
+            tenant_backfill_task.cancel()
             try:
                 await problem_backfill_task
+            except asyncio.CancelledError:
+                pass
+            try:
+                await tenant_backfill_task
             except asyncio.CancelledError:
                 pass
             await log_maintenance_service_instance.stop()
@@ -179,6 +189,22 @@ def _build_lifespan(
                 await close_runner()
 
     return lifespan
+
+
+async def _backfill_tenant_metadata() -> None:
+    await asyncio.sleep(3)
+    service = TenantMetadataService(accounts=account_service)
+    for account in await account_service.list_accounts():
+        if account.tenant_metadata_status == "permission_required":
+            continue
+        if account.tenant_metadata_updated_at and time.time() - account.tenant_metadata_updated_at < 86_400:
+            continue
+        try:
+            await service.refresh_account(account.id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("组织信息后台补全失败: account_id={}", account.id)
 
 
 async def _backfill_problem_sources(app: FastAPI) -> None:

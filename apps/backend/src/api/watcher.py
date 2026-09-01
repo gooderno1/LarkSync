@@ -55,7 +55,8 @@ async def silence_path(payload: WatcherSilenceRequest) -> dict:
 
 @events_router.websocket("/ws/events")
 async def ws_events(websocket: WebSocket) -> None:
-    await event_hub.connect(websocket)
+    account_id = websocket.query_params.get("account_id", "").strip() or None
+    await event_hub.connect(websocket, account_id=account_id)
     try:
         while True:
             await websocket.receive_text()

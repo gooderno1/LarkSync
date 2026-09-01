@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAccounts } from "../hooks/useAccounts";
-import { apiFetch } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
 import type { AccountNotification } from "../types";
 
 export function NotificationDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -9,11 +9,11 @@ export function NotificationDrawer({ open, onClose }: { open: boolean; onClose: 
   const queryClient = useQueryClient();
   const query = useQuery<AccountNotification[]>({
     queryKey: ["notifications", activeAccountId],
-    queryFn: () => apiFetch<AccountNotification[]>(`/notifications?account_id=${encodeURIComponent(activeAccountId || "")}`),
+    queryFn: ({ signal }) => apiFetchForAccount<AccountNotification[]>(`/notifications?account_id=${encodeURIComponent(activeAccountId || "")}`, activeAccountId || "", { signal }),
     enabled: open && Boolean(activeAccountId),
   });
   const readMutation = useMutation({
-    mutationFn: (id: string) => apiFetch(`/notifications/${id}/read`, {
+    mutationFn: (id: string) => apiFetchForAccount(`/notifications/${id}/read`, activeAccountId || "", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ read: true }),
@@ -24,7 +24,7 @@ export function NotificationDrawer({ open, onClose }: { open: boolean; onClose: 
     },
   });
   const readAllMutation = useMutation({
-    mutationFn: () => apiFetch(`/notifications/read-all?account_id=${encodeURIComponent(activeAccountId || "")}`, { method: "POST" }),
+    mutationFn: () => apiFetchForAccount(`/notifications/read-all?account_id=${encodeURIComponent(activeAccountId || "")}`, activeAccountId || "", { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications", activeAccountId] });
       queryClient.invalidateQueries({ queryKey: ["accounts-summary"] });

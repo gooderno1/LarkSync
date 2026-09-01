@@ -21,6 +21,7 @@ type Session = {
 type ConnectPhase =
   | "choose_method"
   | "registering_app"
+  | "app_registered"
   | "preparing_account_auth"
   | "authorizing_account"
   | "authorized"
@@ -40,7 +41,11 @@ type AuthorizedAccount = {
   id?: string;
   account_name?: string | null;
   auth_protocol?: string;
+  tenant_name?: string | null;
+  account_alias?: string | null;
 };
+
+type ConnectPath = "automatic" | "existing" | "manual" | "reauthorize";
 
 function sessionEndpoint(kind: "registration" | "device", sessionId: string) {
   return kind === "device"
@@ -54,7 +59,7 @@ export function AccountConnectPanel({
   mode = "add",
   accountId,
 }: Props) {
-  const { accounts, refreshAccounts } = useAccounts();
+  const { accounts, refreshAccounts, switchAccount } = useAccounts();
   const profiles = useQuery<AppProfile[]>({
     queryKey: ["app-profiles"],
     queryFn: () => apiFetch<AppProfile[]>("/app-profiles"),
@@ -71,9 +76,10 @@ export function AccountConnectPanel({
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [createdProfileId, setCreatedProfileId] = useState<string | null>(null);
+  const [createdProfileAppId, setCreatedProfileAppId] = useState<string | null>(null);
+  const [connectPath, setConnectPath] = useState<ConnectPath>(mode === "reauthorize" ? "reauthorize" : "automatic");
   const [authorizedAccount, setAuthorizedAccount] = useState<AuthorizedAccount | null>(null);
   const [runtimeReloadPending, setRuntimeReloadPending] = useState(false);
-  const beginDeviceRef = useRef<(profileId: string) => Promise<Session | null>>(async () => null);
   const completionRef = useRef({ refreshAccounts, refetchProfiles: profiles.refetch, onConnected });
   completionRef.current = { refreshAccounts, refetchProfiles: profiles.refetch, onConnected };
 
@@ -128,21 +134,15 @@ export function AccountConnectPanel({
           return;
         }
         if (status === "registered") {
-          setPhase("preparing_account_auth");
           const profile = result.app_profile as AppProfile | undefined;
-          if (profile?.id) setCreatedProfileId(profile.id);
-          const nextSession = result.next_session as Session | undefined;
-          if (nextSession?.session_id) {
-            setSessionKind("device");
-            setSession(nextSession);
-            setPhase("authorizing_account");
-            return;
-          }
-          if (profile?.id) {
-            await beginDeviceRef.current(profile.id);
-            return;
-          }
-          throw new Error("应用创建成功，但未取得账号登录会话");
+          if (!profile?.id) throw new Error("应用创建成功，但未取得应用配置");
+          setCreatedProfileId(profile.id);
+          setCreatedProfileAppId(profile.app_id || null);
+          setSession(null);
+          setSessionKind(null);
+          setPhase("app_registered");
+          await completionRef.current.refetchProfiles();
+          return;
         }
         if (status === "authorized") {
           setAuthorizedAccount((result.account as AuthorizedAccount | undefined) ?? null);
@@ -211,12 +211,17 @@ export function AccountConnectPanel({
     }
   };
 
-  const beginRegistration = () => startSession(
-    "/app-profiles/registration-sessions",
-    { brand: "feishu" },
-    "registration",
-    "registering_app",
-  );
+  const beginRegistration = () => {
+    setConnectPath("automatic");
+    setCreatedProfileId(null);
+    setCreatedProfileAppId(null);
+    return startSession(
+      "/app-profiles/registration-sessions",
+      { brand: "feishu" },
+      "registration",
+      "registering_app",
+    );
+  };
 
   const beginDevice = (profileId: string) => startSession(
     "/auth/device-sessions",
@@ -224,13 +229,29 @@ export function AccountConnectPanel({
     "device",
     "authorizing_account",
   );
-  beginDeviceRef.current = beginDevice;
+
+  const beginExistingDevice = (profileId: string) => {
+    setConnectPath("existing");
+    setCreatedProfileId(profileId);
+    return beginDevice(profileId);
+  };
+
+  const continueSecondScan = async () => {
+    if (!createdProfileId) {
+      setError("应用配置不存在，请重新开始第 1 次扫码。");
+      return;
+    }
+    setConnectPath("automatic");
+    setPhase("preparing_account_auth");
+    await beginDevice(createdProfileId);
+  };
 
   const beginReauthorize = () => {
     if (!accountId) {
       setError("缺少需要重新授权的账号。");
       return Promise.resolve(null);
     }
+    setConnectPath("reauthorize");
     return startSession(
       `/accounts/${accountId}/reauthorize-sessions`,
       null,
@@ -262,6 +283,9 @@ export function AccountConnectPanel({
     setBusy(true);
     try {
       await completionRef.current.refreshAccounts();
+      if (mode === "add" && authorizedAccount?.id) {
+        await switchAccount(authorizedAccount.id);
+      }
       completionRef.current.onConnected?.();
     } catch (err) {
       setPhase("failed");
@@ -286,6 +310,8 @@ export function AccountConnectPanel({
       });
       setAppSecret("");
       setCreatedProfileId(profile.id);
+      setCreatedProfileAppId(profile.app_id);
+      setConnectPath("manual");
       await profiles.refetch();
       await beginDevice(profile.id);
     } catch (err) {
@@ -297,6 +323,7 @@ export function AccountConnectPanel({
   };
 
   if (phase === "authorized") {
+    const organizationName = authorizedAccount?.account_alias || authorizedAccount?.tenant_name || targetAccount?.account_alias || targetAccount?.tenant_name;
     const accountName = authorizedAccount?.account_name || targetAccount?.account_name || "飞书账号";
     return (
       <div data-account-connect-root="true" data-connect-phase="authorized">
@@ -309,7 +336,7 @@ export function AccountConnectPanel({
           <p className="mt-2 text-sm leading-6 text-[#52657a]">
             {mode === "reauthorize"
               ? `${accountName} 已完成重新授权，原账号、任务、状态和历史数据保持不变。`
-              : `${accountName} 已连接到 LarkSync，可以开始创建同步任务。`}
+              : `${organizationName ? `${organizationName} · ` : ""}${accountName} 已连接到 LarkSync，可以开始创建同步任务。`}
           </p>
           <div className="mx-auto mt-4 flex w-fit items-center gap-2 rounded-full border border-[#b9e8d8] bg-white px-3 py-1.5 text-xs font-semibold text-[#047857]">
             <span className="h-2 w-2 rounded-full bg-[#10b981]" />
@@ -317,8 +344,27 @@ export function AccountConnectPanel({
           </div>
           {runtimeReloadPending ? <p className="mt-3 text-xs text-[#b45309]">授权信息已保存；后台连接将在下次启动时自动加载。</p> : null}
           <button type="button" disabled={busy} onClick={() => void finishAuthorized()} className="mt-5 rounded-xl bg-[#3370ff] px-7 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(51,112,255,0.22)] disabled:opacity-50">
-            {busy ? "正在完成…" : "完成"}
+            {busy ? "正在完成…" : mode === "add" ? "进入该组织" : "完成"}
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "app_registered" && createdProfileId) {
+    return (
+      <div data-account-connect-root="true" data-connect-phase="app_registered">
+        <div className="rounded-2xl border border-[#a7e2cf] bg-[linear-gradient(135deg,#f2fbf8,#f7fbff)] p-6 text-center shadow-[0_16px_40px_rgba(16,185,129,0.10)]">
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#dcfce7] text-[#059669]"><IconCircleCheck className="h-8 w-8" /></span>
+          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-[#047857]">步骤 1 / 2 · 创建应用</p>
+          <h2 className="mt-2 text-2xl font-semibold text-[#102033]">第 1 步已完成</h2>
+          <p className="mt-2 text-sm leading-6 text-[#52657a]">LarkSync 个人应用已经创建并安全保存。接下来还需要第 2 次扫码，授权飞书账号和文档范围。</p>
+          {createdProfileAppId ? <p className="mx-auto mt-4 w-fit rounded-full border border-[#b9e8d8] bg-white px-3 py-1.5 font-mono text-xs text-[#047857]">应用：{createdProfileAppId.slice(0, 8)}••••</p> : null}
+          <p className="mt-3 text-xs leading-5 text-[#71869d]">飞书后台可能将官方快速注册应用显示为“CLI应用”，不影响 LarkSync 登录和同步。</p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <button type="button" disabled={busy} onClick={() => void continueSecondScan()} className="rounded-xl bg-[#3370ff] px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy ? "正在准备…" : "继续第 2 次扫码"}</button>
+            <button type="button" onClick={() => setPhase("choose_method")} className="rounded-xl border border-[#cbd9ea] px-5 py-2.5 text-sm font-semibold text-[#52657a]">稍后继续</button>
+          </div>
         </div>
       </div>
     );
@@ -333,9 +379,10 @@ export function AccountConnectPanel({
           </div>
         </div>
         <div className="flex flex-col justify-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#3370ff]">{sessionKind === "registration" ? "步骤 1 / 2 · 创建个人应用" : mode === "reauthorize" ? "重新授权账号" : "步骤 2 / 2 · 登录账号"}</p>
-          <h2 className="mt-2 text-2xl font-semibold text-[#102033]">使用飞书扫码确认</h2>
-          <p className="mt-3 text-sm leading-6 text-[#52657a]">{sessionKind === "registration" ? "第一次扫码用于创建 LarkSync 个人应用，完成后会自动显示第二个登录二维码。" : "确认后本页会自动完成，不需要复制授权码。"}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#3370ff]">{sessionKind === "registration" ? "步骤 1 / 2 · 创建应用" : connectPath === "automatic" ? "步骤 2 / 2 · 授权账号" : connectPath === "reauthorize" ? "重新授权 · 本次只扫码 1 次" : "账号授权 · 本次只扫码 1 次"}</p>
+          <h2 className="mt-2 text-2xl font-semibold text-[#102033]">{sessionKind === "registration" ? "第 1 次扫码：创建 LarkSync 个人应用" : connectPath === "automatic" ? "第 2 次扫码：授权飞书账号" : connectPath === "reauthorize" ? "扫码重新授权飞书账号" : "扫码授权飞书账号"}</h2>
+          {connectPath === "automatic" && sessionKind === "device" ? <p className="mt-3 rounded-lg bg-[#ecfdf5] px-3 py-2 text-xs font-semibold text-[#047857]">✓ 第 1 步已完成：个人应用已创建</p> : null}
+          <p className="mt-3 text-sm leading-6 text-[#52657a]">{sessionKind === "registration" ? "本次扫码只用于创建应用配置，还没有授权你的文档。成功后仍需进行第 2 次扫码。" : "确认账号身份和权限后，本页会自动完成，不需要复制授权码。"}</p>
           {session.user_code ? <div className="mt-4 rounded-xl border border-[#d6e3f3] bg-[#f7faff] px-4 py-3 font-mono text-sm text-[#102033]">备用验证码：{session.user_code}</div> : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" className="rounded-lg border border-[#b9cce2] px-4 py-2 text-sm font-semibold text-[#3370ff] hover:bg-[#eef5ff]" onClick={() => window.open(session.verification_uri_complete, "_blank", "noopener,noreferrer")}>在浏览器中打开</button>
@@ -366,10 +413,11 @@ export function AccountConnectPanel({
   return (
     <div data-account-connect-root="true" data-connect-phase={phase}>
       <div className="rounded-2xl border border-[#cfe0f5] bg-[linear-gradient(135deg,#f7fbff,#edf5ff)] p-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#3370ff]">推荐 · 两步扫码</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#3370ff]">推荐 · 明确的两次扫码</p>
         <h2 className="mt-2 text-xl font-semibold text-[#102033]">自动创建应用并登录账号</h2>
-        <p className="mt-2 text-sm leading-6 text-[#52657a]">第一次扫码创建个人应用，第二次扫码登录账号。两个步骤会在当前窗口连续完成。</p>
-        <button data-testid="start-two-step-connect" type="button" disabled={busy} onClick={() => void beginRegistration()} className="mt-4 rounded-xl bg-[#3370ff] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(51,112,255,0.22)] disabled:opacity-50">{busy ? "正在准备…" : "开始两步扫码"}</button>
+        <div className="mt-3 grid gap-2 text-sm leading-6 text-[#52657a]"><p><strong className="text-[#102033]">第 1 次：</strong>创建供 LarkSync 使用的个人应用。</p><p><strong className="text-[#102033]">第 2 次：</strong>授权当前飞书账号和文档权限。</p></div>
+        <p className="mt-2 text-xs text-[#71869d]">两次扫码用途不同。已有应用和手动配置都只需要扫码 1 次。</p>
+        <button data-testid="start-two-step-connect" type="button" disabled={busy} onClick={() => void beginRegistration()} className="mt-4 rounded-xl bg-[#3370ff] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(51,112,255,0.22)] disabled:opacity-50">{busy ? "正在准备…" : "开始第 1 次扫码"}</button>
       </div>
 
       {(profiles.data?.length ?? 0) > 0 ? (
@@ -378,7 +426,7 @@ export function AccountConnectPanel({
           <p className="mt-1 text-xs text-[#71869d]">跳过应用创建，直接进入账号扫码。</p>
           <div className="mt-3 grid gap-2">
             {profiles.data?.map((profile) => (
-              <button key={profile.id} type="button" disabled={busy} onClick={() => void beginDevice(profile.id)} className="flex items-center justify-between rounded-xl border border-[#d6e3f3] px-4 py-3 text-left hover:border-[#3370ff] hover:bg-[#f7faff] disabled:opacity-50">
+              <button key={profile.id} type="button" disabled={busy} onClick={() => void beginExistingDevice(profile.id)} className="flex items-center justify-between rounded-xl border border-[#d6e3f3] px-4 py-3 text-left hover:border-[#3370ff] hover:bg-[#f7faff] disabled:opacity-50">
                 <span><span className="block text-sm font-semibold text-[#102033]">{profile.display_name || profile.app_id}</span><span className="mt-1 block text-xs text-[#71869d]">{profile.source === "official_registration" ? "自动创建" : profile.source === "legacy" ? "升级迁移" : "手动配置"} · {profile.brand === "lark" ? "Lark" : "飞书"}</span></span>
                 <span className="text-sm font-semibold text-[#3370ff]">扫码登录</span>
               </button>
