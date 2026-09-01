@@ -50,6 +50,7 @@ class SyncTaskUpdateRequest(BaseModel):
 
 class SyncTaskResponse(BaseModel):
     id: str
+    account_id: str
     name: str | None
     local_path: str
     cloud_folder_token: str

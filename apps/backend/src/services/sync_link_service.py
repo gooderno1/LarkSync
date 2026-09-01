@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.db.models import SyncLink
 from src.db.session import get_session_maker
+from src.core.account_context import current_account_id
+from src.db.models import LEGACY_ACCOUNT_ID
 
 
 @dataclass
@@ -28,6 +30,7 @@ class SyncLinkItem:
     local_resource_signature: str | None = None
     resource_sync_revision: str | None = None
     placeholder_refresh_revision: str | None = None
+    account_id: str = LEGACY_ACCOUNT_ID
 
 
 class SyncLinkService:
@@ -35,6 +38,10 @@ class SyncLinkService:
         self, session_maker: async_sessionmaker[AsyncSession] | None = None
     ) -> None:
         self._session_maker = session_maker
+
+    @staticmethod
+    def _account_id() -> str:
+        return current_account_id() or LEGACY_ACCOUNT_ID
 
     async def upsert_link(
         self,
@@ -57,7 +64,8 @@ class SyncLinkService:
         updated_at = updated_at if updated_at is not None else time.time()
         try:
             async with session_maker() as session:
-                record = await session.get(SyncLink, local_path)
+                account_id = self._account_id()
+                record = await session.get(SyncLink, (account_id, local_path))
                 if record:
                     record.cloud_token = cloud_token
                     record.cloud_type = cloud_type
@@ -84,6 +92,7 @@ class SyncLinkService:
                 else:
                     session.add(
                         SyncLink(
+                            account_id=account_id,
                             local_path=local_path,
                             cloud_token=cloud_token,
                             cloud_type=cloud_type,
@@ -104,6 +113,7 @@ class SyncLinkService:
         except SQLAlchemyError:
             logger.exception("同步映射写入失败，已跳过持久化: {}", local_path)
         return SyncLinkItem(
+            account_id=self._account_id(),
             local_path=local_path,
             cloud_token=cloud_token,
             cloud_type=cloud_type,
@@ -124,7 +134,9 @@ class SyncLinkService:
         session_maker = self._session_maker or get_session_maker()
         try:
             async with session_maker() as session:
-                record = await session.get(SyncLink, local_path)
+                record = await session.get(
+                    SyncLink, (self._account_id(), local_path)
+                )
                 if not record:
                     return None
                 return self._to_item(record)
@@ -136,7 +148,10 @@ class SyncLinkService:
         session_maker = self._session_maker or get_session_maker()
         try:
             async with session_maker() as session:
-                stmt = select(SyncLink).where(SyncLink.task_id == task_id)
+                stmt = select(SyncLink).where(
+                    SyncLink.account_id == self._account_id(),
+                    SyncLink.task_id == task_id,
+                )
                 result = await session.execute(stmt)
                 return [self._to_item(row) for row in result.scalars().all()]
         except SQLAlchemyError:
@@ -147,7 +162,9 @@ class SyncLinkService:
         session_maker = self._session_maker or get_session_maker()
         try:
             async with session_maker() as session:
-                stmt = select(SyncLink)
+                stmt = select(SyncLink).where(
+                    SyncLink.account_id == self._account_id()
+                )
                 result = await session.execute(stmt)
                 return [self._to_item(row) for row in result.scalars().all()]
         except SQLAlchemyError:
@@ -159,7 +176,10 @@ class SyncLinkService:
         session_maker = self._session_maker or get_session_maker()
         try:
             async with session_maker() as session:
-                stmt = delete(SyncLink).where(SyncLink.task_id == task_id)
+                stmt = delete(SyncLink).where(
+                    SyncLink.account_id == self._account_id(),
+                    SyncLink.task_id == task_id,
+                )
                 result = await session.execute(stmt)
                 await session.commit()
                 count = result.rowcount or 0  # type: ignore[union-attr]
@@ -173,7 +193,9 @@ class SyncLinkService:
         session_maker = self._session_maker or get_session_maker()
         try:
             async with session_maker() as session:
-                record = await session.get(SyncLink, local_path)
+                record = await session.get(
+                    SyncLink, (self._account_id(), local_path)
+                )
                 if not record:
                     return False
                 await session.delete(record)
@@ -186,6 +208,7 @@ class SyncLinkService:
     @staticmethod
     def _to_item(record: SyncLink) -> SyncLinkItem:
         return SyncLinkItem(
+            account_id=record.account_id,
             local_path=record.local_path,
             cloud_token=record.cloud_token,
             cloud_type=record.cloud_type,

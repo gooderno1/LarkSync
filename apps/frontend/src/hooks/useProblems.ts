@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiFetch } from "../lib/api";
+import { apiFetch, getActiveAccountId } from "../lib/api";
 import type {
   ProblemActionRecord,
   ProblemDetail,
@@ -40,8 +40,9 @@ export function buildProblemQuery(filters: ProblemFilters): string {
 }
 
 export function useProblemSummary(enabled = true) {
+  const accountId = getActiveAccountId();
   const query = useQuery<ProblemSummary>({
-    queryKey: ["problems-summary"],
+    queryKey: ["problems-summary", accountId],
     queryFn: () => apiFetch<ProblemSummary>("/problems/summary?refresh=false"),
     enabled,
     placeholderData: (previous) => previous,
@@ -60,8 +61,9 @@ export function useProblems(
   enabled = true,
 ) {
   const queryClient = useQueryClient();
+  const accountId = getActiveAccountId();
   const listQuery = useQuery<ProblemListResponse>({
-    queryKey: ["problems", filters],
+    queryKey: ["problems", accountId, filters],
     queryFn: () => apiFetch<ProblemListResponse>(buildProblemQuery(filters)),
     enabled,
     placeholderData: (previous) => previous,
@@ -69,7 +71,7 @@ export function useProblems(
     refetchInterval: enabled ? 10_000 : false,
   });
   const summaryQuery = useQuery<ProblemSummary>({
-    queryKey: ["problems-summary"],
+    queryKey: ["problems-summary", accountId],
     queryFn: () => apiFetch<ProblemSummary>("/problems/summary?refresh=false"),
     enabled,
     placeholderData: (previous) => previous,
@@ -77,7 +79,7 @@ export function useProblems(
     refetchInterval: enabled ? 10_000 : false,
   });
   const detailQuery = useQuery<ProblemDetail>({
-    queryKey: ["problem-detail", selectedProblemId],
+    queryKey: ["problem-detail", accountId, selectedProblemId],
     queryFn: () => apiFetch<ProblemDetail>(`/problems/${selectedProblemId}`),
     enabled: enabled && Boolean(selectedProblemId),
     placeholderData: (previous) => previous,

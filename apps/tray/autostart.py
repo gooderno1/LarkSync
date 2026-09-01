@@ -209,6 +209,8 @@ def _win_read_shortcut_spec() -> dict[str, str] | None:
         [_win_resolve_powershell_executable(), "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     if result.returncode != 0:
@@ -286,6 +288,8 @@ def _win_enable() -> bool:
         [_win_resolve_powershell_executable(), "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     return result.returncode == 0

@@ -157,6 +157,22 @@ def test_file_token_store_clear(tmp_path) -> None:
     assert store.get() is None
 
 
+def test_file_token_store_isolates_accounts_when_env_path_is_configured(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("LARKSYNC_TOKEN_FILE", str(tmp_path / "tokens.json"))
+    first = FileTokenStore(account_id="account-a")
+    second = FileTokenStore(account_id="account-b")
+
+    first.set(TokenData(access_token="token-a", refresh_token="", expires_at=None))
+    second.set(TokenData(access_token="token-b", refresh_token="", expires_at=None))
+
+    assert first.get() is not None and first.get().access_token == "token-a"
+    assert second.get() is not None and second.get().access_token == "token-b"
+    assert (tmp_path / "tokens.account-a.json").is_file()
+    assert (tmp_path / "tokens.account-b.json").is_file()
+
+
 def test_get_token_store_file(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("LARKSYNC_TOKEN_STORE", "file")
     monkeypatch.setenv("LARKSYNC_TOKEN_FILE", str(tmp_path / "tokens.json"))

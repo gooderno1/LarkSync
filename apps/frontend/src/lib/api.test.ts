@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getCurrentAppUrl, getLoginUrl } from "./api";
+import { apiFetch, getCurrentAppUrl, getLoginUrl } from "./api";
 
 describe("api helpers", () => {
   afterEach(() => {
@@ -23,5 +23,23 @@ describe("api helpers", () => {
   it("falls back to the auth endpoint outside a browser window", () => {
     expect(getCurrentAppUrl()).toBe("");
     expect(getLoginUrl()).toBe("/auth/login");
+  });
+
+  it("binds every scoped request to the active account", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("window", {
+      localStorage: { getItem: () => "account-a" },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/sync/tasks");
+
+    const request = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(request.headers).get("X-LarkSync-Account-ID")).toBe("account-a");
   });
 });

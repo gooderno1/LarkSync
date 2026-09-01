@@ -97,6 +97,31 @@ async def test_sync_run_event_service_append_and_filter(tmp_path) -> None:
     assert [item.timestamp for item in items] == [2.0]
 
 
+@pytest.mark.asyncio
+async def test_sync_run_event_service_filters_by_account(tmp_path) -> None:
+    db_url = f"sqlite+aiosqlite:///{(tmp_path / 'accounts.db').as_posix()}"
+    await init_db(db_url)
+    service = SyncRunEventService(session_maker=get_session_maker(db_url))
+    await service.append_batch(
+        [
+            SyncEventRecord(1.0, "task-a", "任务A", "uploaded", "/a", account_id="account-a"),
+            SyncEventRecord(2.0, "task-b", "任务B", "uploaded", "/b", account_id="account-b"),
+        ]
+    )
+
+    total, items = await service.read_events(
+        limit=10,
+        offset=0,
+        status="",
+        search="",
+        task_id="",
+        account_id="account-b",
+    )
+
+    assert total == 1
+    assert [item.account_id for item in items] == ["account-b"]
+
+
 def test_sync_run_event_filters_keep_indexed_columns_unwrapped() -> None:
     filters = SyncRunEventService._build_filters(
         status="FAILED",

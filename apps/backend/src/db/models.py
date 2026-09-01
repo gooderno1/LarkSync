@@ -1,12 +1,103 @@
-from sqlalchemy import Boolean, Float, Index, Integer, String, Text
+from sqlalchemy import Boolean, Float, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from src.core.account_context import current_account_id
+
 from .base import Base
+
+
+LEGACY_ACCOUNT_ID = "legacy-default-account"
+
+
+def scoped_account_id() -> str:
+    """为同步运行中新建的所有领域记录注入当前账户。"""
+    return current_account_id() or LEGACY_ACCOUNT_ID
+
+
+class AppProfile(Base):
+    __tablename__ = "app_profiles"
+    __table_args__ = (
+        UniqueConstraint("brand", "app_id", name="uq_app_profiles_brand_app_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    brand: Mapped[str] = mapped_column(String, nullable=False, default="feishu", index=True)
+    app_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    source: Mapped[str] = mapped_column(String, nullable=False, default="manual")
+    secret_ref: Mapped[str] = mapped_column(String, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class Account(Base):
+    __tablename__ = "accounts"
+    __table_args__ = (
+        UniqueConstraint(
+            "brand",
+            "app_profile_id",
+            "open_id",
+            name="uq_accounts_brand_profile_open_id",
+        ),
+        Index("idx_accounts_state_updated", "state", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    app_profile_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    brand: Mapped[str] = mapped_column(String, nullable=False, default="feishu")
+    open_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    account_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tenant_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    state: Mapped[str] = mapped_column(String, nullable=False, default="connected", index=True)
+    granted_scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_auth_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+    removed_at: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class UiPreference(Base):
+    __tablename__ = "ui_preferences"
+
+    device_id: Mapped[str] = mapped_column(String, primary_key=True)
+    active_account_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    updated_at: Mapped[float] = mapped_column(Float, nullable=False)
+
+
+class NotificationRecord(Base):
+    __tablename__ = "notifications"
+    __table_args__ = (
+        Index("idx_notifications_account_read_created", "account_id", "read_at", "created_at"),
+        Index("idx_notifications_account_severity", "account_id", "severity", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String, nullable=False, default="info", index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    source_kind: Mapped[str | None] = mapped_column(String, nullable=True)
+    source_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    task_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    action_target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[float] = mapped_column(Float, nullable=False, index=True)
+    read_at: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
 
 
 class SyncMapping(Base):
     __tablename__ = "sync_mappings"
 
+    account_id: Mapped[str] = mapped_column(
+        String,
+        primary_key=True,
+        default=scoped_account_id,
+        server_default=LEGACY_ACCOUNT_ID,
+        index=True,
+    )
     file_hash: Mapped[str] = mapped_column(String, primary_key=True)
     feishu_token: Mapped[str] = mapped_column(String, index=True)
     local_path: Mapped[str] = mapped_column(String, nullable=False)
@@ -17,6 +108,9 @@ class SyncMapping(Base):
 class SyncLink(Base):
     __tablename__ = "sync_links"
 
+    account_id: Mapped[str] = mapped_column(
+        String, primary_key=True, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True
+    )
     local_path: Mapped[str] = mapped_column(String, primary_key=True)
     cloud_token: Mapped[str] = mapped_column(String, index=True)
     cloud_type: Mapped[str] = mapped_column(String, nullable=False)
@@ -43,6 +137,7 @@ class SyncTombstone(Base):
     __tablename__ = "sync_tombstones"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     task_id: Mapped[str] = mapped_column(String, index=True)
     local_path: Mapped[str] = mapped_column(String, index=True)
     cloud_token: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
@@ -59,6 +154,7 @@ class ConflictRecord(Base):
     __tablename__ = "conflicts"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     local_path: Mapped[str] = mapped_column(String, nullable=False)
     cloud_token: Mapped[str] = mapped_column(String, nullable=False, index=True)
     local_hash: Mapped[str] = mapped_column(String, nullable=False)
@@ -77,6 +173,7 @@ class SyncTask(Base):
     __tablename__ = "sync_tasks"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     name: Mapped[str | None] = mapped_column(String, nullable=True)
     local_path: Mapped[str] = mapped_column(String, nullable=False)
     cloud_folder_token: Mapped[str] = mapped_column(String, nullable=False)
@@ -113,6 +210,7 @@ class SyncRun(Base):
     )
 
     run_id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     task_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     state: Mapped[str] = mapped_column(String, nullable=False, default="running")
     trigger_source: Mapped[str] = mapped_column(String, nullable=False, default="manual")
@@ -141,6 +239,7 @@ class SyncTaskCheckState(Base):
 
     task_id: Mapped[str] = mapped_column(String, primary_key=True)
     direction: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     state: Mapped[str] = mapped_column(String, nullable=False, default="idle", index=True)
     trigger_source: Mapped[str] = mapped_column(String, nullable=False, default="scheduled_download")
     started_at: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
@@ -161,6 +260,7 @@ class SyncRunEvent(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     task_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     task_name: Mapped[str] = mapped_column(String, nullable=False, default="未命名任务")
     run_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True, default=None)
@@ -180,6 +280,7 @@ class ProblemRecord(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     fingerprint: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
     category: Mapped[str] = mapped_column(String, nullable=False, index=True)
     severity: Mapped[str] = mapped_column(String, nullable=False, index=True)
@@ -216,6 +317,7 @@ class ProblemRecoveryFact(Base):
     )
 
     event_id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     task_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     resolution_key: Mapped[str] = mapped_column(String, nullable=False, index=True)
     operation_family: Mapped[str] = mapped_column(String, nullable=False, index=True)
@@ -241,6 +343,7 @@ class ProblemOccurrence(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     problem_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     source_kind: Mapped[str] = mapped_column(String, nullable=False)
     source_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
@@ -257,6 +360,7 @@ class ProblemActionRecord(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     problem_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     action_key: Mapped[str] = mapped_column(String, nullable=False)
     requested_at: Mapped[float] = mapped_column(Float, nullable=False)
@@ -280,6 +384,7 @@ class SyncBlockState(Base):
     __tablename__ = "sync_block_states"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, default=scoped_account_id, server_default=LEGACY_ACCOUNT_ID, index=True)
     file_hash: Mapped[str] = mapped_column(String, index=True)
     local_path: Mapped[str] = mapped_column(String, nullable=False)
     cloud_token: Mapped[str] = mapped_column(String, index=True)

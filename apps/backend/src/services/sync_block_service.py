@@ -8,6 +8,8 @@ from typing import Iterable
 from sqlalchemy import delete, select
 
 from src.db.models import SyncBlockState
+from src.db.models import LEGACY_ACCOUNT_ID
+from src.core.account_context import current_account_id
 from src.db.session import get_session_maker
 
 
@@ -27,10 +29,15 @@ class SyncBlockService:
     def __init__(self) -> None:
         self._session_maker = get_session_maker()
 
+    @staticmethod
+    def _account_id() -> str:
+        return current_account_id() or LEGACY_ACCOUNT_ID
+
     async def list_blocks(self, local_path: str, cloud_token: str) -> list[BlockStateItem]:
         async with self._session_maker() as session:
             result = await session.execute(
                 select(SyncBlockState)
+                .where(SyncBlockState.account_id == self._account_id())
                 .where(SyncBlockState.local_path == local_path)
                 .where(SyncBlockState.cloud_token == cloud_token)
                 .order_by(SyncBlockState.block_index)
@@ -56,6 +63,7 @@ class SyncBlockService:
         async with self._session_maker() as session:
             await session.execute(
                 delete(SyncBlockState)
+                .where(SyncBlockState.account_id == self._account_id())
                 .where(SyncBlockState.local_path == local_path)
                 .where(SyncBlockState.cloud_token == cloud_token)
             )
@@ -63,6 +71,7 @@ class SyncBlockService:
             for item in items:
                 record = SyncBlockState(
                     id=str(uuid.uuid4()),
+                    account_id=self._account_id(),
                     file_hash=item.file_hash,
                     local_path=item.local_path,
                     cloud_token=item.cloud_token,

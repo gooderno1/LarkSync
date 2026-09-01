@@ -117,6 +117,7 @@ export type ProblemSummary = {
 
 export type SyncTask = {
   id: string;
+  account_id?: string;
   name?: string | null;
   local_path: string;
   cloud_folder_token: string;
@@ -133,6 +134,48 @@ export type SyncTask = {
   created_at: number;
   updated_at: number;
   last_run_at?: number | null;
+};
+
+export type AccountSummary = {
+  id: string;
+  app_profile_id: string;
+  brand: "feishu" | "lark";
+  open_id: string;
+  account_name?: string | null;
+  avatar_url?: string | null;
+  tenant_name?: string | null;
+  state: "connected" | "auth_required" | "migration_pending" | "removed";
+  granted_scopes: string[];
+  paused: boolean;
+  unread_total: number;
+  unread_errors: number;
+  unread_messages: number;
+  is_active: boolean;
+};
+
+export type AppProfile = {
+  id: string;
+  brand: "feishu" | "lark";
+  app_id: string;
+  display_name?: string | null;
+  source: string;
+  enabled: boolean;
+  has_secret: boolean;
+};
+
+export type AccountNotification = {
+  id: string;
+  account_id: string;
+  category: string;
+  severity: string;
+  title: string;
+  body: string;
+  source_kind?: string | null;
+  source_id?: string | null;
+  task_id?: string | null;
+  action_target?: string | null;
+  created_at: number;
+  read_at?: number | null;
 };
 
 export type SyncFileEvent = {

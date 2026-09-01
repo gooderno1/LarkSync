@@ -3,21 +3,22 @@
 /* ------------------------------------------------------------------ */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../lib/api";
+import { apiFetch, getActiveAccountId } from "../lib/api";
 import type { SyncTask, SyncTaskStatus } from "../types";
 
 export function useTasks() {
   const qc = useQueryClient();
+  const accountId = getActiveAccountId();
 
   const tasksQuery = useQuery<SyncTask[]>({
-    queryKey: ["tasks"],
+    queryKey: ["tasks", accountId],
     queryFn: () => apiFetch<SyncTask[]>("/sync/tasks"),
     placeholderData: [],
     staleTime: 10_000,
   });
 
   const statusQuery = useQuery<Record<string, SyncTaskStatus>>({
-    queryKey: ["task-status"],
+    queryKey: ["task-status", accountId],
     queryFn: async () => {
       const data = await apiFetch<SyncTaskStatus[]>("/sync/tasks/status");
       if (!Array.isArray(data)) return {};
@@ -65,7 +66,7 @@ export function useTasks() {
         body: JSON.stringify({ sync_mode }),
       }),
     onSuccess: (updated: SyncTask) => {
-      qc.setQueryData<SyncTask[]>(["tasks"], (prev) =>
+      qc.setQueryData<SyncTask[]>(["tasks", accountId], (prev) =>
         (prev || []).map((t) => (t.id === updated.id ? updated : t))
       );
     },
@@ -123,7 +124,7 @@ export function useTasks() {
         body: JSON.stringify(patch),
       }),
     onSuccess: (updated: SyncTask) => {
-      qc.setQueryData<SyncTask[]>(["tasks"], (prev) =>
+      qc.setQueryData<SyncTask[]>(["tasks", accountId], (prev) =>
         (prev || []).map((task) => (task.id === updated.id ? updated : task))
       );
       qc.invalidateQueries({ queryKey: ["task-status"] });
@@ -138,7 +139,7 @@ export function useTasks() {
         body: JSON.stringify({ ignored_subpaths }),
       }),
     onSuccess: (updated: SyncTask) => {
-      qc.setQueryData<SyncTask[]>(["tasks"], (prev) =>
+      qc.setQueryData<SyncTask[]>(["tasks", accountId], (prev) =>
         (prev || []).map((t) => (t.id === updated.id ? updated : t))
       );
     },

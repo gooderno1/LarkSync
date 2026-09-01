@@ -92,7 +92,12 @@ async def list_tasks() -> list[SyncTaskResponse]:
 @router.get("/tasks/status", response_model=list[SyncTaskStatusResponse])
 async def list_task_status() -> list[SyncTaskStatusResponse]:
     statuses = runner.list_statuses()
-    return [SyncTaskStatusResponse.from_status(status) for status in statuses.values()]
+    visible_ids = {item.id for item in await service.list_tasks()}
+    return [
+        SyncTaskStatusResponse.from_status(status)
+        for task_id, status in statuses.items()
+        if task_id in visible_ids
+    ]
 
 
 @router.get("/tasks/overview", response_model=list[SyncTaskOverviewResponse])

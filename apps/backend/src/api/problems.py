@@ -31,6 +31,7 @@ class ProblemAvailableActionResponse(BaseModel):
 
 class ProblemResponse(BaseModel):
     id: str
+    account_id: str
     fingerprint: str
     category: str
     severity: str

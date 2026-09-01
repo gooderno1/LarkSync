@@ -15,6 +15,14 @@ export function getCurrentAppUrl(): string {
   return window.location.href;
 }
 
+export function getActiveAccountId(): string {
+  try {
+    return window.localStorage.getItem("larksync.active-account-id") || "";
+  } catch {
+    return "";
+  }
+}
+
 export function getLoginUrl(): string {
   const redirect = getCurrentAppUrl();
   return redirect
@@ -27,7 +35,16 @@ export async function apiFetch<T = unknown>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const res = await fetch(apiUrl(path), init);
+  const headers = new Headers(init?.headers);
+  try {
+    const accountId = getActiveAccountId();
+    if (accountId && !headers.has("X-LarkSync-Account-ID")) {
+      headers.set("X-LarkSync-Account-ID", accountId);
+    }
+  } catch {
+    // SSR/隐私模式下继续使用后端记录的活动账户。
+  }
+  const res = await fetch(apiUrl(path), { ...init, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(

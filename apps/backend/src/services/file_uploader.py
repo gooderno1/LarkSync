@@ -11,6 +11,9 @@ from src.db.models import SyncMapping
 from src.db.session import get_session_maker
 from src.services.feishu_client import FeishuClient
 from src.services.file_hash import calculate_file_hash
+from src.services.account_runtime import current_open_base_url
+from src.core.account_context import current_account_id
+from src.db.models import LEGACY_ACCOUNT_ID
 
 
 class FileUploadError(RuntimeError):
@@ -27,12 +30,12 @@ class FileUploader:
     def __init__(
         self,
         client: FeishuClient | None = None,
-        base_url: str = "https://open.feishu.cn",
+        base_url: str | None = None,
         simple_upload_limit: int = 20 * 1024 * 1024,
         session_maker: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self._client = client or FeishuClient()
-        self._base_url = base_url.rstrip("/")
+        self._base_url = (base_url or current_open_base_url()).rstrip("/")
         self._simple_upload_limit = simple_upload_limit
         self._session_maker = session_maker
 
@@ -149,7 +152,8 @@ class FileUploader:
     ) -> None:
         session_maker = self._session_maker or get_session_maker()
         async with session_maker() as session:
-            mapping = await session.get(SyncMapping, file_hash)
+            account_id = current_account_id() or LEGACY_ACCOUNT_ID
+            mapping = await session.get(SyncMapping, (account_id, file_hash))
             if mapping:
                 mapping.feishu_token = file_token
                 mapping.local_path = local_path
@@ -157,6 +161,7 @@ class FileUploader:
             else:
                 session.add(
                     SyncMapping(
+                        account_id=account_id,
                         file_hash=file_hash,
                         feishu_token=file_token,
                         local_path=local_path,

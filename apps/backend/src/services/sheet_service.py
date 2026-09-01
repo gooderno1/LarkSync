@@ -5,6 +5,7 @@ from typing import Any
 from urllib.parse import quote
 
 from src.services.feishu_client import FeishuClient
+from src.services.account_runtime import current_open_base_url
 
 
 @dataclass(frozen=True)
@@ -19,10 +20,10 @@ class SheetService:
     def __init__(
         self,
         client: FeishuClient | None = None,
-        base_url: str = "https://open.feishu.cn",
+        base_url: str | None = None,
     ) -> None:
         self._client = client or FeishuClient()
-        self._base_url = base_url.rstrip("/")
+        self._base_url = (base_url or current_open_base_url()).rstrip("/")
 
     async def list_sheet_ids(self, spreadsheet_token: str) -> list[str]:
         if not spreadsheet_token:

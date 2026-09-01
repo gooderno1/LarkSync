@@ -4,19 +4,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App, { getNavKeyFromHash } from "./App";
 
-const authState = vi.hoisted((): { connected: boolean; loading: boolean } => ({
+const authState = vi.hoisted((): { connected: boolean } => ({
   connected: false,
-  loading: false,
 }));
 
-vi.mock("./hooks/useAuth", () => ({
-  useAuth: () => authState,
-}));
-
-vi.mock("./hooks/useConfig", () => ({
-  useConfig: () => ({
-    config: { auth_client_id: "cli_123" },
-    configLoading: false,
+vi.mock("./hooks/useAccounts", () => ({
+  useAccounts: () => ({
+    activeAccount: authState.connected ? { id: "account-1", state: "connected" } : null,
+    loading: false,
   }),
 }));
 
@@ -34,8 +29,8 @@ vi.mock("./components/DesktopTopBar", () => ({
   DesktopTopBar: () => <div>Desktop Top Bar</div>,
 }));
 
-vi.mock("./components/OnboardingWizard", () => ({
-  OnboardingWizard: () => <div>Onboarding Wizard</div>,
+vi.mock("./components/AccountConnectPanel", () => ({
+  AccountConnectPanel: () => <div>Account Connect Panel</div>,
 }));
 
 vi.mock("./pages/DashboardPage", () => ({
@@ -84,7 +79,7 @@ describe("App smoke", () => {
 
     const html = renderToStaticMarkup(<App />);
 
-    expect(html).toContain("Onboarding Wizard");
+    expect(html).toContain("Account Connect Panel");
   });
 
   it("uses a binary local authorization state without permission-check banners", () => {

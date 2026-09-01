@@ -73,6 +73,24 @@ def test_sync_event_store_persists_and_filters(tmp_path: Path) -> None:
     assert items[0].path == "/tmp/b.md"
 
 
+def test_sync_event_store_filters_by_account(tmp_path: Path) -> None:
+    store = SyncEventStore(tmp_path / "sync-events.jsonl")
+    store.append(SyncEventRecord(1.0, "task-a", "任务A", "uploaded", "/a", account_id="account-a"))
+    store.append(SyncEventRecord(2.0, "task-b", "任务B", "uploaded", "/b", account_id="account-b"))
+
+    total, items = store.read_events(
+        limit=10,
+        offset=0,
+        status="",
+        search="",
+        task_id="",
+        account_id="account-a",
+    )
+
+    assert total == 1
+    assert [item.account_id for item in items] == ["account-a"]
+
+
 def test_sync_event_store_supports_multi_status_and_task_filters(tmp_path: Path) -> None:
     log_file = tmp_path / "sync-events.jsonl"
     store = SyncEventStore(log_file)

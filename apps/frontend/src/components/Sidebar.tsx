@@ -6,6 +6,7 @@ import type { NavKey } from "../types";
 import {
   IconActivity,
   IconActivityList,
+  IconBell,
   IconClock,
   IconCloud,
   IconConflicts,
@@ -17,6 +18,10 @@ import {
 import { cn } from "../lib/utils";
 import { formatShortTime } from "../lib/formatters";
 import { useDesktopStatus } from "../hooks/useDesktopStatus";
+import { useState } from "react";
+import { useAccounts } from "../hooks/useAccounts";
+import { AccountConnectPanel } from "./AccountConnectPanel";
+import { NotificationDrawer } from "./NotificationDrawer";
 
 type SidebarProps = {
   activeTab: NavKey;
@@ -52,6 +57,10 @@ const runtimeProfileLabels: Record<string, string> = {
 
 export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarProps) {
   const { status } = useDesktopStatus();
+  const { accounts, activeAccount, switchAccount } = useAccounts();
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [addAccountOpen, setAddAccountOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const runtimeProfileLabel = runtimeProfileLabels[status.runtime.profile];
 
   const renderNavItems = (items: SidebarItem[], compact = false) => items.map((item) => {
@@ -108,7 +117,24 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
           </div>
         ) : null}
 
-        <section data-sidebar-section="workspace" className="mt-5">
+        <section className="relative mt-3" data-sidebar-account-switcher="true">
+          <div className="flex items-center gap-2 rounded-xl border border-[#c9d8e8] bg-white p-2 shadow-[0_8px_24px_rgba(51,112,255,0.06)]">
+            <button type="button" onClick={() => setAccountMenuOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-[#f3f7fc]">
+              <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-[#eaf3ff] text-xs font-bold text-[#3370ff]">{(activeAccount?.account_name || "飞").slice(0, 1)}</span>
+              <span className="min-w-0"><span className="block truncate text-xs font-semibold text-[#102033]">{activeAccount?.account_name || "飞书账号"}</span><span className="block truncate text-[10px] text-[#71869d]">{activeAccount?.paused ? "同步已暂停" : "正在同步"}</span></span>
+              <span className="ml-auto text-[10px] text-[#71869d]">⌄</span>
+            </button>
+            <button type="button" aria-label="打开通知" onClick={() => setNotificationsOpen(true)} className="relative grid h-8 w-8 flex-none place-items-center rounded-lg border border-[#d8e4f1] text-[#52657a] hover:border-[#b9cde5] hover:bg-[#eef5ff] hover:text-[#3370ff]"><IconBell className="h-[17px] w-[17px]" />{activeAccount?.unread_total ? <span className="absolute -right-1.5 -top-1.5 min-w-4 rounded-full bg-[#e11d48] px-1 text-center text-[9px] font-bold leading-4 text-white">{activeAccount.unread_total > 99 ? "99+" : activeAccount.unread_total}</span> : null}</button>
+          </div>
+          {accountMenuOpen ? (
+            <div className="absolute left-0 right-0 top-[54px] z-40 rounded-xl border border-[#c9d8e8] bg-white p-2 shadow-xl">
+              {accounts.map((account) => <button key={account.id} type="button" onClick={() => { void switchAccount(account.id); setAccountMenuOpen(false); }} className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs hover:bg-[#eef5ff] ${account.id === activeAccount?.id ? "bg-[#f3f7ff] font-semibold text-[#3370ff]" : "text-[#334762]"}`}><span className="truncate">{account.account_name || "飞书账号"}</span>{account.unread_total ? <span className="rounded-full bg-[#fff1f2] px-1.5 text-[10px] text-[#be123c]">{account.unread_total}</span> : null}</button>)}
+              <button type="button" onClick={() => { setAddAccountOpen(true); setAccountMenuOpen(false); }} className="mt-1 w-full rounded-lg border border-dashed border-[#b9cce2] px-3 py-2 text-left text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]">＋ 添加账号</button>
+            </div>
+          ) : null}
+        </section>
+
+        <section data-sidebar-section="workspace" className="mt-4">
           <p className="px-3 text-[11px] font-semibold leading-4 uppercase tracking-[0.14em] text-[#71869d]">工作区</p>
           <nav className="mt-2 grid gap-2">{renderNavItems(workspaceItems)}</nav>
         </section>
@@ -137,6 +163,8 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
           <span>本地运行</span>
         </div>
       </div>
+      {addAccountOpen ? <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-[#102033]/25 p-6 backdrop-blur-[2px]" onMouseDown={() => setAddAccountOpen(false)}><div className="w-full max-w-3xl rounded-3xl border border-[#d6e3f3] bg-[#f8fbff] p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="mb-5 flex items-center justify-between"><div><h2 className="text-xl font-semibold text-[#102033]">添加飞书账号</h2><p className="mt-1 text-xs text-[#71869d]">新账号的凭据、任务和状态会独立保存</p></div><button type="button" onClick={() => setAddAccountOpen(false)} className="rounded-lg border border-[#cbd9ea] px-3 py-1.5 text-sm text-[#52657a]">关闭</button></div><AccountConnectPanel onConnected={() => setAddAccountOpen(false)} /></div></div> : null}
+      {notificationsOpen ? <NotificationDrawer open onClose={() => setNotificationsOpen(false)} /> : null}
     </aside>
   );
 }

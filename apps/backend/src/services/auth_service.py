@@ -18,6 +18,9 @@ from src.core.config import AppConfig, ConfigManager
 from src.core.paths import _default_app_data_dir
 from src.core.process_lock import InterProcessFileLock
 from src.core.security import TokenData, TokenStore, get_token_store
+from src.core.account_context import current_account_id
+from src.services.account_runtime import account_runtime_registry
+from src.services.device_flow_service import open_base_url
 
 
 class AuthError(RuntimeError):
@@ -57,11 +60,22 @@ class AuthService:
         http_client: httpx.AsyncClient | None = None,
         process_lock: ProcessLock | None = None,
     ) -> None:
-        self._config = config or ConfigManager.get().config
-        self._token_store = token_store or get_token_store()
+        account_id = current_account_id()
+        runtime = account_runtime_registry.get(account_id) if config is None else None
+        self._config = config or (
+            runtime.app_config() if runtime else ConfigManager.get().config
+        )
+        self._brand = (
+            runtime.brand
+            if runtime
+            else ("lark" if "larksuite.com" in self._config.auth_token_url else "feishu")
+        )
+        self._token_store = token_store or get_token_store(account_id)
         self._http_client = http_client
         self._process_lock = process_lock or InterProcessFileLock(
-            self._refresh_lock_path(self._config.auth_client_id)
+            self._refresh_lock_path(
+                f"{self._config.auth_client_id}-{account_id or 'legacy'}"
+            )
         )
 
     @staticmethod
@@ -189,6 +203,8 @@ class AuthService:
                     expires_at=latest.expires_at,
                     open_id=resolved_open_id,
                     account_name=resolved_account_name,
+                    scope=latest.scope,
+                    refresh_expires_at=latest.refresh_expires_at,
                 )
                 await asyncio.to_thread(self._token_store.set, updated)
                 return updated
@@ -244,6 +260,8 @@ class AuthService:
             expires_at=expires_at,
             open_id=resolved_open_id,
             account_name=resolved_account_name,
+            scope=previous.scope if previous else None,
+            refresh_expires_at=(previous.refresh_expires_at if previous else None),
         )
         persist_started = time.perf_counter()
         await asyncio.to_thread(self._token_store.set, stored)
@@ -378,7 +396,7 @@ class AuthService:
         if self._http_client is not None and not hasattr(self._http_client, "get"):
             return UserProfile()
 
-        user_info_url = "https://open.feishu.cn/open-apis/authen/v1/user_info"
+        user_info_url = f"{open_base_url(self._brand)}/open-apis/authen/v1/user_info"
         headers = {"Authorization": f"Bearer {access_token}"}
         try:
             async with self._get_client() as client:

@@ -5,6 +5,7 @@ from pathlib import Path
 from src.services.feishu_client import FeishuClient
 from src.services.file_writer import FileWriter
 from src.services.path_sanitizer import sanitize_filename
+from src.services.account_runtime import current_open_base_url
 
 
 class FileDownloader:
@@ -12,11 +13,11 @@ class FileDownloader:
         self,
         client: FeishuClient | None = None,
         writer: FileWriter | None = None,
-        base_url: str = "https://open.feishu.cn",
+        base_url: str | None = None,
     ) -> None:
         self._client = client or FeishuClient()
         self._writer = writer or FileWriter()
-        self._base_url = base_url.rstrip("/")
+        self._base_url = (base_url or current_open_base_url()).rstrip("/")
 
     async def download(
         self,

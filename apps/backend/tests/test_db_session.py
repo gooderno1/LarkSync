@@ -98,10 +98,99 @@ async def test_schema_v6_adds_ignored_at_without_changing_existing_problem_state
         ).scalar_one()
     await dispose_engines()
 
-    assert CURRENT_SCHEMA_VERSION == 8
+    assert CURRENT_SCHEMA_VERSION == 9
     assert "ignored_at" in columns
     assert (row.state, row.ignored_reason, row.ignored_at) == ("open", None, None)
-    assert version == "8"
+    assert version == "9"
+
+
+@pytest.mark.asyncio
+async def test_schema_v9_automatically_backs_up_and_scopes_legacy_data(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "v8-single-account.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE sync_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at REAL NOT NULL
+            );
+            INSERT INTO sync_meta VALUES ('schema_version', '8', 1);
+            CREATE TABLE sync_tasks (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                local_path TEXT NOT NULL,
+                cloud_folder_token TEXT NOT NULL,
+                cloud_folder_name TEXT,
+                base_path TEXT,
+                sync_mode TEXT NOT NULL,
+                update_mode TEXT DEFAULT 'auto',
+                md_sync_mode TEXT DEFAULT 'enhanced',
+                ignored_subpaths TEXT,
+                delete_policy TEXT,
+                delete_grace_minutes INTEGER,
+                owner_device_id TEXT NOT NULL DEFAULT '',
+                owner_open_id TEXT,
+                is_test INTEGER NOT NULL DEFAULT 0,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                last_run_at REAL
+            );
+            INSERT INTO sync_tasks (
+                id, local_path, cloud_folder_token, sync_mode, created_at, updated_at
+            ) VALUES ('task-1', 'D:/Sync', 'fld_1', 'download_only', 1, 1);
+            CREATE TABLE sync_links (
+                local_path TEXT PRIMARY KEY,
+                cloud_token TEXT,
+                cloud_type TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                updated_at REAL NOT NULL DEFAULT 0,
+                cloud_parent_token TEXT,
+                local_hash TEXT,
+                local_size INTEGER,
+                local_mtime REAL,
+                cloud_revision TEXT,
+                cloud_mtime REAL,
+                local_resource_signature TEXT,
+                resource_sync_revision TEXT,
+                placeholder_refresh_revision TEXT
+            );
+            INSERT INTO sync_links (
+                local_path, cloud_token, cloud_type, task_id, updated_at
+            ) VALUES ('D:/Sync/a.md', 'doc_1', 'docx', 'task-1', 1);
+            """
+        )
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+
+    engine = await init_db(url)
+    async with engine.begin() as conn:
+        task_account = (
+            await conn.execute(text("SELECT account_id FROM sync_tasks WHERE id='task-1'"))
+        ).scalar_one()
+        link = (
+            await conn.execute(
+                text("SELECT account_id, local_path FROM sync_links WHERE task_id='task-1'")
+            )
+        ).one()
+        link_pk = {
+            row[1]: row[5]
+            for row in (await conn.execute(text("PRAGMA table_info(sync_links)"))).all()
+        }
+        account_count = (
+            await conn.execute(text("SELECT COUNT(*) FROM accounts"))
+        ).scalar_one()
+    await dispose_engines()
+
+    backups = list(tmp_path.glob("v8-single-account.db.pre-v9-*.bak"))
+    assert len(backups) == 1
+    assert task_account == "legacy-default-account"
+    assert tuple(link) == ("legacy-default-account", "D:/Sync/a.md")
+    assert link_pk["account_id"] == 1
+    assert link_pk["local_path"] == 2
+    assert account_count == 1
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,43 @@
 # DEVELOPMENT LOG
 
+## v0.9.0-dev.1 (2026-09-01)
+
+- 开发原因：
+  - v0.8 首次登录二维码编码本机 OAuth 地址，手机无法把回调交还桌面端。
+  - 单一全局 Token、任务归属和设置入口无法支持切换账号或多账号同时同步。
+  - 原 App Secret 可写入`config.json`，不满足多应用配置和安全隔离要求。
+- 实现方式：
+  - 依据官方`larksuite/cli` v1.0.92 源码原生实现 App Registration、Device Authorization 和 Token 轮询协议。
+  - Device Flow 必须包含`offline_access`；服务端返回`slow_down`时轮询间隔增加 5 秒；拒绝、过期和取消均立即销毁内存会话。
+  - 新增`app_profiles`、`accounts`、`ui_preferences`和`notifications`；App Secret、Token、刷新锁按应用配置或账号独立命名。
+  - schema 升至 v9；任务、运行、事件、映射、删除墓碑、冲突、问题、问题证据、动作和块状态增加`account_id`。
+  - `sync_links`与`sync_mappings`分别使用`(account_id, local_path)`和`(account_id, file_hash)`联合主键。
+  - 调度器读取所有已连接且未暂停账号的任务；每次运行、文件监听回调和云端客户端创建均进入对应账号上下文。
+  - 前端所有作用域请求发送`X-LarkSync-Account-ID`；React Query 缓存键包含活动账号。
+  - 文件型 Token Store 即使配置统一`LARKSYNC_TOKEN_FILE`，也会在文件名追加账号 ID；Windows PowerShell 自启动探测显式按 UTF-8 解码。
+  - 同步事件数据库与 JSONL 查询都按当前账号过滤；暂停账号时同步取消其上传 Worker 和本地 Watcher。
+  - 左侧新增账户切换、每账号未读角标、通知抽屉和添加账号弹窗；设置页新增暂停、恢复、断开本机和软移除。
+- 当前结果：
+  - 新安装可直接扫码自动创建个人应用并登录，不依赖本机安装`lark-cli`或 HTTPS 回调中继。
+  - 飞书与国际版 Lark 分别使用自身 accounts/open 域名；同进程可并行同步多个账号。
+  - 页面切换账号只改变当前数据范围，不停止其他账号后台任务。
+  - 同步错误首次形成统一问题时会投影为该账号未读通知。
+  - 开发代理已覆盖账号、应用配置、通知、UI 偏好和问题中心的新接口，开发模式与安装版保持同源行为。
+  - 从 v0.8 升级无需手动迁移；启动前创建`pre-v9` SQLite 在线备份，旧凭据安全复制成功后才清除配置文件中的明文 App Secret。
+- 验证方式：
+  - Device Flow 协议测试覆盖请求字段、Basic Auth、Token 成功、pending、slow_down、拒绝与过期。
+  - 多账号隔离测试用同一组长生命周期 Service 在两个账户上下文分别写入任务、联合主键映射与冲突，并验证互不可见。
+  - 数据库迁移测试验证 schema v9、升级前备份、旧任务/映射回填和联合主键。
+  - 后端全量`python -m pytest -q`通过，共 709 项；新增文件凭据、同步事件数据库和 JSONL 的账号隔离回归。
+  - 前端 TypeScript、ESLint、生产构建和 35 个测试文件共 115 项全部通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
+  - 使用`synthetic_test`隔离数据完成原生 Windows WebView 验收：首次连接、手动 App 凭证、左侧账号切换、逐账号未读、通知抽屉、真实设置页账号管理和开机自启动布局均正常。
+  - 两个测试账号分别请求`/auth/status`返回各自 open_id/昵称；当前账号请求`/sync/logs/sync`不再读取 legacy 账号的历史事件。
+  - `python scripts/build_installer.py --nsis`通过，生成`LarkSync-Setup-v0.9.0-dev.1.exe`，大小`72,353,237 bytes`；打包后的`LarkSync.exe`使用独立数据目录与端口`18123`启动，`/health`返回`ok`，桌面状态返回`packaged=true`和`current_version=v0.9.0-dev.1`。
+  - `python scripts/update_install_smoke.py`通过，bootstrap、隐藏 worker 和 handoff 按预期推进到`launch_failed`；为避免覆盖现有正式安装，本轮未将开发版安装到正式目录。
+- 遗留问题：
+  - 本轮无法替用户完成真实飞书扫码确认；协议字段和状态机以官方源码及 MockTransport 自动化测试验证，安装版仍需人工完成一次真实账号端到端验收。
+  - “断开本机”不撤销服务端全部授权；官方 CLI 也将本机退出与服务端撤销区分，彻底撤销需用户前往授权管理页。
+
 ## v0.8.24-dev.1 (2026-08-31)
 
 - 开发原因：

@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from loguru import logger
 
 from src.core.config import ConfigManager, DeletePolicy
+from src.core.account_context import account_scope
 from src.core.error_text import describe_exception
 from src.services.bitable_service import BitableService
 from src.services.docx_service import (
@@ -407,10 +408,16 @@ class SyncTaskRunner:
         )
         cloud_scope = activate_cloud_root_scope(task.cloud_folder_token)
         try:
-            self._tasks[task.id] = asyncio.create_task(self.run_task(task))
+            self._tasks[task.id] = asyncio.create_task(
+                self._run_task_in_account(task)
+            )
         finally:
             reset_cloud_root_scope(cloud_scope)
         return status
+
+    async def _run_task_in_account(self, task: SyncTaskItem) -> SyncTaskStatus:
+        with account_scope(task.account_id):
+            return await self.run_task(task)
 
     def cancel_task(self, task_id: str, *, preserve_pending_restart: bool = False) -> None:
         task = self._tasks.get(task_id)
@@ -2150,12 +2157,18 @@ class SyncTaskRunner:
 
         def _on_event(event: FileChangeEvent) -> None:
             asyncio.run_coroutine_threadsafe(
-                self._handle_local_event(task, event), loop
+                self._handle_local_event_in_account(task, event), loop
             )
 
         watcher = WatcherService(Path(task.local_path), on_event=_on_event)
         watcher.start()
         self._watchers[task.id] = watcher
+
+    async def _handle_local_event_in_account(
+        self, task: SyncTaskItem, event: FileChangeEvent
+    ) -> None:
+        with account_scope(task.account_id):
+            await self._handle_local_event(task, event)
 
     def _stop_watcher(self, task_id: str) -> None:
         watcher = self._watchers.pop(task_id, None)

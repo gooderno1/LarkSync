@@ -34,6 +34,7 @@ class ConflictCheckResponse(BaseModel):
 
 class ConflictResponse(BaseModel):
     id: str
+    account_id: str
     local_path: str
     cloud_token: str
     local_hash: str

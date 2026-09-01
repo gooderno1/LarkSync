@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import sqlite3
 from typing import Awaitable, Callable, Optional, Union
 
 from loguru import logger
@@ -30,7 +31,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 9
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -51,6 +52,7 @@ def get_session_maker(database_url: Optional[str] = None) -> async_sessionmaker[
 
 
 async def init_db(database_url: Optional[str] = None) -> AsyncEngine:
+    await _backup_before_schema_upgrade(database_url)
     engine = create_engine(database_url)
     try:
         async with engine.begin() as conn:
@@ -560,6 +562,230 @@ async def _apply_schema_v8(conn) -> None:
     )
 
 
+async def _apply_schema_v9(conn) -> None:
+    legacy_account_id = "legacy-default-account"
+    now = datetime.now().timestamp()
+    has_legacy_data = (
+        await conn.execute(text("SELECT 1 FROM sync_tasks LIMIT 1"))
+    ).first()
+    if has_legacy_data:
+        await conn.execute(
+        text(
+            """
+            INSERT OR IGNORE INTO app_profiles (
+                id, brand, app_id, display_name, source, secret_ref,
+                enabled, created_at, updated_at
+            ) VALUES (
+                'legacy-default-app', 'feishu', 'legacy-config',
+                '升级迁移的应用配置', 'legacy', 'legacy-config', 1,
+                :now, :now
+            )
+            """
+        ),
+        {"now": now},
+        )
+        await conn.execute(
+        text(
+            """
+            INSERT OR IGNORE INTO accounts (
+                id, app_profile_id, brand, open_id, account_name,
+                state, granted_scopes, paused, created_at, updated_at
+            ) VALUES (
+                :account_id, 'legacy-default-app', 'feishu',
+                'legacy-pending', '原有飞书账号', 'migration_pending',
+                '[]', 0, :now, :now
+            )
+            """
+        ),
+        {"account_id": legacy_account_id, "now": now},
+        )
+
+    scoped_tables = (
+        "sync_tasks",
+        "sync_tombstones",
+        "conflicts",
+        "sync_runs",
+        "sync_task_check_states",
+        "sync_run_events",
+        "problems",
+        "problem_recovery_facts",
+        "problem_occurrences",
+        "problem_actions",
+        "sync_block_states",
+    )
+    for table in scoped_tables:
+        await _ensure_column(
+            conn,
+            table=table,
+            column="account_id",
+            column_type="TEXT",
+            default_value=legacy_account_id,
+        )
+        await conn.execute(
+            text(
+                f"UPDATE {table} SET account_id=:account_id "
+                "WHERE account_id IS NULL OR account_id=''"
+            ),
+            {"account_id": legacy_account_id},
+        )
+        await _ensure_index(
+            conn,
+            table=table,
+            index_name=f"idx_{table}_account_id",
+            columns_sql="account_id",
+        )
+
+    await _rebuild_sync_links_v9(conn, legacy_account_id=legacy_account_id)
+    await _rebuild_sync_mappings_v9(conn, legacy_account_id=legacy_account_id)
+    if has_legacy_data:
+        await conn.execute(
+            text(
+                """
+                INSERT INTO ui_preferences (device_id, active_account_id, updated_at)
+                VALUES ('legacy-device', :account_id, :now)
+                ON CONFLICT(device_id) DO UPDATE SET
+                    active_account_id=COALESCE(ui_preferences.active_account_id, excluded.active_account_id),
+                    updated_at=excluded.updated_at
+                """
+            ),
+            {"account_id": legacy_account_id, "now": now},
+        )
+
+
+async def _rebuild_sync_links_v9(conn, *, legacy_account_id: str) -> None:
+    table_info = list(await conn.execute(text("PRAGMA table_info(sync_links)")))
+    columns = {str(row[1]): row for row in table_info}
+    if (
+        "account_id" in columns
+        and int(columns["account_id"][5]) == 1
+        and int(columns["local_path"][5]) == 2
+    ):
+        return
+    await conn.execute(text("DROP TABLE IF EXISTS sync_links_v9"))
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE sync_links_v9 (
+                account_id TEXT NOT NULL,
+                local_path TEXT NOT NULL,
+                cloud_token TEXT,
+                cloud_type TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                updated_at REAL NOT NULL DEFAULT 0,
+                cloud_parent_token TEXT,
+                local_hash TEXT,
+                local_size INTEGER,
+                local_mtime REAL,
+                cloud_revision TEXT,
+                cloud_mtime REAL,
+                local_resource_signature TEXT,
+                resource_sync_revision TEXT,
+                placeholder_refresh_revision TEXT,
+                PRIMARY KEY (account_id, local_path)
+            )
+            """
+        )
+    )
+    if table_info:
+        account_sql = (
+            "COALESCE(NULLIF(account_id, ''), :account_id)"
+            if "account_id" in columns
+            else ":account_id"
+        )
+        await conn.execute(
+            text(
+                f"""
+                INSERT OR REPLACE INTO sync_links_v9 (
+                    account_id, local_path, cloud_token, cloud_type, task_id,
+                    updated_at, cloud_parent_token, local_hash, local_size,
+                    local_mtime, cloud_revision, cloud_mtime,
+                    local_resource_signature, resource_sync_revision,
+                    placeholder_refresh_revision
+                )
+                SELECT {account_sql}, local_path, cloud_token, cloud_type, task_id,
+                       updated_at, cloud_parent_token, local_hash, local_size,
+                       local_mtime, cloud_revision, cloud_mtime,
+                       local_resource_signature, resource_sync_revision,
+                       placeholder_refresh_revision
+                FROM sync_links
+                """
+            ),
+            {"account_id": legacy_account_id},
+        )
+        await conn.execute(text("DROP TABLE sync_links"))
+    await conn.execute(text("ALTER TABLE sync_links_v9 RENAME TO sync_links"))
+    await _ensure_index(
+        conn,
+        table="sync_links",
+        index_name="idx_sync_links_account_id",
+        columns_sql="account_id",
+    )
+    await _ensure_index(
+        conn,
+        table="sync_links",
+        index_name="ix_sync_links_cloud_token",
+        columns_sql="cloud_token",
+    )
+    await _ensure_index(
+        conn,
+        table="sync_links",
+        index_name="ix_sync_links_task_id",
+        columns_sql="task_id",
+    )
+
+
+async def _rebuild_sync_mappings_v9(conn, *, legacy_account_id: str) -> None:
+    table_info = list(await conn.execute(text("PRAGMA table_info(sync_mappings)")))
+    columns = {str(row[1]): row for row in table_info}
+    if (
+        "account_id" in columns
+        and int(columns["account_id"][5]) == 1
+        and int(columns["file_hash"][5]) == 2
+    ):
+        return
+    await conn.execute(text("DROP TABLE IF EXISTS sync_mappings_v9"))
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE sync_mappings_v9 (
+                account_id TEXT NOT NULL,
+                file_hash TEXT NOT NULL,
+                feishu_token TEXT,
+                local_path TEXT NOT NULL,
+                last_sync_mtime REAL NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (account_id, file_hash)
+            )
+            """
+        )
+    )
+    if table_info:
+        await conn.execute(
+            text(
+                """
+                INSERT INTO sync_mappings_v9 (
+                    account_id, file_hash, feishu_token, local_path,
+                    last_sync_mtime, version
+                )
+                SELECT :account_id, file_hash, feishu_token, local_path,
+                       last_sync_mtime, version
+                FROM sync_mappings
+                """
+            ),
+            {"account_id": legacy_account_id},
+        )
+        await conn.execute(text("DROP TABLE sync_mappings"))
+    await conn.execute(
+        text("ALTER TABLE sync_mappings_v9 RENAME TO sync_mappings")
+    )
+    await _ensure_index(
+        conn,
+        table="sync_mappings",
+        index_name="idx_sync_mappings_account_id",
+        columns_sql="account_id",
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     SchemaMigration(
         version=1,
@@ -601,7 +827,53 @@ _SCHEMA_MIGRATIONS = [
         description="按同步方向独立保存任务检测结果，避免上传检测覆盖下载恢复事实",
         upgrade=_apply_schema_v8,
     ),
+    SchemaMigration(
+        version=9,
+        description="自动备份并升级为账号级数据隔离、复合同步映射和通知模型",
+        upgrade=_apply_schema_v9,
+    ),
 ]
+
+
+async def _backup_before_schema_upgrade(database_url: Optional[str]) -> Optional[Path]:
+    db_path = _extract_sqlite_path(database_url)
+    if db_path is None or not db_path.exists() or not db_path.is_file():
+        return None
+
+    def _backup() -> Optional[Path]:
+        try:
+            with sqlite3.connect(db_path) as source:
+                row = source.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='sync_meta'"
+                ).fetchone()
+                version = 0
+                if row:
+                    version_row = source.execute(
+                        "SELECT value FROM sync_meta WHERE key='schema_version'"
+                    ).fetchone()
+                    if version_row:
+                        try:
+                            version = int(version_row[0])
+                        except (TypeError, ValueError):
+                            version = 0
+                if version >= CURRENT_SCHEMA_VERSION:
+                    return None
+                timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+                backup_path = db_path.with_name(
+                    f"{db_path.name}.pre-v{CURRENT_SCHEMA_VERSION}-{timestamp}.bak"
+                )
+                with sqlite3.connect(backup_path) as destination:
+                    source.backup(destination)
+                return backup_path
+        except sqlite3.DatabaseError:
+            return None
+
+    import asyncio
+
+    backup_path = await asyncio.to_thread(_backup)
+    if backup_path:
+        logger.info("数据库升级前自动备份完成: {}", backup_path)
+    return backup_path
 
 
 async def _ensure_column(

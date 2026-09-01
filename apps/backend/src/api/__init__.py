@@ -6,6 +6,7 @@ from .problems import router as problems_router
 from .system import router as system_router
 from .sync_tasks import router as sync_router
 from .watcher import events_router, watcher_router
+from .accounts import router as accounts_router
 
 __all__ = [
     "auth_router",
@@ -17,4 +18,5 @@ __all__ = [
     "sync_router",
     "watcher_router",
     "events_router",
+    "accounts_router",
 ]

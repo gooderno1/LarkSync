@@ -6,13 +6,14 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.config import ConfigManager, DeletePolicy
 from src.core.device import current_device_id
+from src.core.account_context import current_account_id
 from src.core.security import get_token_store
-from src.db.models import SyncTask
+from src.db.models import Account, LEGACY_ACCOUNT_ID, SyncTask
 from src.db.session import get_session_maker
 
 _OWNER_OPEN_ID_UNSET = object()
@@ -47,6 +48,7 @@ class SyncTaskItem:
     owner_device_id: str | None = None
     owner_open_id: str | None = None
     is_test: bool = False
+    account_id: str = LEGACY_ACCOUNT_ID
 
 
 class SyncTaskValidationError(ValueError):
@@ -59,10 +61,15 @@ class SyncTaskService:
         session_maker: async_sessionmaker[AsyncSession] | None = None,
         owner_device_id: str | None = None,
         owner_open_id: str | None | object = _OWNER_OPEN_ID_UNSET,
+        account_id: str | None = None,
     ) -> None:
         self._session_maker = session_maker or get_session_maker()
         self._owner_device_id = owner_device_id or current_device_id()
         self._owner_open_id = owner_open_id
+        self._explicit_account_id = account_id
+
+    def _account_id(self) -> str:
+        return self._explicit_account_id or current_account_id() or LEGACY_ACCOUNT_ID
 
     async def create_task(
         self,
@@ -103,6 +110,7 @@ class SyncTaskService:
         )
         record = SyncTask(
             id=str(uuid.uuid4()),
+            account_id=self._account_id(),
             name=clean_name,
             local_path=clean_local_path,
             cloud_folder_token=clean_cloud_folder_token,
@@ -137,18 +145,12 @@ class SyncTaskService:
     async def list_tasks(self) -> list[SyncTaskItem]:
         stmt = (
             select(SyncTask)
-            .where(SyncTask.owner_device_id == self._owner_device_id)
+            .where(
+                SyncTask.owner_device_id == self._owner_device_id,
+                SyncTask.account_id == self._account_id(),
+            )
             .order_by(SyncTask.created_at.desc())
         )
-        open_id = self._effective_owner_open_id()
-        if open_id:
-            stmt = stmt.where(
-                or_(
-                    SyncTask.owner_open_id == open_id,
-                    SyncTask.owner_open_id.is_(None),
-                    SyncTask.owner_open_id == "",
-                )
-            )
         async with self._session_maker() as session:
             result = await session.execute(stmt)
             records = result.scalars().all()
@@ -162,10 +164,32 @@ class SyncTaskService:
                 await session.commit()
         return [self._to_item(record) for record in visible]
 
+    async def list_all_tasks(self) -> list[SyncTaskItem]:
+        """供调度器使用；UI 和公开 API 只能调用 ``list_tasks``。"""
+        stmt = (
+            select(SyncTask)
+            .outerjoin(Account, SyncTask.account_id == Account.id)
+            .where(SyncTask.owner_device_id == self._owner_device_id)
+            .where(
+                or_(
+                    Account.id.is_(None),
+                    and_(
+                        Account.state == "connected",
+                        Account.paused.is_(False),
+                        Account.removed_at.is_(None),
+                    ),
+                )
+            )
+            .order_by(SyncTask.created_at.desc())
+        )
+        async with self._session_maker() as session:
+            result = await session.execute(stmt)
+            return [self._to_item(record) for record in result.scalars().all()]
+
     async def get_task(self, task_id: str) -> SyncTaskItem | None:
         async with self._session_maker() as session:
             record = await session.get(SyncTask, task_id)
-            if not record:
+            if not record or record.account_id != self._account_id():
                 return None
             migrated = self._migrate_owner_open_id_if_local(record)
             if not self._owner_matches(record):
@@ -195,7 +219,7 @@ class SyncTaskService:
         open_id = self._effective_owner_open_id()
         async with self._session_maker() as session:
             record = await session.get(SyncTask, task_id)
-            if not record:
+            if not record or record.account_id != self._account_id():
                 return None
             self._migrate_owner_open_id_if_local(record)
             if not self._owner_matches(record):
@@ -273,7 +297,7 @@ class SyncTaskService:
     async def delete_task(self, task_id: str) -> bool:
         async with self._session_maker() as session:
             record = await session.get(SyncTask, task_id)
-            if not record:
+            if not record or record.account_id != self._account_id():
                 return False
             self._migrate_owner_open_id_if_local(record)
             if not self._owner_matches(record):
@@ -287,7 +311,7 @@ class SyncTaskService:
     ) -> bool:
         async with self._session_maker() as session:
             record = await session.get(SyncTask, task_id)
-            if not record:
+            if not record or record.account_id != self._account_id():
                 return False
             self._migrate_owner_open_id_if_local(record)
             if not self._owner_matches(record):
@@ -305,7 +329,7 @@ class SyncTaskService:
                 return value or None
             return None
         try:
-            token = get_token_store().get()
+            token = get_token_store(self._account_id()).get()
         except Exception:
             return None
         if token and token.open_id:
@@ -313,6 +337,8 @@ class SyncTaskService:
         return None
 
     def _owner_matches(self, record: SyncTask) -> bool:
+        if record.account_id != self._account_id():
+            return False
         if record.owner_device_id != self._owner_device_id:
             return False
         open_id = self._effective_owner_open_id()
@@ -480,15 +506,6 @@ class SyncTaskService:
         target_cloud_path = self._normalize_cloud_folder_path(cloud_folder_name)
 
         stmt = select(SyncTask).where(SyncTask.owner_device_id == self._owner_device_id)
-        open_id = self._effective_owner_open_id()
-        if open_id:
-            stmt = stmt.where(
-                or_(
-                    SyncTask.owner_open_id == open_id,
-                    SyncTask.owner_open_id.is_(None),
-                    SyncTask.owner_open_id == "",
-                )
-            )
         result = await session.execute(stmt)
         records = result.scalars().all()
         for record in records:
@@ -497,9 +514,11 @@ class SyncTaskService:
             record_local_key = self._normalize_local_path_for_compare(record.local_path)
             record_cloud_key = self._normalize_cloud_folder_token(record.cloud_folder_token)
             record_cloud_path = self._normalize_cloud_folder_path(record.cloud_folder_name)
+            same_account = record.account_id == self._account_id()
 
             if (
-                record_local_key == target_local_key
+                same_account
+                and record_local_key == target_local_key
                 and record_cloud_key == target_cloud_key
             ):
                 raise SyncTaskValidationError(
@@ -513,7 +532,8 @@ class SyncTaskService:
                     "该本地目录已绑定其它云端目录，请先修改或删除原任务"
                 )
             if (
-                record_cloud_key == target_cloud_key
+                same_account
+                and record_cloud_key == target_cloud_key
                 and record_local_key != target_local_key
             ):
                 raise SyncTaskValidationError(
@@ -523,7 +543,9 @@ class SyncTaskService:
                 raise SyncTaskValidationError(
                     "本地目录与现有任务存在包含关系，请避免父子目录同时建任务"
                 )
-            if self._cloud_paths_have_containment(record_cloud_path, target_cloud_path):
+            if same_account and self._cloud_paths_have_containment(
+                record_cloud_path, target_cloud_path
+            ):
                 raise SyncTaskValidationError(
                     "云端目录与现有任务存在包含关系，请避免父子目录同时建任务"
                 )
@@ -619,6 +641,7 @@ class SyncTaskService:
         ignored_subpaths = self._parse_ignored_subpaths(record.ignored_subpaths)
         return SyncTaskItem(
             id=record.id,
+            account_id=record.account_id,
             name=record.name,
             local_path=record.local_path,
             cloud_folder_token=record.cloud_folder_token,

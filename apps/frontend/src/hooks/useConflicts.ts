@@ -3,14 +3,15 @@
 /* ------------------------------------------------------------------ */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../lib/api";
+import { apiFetch, getActiveAccountId } from "../lib/api";
 import type { ConflictItem, ConflictResolutionAction } from "../types";
 
 export function useConflicts(enabled = true) {
   const qc = useQueryClient();
+  const accountId = getActiveAccountId();
 
   const conflictsQuery = useQuery<ConflictItem[]>({
-    queryKey: ["conflicts"],
+    queryKey: ["conflicts", accountId],
     queryFn: () => apiFetch<ConflictItem[]>("/conflicts"),
     enabled,
     placeholderData: [],

@@ -116,14 +116,15 @@ class DocxService:
     def __init__(
         self,
         client: FeishuClient | None = None,
-        base_url: str = "https://open.feishu.cn",
+        base_url: str | None = None,
         media_uploader: MediaUploader | None = None,
         file_uploader: FileUploader | None = None,
         image_parent_type: str = "docx_image",
         file_parent_type: str = "docx_file",
     ) -> None:
         self._client = client or FeishuClient()
-        self._base_url = base_url.rstrip("/")
+        from src.services.account_runtime import current_open_base_url
+        self._base_url = (base_url or current_open_base_url()).rstrip("/")
         self._image_parent_type = image_parent_type
         self._file_parent_type = file_parent_type
         self._media_uploader = media_uploader or MediaUploader(

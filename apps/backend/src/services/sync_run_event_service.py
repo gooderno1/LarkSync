@@ -68,6 +68,7 @@ class SyncRunEventService:
         task_ids: list[str] | None = None,
         run_id: str = "",
         run_ids: list[str] | None = None,
+        account_id: str | None = None,
         order: str = "desc",
         suppress_errors: bool = True,
         since: float | None = None,
@@ -81,6 +82,7 @@ class SyncRunEventService:
             task_ids=task_ids,
             run_id=run_id,
             run_ids=run_ids,
+            account_id=account_id,
             since=since,
             until=until,
         )
@@ -470,6 +472,7 @@ class SyncRunEventService:
                 record.path,
                 record.message or "",
                 record.run_id or "",
+                record.account_id,
             ]
         )
         return hashlib.sha1(payload.encode("utf-8")).hexdigest()
@@ -483,6 +486,7 @@ class SyncRunEventService:
         now = time.time()
         return {
             "id": cls.build_event_id(record),
+            "account_id": record.account_id,
             "task_id": record.task_id,
             "task_name": record.task_name or "未命名任务",
             "run_id": record.run_id,
@@ -503,6 +507,7 @@ class SyncRunEventService:
             path=item.path,
             message=item.message,
             run_id=item.run_id,
+            account_id=item.account_id,
         )
 
     @staticmethod
@@ -515,10 +520,13 @@ class SyncRunEventService:
         task_ids: list[str] | None,
         run_id: str,
         run_ids: list[str] | None,
+        account_id: str | None = None,
         since: float | None = None,
         until: float | None = None,
     ) -> list[object]:
         filters: list[object] = []
+        if account_id and account_id.strip():
+            filters.append(SyncRunEvent.account_id == account_id.strip())
         status_filters = {
             value.strip().lower()
             for value in ([status] if status else []) + list(statuses or [])

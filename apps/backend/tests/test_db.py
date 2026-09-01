@@ -29,7 +29,7 @@ async def test_sync_mapping_create_and_insert(tmp_path: Path) -> None:
         await session.commit()
 
     async with Session() as session:
-        loaded = await session.get(SyncMapping, "hash-001")
+        loaded = await session.get(SyncMapping, ("legacy-default-account", "hash-001"))
         assert loaded is not None
         assert loaded.feishu_token == "token-001"
 

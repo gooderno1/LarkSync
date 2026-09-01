@@ -9,6 +9,7 @@ import time
 from loguru import logger
 
 from src.core.paths import logs_dir
+from src.db.models import LEGACY_ACCOUNT_ID
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class SyncEventRecord:
     path: str
     message: str | None = None
     run_id: str | None = None
+    account_id: str = LEGACY_ACCOUNT_ID
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,7 @@ class SyncEventStore:
             "path": record.path,
             "message": record.message,
             "run_id": record.run_id,
+            "account_id": record.account_id,
         }
         try:
             self._log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -83,6 +86,7 @@ class SyncEventStore:
         task_ids: list[str] | None = None,
         run_id: str = "",
         run_ids: list[str] | None = None,
+        account_id: str | None = None,
         order: str = "desc",
         since: float | None = None,
         until: float | None = None,
@@ -109,11 +113,14 @@ class SyncEventStore:
         if run_filter:
             run_filters.add(run_filter)
         search_filter = search.strip().lower()
+        account_filter = (account_id or "").strip()
 
         if order_normalized not in {"asc", "desc"}:
             order_normalized = "desc"
 
         def matches(record: SyncEventRecord) -> bool:
+            if account_filter and record.account_id != account_filter:
+                return False
             if status_filters and record.status.lower() not in status_filters:
                 return False
             if task_filters and record.task_id not in task_filters:
@@ -276,6 +283,7 @@ def _record_from_payload(payload: object) -> SyncEventRecord | None:
     path = str(payload.get("path") or "")
     message = payload.get("message")
     run_id = payload.get("run_id")
+    account_id = str(payload.get("account_id") or LEGACY_ACCOUNT_ID)
     if message is not None:
         message = str(message)
     if run_id is not None:
@@ -290,6 +298,7 @@ def _record_from_payload(payload: object) -> SyncEventRecord | None:
         path=path,
         message=message,
         run_id=run_id,
+        account_id=account_id,
     )
 
 

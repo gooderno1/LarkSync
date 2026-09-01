@@ -24,8 +24,11 @@ from src.db.models import (
     SyncRunEvent,
     SyncTask,
     SyncTaskCheckState,
+    LEGACY_ACCOUNT_ID,
+    NotificationRecord,
 )
 from src.core.config import ConfigManager
+from src.core.account_context import current_account_id
 from src.db.session import get_session_maker
 from src.services.sync_path_policy import should_ignore_sync_path
 
@@ -97,6 +100,7 @@ class ProblemItem:
     resolved_by_event_id: str | None
     last_good_at: float | None
     available_actions: tuple[AvailableProblemAction, ...] = field(default_factory=tuple)
+    account_id: str = LEGACY_ACCOUNT_ID
 
 
 @dataclass(frozen=True)
@@ -157,6 +161,10 @@ class ProblemService:
         self._refresh_lock = asyncio.Lock()
         self._reconcile_cursor: tuple[float, str] | None = None
         self._ignore_hidden_cache_paths = ignore_hidden_cache_paths
+
+    @staticmethod
+    def _account_id() -> str:
+        return current_account_id() or LEGACY_ACCOUNT_ID
 
     async def refresh_sources(self, *, event_limit: int | None = 1000) -> ProblemRefreshResult:
         async with self._refresh_lock:
@@ -525,6 +533,7 @@ class ProblemService:
                 problem_fingerprints.add(
                     self.build_fingerprint(
                         source_kind="sync_event",
+                        account_id=event.account_id,
                         task_id=event.task_id,
                         category=classification.category,
                         stage=event.status,
@@ -905,7 +914,7 @@ class ProblemService:
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[int, list[ProblemItem]]:
-        filters: list[object] = []
+        filters: list[object] = [ProblemRecord.account_id == self._account_id()]
         normalized_states = {part.strip() for part in state.split(",") if part.strip()}
         normalized_categories = {value.strip() for value in categories or [] if value.strip()}
         normalized_severities = {value.strip() for value in severities or [] if value.strip()}
@@ -956,21 +965,33 @@ class ProblemService:
     async def get_problem(self, problem_id: str) -> ProblemItem | None:
         async with self._session_maker() as session:
             record = await session.get(ProblemRecord, problem_id)
-            return self._to_item(record) if record else None
+            return (
+                self._to_item(record)
+                if record and record.account_id == self._account_id()
+                else None
+            )
 
     async def get_summary(self) -> dict[str, object]:
         async with self._session_maker() as session:
             state_rows = await session.execute(
-                select(ProblemRecord.state, func.count()).group_by(ProblemRecord.state)
+                select(ProblemRecord.state, func.count())
+                .where(ProblemRecord.account_id == self._account_id())
+                .group_by(ProblemRecord.state)
             )
             category_rows = await session.execute(
                 select(ProblemRecord.category, func.count())
-                .where(ProblemRecord.state.in_(["open", "in_progress", "waiting"]))
+                .where(
+                    ProblemRecord.account_id == self._account_id(),
+                    ProblemRecord.state.in_(["open", "in_progress", "waiting"]),
+                )
                 .group_by(ProblemRecord.category)
             )
             severity_rows = await session.execute(
                 select(ProblemRecord.severity, func.count())
-                .where(ProblemRecord.state.in_(["open", "in_progress", "waiting"]))
+                .where(
+                    ProblemRecord.account_id == self._account_id(),
+                    ProblemRecord.state.in_(["open", "in_progress", "waiting"]),
+                )
                 .group_by(ProblemRecord.severity)
             )
         by_state = {str(key): int(value) for key, value in state_rows.all()}
@@ -992,7 +1013,10 @@ class ProblemService:
         async with self._session_maker() as session:
             rows = await session.execute(
                 select(ProblemOccurrence)
-                .where(ProblemOccurrence.problem_id == problem_id)
+                .where(
+                    ProblemOccurrence.account_id == self._account_id(),
+                    ProblemOccurrence.problem_id == problem_id,
+                )
                 .order_by(ProblemOccurrence.occurred_at.desc())
                 .limit(max(1, limit))
                 .offset(max(0, offset))
@@ -1009,7 +1033,10 @@ class ProblemService:
         async with self._session_maker() as session:
             rows = await session.execute(
                 select(ProblemActionRecord)
-                .where(ProblemActionRecord.problem_id == problem_id)
+                .where(
+                    ProblemActionRecord.account_id == self._account_id(),
+                    ProblemActionRecord.problem_id == problem_id,
+                )
                 .order_by(ProblemActionRecord.requested_at.desc())
                 .limit(max(1, limit))
                 .offset(max(0, offset))
@@ -1020,7 +1047,7 @@ class ProblemService:
         now = time.time()
         async with self._session_maker() as session:
             problem = await session.get(ProblemRecord, problem_id)
-            if not problem:
+            if not problem or problem.account_id != self._account_id():
                 raise LookupError("Problem not found")
             allowed = {action.key for action in self._available_actions(problem)}
             if action_key not in allowed:
@@ -1036,6 +1063,7 @@ class ProblemService:
                 raise ValueError("The same action is already running")
             record = ProblemActionRecord(
                 id=str(uuid.uuid4()),
+                account_id=problem.account_id,
                 problem_id=problem_id,
                 action_key=action_key,
                 requested_at=now,
@@ -1060,10 +1088,10 @@ class ProblemService:
     ) -> ProblemActionItem:
         async with self._session_maker() as session:
             action = await session.get(ProblemActionRecord, action_id)
-            if not action:
+            if not action or action.account_id != self._account_id():
                 raise LookupError("Problem action not found")
             problem = await session.get(ProblemRecord, action.problem_id)
-            if not problem:
+            if not problem or problem.account_id != self._account_id():
                 raise LookupError("Problem not found")
             now = time.time()
             action.finished_at = now
@@ -1105,7 +1133,7 @@ class ProblemService:
         now = time.time()
         async with self._session_maker() as session:
             problem = await session.get(ProblemRecord, problem_id)
-            if not problem:
+            if not problem or problem.account_id != self._account_id():
                 raise LookupError("Problem not found")
             if problem.state not in {"open", "in_progress", "waiting"}:
                 raise ValueError("Problem cannot be ignored in its current state")
@@ -1117,6 +1145,7 @@ class ProblemService:
             session.add(
                 ProblemActionRecord(
                     id=str(uuid.uuid4()),
+                    account_id=problem.account_id,
                     problem_id=problem.id,
                     action_key="ignore_problem",
                     requested_at=now,
@@ -1134,7 +1163,7 @@ class ProblemService:
         now = time.time()
         async with self._session_maker() as session:
             problem = await session.get(ProblemRecord, problem_id)
-            if not problem:
+            if not problem or problem.account_id != self._account_id():
                 raise LookupError("Problem not found")
             if problem.state != "ignored":
                 raise ValueError("Problem is not ignored")
@@ -1146,6 +1175,7 @@ class ProblemService:
             session.add(
                 ProblemActionRecord(
                     id=str(uuid.uuid4()),
+                    account_id=problem.account_id,
                     problem_id=problem.id,
                     action_key="restore_problem",
                     requested_at=now,
@@ -1162,7 +1192,7 @@ class ProblemService:
     async def verify_problem(self, problem_id: str) -> ProblemItem | None:
         async with self._session_maker() as session:
             problem = await session.get(ProblemRecord, problem_id)
-            if not problem:
+            if not problem or problem.account_id != self._account_id():
                 return None
             verification = "not_verified"
             resolved = False
@@ -1234,6 +1264,7 @@ class ProblemService:
         )
         fingerprint = self.build_fingerprint(
             source_kind="sync_event",
+            account_id=event.account_id,
             task_id=event.task_id,
             category=classification.category,
             stage=event.status,
@@ -1244,12 +1275,17 @@ class ProblemService:
         if problem is None and problems_by_fingerprint is None:
             problem = (
                 await session.execute(
-                    select(ProblemRecord).where(ProblemRecord.fingerprint == fingerprint)
+                    select(ProblemRecord).where(
+                        ProblemRecord.account_id == event.account_id,
+                        ProblemRecord.fingerprint == fingerprint,
+                    )
                 )
             ).scalar_one_or_none()
+        created_problem = problem is None
         if not problem:
             problem = ProblemRecord(
                 id=str(uuid.uuid4()),
+                account_id=event.account_id,
                 fingerprint=fingerprint,
                 category=classification.category,
                 severity=classification.severity,
@@ -1292,6 +1328,7 @@ class ProblemService:
         session.add(
             ProblemOccurrence(
                 id=occurrence_id,
+                account_id=event.account_id,
                 problem_id=problem.id,
                 source_kind="sync_event",
                 source_id=event.id,
@@ -1309,6 +1346,8 @@ class ProblemService:
                 ),
             )
         )
+        if created_problem:
+            self._add_problem_notification(session, problem)
 
     async def _ingest_recovery_event(
         self,
@@ -1331,6 +1370,7 @@ class ProblemService:
         session.add(
             ProblemRecoveryFact(
                 event_id=event.id,
+                account_id=event.account_id,
                 task_id=event.task_id,
                 resolution_key=resolution_key,
                 operation_family=operation_family,
@@ -1341,6 +1381,7 @@ class ProblemService:
         )
         rows = await session.execute(
             select(ProblemRecord)
+            .where(ProblemRecord.account_id == event.account_id)
             .where(ProblemRecord.resolution_key == resolution_key)
             .where(ProblemRecord.state.in_(["open", "in_progress", "waiting", "ignored"]))
             .where(ProblemRecord.last_seen_at < event.timestamp)
@@ -1472,6 +1513,7 @@ class ProblemService:
         object_path, object_key = self.normalize_object_path(conflict.local_path, task_root)
         fingerprint = self.build_fingerprint(
             source_kind="conflict",
+            account_id=conflict.account_id,
             task_id=task_id or "",
             category="conflict",
             stage="version_diverged",
@@ -1485,12 +1527,17 @@ class ProblemService:
         )
         problem = (
             await session.execute(
-                select(ProblemRecord).where(ProblemRecord.fingerprint == fingerprint)
+                select(ProblemRecord).where(
+                    ProblemRecord.account_id == conflict.account_id,
+                    ProblemRecord.fingerprint == fingerprint,
+                )
             )
         ).scalar_one_or_none()
+        created_problem = problem is None
         if not problem:
             problem = ProblemRecord(
                 id=str(uuid.uuid4()),
+                account_id=conflict.account_id,
                 fingerprint=fingerprint,
                 category="conflict",
                 severity="high",
@@ -1519,6 +1566,7 @@ class ProblemService:
         session.add(
             ProblemOccurrence(
                 id=occurrence_id,
+                account_id=conflict.account_id,
                 problem_id=problem.id,
                 source_kind="conflict",
                 source_id=conflict.id,
@@ -1538,6 +1586,8 @@ class ProblemService:
                 ),
             )
         )
+        if created_problem and not conflict.resolved:
+            self._add_problem_notification(session, problem)
 
     @classmethod
     def classify_event(
@@ -1623,6 +1673,7 @@ class ProblemService:
     def build_fingerprint(
         *,
         source_kind: str,
+        account_id: str = "",
         task_id: str,
         category: str,
         stage: str,
@@ -1633,6 +1684,7 @@ class ProblemService:
             value.strip().casefold()
             for value in (
                 source_kind,
+                account_id,
                 task_id,
                 category,
                 stage,
@@ -1681,6 +1733,7 @@ class ProblemService:
     def _to_item(self, record: ProblemRecord) -> ProblemItem:
         return ProblemItem(
             id=record.id,
+            account_id=record.account_id,
             fingerprint=record.fingerprint,
             category=record.category,
             severity=record.severity,
@@ -1708,6 +1761,27 @@ class ProblemService:
             resolved_by_event_id=record.resolved_by_event_id,
             last_good_at=record.last_good_at,
             available_actions=self._available_actions(record),
+        )
+
+    @staticmethod
+    def _add_problem_notification(
+        session: AsyncSession, problem: ProblemRecord
+    ) -> None:
+        session.add(
+            NotificationRecord(
+                id=str(uuid.uuid4()),
+                account_id=problem.account_id,
+                category="sync_error",
+                severity=problem.severity,
+                title=problem.title,
+                body=problem.summary,
+                source_kind="problem",
+                source_id=problem.id,
+                task_id=problem.task_id,
+                action_target=f"/problems/{problem.id}",
+                created_at=time.time(),
+                read_at=None,
+            )
         )
 
     @staticmethod

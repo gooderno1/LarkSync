@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.db.models import ConflictRecord
+from src.db.models import LEGACY_ACCOUNT_ID
+from src.core.account_context import current_account_id
 from src.db.session import get_session_maker
 
 
@@ -25,6 +27,7 @@ class ConflictItem:
     created_at: float
     resolved: bool = False
     resolved_action: str | None = None
+    account_id: str = LEGACY_ACCOUNT_ID
 
 
 class ConflictService:
@@ -32,6 +35,10 @@ class ConflictService:
         self, session_maker: async_sessionmaker[AsyncSession] | None = None
     ) -> None:
         self._session_maker = session_maker or get_session_maker()
+
+    @staticmethod
+    def _account_id() -> str:
+        return current_account_id() or LEGACY_ACCOUNT_ID
 
     async def detect_and_add(
         self,
@@ -91,6 +98,7 @@ class ConflictService:
 
             record = ConflictRecord(
                 id=str(uuid.uuid4()),
+                account_id=self._account_id(),
                 local_path=local_path,
                 cloud_token=cloud_token,
                 local_hash=local_hash,
@@ -108,7 +116,9 @@ class ConflictService:
         return self._to_item(record)
 
     async def list_conflicts(self, include_resolved: bool = False) -> list[ConflictItem]:
-        stmt = select(ConflictRecord)
+        stmt = select(ConflictRecord).where(
+            ConflictRecord.account_id == self._account_id()
+        )
         if not include_resolved:
             stmt = stmt.where(ConflictRecord.resolved.is_(False))
         stmt = stmt.order_by(ConflictRecord.created_at.desc())
@@ -131,14 +141,14 @@ class ConflictService:
     async def get_conflict(self, conflict_id: str) -> ConflictItem | None:
         async with self._session_maker() as session:
             record = await session.get(ConflictRecord, conflict_id)
-            if not record:
+            if not record or record.account_id != self._account_id():
                 return None
             return self._to_item(record)
 
     async def resolve(self, conflict_id: str, action: str) -> ConflictItem | None:
         async with self._session_maker() as session:
             record = await session.get(ConflictRecord, conflict_id)
-            if not record:
+            if not record or record.account_id != self._account_id():
                 return None
             record.resolved = True
             record.resolved_action = action
@@ -150,6 +160,7 @@ class ConflictService:
     def _to_item(record: ConflictRecord) -> ConflictItem:
         return ConflictItem(
             id=record.id,
+            account_id=record.account_id,
             local_path=record.local_path,
             cloud_token=record.cloud_token,
             local_hash=record.local_hash,
@@ -176,6 +187,7 @@ class ConflictService:
     ) -> ConflictRecord | None:
         stmt = (
             select(ConflictRecord)
+            .where(ConflictRecord.account_id == self._account_id())
             .where(ConflictRecord.resolved.is_(False))
             .where(ConflictRecord.local_path == local_path)
             .where(ConflictRecord.cloud_token == cloud_token)

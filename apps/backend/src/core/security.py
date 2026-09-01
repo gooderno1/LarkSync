@@ -21,6 +21,8 @@ class TokenData:
     expires_at: Optional[float]
     open_id: Optional[str] = None
     account_name: Optional[str] = None
+    scope: Optional[str] = None
+    refresh_expires_at: Optional[float] = None
 
     def is_expired(self, leeway_seconds: int = 60) -> bool:
         if self.expires_at is None:
@@ -43,6 +45,47 @@ class TokenStore:
         raise NotImplementedError
 
 
+class SecretStore:
+    def get(self, namespace: str) -> Optional[str]:
+        raise NotImplementedError
+
+    def set(self, namespace: str, value: str) -> None:
+        raise NotImplementedError
+
+    def clear(self, namespace: str) -> None:
+        raise NotImplementedError
+
+
+class KeyringSecretStore(SecretStore):
+    _service = "larksync.app-profile"
+
+    def get(self, namespace: str) -> Optional[str]:
+        return keyring.get_password(self._service, namespace)
+
+    def set(self, namespace: str, value: str) -> None:
+        keyring.set_password(self._service, namespace, value)
+
+    def clear(self, namespace: str) -> None:
+        try:
+            keyring.delete_password(self._service, namespace)
+        except keyring.errors.PasswordDeleteError:
+            pass
+
+
+class MemorySecretStore(SecretStore):
+    def __init__(self) -> None:
+        self._values: dict[str, str] = {}
+
+    def get(self, namespace: str) -> Optional[str]:
+        return self._values.get(namespace)
+
+    def set(self, namespace: str, value: str) -> None:
+        self._values[namespace] = value
+
+    def clear(self, namespace: str) -> None:
+        self._values.pop(namespace, None)
+
+
 class KeyringTokenStore(TokenStore):
     """Windows 凭据管理器单条记录限 2560 字节，拆分存储以避免 CredWrite 1783 错误。"""
 
@@ -56,7 +99,12 @@ class KeyringTokenStore(TokenStore):
     # 旧版合并存储 key（兼容迁移）
     _KEY_LEGACY = "oauth_tokens"
 
-    def __init__(self) -> None:
+    def __init__(self, account_id: str | None = None) -> None:
+        self._service = (
+            f"larksync.account.{account_id.strip()}"
+            if account_id and account_id.strip()
+            else self._service
+        )
         self._cache_lock = RLock()
         self._cache_loaded = False
         self._cached_token: Optional[TokenData] = None
@@ -79,12 +127,20 @@ class KeyringTokenStore(TokenStore):
             expires_at = float(expires_raw) if expires_raw else None
             open_id_raw = keyring.get_password(self._service, self._KEY_OPEN_ID)
             account_name_raw = keyring.get_password(self._service, self._KEY_ACCOUNT_NAME)
+            scope_raw = keyring.get_password(self._service, "scope")
+            refresh_expires_raw = keyring.get_password(
+                self._service, "refresh_expires_at"
+            )
             return TokenData(
                 access_token=access_token,
                 refresh_token=refresh_token,
                 expires_at=expires_at,
                 open_id=open_id_raw.strip() if open_id_raw else None,
                 account_name=account_name_raw.strip() if account_name_raw else None,
+                scope=scope_raw.strip() if scope_raw else None,
+                refresh_expires_at=(
+                    float(refresh_expires_raw) if refresh_expires_raw else None
+                ),
             )
         raw = keyring.get_password(self._service, self._KEY_LEGACY)
         if not raw:
@@ -96,6 +152,8 @@ class KeyringTokenStore(TokenStore):
             expires_at=data.get("expires_at"),
             open_id=data.get("open_id"),
             account_name=data.get("account_name"),
+            scope=data.get("scope"),
+            refresh_expires_at=data.get("refresh_expires_at"),
         )
 
     def reload(self) -> Optional[TokenData]:
@@ -123,6 +181,18 @@ class KeyringTokenStore(TokenStore):
                 keyring.set_password(self._service, self._KEY_ACCOUNT_NAME, token.account_name)
             else:
                 self._delete_key(self._KEY_ACCOUNT_NAME)
+            if token.scope:
+                keyring.set_password(self._service, "scope", token.scope)
+            else:
+                self._delete_key("scope")
+            if token.refresh_expires_at is not None:
+                keyring.set_password(
+                    self._service,
+                    "refresh_expires_at",
+                    str(token.refresh_expires_at),
+                )
+            else:
+                self._delete_key("refresh_expires_at")
             self._delete_key(self._KEY_LEGACY)
             self._cached_token = token
             self._cache_loaded = True
@@ -142,6 +212,8 @@ class KeyringTokenStore(TokenStore):
                 self._KEY_OPEN_ID,
                 self._KEY_ACCOUNT_NAME,
                 self._KEY_LEGACY,
+                "scope",
+                "refresh_expires_at",
             ):
                 self._delete_key(key)
             self._cached_token = None
@@ -168,13 +240,19 @@ class MemoryTokenStore(TokenStore):
 class FileTokenStore(TokenStore):
     """用于无桌面 keyring 环境（如 WSL/CI）的文件凭证存储。"""
 
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, account_id: str | None = None) -> None:
         env_path = os.getenv("LARKSYNC_TOKEN_FILE")
         target = path
         if target is None and env_path:
             target = Path(env_path).expanduser()
         if target is None:
             target = data_dir() / "token_store.json"
+        if account_id and account_id.strip():
+            safe_id = "".join(
+                char if char.isalnum() or char in {"-", "_"} else "_"
+                for char in account_id.strip()
+            )
+            target = target.with_name(f"{target.stem}.{safe_id}{target.suffix}")
         self._path = target.resolve()
 
     def get(self) -> Optional[TokenData]:
@@ -213,6 +291,17 @@ class FileTokenStore(TokenStore):
             expires_at=expires_at,
             open_id=open_id.strip() if open_id else None,
             account_name=account_name.strip() if account_name else None,
+            scope=(
+                payload.get("scope").strip()
+                if isinstance(payload.get("scope"), str)
+                and payload.get("scope").strip()
+                else None
+            ),
+            refresh_expires_at=(
+                float(payload["refresh_expires_at"])
+                if isinstance(payload.get("refresh_expires_at"), (int, float))
+                else None
+            ),
         )
 
     def reload(self) -> Optional[TokenData]:
@@ -226,6 +315,8 @@ class FileTokenStore(TokenStore):
             "expires_at": token.expires_at,
             "open_id": token.open_id,
             "account_name": token.account_name,
+            "scope": token.scope,
+            "refresh_expires_at": token.refresh_expires_at,
         }
         tmp_path = self._path.with_suffix(self._path.suffix + ".tmp")
         tmp_path.write_text(
@@ -245,17 +336,32 @@ class FileTokenStore(TokenStore):
             pass
 
 
-_shared_keyring_store: KeyringTokenStore | None = None
+_shared_token_stores: dict[tuple[str, str], TokenStore] = {}
+_shared_secret_store: SecretStore | None = None
 
 
-def get_token_store() -> TokenStore:
-    global _shared_keyring_store
+def get_token_store(account_id: str | None = None) -> TokenStore:
+    from .account_context import current_account_id
+
     config = ConfigManager.get().config
     store = os.getenv("LARKSYNC_TOKEN_STORE", config.token_store).lower()
+    resolved_account_id = (account_id or current_account_id() or "").strip()
+    cache_key = (store, resolved_account_id)
+    cached = _shared_token_stores.get(cache_key)
+    if cached is not None:
+        return cached
     if store == "memory":
-        return MemoryTokenStore()
-    if store == "file":
-        return FileTokenStore()
-    if _shared_keyring_store is None:
-        _shared_keyring_store = KeyringTokenStore()
-    return _shared_keyring_store
+        cached = MemoryTokenStore()
+    elif store == "file":
+        cached = FileTokenStore(account_id=resolved_account_id or None)
+    else:
+        cached = KeyringTokenStore(account_id=resolved_account_id or None)
+    _shared_token_stores[cache_key] = cached
+    return cached
+
+
+def get_secret_store() -> SecretStore:
+    global _shared_secret_store
+    if _shared_secret_store is None:
+        _shared_secret_store = KeyringSecretStore()
+    return _shared_secret_store

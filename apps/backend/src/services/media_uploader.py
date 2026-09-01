@@ -8,6 +8,7 @@ from typing import Any
 from loguru import logger
 
 from src.services.feishu_client import FeishuClient
+from src.services.account_runtime import current_open_base_url
 
 
 class MediaUploadError(RuntimeError):
@@ -18,11 +19,11 @@ class MediaUploader:
     def __init__(
         self,
         client: FeishuClient | None = None,
-        base_url: str = "https://open.feishu.cn",
+        base_url: str | None = None,
         default_parent_type: str = "docx_image",
     ) -> None:
         self._client = client or FeishuClient()
-        self._base_url = base_url.rstrip("/")
+        self._base_url = (base_url or current_open_base_url()).rstrip("/")
         self._default_parent_type = default_parent_type
 
     async def upload_image(

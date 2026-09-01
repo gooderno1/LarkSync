@@ -8,6 +8,7 @@ from datetime import datetime, time as dt_time, timedelta
 from loguru import logger
 
 from src.core.config import ConfigManager, SyncIntervalUnit
+from src.core.account_context import account_scope
 from src.services.sync_runner import SyncTaskRunner
 from src.services.sync_schedule_checkpoint_service import SyncScheduleCheckpointService
 from src.services.sync_task_service import SyncTaskService, SyncTaskItem
@@ -102,13 +103,20 @@ class SyncScheduler:
             download_daily_time=config.download_daily_time,
         )
 
+    async def _list_schedulable_tasks(self) -> list[SyncTaskItem]:
+        loader = getattr(self._task_service, "list_all_tasks", None)
+        if callable(loader):
+            return await loader()
+        return await self._task_service.list_tasks()
+
     async def _ensure_watchers(self) -> None:
-        tasks = await self._task_service.list_tasks()
+        tasks = await self._list_schedulable_tasks()
         for task in tasks:
             if not task.enabled:
                 continue
             if task.sync_mode in {"bidirectional", "upload_only"}:
-                self._runner.ensure_watcher(task)
+                with account_scope(task.account_id):
+                    self._runner.ensure_watcher(task)
 
     async def _upload_loop(self) -> None:
         if await self._wait_for_stop(self._startup_grace_seconds):
@@ -137,8 +145,10 @@ class SyncScheduler:
                 break
 
     async def _reconcile_upload_workers(self) -> None:
-        tasks = await self._task_service.list_tasks()
+        tasks = await self._list_schedulable_tasks()
         eligible = {task.id: task for task in tasks if _should_upload(task)}
+        for task_id in set(self._upload_task_meta) - set(eligible):
+            self._runner.stop_watcher(task_id)
         for task_id, worker in list(self._upload_workers.items()):
             if task_id in eligible and not worker.done():
                 continue
@@ -150,7 +160,8 @@ class SyncScheduler:
             self._upload_workers.pop(task_id, None)
         self._upload_task_meta = eligible
         for index, task in enumerate(sorted(eligible.values(), key=lambda item: item.created_at)):
-            self._runner.ensure_watcher(task)
+            with account_scope(task.account_id):
+                self._runner.ensure_watcher(task)
             if task.id in self._upload_workers:
                 continue
             self._upload_workers[task.id] = asyncio.create_task(
@@ -158,7 +169,7 @@ class SyncScheduler:
             )
 
     async def _reconcile_download_workers(self) -> None:
-        tasks = await self._task_service.list_tasks()
+        tasks = await self._list_schedulable_tasks()
         eligible = {task.id: task for task in tasks if _should_download(task)}
         for task_id, worker in list(self._download_workers.items()):
             if task_id in eligible and not worker.done():
@@ -218,7 +229,8 @@ class SyncScheduler:
                         return
                 try:
                     async with self._run_semaphore:
-                        await self._runner.run_scheduled_upload(task)
+                        with account_scope(task.account_id):
+                            await self._runner.run_scheduled_upload(task)
                 finally:
                     await self._checkpoint_service.mark_attempt(
                         task.id,
@@ -246,7 +258,8 @@ class SyncScheduler:
             if task is None or not _should_upload(task):
                 return
             async with self._run_semaphore:
-                await self._runner.run_scheduled_upload(task)
+                with account_scope(task.account_id):
+                    await self._runner.run_scheduled_upload(task)
             last_daily_run = next_run
 
     async def _run_download_worker(self, task_id: str, *, initial_delay: float = 0.0) -> None:
@@ -289,7 +302,8 @@ class SyncScheduler:
                         return
                 try:
                     async with self._run_semaphore:
-                        await self._runner.run_scheduled_download(task)
+                        with account_scope(task.account_id):
+                            await self._runner.run_scheduled_download(task)
                 finally:
                     await self._checkpoint_service.mark_attempt(
                         task.id,
@@ -317,7 +331,8 @@ class SyncScheduler:
             if task is None or not _should_download(task):
                 return
             async with self._run_semaphore:
-                await self._runner.run_scheduled_download(task)
+                with account_scope(task.account_id):
+                    await self._runner.run_scheduled_download(task)
             last_daily_run = next_run
 
     async def _wait_for_remaining_interval(

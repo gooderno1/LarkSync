@@ -50,6 +50,15 @@ vi.mock("../hooks/useAuth", () => ({
   }),
 }));
 
+vi.mock("../hooks/useAccounts", () => ({
+  useAccounts: () => ({
+    accounts: [{ id: "account-1", account_name: "张三", state: "connected", paused: false, brand: "feishu" }],
+    activeAccount: { id: "account-1", account_name: "张三", state: "connected", paused: false, brand: "feishu" },
+    switchAccount: vi.fn(),
+    refreshAccounts: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../hooks/useAutostart", () => ({
   useAutostart: () => ({
     autostart: {
@@ -86,8 +95,8 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain('aria-checked="true"');
     expect(html).toContain("默认同步策略");
     expect(html).toContain("忽略规则");
-    expect(html).toContain("高级 OAuth");
-    expect(html).toContain("仅在更换应用凭证或授权端点时修改。");
+    expect(html).toContain("账号管理");
+    expect(html).toContain("每个账号的凭据、任务、状态和通知相互隔离");
     expect(html).toContain("同步策略");
     expect(html).toContain("本地忽略目录");
     expect(html).toContain('data-settings-context="true"');
@@ -112,11 +121,10 @@ describe("SettingsPage smoke", () => {
     expect(html).not.toContain("保存配置");
     expect(html).not.toContain("App Secret");
     expect(html).not.toContain("Redirect URI");
-    expect(html).toContain('aria-expanded="false"');
     expect(contextTitleIndex).toBeLessThan(currentDeviceIndex);
     expect(currentDeviceIndex).toBeLessThan(html.indexOf("默认同步策略"));
-    expect(html.indexOf("默认同步策略")).toBeLessThan(html.indexOf("高级 OAuth"));
-    expect(html.indexOf("高级 OAuth")).toBeLessThan(html.indexOf("忽略规则"));
+    expect(html.indexOf("默认同步策略")).toBeLessThan(html.indexOf("账号管理"));
+    expect(html.indexOf("账号管理")).toBeLessThan(html.indexOf("忽略规则"));
     expect(html.indexOf("忽略规则")).toBeLessThan(html.indexOf("数据保护"));
     expect(html).not.toContain("自动更新");
     expect(html).not.toContain("重置同步映射");

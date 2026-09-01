@@ -25,9 +25,13 @@ class FakeRunner:
         self.upload_calls: list[str] = []
         self.download_calls: list[str] = []
         self.watchers: list[str] = []
+        self.stopped_watchers: list[str] = []
 
     def ensure_watcher(self, task: SyncTaskItem) -> None:
         self.watchers.append(task.id)
+
+    def stop_watcher(self, task_id: str) -> None:
+        self.stopped_watchers.append(task_id)
 
     async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
         self.upload_calls.append(task.id)
@@ -194,6 +198,46 @@ async def test_scheduler_does_not_start_when_runtime_profile_disables_it() -> No
 
     assert scheduler._upload_task is None
     assert scheduler._download_task is None
+
+
+@pytest.mark.asyncio
+async def test_reconcile_stops_watcher_when_task_is_no_longer_schedulable() -> None:
+    runner = FakeRunner()
+    scheduler = SyncScheduler(
+        runner=runner,
+        task_service=FakeTaskService([]),
+        config_manager=SimpleNamespace(
+            config=SimpleNamespace(
+                upload_interval_value=3600.0,
+                upload_interval_unit=SyncIntervalUnit.seconds,
+                upload_daily_time="01:00",
+                download_interval_value=3600.0,
+                download_interval_unit=SyncIntervalUnit.seconds,
+                download_daily_time="01:00",
+            )
+        ),
+        checkpoint_service=FakeCheckpointService(),
+        startup_grace_seconds=0,
+    )
+    scheduler._upload_task_meta = {
+        "task-paused": SyncTaskItem(
+            id="task-paused",
+            name="暂停账户任务",
+            local_path="F:/paused",
+            cloud_folder_token="paused-token",
+            cloud_folder_name=None,
+            base_path=None,
+            sync_mode="upload_only",
+            update_mode="auto",
+            enabled=True,
+            created_at=1.0,
+            updated_at=1.0,
+        )
+    }
+
+    await scheduler._reconcile_upload_workers()
+
+    assert runner.stopped_watchers == ["task-paused"]
 
 
 @pytest.mark.asyncio

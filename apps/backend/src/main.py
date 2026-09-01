@@ -16,6 +16,7 @@ from loguru import logger
 
 from src.api import (
     auth_router,
+    accounts_router,
     config_router,
     conflicts_router,
     drive_router,
@@ -35,6 +36,7 @@ from src.api.watcher import watcher_manager
 from src.core.logging import init_logging
 from src.core.config import AppConfig, ConfigManager, RuntimeProfile
 from src.core.paths import bundle_root
+from src.core.account_context import account_scope
 from src.db.session import init_db
 from src.services.conflict_service import ConflictService
 from src.services.problem_service import ProblemService
@@ -43,6 +45,8 @@ from src.services.sync_run_service import SyncRunService
 from src.services.sync_scheduler import SyncScheduler
 from src.services.update_scheduler import UpdateScheduler
 from src.api.system import build_desktop_status, desktop_status_to_tray_status
+from src.api.accounts import account_service
+from src.services.account_runtime import account_runtime_registry
 
 InitDbFn = Callable[[], Awaitable[Any]]
 InitLoggingFn = Callable[[], None]
@@ -121,6 +125,13 @@ def _build_lifespan(
         init_logging_fn()
         watcher_manager_instance.set_loop(asyncio.get_running_loop())
         await init_db_fn()
+        try:
+            migrated = await account_service.migrate_legacy_install()
+            await account_runtime_registry.reload()
+            if migrated:
+                logger.info("旧版本账号、凭据与任务已自动迁移到多账号数据模型")
+        except Exception:
+            logger.exception("账号数据自动迁移失败；保留原数据并继续启动")
         recovered_runs = await recover_runs_fn()
         if recovered_runs:
             logger.warning("已恢复 {} 条上次退出时遗留的运行记录", recovered_runs)
@@ -220,7 +231,7 @@ def _configure_static_frontend_routes(app: FastAPI) -> None:
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa_fallback(full_path: str):
-        if full_path.startswith(("auth/", "config/", "conflicts/", "problems/", "drive/",
+        if full_path.startswith(("auth/", "accounts/", "app-profiles/", "notifications/", "ui/", "config/", "conflicts/", "problems/", "drive/",
                                   "sync/", "watcher/", "system/", "ws/",
                                   "health", "tray/", "docs", "openapi")):
             return HTMLResponse("Not found", status_code=404)
@@ -287,6 +298,19 @@ def create_app(
         )
 
     @app.middleware("http")
+    async def bind_account_context(request: Request, call_next):
+        requested_account = request.headers.get("X-LarkSync-Account-ID", "").strip()
+        account_id = requested_account or None
+        if account_id is None:
+            try:
+                account_id = await account_service.get_active_account_id()
+            except Exception:
+                account_id = None
+        with account_scope(account_id):
+            request.state.account_id = account_id
+            return await call_next(request)
+
+    @app.middleware("http")
     async def enforce_runtime_profile(request: Request, call_next):
         config = ConfigManager.get().config
         if _runtime_mutation_denied(config, request.method, request.url.path):
@@ -339,6 +363,7 @@ def create_app(
     )
 
     app.include_router(auth_router)
+    app.include_router(accounts_router)
     app.include_router(config_router)
     app.include_router(conflicts_router)
     app.include_router(problems_router)

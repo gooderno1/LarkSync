@@ -82,7 +82,9 @@ async def test_upload_records_sync_mapping(tmp_path) -> None:
     result = await uploader.upload_file(file_path, parent_node="fld999", record_db=True)
 
     async with session_maker() as session:
-        mapping = await session.get(SyncMapping, result.file_hash)
+        mapping = await session.get(
+            SyncMapping, ("legacy-default-account", result.file_hash)
+        )
         assert mapping is not None
         assert mapping.feishu_token == "token-999"
         assert mapping.local_path == str(file_path)

@@ -3,12 +3,11 @@
 /* ------------------------------------------------------------------ */
 
 import { useEffect, useState } from "react";
-import { useAuth } from "./hooks/useAuth";
-import { useConfig } from "./hooks/useConfig";
+import { useAccounts } from "./hooks/useAccounts";
 import { useProblemSummary } from "./hooks/useProblems";
 import { Sidebar } from "./components/Sidebar";
 import { DesktopTopBar } from "./components/DesktopTopBar";
-import { OnboardingWizard } from "./components/OnboardingWizard";
+import { AccountConnectPanel } from "./components/AccountConnectPanel";
 import { ActivityIssuesPage } from "./pages/ActivityIssuesPage";
 import { ConflictResolutionPage } from "./pages/ConflictResolutionPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -72,15 +71,15 @@ export default function App() {
   }, []);
 
   /* ---------- 连接与配置状态检测 ---------- */
-  const { connected, loading: authLoading } = useAuth();
-  const { config, configLoading } = useConfig();
-  const { summary: problemSummary } = useProblemSummary();
+  const { activeAccount, loading: accountLoading } = useAccounts();
+  const connected = activeAccount?.state === "connected";
+  const { summary: problemSummary } = useProblemSummary(Boolean(activeAccount));
   const unresolvedConflicts = problemSummary?.unresolved ?? 0;
   const desktopViewport = useDesktopViewportScale();
   const windowLayout = useWindowLayoutMode();
 
   /* ---------- 加载中：全屏骨架屏 ---------- */
-  if (authLoading || configLoading) {
+  if (accountLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -100,8 +99,7 @@ export default function App() {
   }
 
   /* ---------- 未配置 OAuth 或未连接：引导向导 ---------- */
-  const oauthConfigured = !!config.auth_client_id;
-  if (!oauthConfigured || !connected) {
+  if (!connected) {
     return (
       <div className="h-screen overflow-hidden bg-[#f5f9ff] text-[#102033]" style={desktopViewport.viewportStyle}>
         <div
@@ -111,10 +109,14 @@ export default function App() {
           data-window-low-height={windowLayout.lowHeight ? "true" : "false"}
           style={desktopViewport.canvasStyle}
         >
-          <OnboardingWizard
-            oauthConfigured={oauthConfigured}
-            connected={connected}
-          />
+          <div className="grid h-full place-items-center overflow-y-auto px-6 py-10">
+            <div className="w-full max-w-3xl rounded-3xl border border-[#d6e3f3] bg-white p-7 shadow-[0_24px_70px_rgba(51,112,255,0.12)]">
+              <img src="/logo-horizontal.png" alt="LarkSync" className="h-9 w-auto" />
+              <h1 className="mt-7 text-3xl font-semibold text-[#102033]">连接你的第一个飞书账号</h1>
+              <p className="mb-6 mt-3 text-sm leading-6 text-[#52657a]">安装完成后直接扫码即可。已有但授权失效的账号也可以在这里重新连接，原任务与历史数据不会丢失。</p>
+              <AccountConnectPanel />
+            </div>
+          </div>
         </div>
         <ConfirmDialogProvider />
       </div>

@@ -1,6 +1,6 @@
 # LarkSync 安全与隐私说明
 
-更新时间：2026-07-31
+更新时间：2026-09-01
 
 LarkSync 是本地运行的飞书文档同步工具。它需要访问你的飞书云空间，因此首次试用前应先理解授权范围、token 存储方式和日志边界。
 
@@ -31,12 +31,13 @@ LarkSync 的核心数据流为：
 
 ## 3. Token 与配置存储
 
-- App ID / App Secret 会保存到本地配置文件或环境变量中。
-- access token / refresh token 默认通过系统安全存储能力保存。
+- App ID 与非敏感应用元数据保存于本地数据库；App Secret 默认只保存到系统安全存储，不写入`config.json`。
+- 每个账号的 access token / refresh token 使用独立命名空间保存，账号之间不会共用凭据。
 - Windows 环境优先使用系统凭据/DPAPI 能力。
 - macOS 环境优先使用 Keychain。
 - 无桌面 keyring 的特殊环境可使用文件型 token store，但不推荐普通用户启用。
-- 同一台设备上的 LarkSync 进程通过操作系统文件锁串行更新 OAuth 凭据；每次刷新前都会重新读取安全存储，避免重复使用飞书已轮换的旧 `refresh_token`。
+- 同一账号的 LarkSync 进程通过账号专属文件锁串行更新 OAuth 凭据；不同账号拥有独立刷新锁，可以并行同步。
+- Device Flow 的`device_code`只保存在进程内存，授权会话结束、过期或应用重启后即失效，不会写入数据库和日志。
 - 诊断日志只记录 `refresh_token` 的单向摘要前 10 位，用于判断两个进程是否观察到同一版本，不记录凭据原文。
 
 请不要把 `data/config.json`、日志文件、数据库文件提交到公开仓库或发给陌生人。
@@ -48,6 +49,7 @@ LarkSync 的核心数据流为：
 - `data/larksync.db`：同步状态库。
 - `data/logs/`：运行日志。
 - `data/config.json`：本地配置。
+- 系统凭据库 / Keychain：按应用配置与账号隔离的 App Secret、access token 和 refresh token。
 - 用户选择的同步目录：实际文档和资源文件。
 
 这些目录默认已被 `.gitignore` 忽略。
@@ -77,3 +79,4 @@ LarkSync 的核心数据流为：
 - 删除联动策略为 `safe` 或 `strict` 时，删除动作可能传播到另一端。
 - 复杂文档格式可能存在有损转换；重要文档建议先用测试副本验证。
 - 如果飞书 API 字段结构变化，LarkSync 需要基于实际 JSON 样例补充适配。
+- “断开本机”只清理当前设备上的 Token，不等价于撤销服务端全部授权；彻底撤销需在飞书/Lark 授权管理页完成。

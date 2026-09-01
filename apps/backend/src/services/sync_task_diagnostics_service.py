@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from loguru import logger
 
+from src.core.account_context import current_account_id
+
 from src.api.sync_task_models import (
     SyncFileEventResponse,
     SyncLogEntry,
@@ -70,10 +72,12 @@ async def read_sync_events_db_first(
     task_ids: list[str] | None = None,
     run_id: str = "",
     run_ids: list[str] | None = None,
+    account_id: str | None = None,
     order: str = "desc",
     since: float | None = None,
     until: float | None = None,
 ) -> tuple[int, list[SyncEventRecord]]:
+    resolved_account_id = account_id or current_account_id()
     backfill_state = await get_persisted_run_event_backfill_state(
         run_event_service=run_event_service,
         event_store=event_store,
@@ -89,6 +93,7 @@ async def read_sync_events_db_first(
             task_ids=task_ids,
             run_id=run_id,
             run_ids=run_ids,
+            account_id=resolved_account_id,
             order=order,
             suppress_errors=False,
             since=since,
@@ -106,6 +111,7 @@ async def read_sync_events_db_first(
             task_ids=task_ids,
             run_id=run_id,
             run_ids=run_ids,
+            account_id=resolved_account_id,
             order=order,
             since=since,
             until=until,
@@ -133,6 +139,7 @@ async def read_sync_events_db_first(
         task_ids=task_ids,
         run_id=run_id,
         run_ids=run_ids,
+        account_id=resolved_account_id,
         order=order,
         since=since,
         until=until,

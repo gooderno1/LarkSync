@@ -67,6 +67,13 @@ export const IconActivityList = (p: P) => (
   </svg>
 );
 
+export const IconBell = (p: P) => (
+  <svg {...base} strokeWidth={1.7} {...p}>
+    <path d="M18 8.5a6 6 0 0 0-12 0c0 6-2.5 6.5-2.5 6.5h17S18 14.5 18 8.5Z" />
+    <path d="M9.7 19a2.6 2.6 0 0 0 4.6 0" />
+  </svg>
+);
+
 export const IconDownloadTray = (p: P) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...p}>
     <path d="M12 3v11" />

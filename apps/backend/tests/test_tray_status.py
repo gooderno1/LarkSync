@@ -195,11 +195,25 @@ def test_desktop_status_aggregates_shell_state(
 
 
 def test_sync_task_status_includes_delete_counters(
-    tray_client: TestClient, monkeypatch
+    tray_client: TestClient, monkeypatch, tmp_path: Path
 ) -> None:
     import src.api.sync_tasks as sync_tasks
 
-    task_id = "task-delete-status"
+    local_dir = tmp_path / "delete-status"
+    local_dir.mkdir()
+    created = tray_client.post(
+        "/sync/tasks",
+        json={
+            "name": "删除状态测试",
+            "local_path": str(local_dir),
+            "cloud_folder_token": "delete-status-token",
+            "sync_mode": "download_only",
+            "update_mode": "auto",
+            "enabled": False,
+        },
+    )
+    assert created.status_code == 200
+    task_id = created.json()["id"]
     status = SyncTaskStatus(
         task_id=task_id,
         state="running",

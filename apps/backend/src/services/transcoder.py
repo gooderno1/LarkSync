@@ -38,6 +38,7 @@ from src.services.file_downloader import FileDownloader
 from src.services.path_sanitizer import sanitize_filename
 from src.services.sheet_service import SheetService
 from src.services.transcoder_sheet_helper import TranscoderSheetHelper
+from src.services.account_runtime import current_open_base_url
 
 
 def _default_assets_root() -> Path:
@@ -46,10 +47,10 @@ def _default_assets_root() -> Path:
 
 class MediaDownloader:
     def __init__(
-        self, client: FeishuClient | None = None, base_url: str = "https://open.feishu.cn"
+        self, client: FeishuClient | None = None, base_url: str | None = None
     ) -> None:
         self._client = client or FeishuClient()
-        self._base_url = base_url.rstrip("/")
+        self._base_url = (base_url or current_open_base_url()).rstrip("/")
 
     async def download(self, file_token: str, output_path: Path) -> None:
         url = f"{self._base_url}/open-apis/drive/v1/medias/{file_token}/download"

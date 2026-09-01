@@ -67,6 +67,7 @@ class SyncEventPipeline:
             path=event.path,
             message=event.message,
             run_id=status.current_run_id if status.current_run_id else None,
+            account_id=getattr(task_info, "account_id", "legacy-default-account"),
         )
         self._event_store.append(record)
         self._enqueue(record)

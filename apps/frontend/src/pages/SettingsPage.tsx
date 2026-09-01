@@ -2,7 +2,7 @@
 /*  设置页面 — OAuth + 同步策略（优化设计）                               */
 /* ------------------------------------------------------------------ */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useConfig } from "../hooks/useConfig";
 import { useTasks } from "../hooks/useTasks";
 import { useAuth } from "../hooks/useAuth";
@@ -10,36 +10,31 @@ import { useAutostart } from "../hooks/useAutostart";
 import { syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
 import { apiFetch } from "../lib/api";
 import { useToast } from "../components/ui/toast";
-import { SettingsOAuthPanel } from "../components/settings/SettingsOAuthPanel";
 import { SettingsSyncStrategyPanel } from "../components/settings/SettingsSyncStrategyPanel";
 import { SettingsGeneralPanel } from "../components/settings/SettingsGeneralPanel";
 import { SettingsIgnoredDirectoriesPanel } from "../components/settings/SettingsIgnoredDirectoriesPanel";
-import { IconCircleCheck, IconLogout } from "../components/Icons";
+import { IconCircleCheck } from "../components/Icons";
 import { SettingsShowcasePage } from "../components/showcase/RemainingPagesShowcase";
 import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
+import { useAccounts } from "../hooks/useAccounts";
 
 function SettingsLivePage() {
-  const { config, configLoading, saveConfig, saving, saveError } = useConfig();
+  const { config, configLoading, saveConfig, saving } = useConfig();
   const { tasks, updateIgnoredSubpaths, updatingIgnoredSubpaths } = useTasks();
-  const { connected, accountName, deviceId, logout } = useAuth();
+  const { deviceId } = useAuth();
+  const { accounts, activeAccount, switchAccount, refreshAccounts } = useAccounts();
   const { autostart, autostartLoading, setAutostart, updatingAutostart } = useAutostart();
   const { toast } = useToast();
 
-  const [authorizeUrl, setAuthorizeUrl] = useState("");
-  const [tokenUrl, setTokenUrl] = useState("");
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
   const [syncMode, setSyncMode] = useState("bidirectional");
   const [deletePolicy, setDeletePolicy] = useState<"off" | "safe" | "strict">("safe");
   const [ignoreHiddenCachePaths, setIgnoreHiddenCachePaths] = useState(true);
-  const [tokenStore, setTokenStore] = useState("keyring");
   const [uploadValue, setUploadValue] = useState("60");
   const [uploadUnit, setUploadUnit] = useState("seconds");
   const [uploadTime, setUploadTime] = useState("01:00");
   const [downloadValue, setDownloadValue] = useState("1");
   const [downloadUnit, setDownloadUnit] = useState("days");
   const [downloadTime, setDownloadTime] = useState("01:00");
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showIgnoredDirectorySettings, setShowIgnoredDirectorySettings] = useState(false);
   const [deviceDisplayName, setDeviceDisplayName] = useState("");
   const [ignoredPathDrafts, setIgnoredPathDrafts] = useState<Record<string, string>>({});
@@ -48,31 +43,14 @@ function SettingsLivePage() {
   const uploadEnabled = syncModeSupportsUpload(syncMode);
   const downloadEnabled = syncModeSupportsDownload(syncMode);
 
-  // Redirect URI 自动生成（origin 即后端地址，生产模式前后端同源）
-  const redirectUri = useMemo(() => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return `${origin}/auth/callback`;
-  }, []);
-
-  const copyRedirectUri = () => {
-    navigator.clipboard.writeText(redirectUri).then(
-      () => toast("已复制到剪贴板", "success"),
-      () => toast("复制失败", "danger")
-    );
-  };
-
   // populate from server data
   useEffect(() => {
     if (!config || configLoading) return;
-    setAuthorizeUrl(config.auth_authorize_url || "");
-    setTokenUrl(config.auth_token_url || "");
-    setClientId(config.auth_client_id || "");
     setSyncMode(config.sync_mode || "bidirectional");
     setDeletePolicy(config.delete_policy || "safe");
     if (config.ignore_hidden_cache_paths != null) {
       setIgnoreHiddenCachePaths(Boolean(config.ignore_hidden_cache_paths));
     }
-    setTokenStore(config.token_store || "keyring");
     if (config.upload_interval_value != null) setUploadValue(String(config.upload_interval_value));
     if (config.upload_interval_unit) setUploadUnit(config.upload_interval_unit);
     if (config.upload_daily_time) setUploadTime(config.upload_daily_time);
@@ -163,14 +141,8 @@ function SettingsLivePage() {
 
     try {
       await saveConfig({
-        auth_authorize_url: authorizeUrl.trim() || null,
-        auth_token_url: tokenUrl.trim() || null,
-        auth_client_id: clientId.trim() || null,
-        auth_client_secret: clientSecret.trim() || null,
-        auth_redirect_uri: redirectUri,
         sync_mode: syncMode,
         delete_policy: deletePolicy,
-        token_store: tokenStore,
         upload_interval_value: uVal,
         upload_interval_unit: uploadUnit,
         upload_daily_time: uploadUnit === "days" ? uploadTime.trim() || null : null,
@@ -178,7 +150,6 @@ function SettingsLivePage() {
         download_interval_unit: downloadUnit,
         download_daily_time: downloadUnit === "days" ? downloadTime.trim() || null : null,
       });
-      setClientSecret("");
       toast("配置已保存", "success");
     } catch (err) {
       toast(err instanceof Error ? err.message : "保存失败", "danger");
@@ -200,6 +171,19 @@ function SettingsLivePage() {
   const handleSaveAll = async () => {
     await handleSave();
     await handleSaveMoreSettings();
+  };
+
+  const accountAction = async (accountId: string, action: "pause" | "resume" | "disconnect" | "remove") => {
+    if (action === "remove" && !window.confirm("从本机移除此账号？任务与历史数据仍会保留，可重新登录恢复。")) return;
+    try {
+      await apiFetch(action === "remove" ? `/accounts/${accountId}` : `/accounts/${accountId}/${action}`, {
+        method: action === "remove" ? "DELETE" : "POST",
+      });
+      await refreshAccounts();
+      toast(action === "pause" ? "账号同步已暂停" : action === "resume" ? "账号同步已恢复" : action === "disconnect" ? "账号已从本机断开" : "账号已移除", "success");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "账号操作失败", "danger");
+    }
   };
 
   const handlePickIgnoredSubpath = async (taskId: string, localPath: string) => {
@@ -269,11 +253,10 @@ function SettingsLivePage() {
                   <h3 className="text-sm font-semibold text-[#102033]">飞书账号</h3>
                   <button
                     className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs font-semibold text-[#52677f] hover:border-[#3370ff]/40 hover:text-[#3370ff]"
-                    onClick={() => logout()}
+                    onClick={() => activeAccount && void accountAction(activeAccount.id, activeAccount.paused ? "resume" : "pause")}
                     type="button"
                   >
-                    <IconLogout className="h-3.5 w-3.5" />
-                    {connected ? "登出设备" : "重新授权"}
+                    {activeAccount?.paused ? "恢复同步" : "暂停同步"}
                   </button>
                 </div>
                 <div className="mt-4 flex min-w-0 items-center gap-3">
@@ -281,11 +264,9 @@ function SettingsLivePage() {
                       <IconCircleCheck className="h-6 w-6" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[#102033]">{connected ? "飞书已连接" : "飞书未连接"}</p>
+                      <p className="text-sm font-semibold text-[#102033]">{activeAccount?.state === "connected" ? "飞书已连接" : "飞书需重新授权"}</p>
                       <p className="mt-1 truncate text-xs text-[#6b7f96]">
-                        {connected
-                          ? `${accountName || "当前账号"} · 本机授权有效`
-                          : "请在高级 OAuth 中完成授权"}
+                        {activeAccount?.account_name || "当前账号"} · 共 {accounts.length} 个账号
                       </p>
                     </div>
                 </div>
@@ -330,27 +311,21 @@ function SettingsLivePage() {
             showSaveAction={false}
           />
 
-          <SettingsOAuthPanel
-            clientId={clientId}
-            setClientId={setClientId}
-            clientSecret={clientSecret}
-            setClientSecret={setClientSecret}
-            redirectUri={redirectUri}
-            copyRedirectUri={copyRedirectUri}
-            handleSave={handleSave}
-            saving={saving}
-            saveError={saveError}
-            showAdvanced={showAdvanced}
-            toggleAdvanced={() => setShowAdvanced((prev) => !prev)}
-            authorizeUrl={authorizeUrl}
-            setAuthorizeUrl={setAuthorizeUrl}
-            tokenUrl={tokenUrl}
-            setTokenUrl={setTokenUrl}
-            tokenStore={tokenStore}
-            setTokenStore={setTokenStore}
-            inputCls={inputCls}
-            showSaveAction={false}
-          />
+          <section className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
+            <div><h2 className="text-base font-semibold text-[#102033]">账号管理</h2><p className="mt-1 text-xs text-[#58708d]">每个账号的凭据、任务、状态和通知相互隔离；暂停不会退出登录。</p></div>
+            <div className="mt-4 grid gap-3">
+              {accounts.map((account) => (
+                <div key={account.id} className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${account.id === activeAccount?.id ? "border-[#9fc0ee] bg-[#f5f9ff]" : "border-[#dce6f2]"}`}>
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-[#eaf3ff] text-xs font-bold text-[#3370ff]">{(account.account_name || "飞").slice(0, 1)}</span>
+                  <div className="min-w-[150px] flex-1"><p className="truncate text-sm font-semibold text-[#102033]">{account.account_name || "飞书账号"}</p><p className="mt-0.5 text-xs text-[#71869d]">{account.state === "connected" ? account.paused ? "已暂停" : "同步中" : "需要重新授权"} · {account.brand === "lark" ? "Lark" : "飞书"}</p></div>
+                  {account.id !== activeAccount?.id ? <button type="button" onClick={() => void switchAccount(account.id)} className="rounded-lg border border-[#c9d8eb] px-3 py-1.5 text-xs font-semibold text-[#3370ff]">切换</button> : <span className="rounded-full bg-[#eaf3ff] px-2 py-1 text-[11px] font-semibold text-[#3370ff]">当前</span>}
+                  <button type="button" onClick={() => void accountAction(account.id, account.paused ? "resume" : "pause")} className="rounded-lg border border-[#c9d8eb] px-3 py-1.5 text-xs text-[#52657a]">{account.paused ? "恢复" : "暂停"}</button>
+                  <button type="button" onClick={() => void accountAction(account.id, "disconnect")} className="rounded-lg border border-[#f4c7a1] px-3 py-1.5 text-xs text-[#b45309]">断开本机</button>
+                  <button type="button" onClick={() => void accountAction(account.id, "remove")} className="rounded-lg border border-[#fecdd3] px-3 py-1.5 text-xs text-[#be123c]">移除</button>
+                </div>
+              ))}
+            </div>
+          </section>
         </main>
 
         <aside data-settings-auxiliary-column="true" className="min-w-0 space-y-4">
