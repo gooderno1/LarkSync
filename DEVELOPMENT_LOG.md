@@ -1,5 +1,28 @@
 # DEVELOPMENT LOG
 
+## v0.9.2 release (2026-09-01)
+
+- 发布原因：
+  - 将 v0.9.2-dev.1 已验证的 Windows 长 Token 原子存储修复交付为稳定版，恢复 Device Flow 重新授权后的本机凭据闭环。
+- 实现方式：
+  - `codex/desktop-app-refactor-v0.8`以 fast-forward 方式合并到`main`，保留完整提交历史，没有产生额外合并提交。
+  - 版本统一冻结为`v0.9.2`；标签`v0.9.2`固定指向发布提交`d674aabf6d3a8b802864135d14a0710fdbcacd8c`。
+  - 正式发布工作流生成 Windows NSIS、macOS arm64、macOS x86_64 安装包及对应 SHA-256 校验文件。
+- 当前结果：
+  - GitHub Release`v0.9.2`已发布为 Latest，状态为非草稿、非预发布，发布时间为`2026-09-01 18:05:58 +08:00`。
+  - Windows 自动更新渠道已可识别`v0.9.2`；Release 共包含 3 个安装包和 3 个校验文件。
+  - macOS 未配置 Apple Developer 凭据，本次双架构 DMG 使用 ad-hoc 签名发布；该状态不影响 Windows 自动更新。
+- 验证方式：
+  - GitHub Actions Release Build`33495086275`成功；全量质量门禁、WebKit 连续扫码门禁、Windows 安装构建、macOS arm64 与 x86_64 安装启动 smoke 均通过。
+  - Windows 安装包`LarkSync-Setup-v0.9.2.exe`大小为`58,590,180 bytes`，SHA256 为`c7aaa8fd39969a609c71624102e21f2ab5c84450e80881a93f602913069fd0c1`。
+  - macOS arm64 DMG 大小为`65,703,316 bytes`，SHA256 为`13f0b0832a680bb19396cfff48b84ede8355ead1f7eedb22bfe746c8a21fd4c0`。
+  - macOS x86_64 DMG 大小为`66,558,097 bytes`，SHA256 为`ee9c92b2cb5354b1c938e797c20601a5c34e9379dc8534e20fd729ea4586c2dd`。
+  - 三份`.sha256`文件已从 GitHub Release 下载到隔离临时目录并逐项核对，内容均与对应资产 digest 一致；验证后临时目录已清理。
+  - 发布归档完成时间：`2026-09-01 18:10:29 +08:00`。
+- 遗留问题：
+  - 真实飞书重新授权仍需要用户本人扫码确认；升级后应执行一次重新授权，验证当前账号已从 V1 兼容授权切换为 V2。
+  - ad-hoc 签名的 macOS 应用首次启动仍可能需要用户在系统安全设置中确认；后续配置 Developer ID 与公证凭据后可消除此限制。
+
 ## v0.9.2-dev.1 (2026-09-01)
 
 - 开发原因：
