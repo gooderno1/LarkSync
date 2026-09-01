@@ -125,7 +125,11 @@ async def test_device_session_finishes_and_persists_identity(monkeypatch) -> Non
             request=request,
             json={
                 "code": 0,
-                "data": {"open_id": "ou_1", "name": "测试用户"},
+                "data": {
+                    "open_id": "ou_1",
+                    "name": "测试用户",
+                    "tenant_key": "tenant_alpha",
+                },
             },
         )
     )
@@ -147,6 +151,7 @@ async def test_device_session_finishes_and_persists_identity(monkeypatch) -> Non
 
     assert result["status"] == "authorized"
     assert accounts.saved["open_id"] == "ou_1"
+    assert accounts.saved["tenant_key"] == "tenant_alpha"
     assert accounts.saved["token"].refresh_token == "refresh"
     assert accounts.saved["auth_protocol"] == "device_v2"
     assert (await service.poll_device(session.id))["status"] == "authorized"
@@ -161,7 +166,14 @@ async def test_reauthorize_session_updates_exact_target_account(monkeypatch) -> 
         lambda request: httpx.Response(
             200,
             request=request,
-            json={"code": 0, "data": {"open_id": "ou_1", "name": "测试用户"}},
+            json={
+                "code": 0,
+                "data": {
+                    "open_id": "ou_1",
+                    "name": "测试用户",
+                    "tenant_key": "tenant_alpha",
+                },
+            },
         )
     )
     client = httpx.AsyncClient(transport=transport)
@@ -181,6 +193,7 @@ async def test_reauthorize_session_updates_exact_target_account(monkeypatch) -> 
 
     assert result["status"] == "authorized"
     assert accounts.saved["account_id"] == "account-existing"
+    assert accounts.saved["tenant_key"] == "tenant_alpha"
     assert accounts.saved["token"].auth_protocol == "device_v2"
     await client.aclose()
 

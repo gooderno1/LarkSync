@@ -18,6 +18,11 @@ describe("OrganizationAvatar", () => {
     expect(organizationDisplayName({ ...account, account_alias: "研发租户" })).toBe("研发租户");
   });
 
+  it("never exposes an account id fragment as the organization fallback", () => {
+    expect(organizationDisplayName({ id: "legacy-default-account", brand: "feishu" } as AccountSummary)).toBe("飞书组织");
+    expect(organizationDisplayName({ id: "621fe8-account", brand: "lark" } as AccountSummary)).toBe("Lark 组织");
+  });
+
   it("falls back to the organization initial when the image fails", () => {
     const view = render(<OrganizationAvatar account={account} className="logo" fallbackClassName="fallback" />);
     fireEvent.error(view.container.querySelector('[data-organization-avatar="true"]') as HTMLImageElement);

@@ -43,6 +43,7 @@ type AuthorizedAccount = {
   auth_protocol?: string;
   tenant_name?: string | null;
   account_alias?: string | null;
+  brand?: string;
 };
 
 type ConnectPath = "automatic" | "existing" | "manual" | "reauthorize";
@@ -79,6 +80,7 @@ export function AccountConnectPanel({
   const [createdProfileAppId, setCreatedProfileAppId] = useState<string | null>(null);
   const [connectPath, setConnectPath] = useState<ConnectPath>(mode === "reauthorize" ? "reauthorize" : "automatic");
   const [authorizedAccount, setAuthorizedAccount] = useState<AuthorizedAccount | null>(null);
+  const [organizationNameDraft, setOrganizationNameDraft] = useState("");
   const [runtimeReloadPending, setRuntimeReloadPending] = useState(false);
   const completionRef = useRef({ refreshAccounts, refetchProfiles: profiles.refetch, onConnected });
   completionRef.current = { refreshAccounts, refetchProfiles: profiles.refetch, onConnected };
@@ -145,7 +147,14 @@ export function AccountConnectPanel({
           return;
         }
         if (status === "authorized") {
-          setAuthorizedAccount((result.account as AuthorizedAccount | undefined) ?? null);
+          const authorized = (result.account as AuthorizedAccount | undefined) ?? null;
+          setAuthorizedAccount(authorized);
+          setOrganizationNameDraft(
+            authorized?.account_alias
+              || authorized?.tenant_name
+              || (authorized?.brand === "lark" ? "Lark 组织" : "飞书组织"),
+          );
+          setError(null);
           setRuntimeReloadPending(Boolean(result.runtime_reload_pending));
           setPhase("authorized");
           setSession(null);
@@ -280,16 +289,37 @@ export function AccountConnectPanel({
   };
 
   const finishAuthorized = async () => {
+    const organizationName = organizationNameDraft.trim();
+    if (mode === "add" && !organizationName) {
+      setError("请填写用于区分账号的组织名称。");
+      return;
+    }
     setBusy(true);
+    setError(null);
     try {
+      const currentOrganizationName = authorizedAccount?.account_alias || authorizedAccount?.tenant_name || "";
+      if (
+        mode === "add"
+        && authorizedAccount?.id
+        && organizationName !== currentOrganizationName
+      ) {
+        await apiFetch(`/accounts/${authorizedAccount.id}/display`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account_alias: organizationName }),
+        });
+      }
       await completionRef.current.refreshAccounts();
       if (mode === "add" && authorizedAccount?.id) {
         await switchAccount(authorizedAccount.id);
       }
       completionRef.current.onConnected?.();
     } catch (err) {
-      setPhase("failed");
-      setError(err instanceof Error ? err.message : "账号状态刷新失败，请重试");
+      setError(
+        mode === "add"
+          ? `账号授权已成功，仅组织名称保存或账号刷新失败：${err instanceof Error ? err.message : "请重试"}`
+          : err instanceof Error ? err.message : "账号状态刷新失败，请重试",
+      );
     } finally {
       setBusy(false);
     }
@@ -342,7 +372,21 @@ export function AccountConnectPanel({
             <span className="h-2 w-2 rounded-full bg-[#10b981]" />
             凭据已安全保存
           </div>
+          {mode === "add" ? (
+            <label className="mx-auto mt-5 block max-w-md text-left text-xs font-semibold text-[#294662]">
+              组织名称
+              <input
+                aria-label="组织名称"
+                value={organizationNameDraft}
+                maxLength={120}
+                onChange={(event) => setOrganizationNameDraft(event.target.value)}
+                className="mt-2 h-10 w-full rounded-xl border border-[#b9cfee] bg-white px-3 text-sm font-medium text-[#102033] outline-none focus:border-[#3370ff] focus:ring-2 focus:ring-[#3370ff]/15"
+              />
+              <span className="mt-2 block font-normal leading-5 text-[#71869d]">只用于在 LarkSync 中区分账号，可随时在设置中修改；不会更改飞书组织或同步权限。</span>
+            </label>
+          ) : null}
           {runtimeReloadPending ? <p className="mt-3 text-xs text-[#b45309]">授权信息已保存；后台连接将在下次启动时自动加载。</p> : null}
+          {error ? <p className="mx-auto mt-3 max-w-md rounded-lg border border-[#fecdd3] bg-[#fff1f2] px-3 py-2 text-left text-xs leading-5 text-[#be123c]">{error}</p> : null}
           <button type="button" disabled={busy} onClick={() => void finishAuthorized()} className="mt-5 rounded-xl bg-[#3370ff] px-7 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(51,112,255,0.22)] disabled:opacity-50">
             {busy ? "正在完成…" : mode === "add" ? "进入该组织" : "完成"}
           </button>

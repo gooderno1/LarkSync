@@ -98,10 +98,10 @@ async def test_schema_v6_adds_ignored_at_without_changing_existing_problem_state
         ).scalar_one()
     await dispose_engines()
 
-    assert CURRENT_SCHEMA_VERSION == 12
+    assert CURRENT_SCHEMA_VERSION == 13
     assert "ignored_at" in columns
     assert (row.state, row.ignored_reason, row.ignored_at) == ("open", None, None)
-    assert version == "12"
+    assert version == "13"
 
 
 @pytest.mark.asyncio
@@ -187,7 +187,7 @@ async def test_schema_v9_automatically_backs_up_and_scopes_legacy_data(
         ).scalar_one()
     await dispose_engines()
 
-    backups = list(tmp_path.glob("v8-single-account.db.pre-v12-*.bak"))
+    backups = list(tmp_path.glob("v8-single-account.db.pre-v13-*.bak"))
     assert len(backups) == 1
     assert task_account == "legacy-default-account"
     assert tuple(link) == ("legacy-default-account", "D:/Sync/a.md")
@@ -211,7 +211,7 @@ async def test_schema_v12_adds_tenant_permission_diagnostic_fields(tmp_path: Pat
         ).scalar_one()
     await dispose_engines()
 
-    assert version == "12"
+    assert version == "13"
     assert {
         "tenant_key",
         "tenant_display_id",
@@ -224,6 +224,83 @@ async def test_schema_v12_adds_tenant_permission_diagnostic_fields(tmp_path: Pat
         "tenant_metadata_error_code",
         "tenant_permission_url",
     }.issubset(columns)
+
+
+@pytest.mark.asyncio
+async def test_schema_v13_backfills_local_organization_names_and_notifies_once(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "v12-organization-names.db"
+    url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
+    engine = await init_db(url)
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO accounts (id, app_profile_id, brand, open_id, account_name, "
+                "tenant_name, account_alias, state, paused, auth_protocol, created_at, "
+                "updated_at) VALUES "
+                "('needs-name', 'profile', 'feishu', 'ou_1', '张三', NULL, NULL, "
+                "'connected', 0, 'device_v2', 1, 1), "
+                "('has-alias', 'profile', 'feishu', 'ou_2', '张三', NULL, '研发团队', "
+                "'connected', 0, 'device_v2', 2, 2), "
+                "('has-official', 'profile', 'feishu', 'ou_3', '张三', '青鸟科技', NULL, "
+                "'connected', 0, 'device_v2', 3, 3)"
+            )
+        )
+        await conn.execute(
+            text("UPDATE sync_meta SET value='12' WHERE key='schema_version'")
+        )
+    await dispose_engines()
+
+    engine = await init_db(url)
+    async with engine.begin() as conn:
+        rows = {
+            row.id: (row.account_alias, row.tenant_name)
+            for row in (
+                await conn.execute(
+                    text(
+                        "SELECT id, account_alias, tenant_name FROM accounts ORDER BY created_at"
+                    )
+                )
+            ).all()
+        }
+        notices = (
+            await conn.execute(
+                text(
+                    "SELECT account_id, title, body, source_kind, source_id "
+                    "FROM notifications WHERE source_kind='organization_name_migration'"
+                )
+            )
+        ).all()
+        version = (
+            await conn.execute(
+                text("SELECT value FROM sync_meta WHERE key='schema_version'")
+            )
+        ).scalar_one()
+    await dispose_engines()
+
+    engine = await init_db(url)
+    async with engine.begin() as conn:
+        notice_count = (
+            await conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM notifications "
+                    "WHERE source_kind='organization_name_migration'"
+                )
+            )
+        ).scalar_one()
+    await dispose_engines()
+
+    assert rows["needs-name"] == ("飞书组织 1", None)
+    assert rows["has-alias"] == ("研发团队", None)
+    assert rows["has-official"] == (None, "青鸟科技")
+    assert len(notices) == 1
+    assert notices[0].account_id == "needs-name"
+    assert notices[0].title == "组织名称已使用本地预设"
+    assert "飞书组织 1" in notices[0].body
+    assert notices[0].source_id == "organization-name:v13:needs-name"
+    assert notice_count == 1
+    assert version == "13"
 
 
 @pytest.mark.asyncio

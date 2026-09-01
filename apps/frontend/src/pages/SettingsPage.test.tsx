@@ -98,10 +98,11 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain("账号管理");
     expect(html).toContain("每个账号的凭据、任务、状态和通知相互隔离");
     expect(html).toContain("青鸟科技");
-    expect(html).toContain("官方组织信息");
+    expect(html).toContain("已同步飞书组织信息");
     expect(html).toContain("https://example.test/tenant.png");
-    expect(html).toContain(">显示名<");
-    expect(html).toContain("组织信息与权限");
+    expect(html).toContain("修改组织名称");
+    expect(html).not.toContain("组织信息与权限");
+    expect(html).not.toContain("扫码开通权限");
     expect(html).toContain("V1 兼容");
     expect(html).toContain("刷新授权");
     expect(html).toContain("重新授权");

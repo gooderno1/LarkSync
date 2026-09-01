@@ -136,6 +136,7 @@ class AuthSessionService:
                 "token": token,
                 "avatar_url": str(profile_data.get("avatar_url") or "").strip() or None,
                 "tenant_name": str(profile_data.get("tenant_name") or "").strip() or None,
+                "tenant_key": str(profile_data.get("tenant_key") or "").strip() or None,
             }
             try:
                 if session.target_account_id:

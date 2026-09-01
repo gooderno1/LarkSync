@@ -57,6 +57,8 @@ async def test_accounts_have_isolated_credentials_and_active_preference() -> Non
     )
 
     assert account_a.id != account_b.id
+    assert account_a.account_alias == "飞书组织 1"
+    assert account_b.account_alias == "飞书组织 2"
     assert token_stores[account_a.id].get().access_token == "access-a"
     assert token_stores[account_b.id].get().access_token == "access-b"
     await service.set_active_account(account_b.id)
@@ -101,10 +103,13 @@ async def test_reauthorize_account_preserves_identity_and_switches_protocol() ->
         account_name="账号 A 新名称",
         granted_scopes=["drive:drive"],
         token=TokenData("access-v2", "refresh-v2", None, open_id="ou_a", auth_protocol="device_v2"),
+        tenant_key="tenant-alpha",
     )
 
     assert updated.id == account.id
     assert updated.auth_protocol == "device_v2"
+    assert updated.tenant_key == "tenant-alpha"
+    assert updated.account_alias == "飞书组织 1"
     assert stores[account.id].get().access_token == "access-v2"
     with pytest.raises(ValueError, match="扫码账号与目标账号不一致"):
         await service.reauthorize_account(
@@ -116,6 +121,49 @@ async def test_reauthorize_account_preserves_identity_and_switches_protocol() ->
             token=TokenData("other", "other-refresh", None, open_id="ou_other", auth_protocol="device_v2"),
         )
     assert stores[account.id].get().access_token == "access-v2"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_official_organization_name_avoids_preset_and_empty_alias_restores_safe_name() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    service = AccountService(
+        session_maker=maker,
+        secret_store=MemorySecretStore(),
+        token_store_factory=lambda _account_id: MemoryTokenStore(),
+        device_id="device-test",
+    )
+    profile = await service.create_app_profile(
+        app_id="cli_test", app_secret="secret", brand="feishu", source="manual"
+    )
+    official = await service.upsert_account(
+        app_profile_id=profile.id,
+        open_id="ou_official",
+        account_name="账号 A",
+        granted_scopes=[],
+        token=TokenData("access", "refresh", None, open_id="ou_official"),
+        tenant_name="青鸟科技",
+        tenant_key="tenant-alpha",
+    )
+    assert official.tenant_name == "青鸟科技"
+    assert official.tenant_key == "tenant-alpha"
+    assert official.account_alias is None
+
+    preset = await service.upsert_account(
+        app_profile_id=profile.id,
+        open_id="ou_preset",
+        account_name="账号 B",
+        granted_scopes=[],
+        token=TokenData("access-2", "refresh-2", None, open_id="ou_preset"),
+    )
+    assert preset.account_alias == "飞书组织 1"
+    renamed = await service.set_account_alias(preset.id, "采购团队")
+    assert renamed.account_alias == "采购团队"
+    restored = await service.set_account_alias(preset.id, None)
+    assert restored.account_alias == "飞书组织 1"
     await engine.dispose()
 
 

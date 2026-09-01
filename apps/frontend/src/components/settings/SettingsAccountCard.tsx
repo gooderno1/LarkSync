@@ -9,10 +9,8 @@ type SettingsAccountCardProps = {
   account: AccountSummary;
   active: boolean;
   refreshing: boolean;
-  refreshingTenant: boolean;
   onSwitch: () => void;
   onRefresh: () => void;
-  onRefreshTenant: () => void;
   onEditAlias: () => void;
   onReauthorize: () => void;
   onAction: (action: AccountAction) => void;
@@ -32,15 +30,12 @@ function accountState(account: AccountSummary) {
 }
 
 function organizationState(account: AccountSummary) {
-  if (account.tenant_metadata_status === "ready") return { label: "官方组织信息已同步", tone: "text-[#047857]" };
-  if (account.tenant_metadata_status === "permission_required") return { label: "需要开通组织信息权限", tone: "text-[#b45309]" };
-  if (account.tenant_metadata_status === "unavailable") return { label: "当前应用暂不支持组织信息", tone: "text-[#71869d]" };
-  if (account.tenant_metadata_status === "failed") return { label: "组织信息获取失败", tone: "text-[#be123c]" };
-  return { label: "尚未获取组织信息", tone: "text-[#71869d]" };
+  if (account.tenant_metadata_status === "ready") return { label: "已同步飞书组织信息", tone: "text-[#047857]" };
+  return { label: "使用本地组织名称", tone: "text-[#52657a]" };
 }
 
 export function SettingsAccountCard({
-  account, active, refreshing, refreshingTenant, onSwitch, onRefresh, onRefreshTenant,
+  account, active, refreshing, onSwitch, onRefresh,
   onEditAlias, onReauthorize, onAction,
 }: SettingsAccountCardProps) {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -70,11 +65,10 @@ export function SettingsAccountCard({
           <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="min-w-0">
               <p className={`text-xs font-semibold ${orgState.tone}`}>{orgState.label}</p>
-              <p className="mt-1 text-[10px] text-[#8a9bb0]">组织 Logo 与名称用于账号区分，不影响同步权限。</p>
+              <p className="mt-1 text-[10px] text-[#8a9bb0]">名称只用于 LarkSync 内区分账号，不影响同步权限。</p>
             </div>
             <div data-account-organization-actions="true" className="flex shrink-0 items-center gap-1">
-              <button type="button" disabled={refreshingTenant} onClick={onRefreshTenant} className="rounded-lg border border-[#b9cfee] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#3370ff] disabled:opacity-50">{refreshingTenant ? "检查中…" : account.tenant_metadata_status === "permission_required" ? "扫码开通权限" : "组织信息与权限"}</button>
-              <button type="button" onClick={onEditAlias} className="rounded-lg px-2 py-1.5 text-[11px] text-[#52657a] hover:bg-[#eef5ff]">显示名</button>
+              <button type="button" onClick={onEditAlias} className="rounded-lg border border-[#b9cfee] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#3370ff] hover:bg-[#eef5ff]">修改组织名称</button>
             </div>
           </div>
         </div>

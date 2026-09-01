@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import sqlite3
+import time
 from typing import Awaitable, Callable, Optional, Union
+import uuid
 
 from loguru import logger
 from sqlalchemy import event, text
@@ -31,7 +33,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 12
+CURRENT_SCHEMA_VERSION = 13
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -716,6 +718,79 @@ async def _apply_schema_v12(conn) -> None:
         )
 
 
+async def _apply_schema_v13(conn) -> None:
+    """为无官方组织信息的旧账号补齐稳定本地名称，并创建一次性通知。"""
+    used_by_brand: dict[str, set[str]] = {"feishu": set(), "lark": set()}
+    brand_rows = (
+        await conn.execute(
+            text(
+                "SELECT brand, account_alias, tenant_name FROM accounts "
+                "WHERE NULLIF(TRIM(account_alias), '') IS NOT NULL "
+                "OR NULLIF(TRIM(tenant_name), '') IS NOT NULL"
+            )
+        )
+    ).all()
+    for row in brand_rows:
+        used = used_by_brand.setdefault(str(row.brand or "feishu"), set())
+        for value in (row.account_alias, row.tenant_name):
+            if value and str(value).strip():
+                used.add(str(value).strip())
+    targets = (
+        await conn.execute(
+            text(
+                "SELECT id, brand FROM accounts "
+                "WHERE removed_at IS NULL "
+                "AND NULLIF(TRIM(account_alias), '') IS NULL "
+                "AND NULLIF(TRIM(tenant_name), '') IS NULL "
+                "ORDER BY created_at ASC, id ASC"
+            )
+        )
+    ).all()
+    now = time.time()
+    for row in targets:
+        brand = str(row.brand or "feishu")
+        prefix = "Lark 组织" if brand == "lark" else "飞书组织"
+        used = used_by_brand.setdefault(brand, set())
+        sequence = 1
+        while f"{prefix} {sequence}" in used:
+            sequence += 1
+        alias = f"{prefix} {sequence}"
+        used.add(alias)
+        account_id = str(row.id)
+        source_id = f"organization-name:v13:{account_id}"
+        await conn.execute(
+            text(
+                "UPDATE accounts SET account_alias=:alias, updated_at=:now "
+                "WHERE id=:account_id"
+            ),
+            {"alias": alias, "now": now, "account_id": account_id},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO notifications ("
+                "id, account_id, category, severity, title, body, source_kind, "
+                "source_id, task_id, action_target, created_at, read_at"
+                ") SELECT :id, :account_id, 'message', 'info', :title, :body, "
+                "'organization_name_migration', :source_id, NULL, NULL, :now, NULL "
+                "WHERE NOT EXISTS ("
+                "SELECT 1 FROM notifications WHERE account_id=:account_id "
+                "AND source_kind='organization_name_migration' AND source_id=:source_id"
+                ")"
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "account_id": account_id,
+                "title": "组织名称已使用本地预设",
+                "body": (
+                    f"升级后已为此账号使用预设名称“{alias}”。"
+                    "可在“设置 → 账号管理”中修改；修改只影响 LarkSync 内的显示。"
+                ),
+                "source_id": source_id,
+                "now": now,
+            },
+        )
+
+
 async def _rebuild_sync_links_v9(conn, *, legacy_account_id: str) -> None:
     table_info = list(await conn.execute(text("PRAGMA table_info(sync_links)")))
     columns = {str(row[1]): row for row in table_info}
@@ -910,6 +985,11 @@ _SCHEMA_MIGRATIONS = [
         version=12,
         description="记录组织权限错误码和官方权限开通入口",
         upgrade=_apply_schema_v12,
+    ),
+    SchemaMigration(
+        version=13,
+        description="为旧账号补齐稳定本地组织名称并发送一次性可改名通知",
+        upgrade=_apply_schema_v13,
     ),
 ]
 

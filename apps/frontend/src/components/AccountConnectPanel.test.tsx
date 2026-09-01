@@ -152,6 +152,7 @@ describe("AccountConnectPanel", () => {
     expect(screen.getByText("授权成功")).toBeTruthy();
     expect(screen.getByText("Device Flow V2")).toBeTruthy();
     expect(screen.getByText("凭据已安全保存")).toBeTruthy();
+    expect(screen.queryByLabelText("组织名称")).toBeNull();
     expect(refreshAccounts).not.toHaveBeenCalled();
     expect(onConnected).not.toHaveBeenCalled();
 
@@ -159,6 +160,62 @@ describe("AccountConnectPanel", () => {
     await act(async () => Promise.resolve());
 
     expect(refreshAccounts).toHaveBeenCalledTimes(1);
+    expect(onConnected).toHaveBeenCalledTimes(1);
+  });
+
+  it("新账号授权成功后可确认并修改本地组织名称", async () => {
+    const onConnected = vi.fn();
+    apiFetchMock.mockImplementation((endpoint: string, init?: RequestInit) => {
+      if (endpoint === "/app-profiles/registration-sessions" && init?.method === "POST") {
+        return Promise.resolve(registrationSession);
+      }
+      if (endpoint === "/app-profiles/registration-sessions/registration-1") {
+        return Promise.resolve({ status: "registered", app_profile: { id: "profile-1", app_id: "cli_created" } });
+      }
+      if (endpoint === "/auth/device-sessions" && init?.method === "POST") {
+        return Promise.resolve(deviceSession);
+      }
+      if (endpoint === "/auth/device-sessions/device-1") {
+        return Promise.resolve({
+          status: "authorized",
+          account: {
+            id: "account-2",
+            account_name: "测试账号",
+            account_alias: "飞书组织 2",
+            auth_protocol: "device_v2",
+          },
+        });
+      }
+      if (endpoint === "/accounts/account-2/display" && init?.method === "PATCH") {
+        return Promise.resolve({ id: "account-2", account_alias: "市场团队" });
+      }
+      return Promise.resolve({ cancelled: true });
+    });
+
+    render(<AccountConnectPanel onConnected={onConnected} />);
+    fireEvent.click(screen.getByRole("button", { name: "开始第 1 次扫码" }));
+    await act(async () => Promise.resolve());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    fireEvent.click(screen.getByRole("button", { name: "继续第 2 次扫码" }));
+    await act(async () => Promise.resolve());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+
+    const input = screen.getByLabelText("组织名称") as HTMLInputElement;
+    expect(input.value).toBe("飞书组织 2");
+    expect(screen.getByText(/只用于在 LarkSync 中区分账号/)).toBeTruthy();
+    fireEvent.change(input, { target: { value: "市场团队" } });
+    fireEvent.click(screen.getByRole("button", { name: "进入该组织" }));
+    await act(async () => Promise.resolve());
+
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/accounts/account-2/display",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ account_alias: "市场团队" }),
+      }),
+    );
+    expect(refreshAccounts).toHaveBeenCalledTimes(1);
+    expect(switchAccount).toHaveBeenCalledWith("account-2");
     expect(onConnected).toHaveBeenCalledTimes(1);
   });
 

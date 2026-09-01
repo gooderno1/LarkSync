@@ -5,7 +5,7 @@ import type { AccountSummary } from "../types";
 
 export function organizationDisplayName(account?: AccountSummary | null): string {
   if (!account) return "飞书组织";
-  return account.account_alias || account.tenant_name || (account.tenant_tag === 2 ? "个人空间" : `组织 · ${account.id.slice(0, 6)}`);
+  return account.account_alias || account.tenant_name || (account.tenant_tag === 2 ? "个人空间" : account.brand === "lark" ? "Lark 组织" : "飞书组织");
 }
 
 export function OrganizationAvatar({

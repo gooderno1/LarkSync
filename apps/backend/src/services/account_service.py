@@ -287,6 +287,7 @@ class AccountService:
         auth_protocol: str = "device_v2",
         avatar_url: str | None = None,
         tenant_name: str | None = None,
+        tenant_key: str | None = None,
     ) -> AccountItem:
         profile, _secret = await self.get_app_profile_credentials(app_profile_id)
         clean_open_id = open_id.strip()
@@ -303,7 +304,14 @@ class AccountService:
                 )
             ).scalar_one_or_none()
             now = time.time()
+            clean_tenant_name = (tenant_name or "").strip() or None
+            clean_tenant_key = (tenant_key or "").strip() or None
             if record is None:
+                account_alias = (
+                    None
+                    if clean_tenant_name
+                    else await self._next_organization_alias(session, profile.brand)
+                )
                 record = Account(
                     id=str(uuid.uuid4()),
                     app_profile_id=app_profile_id,
@@ -311,7 +319,9 @@ class AccountService:
                     open_id=clean_open_id,
                     account_name=(account_name or "").strip() or None,
                     avatar_url=avatar_url,
-                    tenant_name=tenant_name,
+                    tenant_name=clean_tenant_name,
+                    tenant_key=clean_tenant_key,
+                    account_alias=account_alias,
                     state="connected",
                     granted_scopes=self._serialize_scopes(granted_scopes),
                     paused=False,
@@ -325,7 +335,12 @@ class AccountService:
             else:
                 record.account_name = (account_name or "").strip() or record.account_name
                 record.avatar_url = avatar_url or record.avatar_url
-                record.tenant_name = tenant_name or record.tenant_name
+                record.tenant_name = clean_tenant_name or record.tenant_name
+                record.tenant_key = clean_tenant_key or record.tenant_key
+                if not record.account_alias and not record.tenant_name:
+                    record.account_alias = await self._next_organization_alias(
+                        session, profile.brand, exclude_account_id=record.id
+                    )
                 record.state = "connected"
                 record.granted_scopes = self._serialize_scopes(granted_scopes)
                 record.last_auth_error = None
@@ -362,6 +377,7 @@ class AccountService:
         token: TokenData,
         avatar_url: str | None = None,
         tenant_name: str | None = None,
+        tenant_key: str | None = None,
     ) -> AccountItem:
         async with self._session_maker() as session:
             record = await session.get(Account, account_id)
@@ -375,6 +391,11 @@ class AccountService:
             record.account_name = (account_name or "").strip() or record.account_name
             record.avatar_url = avatar_url or record.avatar_url
             record.tenant_name = tenant_name or record.tenant_name
+            record.tenant_key = (tenant_key or "").strip() or record.tenant_key
+            if not record.account_alias and not record.tenant_name:
+                record.account_alias = await self._next_organization_alias(
+                    session, record.brand, exclude_account_id=record.id
+                )
             record.state = "connected"
             record.auth_protocol = "device_v2"
             record.granted_scopes = self._serialize_scopes(granted_scopes)
@@ -542,10 +563,43 @@ class AccountService:
             record = await session.get(Account, account_id)
             if record is None or record.removed_at is not None:
                 raise ValueError("账号不存在")
-            record.account_alias = (alias or "").strip() or None
+            clean_alias = (alias or "").strip()
+            if clean_alias:
+                record.account_alias = clean_alias
+            elif record.tenant_name:
+                record.account_alias = None
+            else:
+                record.account_alias = await self._next_organization_alias(
+                    session, record.brand, exclude_account_id=record.id
+                )
             record.updated_at = time.time()
             await session.commit()
             return self._account_item(record)
+
+    @staticmethod
+    async def _next_organization_alias(
+        session: AsyncSession,
+        brand: str,
+        *,
+        exclude_account_id: str | None = None,
+    ) -> str:
+        stmt = select(Account.account_alias, Account.tenant_name).where(
+            Account.brand == brand
+        )
+        if exclude_account_id:
+            stmt = stmt.where(Account.id != exclude_account_id)
+        rows = (await session.execute(stmt)).all()
+        used_names = {
+            str(value).strip()
+            for row in rows
+            for value in row
+            if value and str(value).strip()
+        }
+        prefix = "Lark 组织" if brand == "lark" else "飞书组织"
+        sequence = 1
+        while f"{prefix} {sequence}" in used_names:
+            sequence += 1
+        return f"{prefix} {sequence}"
 
     async def remove(self, account_id: str) -> None:
         self._token_store_factory(account_id).clear()
