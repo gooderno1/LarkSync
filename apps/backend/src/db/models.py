@@ -56,6 +56,8 @@ class Account(Base):
     tenant_avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     tenant_avatar_cache_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     tenant_metadata_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    tenant_metadata_error_code: Mapped[str | None] = mapped_column(String, nullable=True)
+    tenant_permission_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     tenant_metadata_updated_at: Mapped[float | None] = mapped_column(Float, nullable=True)
     account_alias: Mapped[str | None] = mapped_column(String, nullable=True)
     state: Mapped[str] = mapped_column(String, nullable=False, default="connected", index=True)

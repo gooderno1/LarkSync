@@ -126,7 +126,7 @@ describe("desktop shell status", () => {
       </>,
     );
 
-    expect(html).toContain("w-[228px]");
+    expect(html).toContain("w-[244px]");
     expect(html).toContain("/logo-horizontal.png");
     expect(html).toContain("活动管理");
     expect(html).toContain("问题中心");

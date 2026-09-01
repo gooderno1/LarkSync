@@ -109,8 +109,8 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
   });
 
   return (
-    <aside data-desktop-sidebar="true" className="flex h-full w-[228px] flex-none flex-col justify-between border-r border-[#bfd0e2] bg-[#f3f7fc] px-4 pb-4 pt-5">
-      <div>
+    <aside data-desktop-sidebar="true" className="flex h-full w-[244px] flex-none flex-col justify-between border-r border-[#bfd0e2] bg-[#f3f7fc] px-3 pb-4 pt-5">
+      <div className="min-h-0">
         <div className="flex h-14 items-center justify-start px-3">
           <img
             src="/logo-horizontal.png"
@@ -128,25 +128,24 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
           </div>
         ) : null}
 
-        <section className="mt-3" data-sidebar-account-switcher="true">
-          <div className="flex items-center gap-2 rounded-xl border border-[#c9d8e8] bg-white p-2 shadow-[0_8px_24px_rgba(51,112,255,0.06)]">
-            <button type="button" aria-expanded={accountMenuOpen} aria-controls="sidebar-account-list" onClick={() => setAccountMenuOpen((value) => !value)} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 text-left hover:bg-[#f3f7fc]">
-              <OrganizationAvatar account={activeAccount} className="h-8 w-8 flex-none rounded-lg border border-[#d7e4f5] bg-[#eef5ff] object-cover" fallbackClassName="grid h-8 w-8 flex-none place-items-center rounded-lg bg-[#eaf3ff] text-xs font-bold text-[#3370ff]" />
-              <span className="min-w-0"><span className="block truncate text-xs font-semibold text-[#102033]">{organizationDisplayName(activeAccount)}</span><span className="block truncate text-[10px] text-[#71869d]">{activeAccount?.account_name || "飞书成员"} · {activeAccount?.paused ? "已暂停" : "同步中"}</span></span>
-              <span className={`ml-auto text-[10px] text-[#71869d] transition-transform ${accountMenuOpen ? "rotate-180" : ""}`}>⌄</span>
+        <section className="mt-3" data-sidebar-account-switcher="true" data-sidebar-organization-drawer="true">
+          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8294a8]">当前组织</p>
+          <div data-sidebar-current-organization="true" className="flex h-12 items-center rounded-lg bg-[#e8f1fb] shadow-[inset_3px_0_0_#3370ff]">
+            <button type="button" aria-expanded={accountMenuOpen} aria-controls="sidebar-account-list" onClick={() => setAccountMenuOpen((value) => !value)} className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-lg px-3 text-left hover:bg-[#e1edfa]">
+              <OrganizationAvatar account={activeAccount} className="h-8 w-8 flex-none rounded-lg border border-white/70 object-cover" fallbackClassName="grid h-8 w-8 flex-none place-items-center rounded-lg bg-white/75 text-xs font-bold text-[#3370ff]" />
+              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-[#2456d6]">{organizationDisplayName(activeAccount)}</span><span className="block truncate text-[10px] text-[#60758d]">{activeAccount?.account_name || "飞书成员"} · {activeAccount?.paused ? "已暂停" : "同步中"}</span></span>
+              <span className={`text-[10px] text-[#60758d] transition-transform ${accountMenuOpen ? "rotate-180" : ""}`}>⌄</span>
             </button>
-            <button type="button" aria-label="打开通知" onClick={() => setNotificationsOpen(true)} className="relative grid h-8 w-8 flex-none place-items-center rounded-lg border border-[#d8e4f1] text-[#52657a] hover:border-[#b9cde5] hover:bg-[#eef5ff] hover:text-[#3370ff]"><IconBell className="h-[17px] w-[17px]" />{activeAccount?.unread_total ? <span className="absolute -right-1.5 -top-1.5 min-w-4 rounded-full bg-[#e11d48] px-1 text-center text-[9px] font-bold leading-4 text-white">{activeAccount.unread_total > 99 ? "99+" : activeAccount.unread_total}</span> : null}</button>
+            <button type="button" aria-label="打开通知" onClick={() => setNotificationsOpen(true)} className="relative mr-2 grid h-8 w-8 flex-none place-items-center rounded-lg text-[#52657a] hover:bg-white/70 hover:text-[#3370ff]"><IconBell className="h-[17px] w-[17px]" />{activeAccount?.unread_total ? <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#e11d48] px-1 text-center text-[9px] font-bold leading-4 text-white">{activeAccount.unread_total > 99 ? "99+" : activeAccount.unread_total}</span> : null}</button>
           </div>
-          {accountMenuOpen ? (
-            <div id="sidebar-account-list" data-sidebar-account-list="true" className="mt-2 rounded-xl border border-[#c9d8e8] bg-white p-2 shadow-[0_10px_26px_rgba(51,112,255,0.08)]">
-              <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8294a8]">已登录组织</p>
-              <div className="max-h-[230px] space-y-1 overflow-y-auto">
-                {accounts.map((account) => <button key={account.id} type="button" disabled={Boolean(switchingAccountId)} onClick={() => void handleAccountSwitch(account.id)} className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-[#eef5ff] disabled:opacity-60 ${account.id === activeAccount?.id ? "bg-[#f3f7ff]" : ""}`}><OrganizationAvatar account={account} className="h-8 w-8 shrink-0 rounded-lg border border-[#d7e4f5] object-cover" fallbackClassName="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#eaf3ff] text-[11px] font-bold text-[#3370ff]" /><span className="min-w-0 flex-1"><span className={`block truncate text-xs font-semibold ${account.id === activeAccount?.id ? "text-[#3370ff]" : "text-[#243b55]"}`}>{organizationDisplayName(account)}</span><span className="block truncate text-[10px] text-[#71869d]">{account.account_name || "飞书成员"}{switchingAccountId === account.id ? " · 切换中…" : account.unread_errors ? ` · ${account.unread_errors} 个同步错误` : ""}</span></span>{account.unread_total ? <span title={account.unread_errors ? `${account.unread_errors} 个同步错误，${account.unread_messages ?? Math.max(0, account.unread_total - account.unread_errors)} 条消息` : `${account.unread_messages ?? account.unread_total} 条消息`} className={`min-w-5 rounded-full px-1.5 text-center text-[10px] font-semibold ${account.unread_errors ? "bg-[#fff1f2] text-[#be123c]" : "bg-[#eaf3ff] text-[#3370ff]"}`}>{account.unread_total > 99 ? "99+" : account.unread_total}</span> : account.id === activeAccount?.id ? <span className="h-2 w-2 rounded-full bg-[#10b981]" aria-label="当前组织" /> : null}</button>)}
-              </div>
-              {accountSwitchError ? <p className="mt-1 rounded-md bg-[#fff1f2] px-2 py-1.5 text-[10px] text-[#be123c]">{accountSwitchError}</p> : null}
-              <button type="button" onClick={() => { setAddAccountOpen(true); setAccountMenuOpen(false); }} className="mt-2 w-full rounded-lg border border-dashed border-[#b9cce2] px-3 py-2 text-left text-xs font-semibold text-[#3370ff] hover:bg-[#eef5ff]">＋ 添加飞书组织或账号</button>
+          {accountMenuOpen ? <div id="sidebar-account-list" data-sidebar-account-list="true" className="mt-1 rounded-lg bg-[#e8f0fa] p-1.5">
+            <div className="flex items-center justify-between px-2 py-1"><p className="text-[10px] font-semibold text-[#71869d]">切换组织</p><span className="text-[10px] text-[#8a9bb0]">{accounts.length} 个</span></div>
+            <div className="max-h-[220px] space-y-0.5 overflow-y-auto">
+              {accounts.map((account) => <button key={account.id} type="button" disabled={Boolean(switchingAccountId)} onClick={() => void handleAccountSwitch(account.id)} className={`flex h-11 w-full items-center gap-2 rounded-lg px-2 text-left disabled:opacity-60 ${account.id === activeAccount?.id ? "bg-white/85 shadow-[inset_3px_0_0_#3370ff]" : "hover:bg-white/60"}`}><OrganizationAvatar account={account} className="h-7 w-7 shrink-0 rounded-md border border-white object-cover" fallbackClassName="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white text-[10px] font-bold text-[#3370ff]" /><span className="min-w-0 flex-1"><span className={`block truncate text-xs font-semibold ${account.id === activeAccount?.id ? "text-[#3370ff]" : "text-[#243b55]"}`}>{organizationDisplayName(account)}</span><span className="block truncate text-[10px] text-[#71869d]">{account.account_name || "飞书成员"}{switchingAccountId === account.id ? " · 切换中…" : account.unread_errors ? ` · ${account.unread_errors} 个错误` : ""}</span></span>{account.unread_total ? <span className={`min-w-5 rounded-full px-1.5 text-center text-[10px] font-semibold ${account.unread_errors ? "bg-[#fff1f2] text-[#be123c]" : "bg-white text-[#3370ff]"}`}>{account.unread_total > 99 ? "99+" : account.unread_total}</span> : null}</button>)}
             </div>
-          ) : null}
+            {accountSwitchError ? <p className="mt-1 rounded-md bg-[#fff1f2] px-2 py-1.5 text-[10px] text-[#be123c]">{accountSwitchError}</p> : null}
+            <button type="button" onClick={() => { setAddAccountOpen(true); setAccountMenuOpen(false); }} className="mt-1 flex h-9 w-full items-center rounded-lg px-3 text-left text-xs font-semibold text-[#3370ff] hover:bg-white/65">＋ 添加组织或账号</button>
+          </div> : null}
         </section>
 
         <section data-sidebar-section="workspace" className="mt-4">

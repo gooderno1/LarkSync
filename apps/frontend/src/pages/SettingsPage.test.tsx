@@ -100,8 +100,8 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain("青鸟科技");
     expect(html).toContain("官方组织信息");
     expect(html).toContain("https://example.test/tenant.png");
-    expect(html).toContain("编辑显示名");
-    expect(html).toContain("更新组织信息");
+    expect(html).toContain(">显示名<");
+    expect(html).toContain("组织信息与权限");
     expect(html).toContain("V1 兼容");
     expect(html).toContain("刷新授权");
     expect(html).toContain("重新授权");
@@ -124,6 +124,8 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain('data-account-facts="true"');
     expect(html).toContain('data-account-primary-actions="true"');
     expect(html).toContain('data-account-maintenance-actions="true"');
+    expect(html).toContain('data-account-organization-actions="true"');
+    expect(html).toContain("更多操作");
     expect(html).toContain('data-settings-strategy-header="true"');
     expect(html).not.toContain("data-settings-scroll-region");
     expect(html).not.toContain("overflow-y-auto");

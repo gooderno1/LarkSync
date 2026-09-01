@@ -21,6 +21,7 @@ import { AccountConnectPanel } from "../components/AccountConnectPanel";
 import { SettingsAccountCard } from "../components/settings/SettingsAccountCard";
 import { Switch } from "../components/ui/switch";
 import { organizationDisplayName } from "../components/OrganizationAvatar";
+import { TenantPermissionPanel, type TenantMetadataResult } from "../components/TenantPermissionPanel";
 
 function SettingsLivePage() {
   const { config, configLoading, saveConfig, saving } = useConfig();
@@ -47,6 +48,7 @@ function SettingsLivePage() {
   const [reauthorizeAccountId, setReauthorizeAccountId] = useState<string | null>(null);
   const [refreshingAccountId, setRefreshingAccountId] = useState<string | null>(null);
   const [refreshingTenantAccountId, setRefreshingTenantAccountId] = useState<string | null>(null);
+  const [tenantPermission, setTenantPermission] = useState<{ accountId: string; organizationName: string; permissionUrl: string } | null>(null);
   const uploadEnabled = syncModeSupportsUpload(syncMode);
   const downloadEnabled = syncModeSupportsDownload(syncMode);
 
@@ -217,9 +219,23 @@ function SettingsLivePage() {
   const refreshTenantMetadata = async (accountId: string) => {
     setRefreshingTenantAccountId(accountId);
     try {
-      const result = await apiFetch<{ status?: string }>(`/accounts/${accountId}/tenant-metadata/refresh`, { method: "POST" });
+      const result = await apiFetch<TenantMetadataResult>(`/accounts/${accountId}/tenant-metadata/refresh`, { method: "POST" });
       await refreshAccounts();
-      toast(result.status === "permission_required" ? "组织信息权限未开放，已保留无配置登录方式" : "组织信息已更新", result.status === "permission_required" ? "info" : "success");
+      if (result.status === "ready") {
+        toast("组织信息已更新", "success");
+      } else if (result.status === "permission_required") {
+        const account = accounts.find((item) => item.id === accountId);
+        const permissionUrl = result.permission_url || account?.tenant_permission_url;
+        if (permissionUrl) {
+          setTenantPermission({ accountId, organizationName: organizationDisplayName(account), permissionUrl });
+        } else {
+          toast("飞书未返回可安全使用的官方权限地址，请在开发者后台为当前应用开通组织信息只读权限。", "info");
+        }
+      } else if (result.status === "unavailable") {
+        toast(result.message || "当前应用暂不支持读取组织信息，账号与同步功能可继续使用。", "info");
+      } else {
+        toast(result.message || "组织信息更新失败", "danger");
+      }
     } catch (err) {
       toast(err instanceof Error ? err.message : "组织信息更新失败", "danger");
     } finally {
@@ -427,6 +443,7 @@ function SettingsLivePage() {
         </aside>
       </div>
       {reauthorizeAccountId ? <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[#102033]/25 p-6 backdrop-blur-[2px]" onMouseDown={() => setReauthorizeAccountId(null)}><div className="w-full max-w-3xl rounded-3xl border border-[#d6e3f3] bg-[#f8fbff] p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="mb-5 flex items-center justify-between"><div><h2 className="text-xl font-semibold text-[#102033]">重新授权账号</h2><p className="mt-1 text-xs text-[#71869d]">成功后将切换到 Device Flow V2，账号数据保持不变。</p></div><button type="button" onClick={() => setReauthorizeAccountId(null)} className="rounded-lg border border-[#cbd9ea] px-3 py-1.5 text-sm text-[#52657a]">关闭</button></div><AccountConnectPanel mode="reauthorize" accountId={reauthorizeAccountId} onCancel={() => setReauthorizeAccountId(null)} onConnected={() => { setReauthorizeAccountId(null); toast("账号已重新授权并升级为 V2", "success"); }} /></div></div> : null}
+      {tenantPermission ? <TenantPermissionPanel accountId={tenantPermission.accountId} organizationName={tenantPermission.organizationName} permissionUrl={tenantPermission.permissionUrl} onClose={() => setTenantPermission(null)} onResolved={async () => { await refreshAccounts(); toast("组织信息权限已开通", "success"); }} /> : null}
     </section>
   );
 }

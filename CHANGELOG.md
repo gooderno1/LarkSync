@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-09-01] v0.9.5-dev.1 feat(accounts): 识别飞书真实组织缺权错误并以严格校验的官方地址生成权限二维码；schema v12 保存诊断状态；侧边栏组织切换与账号管理卡统一为扁平导航和固定操作结构
 [2026-09-01] v0.9.4 fix(ci): WebKit 发布冒烟按新流程验证第 1 次扫码完成检查点，再显式进入第 2 次扫码并校验二维码
 [2026-09-01] v0.9.4 release: v0.9.4 multi-account organization experience
 [2026-09-01] v0.9.4-dev.1 feat(accounts): 将自动登录拆为两次扫码与显式成功检查点；按账号隔离查询、写操作和 WebSocket；新增组织元数据、Logo 缓存、组织化侧边栏与账号管理重排

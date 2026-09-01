@@ -57,6 +57,8 @@ class AccountItem:
     tenant_avatar_url: str | None
     tenant_avatar_cache_path: str | None
     tenant_metadata_status: str | None
+    tenant_metadata_error_code: str | None
+    tenant_permission_url: str | None
     tenant_metadata_updated_at: float | None
     account_alias: str | None
     state: str
@@ -508,6 +510,8 @@ class AccountService:
         tenant_avatar_url: str | None = None,
         tenant_avatar_cache_path: str | None = None,
         tenant_metadata_status: str,
+        tenant_metadata_error_code: str | None = None,
+        tenant_permission_url: str | None = None,
     ) -> AccountItem:
         async with self._session_maker() as session:
             record = await session.get(Account, account_id)
@@ -526,6 +530,8 @@ class AccountService:
             if tenant_avatar_cache_path is not None:
                 record.tenant_avatar_cache_path = tenant_avatar_cache_path.strip() or record.tenant_avatar_cache_path
             record.tenant_metadata_status = tenant_metadata_status
+            record.tenant_metadata_error_code = tenant_metadata_error_code
+            record.tenant_permission_url = tenant_permission_url
             record.tenant_metadata_updated_at = time.time()
             record.updated_at = time.time()
             await session.commit()
@@ -703,6 +709,8 @@ class AccountService:
             tenant_avatar_url=record.tenant_avatar_url,
             tenant_avatar_cache_path=record.tenant_avatar_cache_path,
             tenant_metadata_status=record.tenant_metadata_status,
+            tenant_metadata_error_code=record.tenant_metadata_error_code,
+            tenant_permission_url=record.tenant_permission_url,
             tenant_metadata_updated_at=record.tenant_metadata_updated_at,
             account_alias=record.account_alias,
             state=record.state,

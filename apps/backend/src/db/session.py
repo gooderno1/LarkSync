@@ -31,7 +31,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 12
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -701,6 +701,21 @@ async def _apply_schema_v11(conn) -> None:
     )
 
 
+async def _apply_schema_v12(conn) -> None:
+    """保存组织权限诊断，支持升级后继续扫码开通并自动复检。"""
+    for column, column_type in (
+        ("tenant_metadata_error_code", "TEXT"),
+        ("tenant_permission_url", "TEXT"),
+    ):
+        await _ensure_column(
+            conn,
+            table="accounts",
+            column=column,
+            column_type=column_type,
+            default_value=None,
+        )
+
+
 async def _rebuild_sync_links_v9(conn, *, legacy_account_id: str) -> None:
     table_info = list(await conn.execute(text("PRAGMA table_info(sync_links)")))
     columns = {str(row[1]): row for row in table_info}
@@ -890,6 +905,11 @@ _SCHEMA_MIGRATIONS = [
         version=11,
         description="补充账号组织标识、组织头像和本地组织别名",
         upgrade=_apply_schema_v11,
+    ),
+    SchemaMigration(
+        version=12,
+        description="记录组织权限错误码和官方权限开通入口",
+        upgrade=_apply_schema_v12,
     ),
 ]
 

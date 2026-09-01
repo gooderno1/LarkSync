@@ -150,6 +150,8 @@ export type AccountSummary = {
   tenant_avatar_url?: string | null;
   tenant_avatar_cache_path?: string | null;
   tenant_metadata_status?: "ready" | "permission_required" | "unavailable" | "failed" | null;
+  tenant_metadata_error_code?: string | null;
+  tenant_permission_url?: string | null;
   tenant_metadata_updated_at?: number | null;
   account_alias?: string | null;
   state: "connected" | "auth_required" | "migration_pending" | "removed";
