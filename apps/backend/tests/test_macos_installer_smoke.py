@@ -237,9 +237,12 @@ def test_macos_ci_installs_webkit_and_checks_visible_qr_contract() -> None:
     assert workflow.count("needs: [quality, quality-webkit]") == 2
     assert workflow.count('LARKSYNC_CI_WEBKIT_EVIDENCE: "1"') == 2
     assert 'webkit.launch({ headless: true, timeout: 15000 })' in webkit_script
-    assert 'data-onboarding-root="true"' in webkit_script
-    assert 'data-testid="oauth-qr-panel"' in webkit_script
-    assert 'data-testid="oauth-qr-image"' in webkit_script
+    assert 'requestUrl.pathname === "/accounts/summary"' in webkit_script
+    assert 'requestUrl.pathname === "/app-profiles/registration-sessions"' in webkit_script
+    assert 'getByRole("button", { name: "开始扫码连接" })' in webkit_script
+    assert 'data-account-connect-root="true"' in webkit_script
+    assert 'data-testid="device-flow-qr-panel"' in webkit_script
+    assert 'data-testid="device-flow-qr-image"' in webkit_script
     assert 'data:image/png;base64,' in webkit_script
 
 

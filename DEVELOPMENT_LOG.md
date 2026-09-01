@@ -9,6 +9,7 @@
   - 正式版沿用经测试的官方`lark-cli` Device Flow 协议实现，不依赖用户另行安装 CLI，也不引入公网 OAuth 回调中继。
   - 版本统一锁定为`v0.9.0`；稳定标签触发 Windows NSIS、macOS arm64 与 x86_64 构建、校验文件生成和 GitHub Release 发布。
   - schema v9 迁移保持自动执行；首次升级先生成`pre-v9`数据库备份，再迁移账号、任务、状态、事件和映射关系，无需用户手动搬迁。
+  - WebKit 发布门禁改为模拟空账号与 App Registration 会话，主动点击“开始扫码连接”并验证 Device Flow 二维码，不再依赖已移除的旧 OAuth 引导页契约。
 - 当前结果：
   - 用户可在同一客户端添加并同时保持多个飞书/Lark账号登录，左侧快速切换只改变当前视图，其他账号继续后台同步。
   - 登录凭据、同步任务、运行状态、映射、冲突、问题和未读通知均按账号隔离；账号可独立暂停、恢复、断开或软移除。
@@ -20,6 +21,7 @@
   - 发布脚本与 Release 说明工作流定向测试共 30 项通过；后端 editable 安装 dry-run 解析为`larksync-backend==0.9.0`。
   - `python scripts/build_installer.py --nsis`通过，生成`LarkSync-Setup-v0.9.0.exe`，大小`72,357,625 bytes`，SHA256 为`983e071c30fc0c043ef3f5262e28d9b832c0cde6fa3e32949a5b9d656d70183b`。
   - 正式打包版使用独立数据目录与端口`18190`启动，`/health`返回`ok`，桌面状态返回`packaged=true`和`current_version=v0.9.0`；`python scripts/update_install_smoke.py`也通过预期 handoff 路径。
+  - 本机 Playwright WebKit 以`1080×720`视口完成新首次连接页验收，结果为`device_flow_qr_verified`，二维码状态为`ready`且 PNG Data URL 可见。
 - 遗留问题：
   - 真实扫码仍需用户本人在手机端确认授权；代码侧已按官方协议和 MockTransport 自动化测试验证，正式升级后需完成一次真实账号端到端验收。
   - 未配置 Apple Developer ID 与公证凭据时，macOS 正式包使用 ad-hoc 签名，首次打开需在系统隐私与安全设置中手动放行。

@@ -154,10 +154,10 @@ export function AccountConnectPanel({ onConnected }: Props) {
 
   if (session) {
     return (
-      <div className="grid gap-5 md:grid-cols-[280px_minmax(0,1fr)]">
+      <div data-account-connect-root="true" className="grid gap-5 md:grid-cols-[280px_minmax(0,1fr)]">
         <div className="rounded-2xl border border-[#d6e3f3] bg-white p-4 shadow-sm">
-          <div className="grid aspect-square place-items-center rounded-xl bg-[#f5f9ff] p-3">
-            {qrData ? <img src={qrData} alt="飞书扫码授权二维码" className="h-full w-full" /> : <span className="text-sm text-[#71869d]">正在生成二维码…</span>}
+          <div data-testid="device-flow-qr-panel" data-qr-state={qrData ? "ready" : "loading"} className="grid aspect-square place-items-center rounded-xl bg-[#f5f9ff] p-3">
+            {qrData ? <img data-testid="device-flow-qr-image" src={qrData} alt="飞书扫码授权二维码" className="h-full w-full" /> : <span className="text-sm text-[#71869d]">正在生成二维码…</span>}
           </div>
         </div>
         <div className="flex flex-col justify-center">
@@ -172,7 +172,7 @@ export function AccountConnectPanel({ onConnected }: Props) {
   }
 
   return (
-    <div>
+    <div data-account-connect-root="true">
       <div className="rounded-2xl border border-[#cfe0f5] bg-[linear-gradient(135deg,#f7fbff,#edf5ff)] p-5">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#3370ff]">推荐</p>
         <h2 className="mt-2 text-xl font-semibold text-[#102033]">自动创建应用并扫码登录</h2>

@@ -41,12 +41,41 @@ try {
   if (mockApi) {
     await page.route("**/*", (route) => {
       const requestUrl = new URL(route.request().url());
+      const requestMethod = route.request().method();
       const json = (body) =>
         route.fulfill({
           status: 200,
           contentType: "application/json",
           body: JSON.stringify(body),
         });
+      const registrationSession = {
+        session_id: "registration-webkit-smoke",
+        status: "pending",
+        brand: "feishu",
+        user_code: "WEBKIT",
+        verification_uri: "https://accounts.feishu.cn/device",
+        verification_uri_complete: "https://accounts.feishu.cn/device?user_code=WEBKIT",
+        expires_at: Math.floor(Date.now() / 1000) + 600,
+        interval: 60,
+      };
+      if (requestUrl.pathname === "/accounts/summary") {
+        return json([]);
+      }
+      if (requestUrl.pathname === "/app-profiles" && requestMethod === "GET") {
+        return json([]);
+      }
+      if (
+        requestUrl.pathname === "/app-profiles/registration-sessions" &&
+        requestMethod === "POST"
+      ) {
+        return json(registrationSession);
+      }
+      if (
+        requestUrl.pathname ===
+        "/app-profiles/registration-sessions/registration-webkit-smoke"
+      ) {
+        return json(registrationSession);
+      }
       if (requestUrl.pathname === "/config") {
         return json({ auth_client_id: "cli_webkit_smoke" });
       }
@@ -93,13 +122,16 @@ try {
     stage: "page_loaded",
     engine: "playwright-webkit",
   });
+  if (mockApi) {
+    await page.getByRole("button", { name: "开始扫码连接" }).click();
+  }
   await page.waitForFunction(
     () => {
-      const panel = document.querySelector('[data-testid="oauth-qr-panel"]');
-      const image = document.querySelector('[data-testid="oauth-qr-image"]');
+      const panel = document.querySelector('[data-testid="device-flow-qr-panel"]');
+      const image = document.querySelector('[data-testid="device-flow-qr-image"]');
       const rect = image?.getBoundingClientRect();
       return Boolean(
-        document.querySelector('[data-onboarding-root="true"]') &&
+        document.querySelector('[data-account-connect-root="true"]') &&
           panel?.getAttribute("data-qr-state") === "ready" &&
           rect &&
           rect.width > 0 &&
@@ -111,14 +143,14 @@ try {
     { timeout: 15000 },
   );
   payload = await page.evaluate(() => {
-    const root = document.querySelector('[data-onboarding-root="true"]');
-    const panel = document.querySelector('[data-testid="oauth-qr-panel"]');
-    const image = document.querySelector('[data-testid="oauth-qr-image"]');
+    const root = document.querySelector('[data-account-connect-root="true"]');
+    const panel = document.querySelector('[data-testid="device-flow-qr-panel"]');
+    const image = document.querySelector('[data-testid="device-flow-qr-image"]');
     const rect = image?.getBoundingClientRect();
     return {
       ok: Boolean(root && rect && rect.width > 0 && rect.height > 0),
       engine: "playwright-webkit",
-      onboarding_visible: Boolean(root),
+      account_connect_visible: Boolean(root),
       qr_state: panel?.getAttribute("data-qr-state") ?? null,
       qr_visible: Boolean(rect && rect.width > 0 && rect.height > 0),
       qr_is_data_url: Boolean(
@@ -126,7 +158,7 @@ try {
       ),
       viewport: { width: window.innerWidth, height: window.innerHeight },
       completed: true,
-      stage: "qr_verified",
+      stage: "device_flow_qr_verified",
     };
   });
   await page.screenshot({ path: screenshotPath, fullPage: true });
