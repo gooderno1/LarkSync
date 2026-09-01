@@ -1,5 +1,29 @@
 # DEVELOPMENT LOG
 
+## v0.9.0 release (2026-09-01)
+
+- 开发原因：
+  - v0.8 系列仍使用单一全局登录态，首次二维码无法完成手机扫码到桌面端的跨设备授权闭环。
+  - 账号切换、多账号并行同步、逐账号通知和升级后自动数据隔离已在`v0.9.0-dev.1`完成，需要形成可被现有自动更新机制识别的稳定版。
+- 实现方式：
+  - 正式版沿用经测试的官方`lark-cli` Device Flow 协议实现，不依赖用户另行安装 CLI，也不引入公网 OAuth 回调中继。
+  - 版本统一锁定为`v0.9.0`；稳定标签触发 Windows NSIS、macOS arm64 与 x86_64 构建、校验文件生成和 GitHub Release 发布。
+  - schema v9 迁移保持自动执行；首次升级先生成`pre-v9`数据库备份，再迁移账号、任务、状态、事件和映射关系，无需用户手动搬迁。
+- 当前结果：
+  - 用户可在同一客户端添加并同时保持多个飞书/Lark账号登录，左侧快速切换只改变当前视图，其他账号继续后台同步。
+  - 登录凭据、同步任务、运行状态、映射、冲突、问题和未读通知均按账号隔离；账号可独立暂停、恢复、断开或软移除。
+  - 设置页保留真实系统开机自启动控制；首次使用页改为 Device Flow 扫码登录，并提供已有 App ID/App Secret 的手动接入入口。
+- 验证方式：
+  - 后端全量`python -m pytest -q`通过，共 709 项；覆盖 Device Flow 状态机、schema v9 自动备份迁移及多账号隔离。
+  - 前端 TypeScript、ESLint、生产构建和 35 个测试文件共 115 项全部通过；`npm audit --omit=dev`为 0 个生产依赖漏洞。
+  - Windows 原生 WebView 已验证首次连接、账号切换、逐账号未读、通知抽屉、账号管理及开机自启动布局。
+  - 发布脚本与 Release 说明工作流定向测试共 30 项通过；后端 editable 安装 dry-run 解析为`larksync-backend==0.9.0`。
+  - `python scripts/build_installer.py --nsis`通过，生成`LarkSync-Setup-v0.9.0.exe`，大小`72,357,625 bytes`，SHA256 为`983e071c30fc0c043ef3f5262e28d9b832c0cde6fa3e32949a5b9d656d70183b`。
+  - 正式打包版使用独立数据目录与端口`18190`启动，`/health`返回`ok`，桌面状态返回`packaged=true`和`current_version=v0.9.0`；`python scripts/update_install_smoke.py`也通过预期 handoff 路径。
+- 遗留问题：
+  - 真实扫码仍需用户本人在手机端确认授权；代码侧已按官方协议和 MockTransport 自动化测试验证，正式升级后需完成一次真实账号端到端验收。
+  - 未配置 Apple Developer ID 与公证凭据时，macOS 正式包使用 ad-hoc 签名，首次打开需在系统隐私与安全设置中手动放行。
+
 ## v0.9.0-dev.1 (2026-09-01)
 
 - 开发原因：
