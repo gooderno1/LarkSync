@@ -54,6 +54,8 @@ describe("AccountConnectPanel", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     apiFetchMock.mockReset();
+    refreshAccounts.mockClear();
+    refetchProfiles.mockClear();
   });
 
   afterEach(() => {
@@ -94,6 +96,46 @@ describe("AccountConnectPanel", () => {
     expect(screen.getByText("重新授权 测试账号")).toBeTruthy();
     expect(screen.getByText(/原账号、任务和历史数据保持不变/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "开始重新授权" })).toBeTruthy();
+  });
+
+  it("授权成功后停留在明确确认页，完成后才刷新账号并关闭", async () => {
+    const onConnected = vi.fn();
+    apiFetchMock.mockImplementation((endpoint: string, init?: RequestInit) => {
+      if (endpoint === "/accounts/account-1/reauthorize-sessions" && init?.method === "POST") {
+        return Promise.resolve(deviceSession);
+      }
+      if (endpoint === "/auth/device-sessions/device-1") {
+        return Promise.resolve({
+          status: "authorized",
+          account: {
+            id: "account-1",
+            account_name: "测试账号",
+            auth_protocol: "device_v2",
+          },
+        });
+      }
+      return Promise.resolve({ cancelled: true });
+    });
+
+    render(<AccountConnectPanel mode="reauthorize" accountId="account-1" onConnected={onConnected} />);
+    fireEvent.click(screen.getByRole("button", { name: "开始重新授权" }));
+    await act(async () => Promise.resolve());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(screen.getByTestId("authorization-success")).toBeTruthy();
+    expect(screen.getByText("授权成功")).toBeTruthy();
+    expect(screen.getByText("Device Flow V2")).toBeTruthy();
+    expect(screen.getByText("凭据已安全保存")).toBeTruthy();
+    expect(refreshAccounts).not.toHaveBeenCalled();
+    expect(onConnected).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "完成" }));
+    await act(async () => Promise.resolve());
+
+    expect(refreshAccounts).toHaveBeenCalledTimes(1);
+    expect(onConnected).toHaveBeenCalledTimes(1);
   });
 
   it("区分飞书授权成功后的本机凭据保存失败并可创建新会话重试", async () => {

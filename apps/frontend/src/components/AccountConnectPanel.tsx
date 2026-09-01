@@ -5,6 +5,7 @@ import * as QRCode from "qrcode";
 import { apiFetch } from "../lib/api";
 import type { AppProfile } from "../types";
 import { useAccounts } from "../hooks/useAccounts";
+import { IconCircleCheck } from "./Icons";
 
 type Session = {
   session_id: string;
@@ -33,6 +34,12 @@ type Props = {
   onCancel?: () => void;
   mode?: "add" | "reauthorize";
   accountId?: string;
+};
+
+type AuthorizedAccount = {
+  id?: string;
+  account_name?: string | null;
+  auth_protocol?: string;
 };
 
 function sessionEndpoint(kind: "registration" | "device", sessionId: string) {
@@ -64,6 +71,8 @@ export function AccountConnectPanel({
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [createdProfileId, setCreatedProfileId] = useState<string | null>(null);
+  const [authorizedAccount, setAuthorizedAccount] = useState<AuthorizedAccount | null>(null);
+  const [runtimeReloadPending, setRuntimeReloadPending] = useState(false);
   const beginDeviceRef = useRef<(profileId: string) => Promise<Session | null>>(async () => null);
   const completionRef = useRef({ refreshAccounts, refetchProfiles: profiles.refetch, onConnected });
   completionRef.current = { refreshAccounts, refetchProfiles: profiles.refetch, onConnected };
@@ -136,14 +145,12 @@ export function AccountConnectPanel({
           throw new Error("应用创建成功，但未取得账号登录会话");
         }
         if (status === "authorized") {
+          setAuthorizedAccount((result.account as AuthorizedAccount | undefined) ?? null);
+          setRuntimeReloadPending(Boolean(result.runtime_reload_pending));
           setPhase("authorized");
           setSession(null);
           setSessionKind(null);
-          await Promise.all([
-            completionRef.current.refreshAccounts(),
-            completionRef.current.refetchProfiles(),
-          ]);
-          completionRef.current.onConnected?.();
+          await completionRef.current.refetchProfiles();
           return;
         }
         if (status === "denied" || status === "expired") {
@@ -251,6 +258,19 @@ export function AccountConnectPanel({
     return Promise.resolve(null);
   };
 
+  const finishAuthorized = async () => {
+    setBusy(true);
+    try {
+      await completionRef.current.refreshAccounts();
+      completionRef.current.onConnected?.();
+    } catch (err) {
+      setPhase("failed");
+      setError(err instanceof Error ? err.message : "账号状态刷新失败，请重试");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveManual = async () => {
     if (!appId.trim() || !appSecret.trim()) {
       setError("请填写 App ID 和 App Secret。");
@@ -275,6 +295,34 @@ export function AccountConnectPanel({
       setBusy(false);
     }
   };
+
+  if (phase === "authorized") {
+    const accountName = authorizedAccount?.account_name || targetAccount?.account_name || "飞书账号";
+    return (
+      <div data-account-connect-root="true" data-connect-phase="authorized">
+        <div data-testid="authorization-success" className="rounded-2xl border border-[#a7e2cf] bg-[linear-gradient(135deg,#f2fbf8,#f7fbff)] p-6 text-center shadow-[0_16px_40px_rgba(16,185,129,0.10)]">
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#dcfce7] text-[#059669]">
+            <IconCircleCheck className="h-8 w-8" />
+          </span>
+          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-[#047857]">Device Flow V2</p>
+          <h2 className="mt-2 text-2xl font-semibold text-[#102033]">授权成功</h2>
+          <p className="mt-2 text-sm leading-6 text-[#52657a]">
+            {mode === "reauthorize"
+              ? `${accountName} 已完成重新授权，原账号、任务、状态和历史数据保持不变。`
+              : `${accountName} 已连接到 LarkSync，可以开始创建同步任务。`}
+          </p>
+          <div className="mx-auto mt-4 flex w-fit items-center gap-2 rounded-full border border-[#b9e8d8] bg-white px-3 py-1.5 text-xs font-semibold text-[#047857]">
+            <span className="h-2 w-2 rounded-full bg-[#10b981]" />
+            凭据已安全保存
+          </div>
+          {runtimeReloadPending ? <p className="mt-3 text-xs text-[#b45309]">授权信息已保存；后台连接将在下次启动时自动加载。</p> : null}
+          <button type="button" disabled={busy} onClick={() => void finishAuthorized()} className="mt-5 rounded-xl bg-[#3370ff] px-7 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(51,112,255,0.22)] disabled:opacity-50">
+            {busy ? "正在完成…" : "完成"}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (session) {
     return (

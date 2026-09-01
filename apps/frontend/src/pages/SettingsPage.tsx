@@ -18,6 +18,8 @@ import { SettingsShowcasePage } from "../components/showcase/RemainingPagesShowc
 import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
 import { useAccounts } from "../hooks/useAccounts";
 import { AccountConnectPanel } from "../components/AccountConnectPanel";
+import { SettingsAccountCard } from "../components/settings/SettingsAccountCard";
+import { Switch } from "../components/ui/switch";
 
 function SettingsLivePage() {
   const { config, configLoading, saveConfig, saving } = useConfig();
@@ -210,11 +212,6 @@ function SettingsLivePage() {
     }
   };
 
-  const formatExpiry = (timestamp?: number | null) => {
-    if (!timestamp) return "有效期未知";
-    return `访问凭据有效至 ${new Date(timestamp * 1000).toLocaleString()}`;
-  };
-
   const handlePickIgnoredSubpath = async (taskId: string, localPath: string) => {
     setPickingIgnoredTaskId(taskId);
     try {
@@ -272,14 +269,12 @@ function SettingsLivePage() {
         className="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(380px,420px)] min-[1200px]:gap-5"
       >
         <main data-settings-primary-column="true" className="min-w-0 space-y-4">
-          <section data-settings-context="true" className="overflow-hidden rounded-xl border border-[#d7e4f5] bg-white shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-            <h2 data-settings-context-title="true" className="px-4 pt-4 text-base font-semibold text-[#102033]">
-              飞书账号与当前设备
-            </h2>
-            <div className="mt-3 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] border-t border-[#e4edf8]">
-              <div data-settings-account-panel="true" className="min-w-0 border-r border-[#d7e4f5] p-4">
+          <section data-settings-current-account="true" data-settings-account-panel="true" className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-sm font-semibold text-[#102033]">飞书账号</h3>
+                  <div>
+                    <h2 className="text-base font-semibold text-[#102033]">当前飞书账号</h2>
+                    <p className="mt-1 text-xs text-[#71869d]">当前视图与快捷操作作用于此账号，其他账号仍在后台独立同步。</p>
+                  </div>
                   <button
                     className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs font-semibold text-[#52677f] hover:border-[#3370ff]/40 hover:text-[#3370ff]"
                     onClick={() => activeAccount && void accountAction(activeAccount.id, activeAccount.paused ? "resume" : "pause")}
@@ -288,31 +283,50 @@ function SettingsLivePage() {
                     {activeAccount?.paused ? "恢复同步" : "暂停同步"}
                   </button>
                 </div>
-                <div className="mt-4 flex min-w-0 items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#ecfdf5] text-[#10b981]">
+                <div className="mt-4 flex min-w-0 items-center gap-3 rounded-xl border border-[#e0eaf6] bg-[#f8fbff] px-4 py-3">
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${activeAccount?.state === "connected" ? "bg-[#ecfdf5] text-[#10b981]" : "bg-[#fff1f2] text-[#f43f5e]"}`}>
                       <IconCircleCheck className="h-6 w-6" />
                     </span>
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[#102033]">{activeAccount?.state === "connected" ? "飞书已连接" : "飞书需重新授权"}</p>
                       <p className="mt-1 truncate text-xs text-[#6b7f96]">
-                        {activeAccount?.account_name || "当前账号"} · 共 {accounts.length} 个账号
+                        {activeAccount?.account_name || "当前账号"} · {activeAccount?.auth_protocol === "device_v2" ? "Device Flow V2" : "OAuth V1 兼容"} · 共 {accounts.length} 个账号
                       </p>
                     </div>
                 </div>
-              </div>
-              <SettingsGeneralPanel
-                embedded
-                inputCls={inputCls}
-                deviceDisplayName={deviceDisplayName}
-                setDeviceDisplayName={setDeviceDisplayName}
-                deviceId={deviceId}
-                autostartEnabled={autostart?.enabled ?? false}
-                autostartSupported={autostart?.supported ?? true}
-                autostartLoading={autostartLoading}
-                updatingAutostart={updatingAutostart}
-                platform={autostart?.platform}
-                onAutostartChange={(enabled) => void handleAutostartChange(enabled)}
-              />
+                <div data-settings-autostart="true" className="mt-3 flex items-center justify-between gap-4 rounded-xl border border-[#d7e4f5] px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-[#294662]">开机自启动</p>
+                    <p className="mt-1 text-xs leading-5 text-[#71869d]">
+                      {autostart?.supported ?? true
+                        ? "登录当前系统账号后自动启动 LarkSync。开关立即生效，无需点击右上角按钮。"
+                        : "当前系统暂不支持由 LarkSync 管理开机自启动。"}
+                    </p>
+                  </div>
+                  <Switch
+                    label="开机自启动"
+                    checked={autostart?.enabled ?? false}
+                    disabled={!(autostart?.supported ?? true) || autostartLoading || updatingAutostart}
+                    onCheckedChange={(enabled) => void handleAutostartChange(enabled)}
+                  />
+                </div>
+          </section>
+
+          <section className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
+            <div><h2 className="text-base font-semibold text-[#102033]">账号管理</h2><p className="mt-1 text-xs text-[#58708d]">每个账号的凭据、任务、状态和通知相互隔离；暂停不会退出登录。</p></div>
+            <div className="mt-4 grid gap-3">
+              {accounts.map((account) => (
+                <SettingsAccountCard
+                  key={account.id}
+                  account={account}
+                  active={account.id === activeAccount?.id}
+                  refreshing={refreshingAccountId === account.id}
+                  onSwitch={() => void switchAccount(account.id)}
+                  onRefresh={() => void refreshAccountAuthorization(account.id)}
+                  onReauthorize={() => setReauthorizeAccountId(account.id)}
+                  onAction={(action) => void accountAction(account.id, action)}
+                />
+              ))}
             </div>
           </section>
 
@@ -339,27 +353,16 @@ function SettingsLivePage() {
             setDeletePolicy={setDeletePolicy}
             showSaveAction={false}
           />
-
-          <section className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-            <div><h2 className="text-base font-semibold text-[#102033]">账号管理</h2><p className="mt-1 text-xs text-[#58708d]">每个账号的凭据、任务、状态和通知相互隔离；暂停不会退出登录。</p></div>
-            <div className="mt-4 grid gap-3">
-              {accounts.map((account) => (
-                <div key={account.id} className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${account.id === activeAccount?.id ? "border-[#9fc0ee] bg-[#f5f9ff]" : "border-[#dce6f2]"}`}>
-                  <span className="grid h-9 w-9 place-items-center rounded-full bg-[#eaf3ff] text-xs font-bold text-[#3370ff]">{(account.account_name || "飞").slice(0, 1)}</span>
-                  <div className="min-w-[210px] flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-[#102033]">{account.account_name || "飞书账号"}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${account.auth_protocol === "device_v2" ? "bg-[#ecfdf5] text-[#047857]" : "bg-[#fff7ed] text-[#b45309]"}`}>{account.auth_protocol === "device_v2" ? "Device Flow V2" : "V1 兼容"}</span></div><p className="mt-0.5 text-xs text-[#71869d]">{account.state === "connected" ? account.paused ? "已暂停" : "同步中" : "需要重新授权"} · {account.brand === "lark" ? "Lark" : "飞书"} · {formatExpiry(account.access_expires_at)}</p>{account.last_auth_error ? <p className="mt-1 text-xs text-[#be123c]">最近授权错误：{account.last_auth_error}</p> : null}</div>
-                  {account.id !== activeAccount?.id ? <button type="button" onClick={() => void switchAccount(account.id)} className="rounded-lg border border-[#c9d8eb] px-3 py-1.5 text-xs font-semibold text-[#3370ff]">切换</button> : <span className="rounded-full bg-[#eaf3ff] px-2 py-1 text-[11px] font-semibold text-[#3370ff]">当前</span>}
-                  <button type="button" disabled={refreshingAccountId === account.id} onClick={() => void refreshAccountAuthorization(account.id)} className="rounded-lg border border-[#b9cfee] px-3 py-1.5 text-xs font-semibold text-[#3370ff] disabled:opacity-50">{refreshingAccountId === account.id ? "刷新中…" : "刷新授权"}</button>
-                  <button type="button" onClick={() => setReauthorizeAccountId(account.id)} className="rounded-lg bg-[#3370ff] px-3 py-1.5 text-xs font-semibold text-white">重新授权</button>
-                  <button type="button" onClick={() => void accountAction(account.id, account.paused ? "resume" : "pause")} className="rounded-lg border border-[#c9d8eb] px-3 py-1.5 text-xs text-[#52657a]">{account.paused ? "恢复" : "暂停"}</button>
-                  <button type="button" onClick={() => void accountAction(account.id, "disconnect")} className="rounded-lg border border-[#f4c7a1] px-3 py-1.5 text-xs text-[#b45309]">断开本机</button>
-                  <button type="button" onClick={() => void accountAction(account.id, "remove")} className="rounded-lg border border-[#fecdd3] px-3 py-1.5 text-xs text-[#be123c]">移除</button>
-                </div>
-              ))}
-            </div>
-          </section>
         </main>
 
         <aside data-settings-auxiliary-column="true" className="min-w-0 space-y-4">
+          <SettingsGeneralPanel
+            inputCls={inputCls}
+            deviceDisplayName={deviceDisplayName}
+            setDeviceDisplayName={setDeviceDisplayName}
+            deviceId={deviceId}
+            platform={autostart?.platform}
+          />
           <SettingsIgnoredDirectoriesPanel
             tasks={tasks}
             showIgnoredDirectorySettings={showIgnoredDirectorySettings}
