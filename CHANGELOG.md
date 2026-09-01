@@ -1,6 +1,6 @@
 # CHANGELOG
 
-[2026-09-02] v0.9.5 release: v0.9.5 tenant permission QR and account navigation
+[2026-09-02] v0.9.5 release: 正式发布组织权限扫码开通、真实缺权诊断、扁平化组织侧边栏与固定结构账号管理卡
 [2026-09-01] v0.9.5-dev.1 feat(accounts): 识别飞书真实组织缺权错误并以严格校验的官方地址生成权限二维码；schema v12 保存诊断状态；侧边栏组织切换与账号管理卡统一为扁平导航和固定操作结构
 [2026-09-01] v0.9.4 fix(ci): WebKit 发布冒烟按新流程验证第 1 次扫码完成检查点，再显式进入第 2 次扫码并校验二维码
 [2026-09-01] v0.9.4 release: v0.9.4 multi-account organization experience

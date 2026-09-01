@@ -1,5 +1,22 @@
 # DEVELOPMENT LOG
 
+## v0.9.5 正式发布（2026-09-02）
+
+- 当前结果：
+  - 正式标签 `v0.9.5` 指向提交 `3973748e775f739057ba3f35c01b1a45d1622c02`，该提交同时位于 `main`。
+  - GitHub Release 已公开发布：`https://github.com/gooderno1/LarkSync/releases/tag/v0.9.5`；不是草稿或预发布，六个正式资产均处于 `uploaded` 状态。
+  - Windows 安装包 `LarkSync-Setup-v0.9.5.exe` 大小 `58,610,033 bytes`，SHA256 为 `837C043FA965CF74339FCA21B64F5A0DB1FB16EAB64917EC5B98B1478B2A9C0A`。
+  - Apple Silicon 安装包 `LarkSync-v0.9.5-arm64.dmg` 大小 `65,705,310 bytes`，SHA256 为 `89B3CD6ED09A7E2E16ED27E050EE935C697580F286BFF8F37FADEF29935AFD36`。
+  - Intel 安装包 `LarkSync-v0.9.5-x86_64.dmg` 大小 `66,613,725 bytes`，SHA256 为 `270F27EDFA5860B225255E254984B6180A11E8B0842615F1691342ABE1307B9E`。
+  - 三个平台安装包均附带独立 `.sha256` 校验文件；现有自动升级通道可识别公开的 `v0.9.5` 正式 Release。
+- 验证方式：
+  - GitHub Actions 正式发布流水线 `33529326674` 成功。
+  - 后端全量测试、Windows 静默安装冒烟、前端 ESLint/TypeScript/Vitest/生产构建与 WebKit 权限二维码验证通过。
+  - Windows NSIS、macOS arm64 与 x86_64 构建、安装启动冒烟和 Release 资产上传通过。
+- 遗留问题：
+  - 仓库未配置 Apple Developer ID 与公证凭据；两个 macOS 安装包使用 ad-hoc 签名，首次打开可能需要用户手动放行 Gatekeeper。
+  - 扫码进入的是飞书官方应用权限页，不是账号重新授权；最终能否直接开通取决于当前用户的应用管理权、租户审批策略和应用版本状态。
+
 ## v0.9.5-dev.1 (2026-09-01)
 
 - 开发原因：
