@@ -1,5 +1,30 @@
 # DEVELOPMENT LOG
 
+## v0.9.6 正式发布（2026-09-02）
+
+- 开发原因：
+  - 将 `v0.9.6-dev.1` 已验证的零额外权限组织命名、旧账号自动迁移和可改名通知交付给自动更新用户。
+- 实现方式：
+  - 后端、前端、根项目和 lockfile 版本统一冻结为 `v0.9.6`；README 的稳定版本与功能说明同步更新。
+  - 正式标签 `v0.9.6` 指向提交 `c2372913567ff442d8ffa09bb867b543836bd840`，该提交同时位于 `main`。
+  - 修复 Release 说明解析边界：遇到未被版本正则识别的二级标题时结束当前版本段，避免把上一稳定版归档混入本次开发版本。
+- 当前结果：
+  - GitHub Release 已公开发布：`https://github.com/gooderno1/LarkSync/releases/tag/v0.9.6`；状态为 Latest，且不是草稿或预发布。
+  - Windows 安装包 `LarkSync-Setup-v0.9.6.exe` 大小 `58,611,365 bytes`，SHA256 为 `384485F0CB8A28BB29F7D35B5C41D307B73A4B22A4DA212B55C7D52CC1346F02`。
+  - Apple Silicon 安装包 `LarkSync-v0.9.6-arm64.dmg` 大小 `65,701,741 bytes`，SHA256 为 `4BC29CE0BCAC6E25C8A7701631DC67092D61B188594BA3E41FCC6DAA33E36D5A`。
+  - Intel 安装包 `LarkSync-v0.9.6-x86_64.dmg` 大小 `66,611,360 bytes`，SHA256 为 `D58A09B4C649A5A4E822A722BEFFE9125E574C3079E3AE9EA4DC6D1C9220116C`。
+  - 三个平台安装包均附带独立 `.sha256` 文件；六个资产均处于 `uploaded` 状态，现有自动升级通道可识别该正式版本。
+  - 并行上传任务曾使 Release 正文暂时只保留最后一个平台的校验项；发布收口时已改为三个安装包的完整校验表并重新审计。
+- 验证方式：
+  - 本地后端全量 pytest 通过；前端 40 个测试文件共 130 项通过，ESLint、TypeScript 和 Vite 生产构建通过。
+  - 发布说明与发布脚本定向测试共 20 项通过，新增上一稳定版中文归档标题的隔离回归用例。
+  - 本地 `python scripts/build_installer.py --nsis` 生成 `v0.9.6` 安装包；打包后端以独立 `synthetic_test` 数据目录启动，`/health` 返回 `ok`，桌面状态返回 `packaged=true`、`current_version=v0.9.6`，SQLite `schema_version=13`，测试进程已停止。
+  - GitHub Actions 正式发布流水线 `33584919170` 成功；基础质量门、WebKit 两次扫码、Windows NSIS、macOS arm64 与 x86_64 构建、安装启动 smoke 和资产上传全部通过。
+  - 三个 `.sha256` 文件已下载到隔离临时目录并逐项核对，内容与 Release 资产 digest 及正文校验表一致。
+- 遗留问题：
+  - 仓库未配置 Apple Developer ID 与公证凭据；本次 macOS 双架构 DMG 使用 ad-hoc 签名，首次打开可能需要在“系统设置 → 隐私与安全性”中手动放行。
+  - 当前三平台并行上传会分别更新 Release 正文；本次已人工完成最终正文收口，后续可增加独立 finalize job，从三个构建 artifact 一次性生成最终说明。
+
 ## v0.9.6-dev.1 (2026-09-02)
 
 - 开发原因：
