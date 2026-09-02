@@ -355,7 +355,7 @@ function SettingsLivePage() {
 
       <div
         data-settings-workspace="true"
-        className="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,7fr)_minmax(340px,5fr)] min-[1200px]:gap-5"
+        className="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(340px,1fr)] min-[1200px]:gap-5"
       >
         <main data-settings-primary-column="true" className="min-w-0 space-y-4">
           <section data-settings-account-panel="true" className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">

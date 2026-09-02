@@ -78,7 +78,7 @@ vi.mock("../hooks/useAppProfiles", () => ({
       id: "profile-1",
       brand: "feishu",
       app_id: "cli_12349F2C",
-      display_name: "LarkSync · 青鸟科技",
+      display_name: "销售归档应用",
       source: "official_registration",
       enabled: true,
       has_secret: true,
@@ -119,6 +119,10 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain("https://example.test/tenant.png");
     expect(html).toContain("LarkSync · 青鸟科技");
     expect(html).toContain("…9F2C");
+    expect(html).toContain("1 个应用 · 1 个正在使用 · 0 个账号可恢复");
+    expect(html).toContain('data-app-profiles-expanded="false"');
+    expect(html).not.toContain("销售归档应用");
+    expect(html).not.toContain("应用管理 ↗");
     expect(html).not.toContain("组织信息与权限");
     expect(html).not.toContain("扫码开通权限");
     expect(html).not.toContain("访问凭据有效至");
@@ -134,7 +138,7 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain('data-settings-page="true"');
     expect(html).toContain("grid-cols-1");
     expect(html).toContain("items-start");
-    expect(html).toContain("min-[900px]:grid-cols-[minmax(0,7fr)_minmax(340px,5fr)]");
+    expect(html).toContain("min-[900px]:grid-cols-[minmax(0,1fr)_minmax(340px,1fr)]");
     expect(html).toContain("min-[1200px]:gap-5");
     expect(html).toContain('data-settings-account-panel="true"');
     expect(html).toContain('data-settings-device-panel="true"');
