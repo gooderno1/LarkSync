@@ -62,10 +62,7 @@ def test_config_manager_defaults_include_required_docx_scopes(
     assert manager.config.auth_scopes == [
         "drive:drive",
         "docx:document",
-        "docx:document:readonly",
         "docx:document.block:convert",
-        "drive:drive.metadata:readonly",
-        "contact:contact.base:readonly",
     ]
 
 
@@ -91,10 +88,7 @@ def test_config_manager_migrates_legacy_docs_scope_to_docx_scopes(
     assert manager.config.auth_scopes == [
         "drive:drive",
         "docx:document",
-        "docx:document:readonly",
         "docx:document.block:convert",
-        "drive:drive.metadata:readonly",
-        "contact:contact.base:readonly",
     ]
 
 

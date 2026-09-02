@@ -54,10 +54,7 @@ LarkSync 需要通过飞书开放平台访问你的云空间。首次使用前�
 4. 添加用户身份权限：
    - `drive:drive`
    - `docx:document`
-   - `docx:document:readonly`
    - `docx:document.block:convert`
-   - `drive:drive.metadata:readonly`
-   - `contact:contact.base:readonly`
 5. 回到 LarkSync 设置页，填写 App ID、App Secret、Redirect URI。
 6. 点击“连接飞书”完成授权。
 

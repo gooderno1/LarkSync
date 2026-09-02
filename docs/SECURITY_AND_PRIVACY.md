@@ -1,6 +1,6 @@
 # LarkSync 安全与隐私说明
 
-更新时间：2026-09-01
+更新时间：2026-09-02
 
 LarkSync 是本地运行的飞书文档同步工具。它需要访问你的飞书云空间，因此首次试用前应先理解授权范围、token 存储方式和日志边界。
 
@@ -21,13 +21,10 @@ LarkSync 的核心数据流为：
 | 权限 | 用途 |
 | --- | --- |
 | `drive:drive` | 读取、下载、上传、管理云空间文件和文件夹 |
-| `drive:drive.metadata:readonly` | 获取云端文件元数据与修改时间 |
 | `docx:document` | 读取和写入飞书新版文档内容 |
-| `docx:document:readonly` | 只读访问新版文档内容 |
 | `docx:document.block:convert` | 将 Markdown 内容转换为飞书文档块 |
-| `contact:contact.base:readonly` | 获取当前授权用户基础信息，用于任务归属展示 |
 
-如果飞书控制台提示需要审核，请等待权限生效后重新授权。
+新授权默认只请求以上三项。`docx:document` 与 `drive:drive` 已覆盖同步链路使用的读取和元数据操作；账号与组织显示名由 LarkSync 本地管理，不需要通讯录或组织信息权限。已有应用此前开通的额外权限需要用户在飞书开发者后台自行撤销，客户端不会远程变更应用权限。
 
 ## 3. Token 与配置存储
 

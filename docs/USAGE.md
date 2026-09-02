@@ -2,12 +2,11 @@
 
 本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
 
-## 0. 当前版本（截至 2026-05-28）
-- 当前开发版本：`v0.7.22-dev.1`（推广前试用入口、权限/安全说明和反馈闭环文档补齐）
-- 最新稳定版：`v0.7.21`（见 `CHANGELOG.md` 顶部）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.7.22-dev.1`
-- 前端版本：`apps/frontend/package.json` 中为 `0.7.22-dev.1`
-- 根目录版本：`package.json` 中为 `v0.7.22-dev.1`
+## 0. 当前版本（截至 2026-09-02）
+- 最新稳定版：`v0.9.7`（见 `CHANGELOG.md` 顶部）
+- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.9.7`
+- 前端版本：`apps/frontend/package.json` 中为 `0.9.7`
+- 根目录版本：`package.json` 中为 `v0.9.7`
 
 ## 0.1 首次试用推荐路径
 
@@ -59,10 +58,7 @@
   "auth_scopes": [
     "drive:drive",
     "docx:document",
-    "docx:document:readonly",
-    "docx:document.block:convert",
-    "drive:drive.metadata:readonly",
-    "contact:contact.base:readonly"
+    "docx:document.block:convert"
   ],
   "sync_mode": "bidirectional",
   "token_store": "keyring",
@@ -80,7 +76,7 @@
 
 说明：
 - 回调地址统一为 `http://localhost:18765/auth/callback`。
-- `auth_scopes` 为可选字段，默认值已内置；旧配置中的 `docs:doc` 会在运行时自动迁移到新版 Docx scopes。
+- `auth_scopes` 为可选字段，默认值已内置；旧配置中的 `docs:doc` 会在运行时自动迁移到新版 Docx scopes，历史默认配置中的重复只读权限与通讯录权限会被忽略。
 
 ### 3.3 环境变量（可覆盖）
 - `LARKSYNC_SYNC_MODE`

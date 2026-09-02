@@ -31,6 +31,7 @@ class ManualAppProfileRequest(BaseModel):
 
 class RegistrationRequest(BaseModel):
     brand: str = "feishu"
+    display_name: str | None = Field(default=None, max_length=120)
 
 
 class DeviceSessionRequest(BaseModel):
@@ -47,6 +48,10 @@ class NotificationReadRequest(BaseModel):
 
 class AccountDisplayRequest(BaseModel):
     account_alias: str | None = Field(default=None, max_length=120)
+
+
+class AppProfileDisplayRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=120)
 
 
 def _session_response(session: PendingSession) -> dict[str, object]:
@@ -156,10 +161,27 @@ async def create_manual_app_profile(
     return asdict(item)
 
 
+@router.patch("/app-profiles/{profile_id}/display")
+async def update_app_profile_display(
+    profile_id: str, payload: AppProfileDisplayRequest
+) -> dict[str, object]:
+    try:
+        item = await account_service.update_app_profile_display_name(
+            profile_id, payload.display_name
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return asdict(item)
+
+
 @router.post("/app-profiles/registration-sessions")
 async def begin_app_registration(payload: RegistrationRequest) -> dict[str, object]:
     try:
-        return _session_response(await auth_sessions.begin_registration(payload.brand))
+        return _session_response(
+            await auth_sessions.begin_registration(
+                payload.brand, display_name=payload.display_name
+            )
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

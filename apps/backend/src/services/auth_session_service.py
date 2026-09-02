@@ -9,7 +9,7 @@ from typing import Callable
 import httpx
 from loguru import logger
 
-from src.core.config import ConfigManager
+from src.core.config import ConfigManager, REQUIRED_AUTH_SCOPES
 from src.core.security import CredentialStorageError, TokenData
 from src.services.account_runtime import account_runtime_registry
 from src.services.account_service import AccountService
@@ -36,6 +36,7 @@ class PendingSession:
     app_profile_id: str | None = None
     scopes: list[str] | None = None
     target_account_id: str | None = None
+    registration_display_name: str | None = None
     terminal_result: dict[str, object] | None = None
 
 
@@ -111,6 +112,22 @@ class AuthSessionService:
                 if result.status in {"denied", "expired"}:
                     self.cancel(session_id)
                 return {"status": result.status, "message": result.message}
+            granted_scopes = {
+                scope.strip() for scope in result.token.scope.split() if scope.strip()
+            }
+            missing_scopes = [
+                scope for scope in REQUIRED_AUTH_SCOPES if scope not in granted_scopes
+            ]
+            if missing_scopes:
+                session.terminal_result = {
+                    "status": "failed",
+                    "message": (
+                        "飞书授权已完成，但未授予同步所需权限："
+                        + "、".join(missing_scopes)
+                        + "。请确认审批完成后重新授权。"
+                    ),
+                }
+                return session.terminal_result
             profile_data = await self._fetch_user_profile(
                 brand=session.brand,
                 access_token=result.token.access_token,
@@ -132,12 +149,18 @@ class AuthSessionService:
                 "app_profile_id": profile.id,
                 "open_id": open_id,
                 "account_name": token.account_name,
-                "granted_scopes": (result.token.scope.split() or session.scopes or []),
+                "granted_scopes": list(granted_scopes),
                 "token": token,
                 "avatar_url": str(profile_data.get("avatar_url") or "").strip() or None,
                 "tenant_name": str(profile_data.get("tenant_name") or "").strip() or None,
                 "tenant_key": str(profile_data.get("tenant_key") or "").strip() or None,
             }
+            connection_result = "reauthorized" if session.target_account_id else (
+                await self._accounts.classify_connection_result(
+                    app_profile_id=profile.id,
+                    open_id=open_id,
+                )
+            )
             try:
                 if session.target_account_id:
                     account = await self._accounts.reauthorize_account(
@@ -194,15 +217,19 @@ class AuthSessionService:
                 "account": account,
                 "runtime_reload_pending": runtime_reload_pending,
                 "tenant_metadata_status": tenant_metadata_status,
+                "connection_result": connection_result,
             }
             return session.terminal_result
 
-    async def begin_registration(self, brand: str) -> PendingSession:
+    async def begin_registration(
+        self, brand: str, *, display_name: str | None = None
+    ) -> PendingSession:
         authorization = await self._registration.begin(brand=brand)
         return self._put(
             kind="registration",
             authorization=authorization,
             brand=authorization.brand,
+            registration_display_name=(display_name or "").strip() or "LarkSync",
         )
 
     async def poll_registration(self, session_id: str) -> dict[str, object]:
@@ -238,7 +265,7 @@ class AuthSessionService:
                 app_secret=result.app_secret or "",
                 brand=result.brand,
                 source="official_registration",
-                display_name="LarkSync",
+                display_name=session.registration_display_name or "LarkSync",
             )
             session.terminal_result = {
                 "status": "registered",
@@ -260,6 +287,7 @@ class AuthSessionService:
         app_profile_id: str | None = None,
         scopes: list[str] | None = None,
         target_account_id: str | None = None,
+        registration_display_name: str | None = None,
     ) -> PendingSession:
         now = self._clock()
         item = PendingSession(
@@ -276,6 +304,7 @@ class AuthSessionService:
             app_profile_id=app_profile_id,
             scopes=scopes,
             target_account_id=target_account_id,
+            registration_display_name=registration_display_name,
         )
         self._sessions[item.id] = item
         return item

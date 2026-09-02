@@ -57,12 +57,11 @@
 **常用最小权限建议：**
 - `drive:drive`
 - `docx:document`
-- `docx:document:readonly`
 - `docx:document.block:convert`
-- `drive:drive.metadata:readonly`
-- `contact:contact.base:readonly`
 
 > 说明：飞书新版文档接口（`/open-apis/docx/v1/...`）不再对应旧的 `docs:doc`。LarkSync 当前文档同步、块读取/写入与 Markdown 转块依赖 `docx:document` / `docx:document.block:convert`。
+
+> `docx:document` 已覆盖文档读取需求，`drive:drive` 已覆盖同步使用的云空间元数据操作，因此不再额外申请重复的只读权限。账号与组织显示名由 LarkSync 本地管理，不申请通讯录权限。
 
 > 注意：权限必须在飞书控制台配置，LarkSync 设置页不要求手动填写 scopes。
 

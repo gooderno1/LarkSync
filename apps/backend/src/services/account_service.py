@@ -40,6 +40,10 @@ class AppProfileItem:
     source: str
     enabled: bool
     has_secret: bool
+    created_at: float
+    updated_at: float
+    linked_account_count: int = 0
+    recoverable_account_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,10 @@ class AccountItem:
 
 @dataclass(frozen=True)
 class AccountSummary(AccountItem):
+    app_display_name: str | None = None
+    app_id: str | None = None
+    app_source: str | None = None
+    app_created_at: float | None = None
     unread_total: int = 0
     unread_errors: int = 0
     unread_messages: int = 0
@@ -251,7 +259,39 @@ class AccountService:
                     .order_by(AppProfile.created_at.asc())
                 )
             ).scalars().all()
-        return [self._profile_item(record) for record in records]
+            account_rows = (
+                await session.execute(
+                    select(Account.app_profile_id, Account.removed_at)
+                    .where(Account.app_profile_id.in_([record.id for record in records]))
+                )
+            ).all() if records else []
+        counts: dict[str, list[int]] = {}
+        for profile_id, removed_at in account_rows:
+            bucket = counts.setdefault(str(profile_id), [0, 0])
+            bucket[1 if removed_at is not None else 0] += 1
+        return [
+            self._profile_item(
+                record,
+                linked_account_count=counts.get(record.id, [0, 0])[0],
+                recoverable_account_count=counts.get(record.id, [0, 0])[1],
+            )
+            for record in records
+        ]
+
+    async def update_app_profile_display_name(
+        self, profile_id: str, display_name: str
+    ) -> AppProfileItem:
+        clean_name = display_name.strip()
+        if not clean_name:
+            raise ValueError("应用名称不能为空")
+        async with self._session_maker() as session:
+            record = await session.get(AppProfile, profile_id)
+            if record is None or not record.enabled:
+                raise ValueError("应用配置不存在或已停用")
+            record.display_name = clean_name
+            record.updated_at = time.time()
+            await session.commit()
+            return self._profile_item(record)
 
     async def get_app_profile_credentials(
         self, profile_id: str
@@ -365,6 +405,23 @@ class AccountService:
         if await self.get_active_account_id() is None:
             await self.set_active_account(account.id)
         return account
+
+    async def classify_connection_result(
+        self, *, app_profile_id: str, open_id: str
+    ) -> str:
+        clean_open_id = open_id.strip()
+        async with self._session_maker() as session:
+            record = (
+                await session.execute(
+                    select(Account).where(
+                        Account.app_profile_id == app_profile_id,
+                        Account.open_id == clean_open_id,
+                    )
+                )
+            ).scalar_one_or_none()
+        if record is None:
+            return "new"
+        return "restored" if record.removed_at is not None else "existing"
 
     async def reauthorize_account(
         self,
@@ -701,6 +758,7 @@ class AccountService:
     async def list_account_summaries(self) -> list[AccountSummary]:
         accounts = await self.list_accounts()
         active_id = await self.get_active_account_id()
+        profiles = {item.id: item for item in await self.list_app_profiles()}
         async with self._session_maker() as session:
             rows = (
                 await session.execute(
@@ -725,9 +783,14 @@ class AccountService:
         summaries: list[AccountSummary] = []
         for account in accounts:
             unread_total, unread_errors = counts.get(account.id, (0, 0))
+            profile = profiles.get(account.app_profile_id)
             summaries.append(
                 AccountSummary(
                     **account.__dict__,
+                    app_display_name=profile.display_name if profile else None,
+                    app_id=profile.app_id if profile else None,
+                    app_source=profile.source if profile else None,
+                    app_created_at=profile.created_at if profile else None,
                     unread_total=unread_total,
                     unread_errors=unread_errors,
                     unread_messages=max(0, unread_total - unread_errors),
@@ -736,7 +799,13 @@ class AccountService:
             )
         return summaries
 
-    def _profile_item(self, record: AppProfile) -> AppProfileItem:
+    def _profile_item(
+        self,
+        record: AppProfile,
+        *,
+        linked_account_count: int = 0,
+        recoverable_account_count: int = 0,
+    ) -> AppProfileItem:
         return AppProfileItem(
             id=record.id,
             brand=record.brand,
@@ -745,6 +814,10 @@ class AccountService:
             source=record.source,
             enabled=bool(record.enabled),
             has_secret=bool(self._secret_store.get(record.secret_ref)),
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            linked_account_count=linked_account_count,
+            recoverable_account_count=recoverable_account_count,
         )
 
     def _account_item(self, record: Account) -> AccountItem:

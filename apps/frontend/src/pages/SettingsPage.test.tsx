@@ -52,8 +52,8 @@ vi.mock("../hooks/useAuth", () => ({
 
 vi.mock("../hooks/useAccounts", () => ({
   useAccounts: () => ({
-    accounts: [{ id: "account-1", account_name: "张三", tenant_name: "青鸟科技", tenant_avatar_url: "https://example.test/tenant.png", tenant_metadata_status: "ready", state: "connected", paused: false, brand: "feishu", auth_protocol: "legacy_v1" }],
-    activeAccount: { id: "account-1", account_name: "张三", tenant_name: "青鸟科技", tenant_avatar_url: "https://example.test/tenant.png", tenant_metadata_status: "ready", state: "connected", paused: false, brand: "feishu", auth_protocol: "legacy_v1" },
+    accounts: [{ id: "account-1", app_profile_id: "profile-1", account_name: "张三", tenant_name: "青鸟科技", tenant_avatar_url: "https://example.test/tenant.png", tenant_metadata_status: "ready", state: "connected", paused: false, brand: "feishu", auth_protocol: "legacy_v1", app_display_name: "LarkSync · 青鸟科技", app_id: "cli_12349F2C", app_source: "official_registration", unread_total: 2, unread_errors: 1 }],
+    activeAccount: { id: "account-1", app_profile_id: "profile-1", account_name: "张三", tenant_name: "青鸟科技", tenant_avatar_url: "https://example.test/tenant.png", tenant_metadata_status: "ready", state: "connected", paused: false, brand: "feishu", auth_protocol: "legacy_v1", app_display_name: "LarkSync · 青鸟科技", app_id: "cli_12349F2C", app_source: "official_registration", unread_total: 2, unread_errors: 1 },
     switchAccount: vi.fn(),
     refreshAccounts: vi.fn().mockResolvedValue(undefined),
   }),
@@ -72,6 +72,25 @@ vi.mock("../hooks/useAutostart", () => ({
   }),
 }));
 
+vi.mock("../hooks/useAppProfiles", () => ({
+  useAppProfiles: () => ({
+    profiles: [{
+      id: "profile-1",
+      brand: "feishu",
+      app_id: "cli_12349F2C",
+      display_name: "LarkSync · 青鸟科技",
+      source: "official_registration",
+      enabled: true,
+      has_secret: true,
+      created_at: 1_788_243_200,
+      updated_at: 1_788_243_200,
+      linked_account_count: 1,
+      recoverable_account_count: 0,
+    }],
+    refreshProfiles: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../components/ui/toast", () => ({
   useToast: () => ({
     toast: vi.fn(),
@@ -81,13 +100,12 @@ vi.mock("../components/ui/toast", () => ({
 describe("SettingsPage smoke", () => {
   it("renders the natural-height responsive settings workspace", () => {
     const html = renderToStaticMarkup(<SettingsPage />);
-    const currentAccountIndex = html.indexOf("当前飞书账号");
-    const autostartIndex = html.indexOf("开机自启动", currentAccountIndex);
-    const currentDeviceIndex = html.indexOf(">当前设备<", autostartIndex);
+    const accountIndex = html.indexOf("账号管理");
+    const currentDeviceIndex = html.indexOf(">当前设备<");
+    const autostartIndex = html.indexOf("开机自启动", currentDeviceIndex);
 
-    expect(html).toContain("管理飞书账号、当前设备、默认同步行为和本地规则。");
-    expect(html).toContain("当前飞书账号");
-    expect(html).toContain("飞书已连接");
+    expect(html).toContain("管理账号、应用、本机与默认同步规则。");
+    expect(html).not.toContain("当前飞书账号");
     expect(html).toContain("当前设备");
     expect(html).toContain("开机自启动");
     expect(html).toContain("登录当前系统账号后自动启动 LarkSync");
@@ -98,17 +116,17 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain("账号管理");
     expect(html).toContain("每个账号的凭据、任务、状态和通知相互隔离");
     expect(html).toContain("青鸟科技");
-    expect(html).toContain("已同步飞书组织信息");
     expect(html).toContain("https://example.test/tenant.png");
-    expect(html).toContain("修改组织名称");
+    expect(html).toContain("LarkSync · 青鸟科技");
+    expect(html).toContain("…9F2C");
     expect(html).not.toContain("组织信息与权限");
     expect(html).not.toContain("扫码开通权限");
-    expect(html).toContain("V1 兼容");
-    expect(html).toContain("刷新授权");
-    expect(html).toContain("重新授权");
+    expect(html).not.toContain("访问凭据有效至");
+    expect(html).not.toContain("刷新授权");
+    expect(html).not.toContain("重新授权");
     expect(html).toContain("同步策略");
     expect(html).toContain("本地忽略目录");
-    expect(html).toContain('data-settings-current-account="true"');
+    expect(html).not.toContain('data-settings-current-account="true"');
     expect(html).toContain('data-settings-autostart="true"');
     expect(html).toContain('data-settings-workspace="true"');
     expect(html).toContain('data-settings-primary-column="true"');
@@ -116,17 +134,15 @@ describe("SettingsPage smoke", () => {
     expect(html).toContain('data-settings-page="true"');
     expect(html).toContain("grid-cols-1");
     expect(html).toContain("items-start");
-    expect(html).toContain("min-[900px]:grid-cols-[minmax(0,1fr)_minmax(380px,420px)]");
+    expect(html).toContain("min-[900px]:grid-cols-[minmax(0,7fr)_minmax(340px,5fr)]");
     expect(html).toContain("min-[1200px]:gap-5");
     expect(html).toContain('data-settings-account-panel="true"');
     expect(html).toContain('data-settings-device-panel="true"');
     expect(html).toContain('data-account-card="true"');
     expect(html).toContain('data-account-identity="true"');
-    expect(html).toContain('data-account-facts="true"');
-    expect(html).toContain('data-account-primary-actions="true"');
-    expect(html).toContain('data-account-maintenance-actions="true"');
-    expect(html).toContain('data-account-organization-actions="true"');
-    expect(html).toContain("更多操作");
+    expect(html).toContain('data-account-expanded="false"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('data-account-facts="true"');
     expect(html).toContain('data-settings-strategy-header="true"');
     expect(html).not.toContain("data-settings-scroll-region");
     expect(html).not.toContain("overflow-y-auto");
@@ -136,10 +152,8 @@ describe("SettingsPage smoke", () => {
     expect(html).not.toContain("保存配置");
     expect(html).not.toContain("App Secret");
     expect(html).not.toContain("Redirect URI");
-    expect(currentAccountIndex).toBeLessThan(autostartIndex);
-    expect(autostartIndex).toBeLessThan(currentDeviceIndex);
-    expect(currentAccountIndex).toBeLessThan(html.indexOf("账号管理"));
-    expect(html.indexOf("账号管理")).toBeLessThan(html.indexOf("默认同步策略"));
+    expect(accountIndex).toBeLessThan(html.indexOf("默认同步策略"));
+    expect(currentDeviceIndex).toBeLessThan(autostartIndex);
     expect(currentDeviceIndex).toBeLessThan(html.indexOf("忽略规则"));
     expect(html.indexOf("忽略规则")).toBeLessThan(html.indexOf("数据保护"));
     expect(html).not.toContain("自动更新");

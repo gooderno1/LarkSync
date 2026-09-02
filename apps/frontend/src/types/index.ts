@@ -165,6 +165,10 @@ export type AccountSummary = {
   unread_errors: number;
   unread_messages: number;
   is_active: boolean;
+  app_display_name?: string | null;
+  app_id?: string | null;
+  app_source?: string | null;
+  app_created_at?: number | null;
 };
 
 export type AppProfile = {
@@ -175,6 +179,10 @@ export type AppProfile = {
   source: string;
   enabled: boolean;
   has_secret: boolean;
+  created_at: number;
+  updated_at: number;
+  linked_account_count: number;
+  recoverable_account_count: number;
 };
 
 export type AccountNotification = {

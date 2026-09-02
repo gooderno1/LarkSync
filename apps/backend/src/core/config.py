@@ -59,16 +59,20 @@ def _default_database_url() -> str:
 REQUIRED_AUTH_SCOPES: tuple[str, ...] = (
     "drive:drive",
     "docx:document",
-    "docx:document:readonly",
     "docx:document.block:convert",
-    "drive:drive.metadata:readonly",
-    "contact:contact.base:readonly",
+)
+
+_REMOVED_DEFAULT_AUTH_SCOPES: frozenset[str] = frozenset(
+    {
+        "docx:document:readonly",
+        "drive:drive.metadata:readonly",
+        "contact:contact.base:readonly",
+    }
 )
 
 _LEGACY_SCOPE_ALIASES: dict[str, tuple[str, ...]] = {
     "docs:doc": (
         "docx:document",
-        "docx:document:readonly",
         "docx:document.block:convert",
     )
 }
@@ -80,7 +84,7 @@ def _normalize_auth_scopes(scopes: list[str] | None) -> list[str]:
 
     for raw_scope in scopes or []:
         scope = raw_scope.strip()
-        if not scope:
+        if not scope or scope in _REMOVED_DEFAULT_AUTH_SCOPES:
             continue
         mapped_scopes = _LEGACY_SCOPE_ALIASES.get(scope, (scope,))
         for mapped_scope in mapped_scopes:

@@ -82,8 +82,17 @@ describe("AccountConnectPanel", () => {
     });
 
     render(<AccountConnectPanel />);
+    const appName = screen.getByLabelText("应用名称") as HTMLInputElement;
+    expect(appName.value).toBe("LarkSync 应用 1");
+    fireEvent.change(appName, { target: { value: "LarkSync · 公司空间" } });
     fireEvent.click(screen.getByRole("button", { name: "开始第 1 次扫码" }));
     await act(async () => Promise.resolve());
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/app-profiles/registration-sessions",
+      expect.objectContaining({
+        body: JSON.stringify({ brand: "feishu", display_name: "LarkSync · 公司空间" }),
+      }),
+    );
     expect(screen.getByText(/步骤 1 \/ 2/)).toBeTruthy();
 
     await act(async () => {
@@ -189,6 +198,9 @@ describe("AccountConnectPanel", () => {
       if (endpoint === "/accounts/account-2/display" && init?.method === "PATCH") {
         return Promise.resolve({ id: "account-2", account_alias: "市场团队" });
       }
+      if (endpoint === "/app-profiles/profile-1/display" && init?.method === "PATCH") {
+        return Promise.resolve({ id: "profile-1", display_name: "LarkSync · 市场团队" });
+      }
       return Promise.resolve({ cancelled: true });
     });
 
@@ -214,9 +226,54 @@ describe("AccountConnectPanel", () => {
         body: JSON.stringify({ account_alias: "市场团队" }),
       }),
     );
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/app-profiles/profile-1/display",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ display_name: "LarkSync · 市场团队" }),
+      }),
+    );
     expect(refreshAccounts).toHaveBeenCalledTimes(1);
     expect(switchAccount).toHaveBeenCalledWith("account-2");
     expect(onConnected).toHaveBeenCalledTimes(1);
+  });
+
+  it("恢复软移除账号时展示明确成功文案", async () => {
+    apiFetchMock.mockImplementation((endpoint: string, init?: RequestInit) => {
+      if (endpoint === "/app-profiles/registration-sessions" && init?.method === "POST") {
+        return Promise.resolve(registrationSession);
+      }
+      if (endpoint === "/app-profiles/registration-sessions/registration-1") {
+        return Promise.resolve({ status: "registered", app_profile: { id: "profile-1", app_id: "cli_created" } });
+      }
+      if (endpoint === "/auth/device-sessions" && init?.method === "POST") {
+        return Promise.resolve(deviceSession);
+      }
+      if (endpoint === "/auth/device-sessions/device-1") {
+        return Promise.resolve({
+          status: "authorized",
+          connection_result: "restored",
+          account: {
+            id: "account-2",
+            account_name: "测试账号",
+            account_alias: "市场团队",
+            auth_protocol: "device_v2",
+          },
+        });
+      }
+      return Promise.resolve({ cancelled: true });
+    });
+
+    render(<AccountConnectPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "开始第 1 次扫码" }));
+    await act(async () => Promise.resolve());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    fireEvent.click(screen.getByRole("button", { name: "继续第 2 次扫码" }));
+    await act(async () => Promise.resolve());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+
+    expect(screen.getByText("已恢复之前移除的账号")).toBeTruthy();
+    expect(screen.getByText(/原任务、状态和历史数据已重新关联/)).toBeTruthy();
   });
 
   it("区分飞书授权成功后的本机凭据保存失败并可创建新会话重试", async () => {

@@ -34,6 +34,9 @@ class _Accounts:
         self.saved = kwargs
         return type("Account", (), {"id": "account-1", "state": "connected"})()
 
+    async def classify_connection_result(self, **_kwargs):
+        return "new"
+
     async def reauthorize_account(self, **kwargs):
         self.saved = kwargs
         return type("Account", (), {"id": kwargs["account_id"], "state": "connected"})()
@@ -71,7 +74,10 @@ class _DeviceProtocol:
                 refresh_token="refresh",
                 expires_in=7200,
                 refresh_expires_in=604800,
-                scope="drive:drive offline_access",
+                scope=(
+                    "drive:drive docx:document "
+                    "docx:document.block:convert offline_access"
+                ),
             ),
         )
 
@@ -107,14 +113,83 @@ async def test_registration_stops_at_explicit_success_checkpoint() -> None:
         clock=lambda: 1000.0,
     )
 
-    session = await service.begin_registration("feishu")
+    session = await service.begin_registration("feishu", display_name="LarkSync · 公司空间")
     result = await service.poll_registration(session.id)
 
     assert result["status"] == "registered"
     assert result["app_profile"].id == "profile-created"
     assert "next_session" not in result
-    assert accounts.saved["display_name"] == "LarkSync"
+    assert accounts.saved["display_name"] == "LarkSync · 公司空间"
     assert await service.poll_registration(session.id) == result
+
+
+@pytest.mark.asyncio
+async def test_device_session_reports_restored_removed_account(monkeypatch) -> None:
+    class RestoringAccounts(_Accounts):
+        async def classify_connection_result(self, **_kwargs):
+            return "restored"
+
+    accounts = RestoringAccounts()
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            request=request,
+            json={"code": 0, "data": {"open_id": "ou_1", "name": "测试用户"}},
+        )
+    )
+    client = httpx.AsyncClient(transport=transport)
+    service = AuthSessionService(
+        account_service=accounts,  # type: ignore[arg-type]
+        device_protocol=_DeviceProtocol(),  # type: ignore[arg-type]
+        http_client=client,
+        clock=lambda: 1000.0,
+    )
+    monkeypatch.setattr(
+        "src.services.auth_session_service.account_runtime_registry.reload",
+        lambda: _async_none(),
+    )
+
+    session = await service.begin_device("profile-1")
+    result = await service.poll_device(session.id)
+
+    assert result["status"] == "authorized"
+    assert result["connection_result"] == "restored"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_device_session_rejects_incomplete_granted_scopes() -> None:
+    class IncompleteScopeProtocol(_DeviceProtocol):
+        async def poll_once(self, **_kwargs):
+            result = await super().poll_once(**_kwargs)
+            assert result.token is not None
+            return DevicePollResult(
+                status="authorized",
+                token=DeviceToken(
+                    access_token=result.token.access_token,
+                    refresh_token=result.token.refresh_token,
+                    expires_in=result.token.expires_in,
+                    refresh_expires_in=result.token.refresh_expires_in,
+                    scope="drive:drive offline_access",
+                ),
+            )
+
+    accounts = _Accounts()
+    service = AuthSessionService(
+        account_service=accounts,  # type: ignore[arg-type]
+        device_protocol=IncompleteScopeProtocol(),  # type: ignore[arg-type]
+        clock=lambda: 1000.0,
+    )
+
+    session = await service.begin_device("profile-1")
+    result = await service.poll_device(session.id)
+
+    assert result["status"] == "failed"
+    assert "docx:document" in result["message"]
+    assert "docx:document.block:convert" in result["message"]
+    assert accounts.saved is None
+    assert await service.poll_device(session.id) == result
+
 
 @pytest.mark.asyncio
 async def test_device_session_finishes_and_persists_identity(monkeypatch) -> None:

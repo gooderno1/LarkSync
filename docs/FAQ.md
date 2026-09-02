@@ -30,12 +30,9 @@ LarkSync 需要以你的用户身份读取和写入你有权限访问的飞书�
 
 - `drive:drive`
 - `docx:document`
-- `docx:document:readonly`
 - `docx:document.block:convert`
-- `drive:drive.metadata:readonly`
-- `contact:contact.base:readonly`
 
-这些权限分别用于云空间文件读写、文档内容读写、Markdown 转文档块、元数据读取和当前用户信息展示。
+这些权限分别用于云空间文件读写、文档内容读写和 Markdown 转文档块。组织名称使用本地可编辑标识，不需要通讯录或组织信息权限。
 
 ## Access denied 怎么办
 

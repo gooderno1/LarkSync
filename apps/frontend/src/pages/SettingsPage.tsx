@@ -10,6 +10,8 @@ import { useAutostart } from "../hooks/useAutostart";
 import { syncModeSupportsDownload, syncModeSupportsUpload } from "../lib/constants";
 import { apiFetch } from "../lib/api";
 import { useToast } from "../components/ui/toast";
+import { confirm } from "../components/ui/confirm-dialog";
+import { NameEditDialog } from "../components/ui/name-edit-dialog";
 import { SettingsSyncStrategyPanel } from "../components/settings/SettingsSyncStrategyPanel";
 import { SettingsGeneralPanel } from "../components/settings/SettingsGeneralPanel";
 import { SettingsIgnoredDirectoriesPanel } from "../components/settings/SettingsIgnoredDirectoriesPanel";
@@ -19,14 +21,27 @@ import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
 import { useAccounts } from "../hooks/useAccounts";
 import { AccountConnectPanel } from "../components/AccountConnectPanel";
 import { SettingsAccountCard } from "../components/settings/SettingsAccountCard";
+import { SettingsAppProfilesPanel } from "../components/settings/SettingsAppProfilesPanel";
 import { Switch } from "../components/ui/switch";
 import { organizationDisplayName } from "../components/OrganizationAvatar";
+import { useAppProfiles } from "../hooks/useAppProfiles";
+import type { AppProfile } from "../types";
+
+type NameEditTarget = {
+  kind: "account" | "profile";
+  id: string;
+  title: string;
+  description: string;
+  label: string;
+  value: string;
+};
 
 function SettingsLivePage() {
   const { config, configLoading, saveConfig, saving } = useConfig();
   const { tasks, updateIgnoredSubpaths, updatingIgnoredSubpaths } = useTasks();
   const { deviceId } = useAuth();
   const { accounts, activeAccount, switchAccount, refreshAccounts } = useAccounts();
+  const { profiles, refreshProfiles } = useAppProfiles();
   const { autostart, autostartLoading, setAutostart, updatingAutostart } = useAutostart();
   const { toast } = useToast();
 
@@ -45,7 +60,13 @@ function SettingsLivePage() {
   const [ignoredSubpathsMap, setIgnoredSubpathsMap] = useState<Record<string, string[]>>({});
   const [pickingIgnoredTaskId, setPickingIgnoredTaskId] = useState<string | null>(null);
   const [reauthorizeAccountId, setReauthorizeAccountId] = useState<string | null>(null);
+  const [addAccountOpen, setAddAccountOpen] = useState(false);
   const [refreshingAccountId, setRefreshingAccountId] = useState<string | null>(null);
+  const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
+  const [nameEditTarget, setNameEditTarget] = useState<NameEditTarget | null>(null);
+  const [nameEditValue, setNameEditValue] = useState("");
+  const [nameEditSaving, setNameEditSaving] = useState(false);
+  const [nameEditError, setNameEditError] = useState<string | null>(null);
   const uploadEnabled = syncModeSupportsUpload(syncMode);
   const downloadEnabled = syncModeSupportsDownload(syncMode);
 
@@ -187,13 +208,23 @@ function SettingsLivePage() {
   };
 
   const accountAction = async (accountId: string, action: "pause" | "resume" | "disconnect" | "remove") => {
-    if (action === "remove" && !window.confirm("从本机移除此账号？任务与历史数据仍会保留，可重新登录恢复。")) return;
+    if (action === "remove") {
+      const account = accounts.find((item) => item.id === accountId);
+      const accepted = await confirm({
+        title: `从本机移除“${organizationDisplayName(account)}”？`,
+        description: "该账号会停止同步并清除本机登录凭据。任务、同步历史、映射、问题和本地文件都会保留。以后选用同一个应用配置并由同一个飞书账号扫码，可以恢复原账号和数据。",
+        confirmLabel: "移除账号",
+        cancelLabel: "取消",
+        tone: "danger",
+      });
+      if (!accepted) return;
+    }
     try {
       await apiFetch(action === "remove" ? `/accounts/${accountId}` : `/accounts/${accountId}/${action}`, {
         method: action === "remove" ? "DELETE" : "POST",
       });
-      await refreshAccounts();
-      toast(action === "pause" ? "账号同步已暂停" : action === "resume" ? "账号同步已恢复" : action === "disconnect" ? "账号已从本机断开" : "账号已移除", "success");
+      await Promise.all([refreshAccounts(), refreshProfiles()]);
+      toast(action === "pause" ? "账号同步已暂停" : action === "resume" ? "账号同步已恢复" : action === "disconnect" ? "账号已从本机断开" : "已从本机移除，任务与历史数据已保留", "success");
     } catch (err) {
       toast(err instanceof Error ? err.message : "账号操作失败", "danger");
     }
@@ -213,27 +244,60 @@ function SettingsLivePage() {
     }
   };
 
-  const editAccountAlias = async (accountId: string) => {
+  const editAccountAlias = (accountId: string) => {
     const account = accounts.find((item) => item.id === accountId);
-    const value = window.prompt(
-      "输入组织名称；该名称只用于 LarkSync 内区分账号。",
-      organizationDisplayName(account),
-    );
-    if (value === null) return;
-    if (!value.trim()) {
-      toast("组织名称不能为空", "danger");
-      return;
-    }
+    const value = organizationDisplayName(account);
+    setNameEditValue(value);
+    setNameEditError(null);
+    setNameEditTarget({
+      kind: "account",
+      id: accountId,
+      title: "修改组织名称",
+      description: "只改变 LarkSync 中的显示，不修改飞书组织，也不影响权限和数据隔离。",
+      label: "组织名称",
+      value,
+    });
+  };
+
+  const editAppProfile = (profile: AppProfile) => {
+    const value = profile.display_name || "";
+    setNameEditValue(value);
+    setNameEditError(null);
+    setNameEditTarget({
+      kind: "profile",
+      id: profile.id,
+      title: "修改应用名称",
+      description: "名称只用于在 LarkSync 中区分不同 App ID，不会修改飞书后台显示的应用名称。",
+      label: "应用名称",
+      value,
+    });
+  };
+
+  const saveEditedName = async () => {
+    if (!nameEditTarget || !nameEditValue.trim()) return;
+    setNameEditSaving(true);
+    setNameEditError(null);
     try {
-      await apiFetch(`/accounts/${accountId}/display`, {
+      await apiFetch(
+        nameEditTarget.kind === "account"
+          ? `/accounts/${nameEditTarget.id}/display`
+          : `/app-profiles/${nameEditTarget.id}/display`,
+        {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account_alias: value.trim() }),
+        body: JSON.stringify(
+          nameEditTarget.kind === "account"
+            ? { account_alias: nameEditValue.trim() }
+            : { display_name: nameEditValue.trim() },
+        ),
       });
-      await refreshAccounts();
-      toast("组织名称已更新", "success");
+      await Promise.all([refreshAccounts(), refreshProfiles()]);
+      toast(nameEditTarget.kind === "account" ? "组织名称已更新" : "应用名称已更新", "success");
+      setNameEditTarget(null);
     } catch (err) {
-      toast(err instanceof Error ? err.message : "组织显示名更新失败", "danger");
+      setNameEditError(err instanceof Error ? err.message : "名称更新失败");
+    } finally {
+      setNameEditSaving(false);
     }
   };
 
@@ -277,7 +341,7 @@ function SettingsLivePage() {
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-[#102033]">设置</h1>
-          <p className="mt-1 text-sm text-[#52657A]">管理飞书账号、当前设备、默认同步行为和本地规则。</p>
+          <p className="mt-1 text-sm text-[#52657A]">管理账号、应用、本机与默认同步规则。</p>
         </div>
         <button
           className="inline-flex h-9 items-center rounded-lg bg-[#3370FF] px-4 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(51,112,255,0.22)] hover:bg-[#2563eb]"
@@ -291,53 +355,10 @@ function SettingsLivePage() {
 
       <div
         data-settings-workspace="true"
-        className="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(380px,420px)] min-[1200px]:gap-5"
+        className="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,7fr)_minmax(340px,5fr)] min-[1200px]:gap-5"
       >
         <main data-settings-primary-column="true" className="min-w-0 space-y-4">
-          <section data-settings-current-account="true" data-settings-account-panel="true" className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-base font-semibold text-[#102033]">当前飞书账号</h2>
-                    <p className="mt-1 text-xs text-[#71869d]">当前视图与快捷操作作用于此账号，其他账号仍在后台独立同步。</p>
-                  </div>
-                  <button
-                    className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-[#c9d8eb] bg-white px-3 text-xs font-semibold text-[#52677f] hover:border-[#3370ff]/40 hover:text-[#3370ff]"
-                    onClick={() => activeAccount && void accountAction(activeAccount.id, activeAccount.paused ? "resume" : "pause")}
-                    type="button"
-                  >
-                    {activeAccount?.paused ? "恢复同步" : "暂停同步"}
-                  </button>
-                </div>
-                <div className="mt-4 flex min-w-0 items-center gap-3 rounded-xl border border-[#e0eaf6] bg-[#f8fbff] px-4 py-3">
-                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${activeAccount?.state === "connected" ? "bg-[#ecfdf5] text-[#10b981]" : "bg-[#fff1f2] text-[#f43f5e]"}`}>
-                      <IconCircleCheck className="h-6 w-6" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[#102033]">{activeAccount?.state === "connected" ? "飞书已连接" : "飞书需重新授权"}</p>
-                      <p className="mt-1 truncate text-xs text-[#6b7f96]">
-                        {organizationDisplayName(activeAccount)} · {activeAccount?.account_name || "飞书成员"} · {activeAccount?.auth_protocol === "device_v2" ? "Device Flow V2" : "OAuth V1 兼容"}
-                      </p>
-                    </div>
-                </div>
-                <div data-settings-autostart="true" className="mt-3 flex items-center justify-between gap-4 rounded-xl border border-[#d7e4f5] px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-[#294662]">开机自启动</p>
-                    <p className="mt-1 text-xs leading-5 text-[#71869d]">
-                      {autostart?.supported ?? true
-                        ? "登录当前系统账号后自动启动 LarkSync。开关立即生效，无需点击右上角按钮。"
-                        : "当前系统暂不支持由 LarkSync 管理开机自启动。"}
-                    </p>
-                  </div>
-                  <Switch
-                    label="开机自启动"
-                    checked={autostart?.enabled ?? false}
-                    disabled={!(autostart?.supported ?? true) || autostartLoading || updatingAutostart}
-                    onCheckedChange={(enabled) => void handleAutostartChange(enabled)}
-                  />
-                </div>
-          </section>
-
-          <section className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
+          <section data-settings-account-panel="true" className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
             <div><h2 className="text-base font-semibold text-[#102033]">账号管理</h2><p className="mt-1 text-xs text-[#58708d]">每个账号的凭据、任务、状态和通知相互隔离；暂停不会退出登录。</p></div>
             <div className="mt-4 grid gap-3">
               {accounts.map((account) => (
@@ -345,15 +366,18 @@ function SettingsLivePage() {
                   key={account.id}
                   account={account}
                   active={account.id === activeAccount?.id}
+                  expanded={expandedAccountId === account.id}
                   refreshing={refreshingAccountId === account.id}
+                  onToggle={() => setExpandedAccountId((current) => current === account.id ? null : account.id)}
                   onSwitch={() => void switchAccount(account.id)}
                   onRefresh={() => void refreshAccountAuthorization(account.id)}
-                  onEditAlias={() => void editAccountAlias(account.id)}
+                  onEditAlias={() => editAccountAlias(account.id)}
                   onReauthorize={() => setReauthorizeAccountId(account.id)}
                   onAction={(action) => void accountAction(account.id, action)}
                 />
               ))}
             </div>
+            <button type="button" onClick={() => setAddAccountOpen(true)} className="mt-3 h-10 w-full rounded-xl border border-dashed border-[#9fc0ee] text-sm font-semibold text-[#3370ff] hover:bg-[#f5f9ff]">＋ 添加飞书组织或账号</button>
           </section>
 
           <SettingsSyncStrategyPanel
@@ -382,12 +406,36 @@ function SettingsLivePage() {
         </main>
 
         <aside data-settings-auxiliary-column="true" className="min-w-0 space-y-4">
-          <SettingsGeneralPanel
-            inputCls={inputCls}
-            deviceDisplayName={deviceDisplayName}
-            setDeviceDisplayName={setDeviceDisplayName}
-            deviceId={deviceId}
-            platform={autostart?.platform}
+          <section className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
+            <SettingsGeneralPanel
+              inputCls={inputCls}
+              deviceDisplayName={deviceDisplayName}
+              setDeviceDisplayName={setDeviceDisplayName}
+              deviceId={deviceId}
+              platform={autostart?.platform}
+              embedded
+            />
+            <div data-settings-autostart="true" className="mt-4 flex items-center justify-between gap-4 border-t border-[#e4edf8] pt-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#294662]">开机自启动</p>
+                <p className="mt-1 text-xs leading-5 text-[#71869d]">
+                  {autostart?.supported ?? true
+                    ? "登录当前系统账号后自动启动 LarkSync。开关立即生效。"
+                    : "当前系统暂不支持由 LarkSync 管理开机自启动。"}
+                </p>
+              </div>
+              <Switch
+                label="开机自启动"
+                checked={autostart?.enabled ?? false}
+                disabled={!(autostart?.supported ?? true) || autostartLoading || updatingAutostart}
+                onCheckedChange={(enabled) => void handleAutostartChange(enabled)}
+              />
+            </div>
+          </section>
+          <SettingsAppProfilesPanel
+            profiles={profiles}
+            activeProfileId={activeAccount?.app_profile_id}
+            onEdit={editAppProfile}
           />
           <SettingsIgnoredDirectoriesPanel
             tasks={tasks}
@@ -418,6 +466,19 @@ function SettingsLivePage() {
           </section>
         </aside>
       </div>
+      <NameEditDialog
+        open={Boolean(nameEditTarget)}
+        title={nameEditTarget?.title || "修改名称"}
+        description={nameEditTarget?.description || ""}
+        label={nameEditTarget?.label || "名称"}
+        value={nameEditValue}
+        saving={nameEditSaving}
+        error={nameEditError}
+        onChange={setNameEditValue}
+        onCancel={() => { setNameEditTarget(null); setNameEditError(null); }}
+        onSave={() => void saveEditedName()}
+      />
+      {addAccountOpen ? <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[#102033]/25 p-6 backdrop-blur-[2px]" onMouseDown={() => setAddAccountOpen(false)}><div className="w-full max-w-3xl rounded-3xl border border-[#d6e3f3] bg-[#f8fbff] p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="mb-5 flex items-center justify-between"><div><h2 className="text-xl font-semibold text-[#102033]">添加飞书组织或账号</h2><p className="mt-1 text-xs text-[#71869d]">应用名称、账号凭据、任务和状态会独立保存。</p></div><button type="button" onClick={() => setAddAccountOpen(false)} className="rounded-lg border border-[#cbd9ea] px-3 py-1.5 text-sm text-[#52657a]">关闭</button></div><AccountConnectPanel onCancel={() => setAddAccountOpen(false)} onConnected={() => { setAddAccountOpen(false); void refreshProfiles(); toast("账号已连接", "success"); }} /></div></div> : null}
       {reauthorizeAccountId ? <div className="fixed inset-0 z-[90] grid place-items-center overflow-y-auto bg-[#102033]/25 p-6 backdrop-blur-[2px]" onMouseDown={() => setReauthorizeAccountId(null)}><div className="w-full max-w-3xl rounded-3xl border border-[#d6e3f3] bg-[#f8fbff] p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="mb-5 flex items-center justify-between"><div><h2 className="text-xl font-semibold text-[#102033]">重新授权账号</h2><p className="mt-1 text-xs text-[#71869d]">成功后将切换到 Device Flow V2，账号数据保持不变。</p></div><button type="button" onClick={() => setReauthorizeAccountId(null)} className="rounded-lg border border-[#cbd9ea] px-3 py-1.5 text-sm text-[#52657a]">关闭</button></div><AccountConnectPanel mode="reauthorize" accountId={reauthorizeAccountId} onCancel={() => setReauthorizeAccountId(null)} onConnected={() => { setReauthorizeAccountId(null); toast("账号已重新授权并升级为 V2", "success"); }} /></div></div> : null}
     </section>
   );

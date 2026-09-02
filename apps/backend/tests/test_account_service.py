@@ -125,6 +125,90 @@ async def test_reauthorize_account_preserves_identity_and_switches_protocol() ->
 
 
 @pytest.mark.asyncio
+async def test_app_profiles_include_account_counts_and_can_be_renamed() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    service = AccountService(
+        session_maker=maker,
+        secret_store=MemorySecretStore(),
+        token_store_factory=lambda _account_id: MemoryTokenStore(),
+        device_id="device-test",
+    )
+    profile = await service.create_app_profile(
+        app_id="cli_test",
+        app_secret="secret",
+        brand="feishu",
+        source="official_registration",
+        display_name="LarkSync 应用 1",
+    )
+    account = await service.upsert_account(
+        app_profile_id=profile.id,
+        open_id="ou_a",
+        account_name="账号 A",
+        granted_scopes=[],
+        token=TokenData("access", "refresh", None, open_id="ou_a"),
+    )
+    profiles = await service.list_app_profiles()
+    assert profiles[0].created_at > 0
+    assert profiles[0].linked_account_count == 1
+    assert profiles[0].recoverable_account_count == 0
+
+    await service.remove(account.id)
+    profiles = await service.list_app_profiles()
+    assert profiles[0].linked_account_count == 0
+    assert profiles[0].recoverable_account_count == 1
+
+    renamed = await service.update_app_profile_display_name(profile.id, "LarkSync · 公司 A")
+    assert renamed.display_name == "LarkSync · 公司 A"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_removed_account_is_classified_and_restored_with_same_identity() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    stores: dict[str, MemoryTokenStore] = {}
+    service = AccountService(
+        session_maker=maker,
+        secret_store=MemorySecretStore(),
+        token_store_factory=lambda account_id: stores.setdefault(account_id, MemoryTokenStore()),
+        device_id="device-test",
+    )
+    profile = await service.create_app_profile(
+        app_id="cli_test", app_secret="secret", brand="feishu", source="manual"
+    )
+    account = await service.upsert_account(
+        app_profile_id=profile.id,
+        open_id="ou_a",
+        account_name="账号 A",
+        granted_scopes=[],
+        token=TokenData("access", "refresh", None, open_id="ou_a"),
+    )
+    await service.remove(account.id)
+    assert await service.classify_connection_result(
+        app_profile_id=profile.id, open_id="ou_a"
+    ) == "restored"
+
+    restored = await service.upsert_account(
+        app_profile_id=profile.id,
+        open_id="ou_a",
+        account_name="账号 A",
+        granted_scopes=["drive:drive"],
+        token=TokenData("new-access", "new-refresh", None, open_id="ou_a"),
+    )
+    assert restored.id == account.id
+    assert restored.state == "connected"
+    assert await service.classify_connection_result(
+        app_profile_id=profile.id, open_id="ou_a"
+    ) == "existing"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_official_organization_name_avoids_preset_and_empty_alias_restores_safe_name() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
