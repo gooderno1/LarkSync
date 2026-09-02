@@ -158,6 +158,28 @@ def test_parse_development_log_supports_current_readability_headings() -> None:
     assert sections[0].tests == ["后端 583 项测试通过。"]
 
 
+def test_parse_development_log_stops_at_unrecognized_level_two_heading() -> None:
+    development_log = """
+# DEVELOPMENT LOG
+
+## v0.9.6-dev.1 (2026-09-02)
+
+- 当前结果：
+  - 新账号可编辑本地组织名称。
+
+## v0.9.5 正式发布（2026-09-02）
+
+- 当前结果：
+  - Windows 安装包属于上一稳定版。
+""".strip()
+
+    sections = release_notes.parse_development_log(development_log)
+
+    assert len(sections) == 1
+    assert sections[0].version == "v0.9.6-dev.1"
+    assert sections[0].results == ["新账号可编辑本地组织名称。"]
+
+
 def test_render_release_notes_appends_asset_checksums() -> None:
     markdown = release_notes.render_release_notes(
         target_version="v0.5.51",

@@ -111,6 +111,11 @@ def parse_development_log(text: str) -> list[DevelopmentLogSection]:
             current_date = heading_match.group("date")
             current_version = normalize_devlog_version(heading_match.group("version"))
             continue
+        if line.strip().startswith("## "):
+            # 未纳入版本正则的二级标题（例如“v0.9.5 正式发布”）也必须
+            # 结束当前版本段，避免把上一稳定版的结果混入本次 dev 版本。
+            flush()
+            continue
         if not current_version:
             continue
         stripped = line.strip()
