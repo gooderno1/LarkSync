@@ -19,12 +19,20 @@
   - 用户无需依赖飞书后台同名“CLI应用”来判断应用；本地别名不会修改飞书后台的官方应用名称。
   - 重新绑定原应用与原身份时，授权完成页会明确提示“已恢复之前移除的账号”，不会创建丢失历史的新账号。
   - 已有应用在飞书后台开通过的额外权限不会被 LarkSync 远程撤销；最小权限调整只影响新授权请求和本地默认配置。
+  - GitHub Release 已公开发布：`https://github.com/gooderno1/LarkSync/releases/tag/v0.9.7`；状态为 Latest，且不是草稿或预发布。
+  - Windows 安装包 `LarkSync-Setup-v0.9.7.exe` 大小 `58,614,229 bytes`，SHA256 为 `BDD86AECF062DC72B458B756501B58EA7CAA150807A5934CC84EC9432A59957F`。
+  - Apple Silicon 安装包 `LarkSync-v0.9.7-arm64.dmg` 大小 `65,704,390 bytes`，SHA256 为 `3BC32703546DB8D54ECF6A012593130290EC59A69F552EF9BE41AD4F84434F4E`。
+  - Intel 安装包 `LarkSync-v0.9.7-x86_64.dmg` 大小 `66,650,862 bytes`，SHA256 为 `5BC76D1A93924E256C847AA3D6C1577F61F4A4276D3A68D98AACF9749C3CA504`。
+  - 三个平台安装包及三个独立 `.sha256` 文件均为 `uploaded`；Release 正文已收口为三平台完整校验表，自动升级通道可识别 `v0.9.7`。
 - 验证方式：
   - 后端全量 `python -m pytest -q` 通过，共 738 项；覆盖最小 scope、授权结果缺权拒绝、应用别名、关联/可恢复账号统计及软移除账号原位恢复。
   - 前端 41 个测试文件共 132 项通过；覆盖账号卡折叠、应用命名、恢复提示与设置页双栏结构。
   - TypeScript 与 ESLint 通过；使用三个隔离账号和两个应用配置的合成数据，在 Chrome `1360×900` 完成真实页面视觉检查，无横向溢出或控件错位。
   - `python scripts/build_installer.py --nsis --skip-frontend` 通过，生成 `LarkSync-Setup-v0.9.7.exe`，大小 `72,477,222 bytes`，SHA256 为 `68FB6F1EFCE1263164AE6B821D2BEF2724DE25E8232BAC2C847C2DC6084930F4`。
   - 打包后的 `LarkSync.exe --backend` 使用独立 `synthetic_test` 数据目录、file Token Store、端口 `18209` 与锁端口 `48929` 启动；`/health` 返回 `ok`，桌面状态返回 `packaged=true`、`current_version=v0.9.7`、静态前端可用，SQLite `schema_version=13`，测试进程与临时数据已清理。
+  - GitHub Actions 正式发布流水线 `33607819076` 通过；后端/前端质量门、Windows 静默安装、WebKit 两次扫码、Windows NSIS、macOS arm64 与 x86_64 构建、安装启动 smoke 和资产上传全部成功。
+  - 流水线首次执行仅在既有 PowerShell worker 抗病毒扫描用例超过 30 秒；同一提交重跑后通过，没有修改功能代码或绕过测试。
+  - 三个 Release `.sha256` 文件已下载到隔离临时目录核对，文件内容、GitHub 资产 digest 与 Release 正文校验值一致。
 - 遗留问题：
   - 官方 App Registration 协议不返回用户在飞书页面填写的应用名称，也不提供应用改名字段；LarkSync 只能维护本地别名。
   - 官方组织名称和 Logo 仍属于可选增强信息；没有额外组织权限时使用用户可编辑的本地组织名称，不影响登录、同步或数据隔离。
