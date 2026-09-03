@@ -15,7 +15,6 @@ import { NameEditDialog } from "../components/ui/name-edit-dialog";
 import { SettingsSyncStrategyPanel } from "../components/settings/SettingsSyncStrategyPanel";
 import { SettingsGeneralPanel } from "../components/settings/SettingsGeneralPanel";
 import { SettingsIgnoredDirectoriesPanel } from "../components/settings/SettingsIgnoredDirectoriesPanel";
-import { IconCircleCheck } from "../components/Icons";
 import { SettingsShowcasePage } from "../components/showcase/RemainingPagesShowcase";
 import { useRemainingPagesShowcase } from "../lib/remainingPagesShowcase";
 import { useAccounts } from "../hooks/useAccounts";
@@ -380,28 +379,27 @@ function SettingsLivePage() {
             <button type="button" onClick={() => setAddAccountOpen(true)} className="mt-3 h-10 w-full rounded-xl border border-dashed border-[#9fc0ee] text-sm font-semibold text-[#3370ff] hover:bg-[#f5f9ff]">＋ 添加飞书组织或账号</button>
           </section>
 
-          <SettingsSyncStrategyPanel
-            syncMode={syncMode}
-            setSyncMode={setSyncMode}
-            uploadEnabled={uploadEnabled}
-            downloadEnabled={downloadEnabled}
-            uploadValue={uploadValue}
-            setUploadValue={setUploadValue}
-            uploadUnit={uploadUnit}
-            setUploadUnit={setUploadUnit}
-            uploadTime={uploadTime}
-            setUploadTime={setUploadTime}
-            downloadValue={downloadValue}
-            setDownloadValue={setDownloadValue}
-            downloadUnit={downloadUnit}
-            setDownloadUnit={setDownloadUnit}
-            downloadTime={downloadTime}
-            setDownloadTime={setDownloadTime}
-            handleSave={handleSave}
-            saving={saving}
-            deletePolicy={deletePolicy}
-            setDeletePolicy={setDeletePolicy}
-            showSaveAction={false}
+          <SettingsAppProfilesPanel
+            profiles={profiles}
+            activeProfileId={activeAccount?.app_profile_id}
+            onEdit={editAppProfile}
+          />
+
+          <SettingsIgnoredDirectoriesPanel
+            tasks={tasks}
+            showIgnoredDirectorySettings={showIgnoredDirectorySettings}
+            toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
+            ignoreHiddenCachePaths={ignoreHiddenCachePaths}
+            setIgnoreHiddenCachePaths={setIgnoreHiddenCachePaths}
+            ignoredSubpathsMap={ignoredSubpathsMap}
+            ignoredPathDrafts={ignoredPathDrafts}
+            setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}
+            updatingIgnoredSubpaths={updatingIgnoredSubpaths}
+            handleSaveIgnoredSubpaths={handleSaveIgnoredSubpaths}
+            removeIgnoredSubpath={removeIgnoredSubpath}
+            addIgnoredSubpath={addIgnoredSubpath}
+            pickingIgnoredTaskId={pickingIgnoredTaskId}
+            handlePickIgnoredSubpath={handlePickIgnoredSubpath}
           />
         </main>
 
@@ -432,38 +430,29 @@ function SettingsLivePage() {
               />
             </div>
           </section>
-          <SettingsAppProfilesPanel
-            profiles={profiles}
-            activeProfileId={activeAccount?.app_profile_id}
-            onEdit={editAppProfile}
+          <SettingsSyncStrategyPanel
+            syncMode={syncMode}
+            setSyncMode={setSyncMode}
+            uploadEnabled={uploadEnabled}
+            downloadEnabled={downloadEnabled}
+            uploadValue={uploadValue}
+            setUploadValue={setUploadValue}
+            uploadUnit={uploadUnit}
+            setUploadUnit={setUploadUnit}
+            uploadTime={uploadTime}
+            setUploadTime={setUploadTime}
+            downloadValue={downloadValue}
+            setDownloadValue={setDownloadValue}
+            downloadUnit={downloadUnit}
+            setDownloadUnit={setDownloadUnit}
+            downloadTime={downloadTime}
+            setDownloadTime={setDownloadTime}
+            handleSave={handleSave}
+            saving={saving}
+            deletePolicy={deletePolicy}
+            setDeletePolicy={setDeletePolicy}
+            showSaveAction={false}
           />
-          <SettingsIgnoredDirectoriesPanel
-            tasks={tasks}
-            showIgnoredDirectorySettings={showIgnoredDirectorySettings}
-            toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
-            ignoreHiddenCachePaths={ignoreHiddenCachePaths}
-            setIgnoreHiddenCachePaths={setIgnoreHiddenCachePaths}
-            ignoredSubpathsMap={ignoredSubpathsMap}
-            ignoredPathDrafts={ignoredPathDrafts}
-            setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}
-            updatingIgnoredSubpaths={updatingIgnoredSubpaths}
-            handleSaveIgnoredSubpaths={handleSaveIgnoredSubpaths}
-            removeIgnoredSubpath={removeIgnoredSubpath}
-            addIgnoredSubpath={addIgnoredSubpath}
-            pickingIgnoredTaskId={pickingIgnoredTaskId}
-            handlePickIgnoredSubpath={handlePickIgnoredSubpath}
-          />
-          <section className="rounded-lg border border-[#b9e8d8] bg-[#f2fbf8] p-4">
-            <div className="flex items-center gap-2 text-[#047857]">
-              <IconCircleCheck className="h-5 w-5" />
-              <h2 className="text-sm font-semibold">数据保护</h2>
-            </div>
-            <ul className="mt-3 space-y-1.5 text-xs leading-5 text-[#52657a]">
-              <li>OAuth Token 存储于系统凭证库。</li>
-              <li>云端内容作为冲突判断的事实来源。</li>
-              <li>覆盖前保留冲突副本，避免静默丢失。</li>
-            </ul>
-          </section>
         </aside>
       </div>
       <NameEditDialog

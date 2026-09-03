@@ -101,8 +101,11 @@ describe("SettingsPage smoke", () => {
   it("renders the natural-height responsive settings workspace", () => {
     const html = renderToStaticMarkup(<SettingsPage />);
     const accountIndex = html.indexOf("账号管理");
+    const appProfilesIndex = html.indexOf("应用配置");
+    const syncStrategyIndex = html.indexOf("默认同步策略");
     const currentDeviceIndex = html.indexOf(">当前设备<");
     const autostartIndex = html.indexOf("开机自启动", currentDeviceIndex);
+    const ignoredRulesIndex = html.indexOf("忽略规则");
 
     expect(html).toContain("管理账号、应用、本机与默认同步规则。");
     expect(html).not.toContain("当前飞书账号");
@@ -156,10 +159,12 @@ describe("SettingsPage smoke", () => {
     expect(html).not.toContain("保存配置");
     expect(html).not.toContain("App Secret");
     expect(html).not.toContain("Redirect URI");
-    expect(accountIndex).toBeLessThan(html.indexOf("默认同步策略"));
+    expect(accountIndex).toBeLessThan(appProfilesIndex);
+    expect(appProfilesIndex).toBeLessThan(ignoredRulesIndex);
+    expect(ignoredRulesIndex).toBeLessThan(currentDeviceIndex);
     expect(currentDeviceIndex).toBeLessThan(autostartIndex);
-    expect(currentDeviceIndex).toBeLessThan(html.indexOf("忽略规则"));
-    expect(html.indexOf("忽略规则")).toBeLessThan(html.indexOf("数据保护"));
+    expect(currentDeviceIndex).toBeLessThan(syncStrategyIndex);
+    expect(html).not.toContain("数据保护");
     expect(html).not.toContain("自动更新");
     expect(html).not.toContain("重置同步映射");
     expect(html).not.toContain("bg-zinc-900/60");
