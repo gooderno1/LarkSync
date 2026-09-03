@@ -10,11 +10,19 @@
   - 后端、前端、根项目及两个 lockfile 的版本元数据统一更新为 `v0.9.9`。
   - 正式 Tag 触发 `Release Build`，执行质量门、Windows 静默安装、WebKit 登录流程、Windows NSIS 和 macOS 双架构构建及安装启动冒烟。
 - 当前结果：
-  - 正式发布流程待 Tag 推送后执行；完成后补记 Release 地址、资产大小、SHA256 与流水线结果。
+  - 正式 Tag `v0.9.9` 指向提交 `555f76bef6c86e835d96341c62bab3f437956d84`，该提交同时位于 `main`。
+  - GitHub Release 已公开并设为 Latest：`https://github.com/gooderno1/LarkSync/releases/tag/v0.9.9`；不是草稿或预发布。
+  - Windows 安装包 `LarkSync-Setup-v0.9.9.exe` 大小为 58,620,823 bytes，SHA256 为 `3281473BFAE15D6BC75A44FFD8325AC9652B237AFF7573276F9A50F7A28D4995`。
+  - Apple Silicon 安装包 `LarkSync-v0.9.9-arm64.dmg` 大小为 65,675,952 bytes，SHA256 为 `9545725979D7EB3DA31A273D736F411CECDBC09D5195760A19A53F37AB1B9A64`。
+  - Intel 安装包 `LarkSync-v0.9.9-x86_64.dmg` 大小为 66,639,901 bytes，SHA256 为 `FCC4BF0D67EDC6D3247CF940A96A3B7330DB9ECB8B4375AF0B0506DE306DE77B`。
+  - 三个平台安装包及三个独立 `.sha256` 文件共六个资产均为 `uploaded`；Release 正文已收口为三平台完整校验表。
 - 验证方式：
   - 发布前 `v0.9.9-dev.1` 已通过前端 134 项测试、后端 738 项测试、TypeScript、ESLint、Vite 生产构建、双视口真实数据视觉检查、Windows NSIS 构建和打包后端启动冒烟。
+  - Tag 流水线 `33719479768` 成功；质量门、Windows 静默安装、WebKit 两次扫码、Windows NSIS、macOS arm64/x86_64 构建、两类 macOS 安装启动冒烟及资产上传全部通过。
+  - 同一提交的 `main` 流水线 `33719476620` 也成功；非 Tag 分支按条件跳过正式资产上传，但完成了质量门、WebKit 和 macOS 打包验证。
+  - 三个 `.sha256` 文件已下载到隔离目录核对，内容分别与对应安装包的 GitHub 资产 digest 一致。
 - 遗留问题：
-  - 仓库未配置 Apple Developer ID 与公证凭据；macOS DMG 将使用 ad-hoc 签名，首次打开可能需要在系统设置中手动放行。
+  - 仓库未配置 Apple Developer ID 与公证凭据；macOS DMG 使用 ad-hoc 签名，首次打开可能需要在系统设置中手动放行。
 
 ## v0.9.9-dev.1（2026-09-03）
 
