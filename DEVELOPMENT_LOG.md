@@ -11,10 +11,16 @@
 - 当前结果：
   - 设置页默认不再展开全部历史应用；用户按需展开后可以改名或直接进入对应 App ID 的飞书/Lark 开发者后台。
   - 本版本只改变设置页展示与外部管理入口，不需要数据库迁移，也不改变账号、凭据、授权、同步或数据隔离行为。
+  - 正式 Tag `v0.9.8` 指向提交 `9ea5ec66dad3438928f2c5dfb1d970e94cde9427`；GitHub Release 已公开并设为 Latest：`https://github.com/gooderno1/LarkSync/releases/tag/v0.9.8`。
+  - Windows 安装包 `LarkSync-Setup-v0.9.8.exe` 大小 `58,625,140 bytes`，SHA256 为 `F8F7D205D1AD3523D9B094D781B1F297F8E8EDCDE2B018FF1DC751D72F7067B0`。
+  - Apple Silicon 安装包 `LarkSync-v0.9.8-arm64.dmg` 大小 `65,676,200 bytes`，SHA256 为 `157C675F3E5BE3388572C64758474DFE46C2C1CBA0F7E3C76FBB750F573D504E`。
+  - Intel 安装包 `LarkSync-v0.9.8-x86_64.dmg` 大小 `66,641,403 bytes`，SHA256 为 `69F6673E534A160E6552E0057CEAA09ABC9B7276CFF0BB7756DD2C9EFB639D6B`。
+  - 三个平台安装包及三个独立 `.sha256` 文件共六个资产均为 `uploaded`；Release 正文已收口为三平台完整校验表。
 - 验证方式：
   - 发布前本地前端 42 个测试文件共 134 项、后端 738 项 pytest、TypeScript、ESLint、Vite 生产构建和 Windows NSIS 打包均通过。
   - 发布前以真实只读应用配置完成 1360×900、1080×720 默认收起和 1360×900 展开态检查；页面横向溢出为 0，浏览器控制台无 error。
-  - 正式流水线、Release 资产与 SHA256 在发布完成后继续核对并记录。
+  - GitHub Actions 正式发布流水线 `33706552350` 成功；后端/前端质量门、Windows 静默安装、WebKit 两次扫码、Windows NSIS、macOS arm64 与 x86_64 构建、安装启动 smoke 和资产上传全部通过。
+  - 三个 Release `.sha256` 文件已通过 GitHub API 读取并逐项核对；文件内容与安装包资产 digest、Release 正文校验表一致。
 - 遗留问题：
   - “应用管理”打开官方后台；官方应用改名、权限审批、发布和删除仍由用户在飞书/Lark 开发者后台完成。
   - 未配置 Apple Developer ID 与公证凭据时，macOS DMG 使用 ad-hoc 签名，首次打开可能需要在系统设置中手动放行。
