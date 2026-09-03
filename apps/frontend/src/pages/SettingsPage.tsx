@@ -354,82 +354,79 @@ function SettingsLivePage() {
 
       <div
         data-settings-workspace="true"
-        className="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(340px,1fr)] min-[1200px]:gap-5"
+        className="mt-5 grid min-w-0 grid-cols-1 items-stretch gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(340px,1fr)] min-[1200px]:gap-5"
       >
-        <main data-settings-primary-column="true" className="min-w-0 space-y-4">
-          <section data-settings-account-panel="true" className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-            <div><h2 className="text-base font-semibold text-[#102033]">账号管理</h2><p className="mt-1 text-xs text-[#58708d]">每个账号的凭据、任务、状态和通知相互隔离；暂停不会退出登录。</p></div>
-            <div className="mt-4 grid gap-3">
-              {accounts.map((account) => (
-                <SettingsAccountCard
-                  key={account.id}
-                  account={account}
-                  active={account.id === activeAccount?.id}
-                  expanded={expandedAccountId === account.id}
-                  refreshing={refreshingAccountId === account.id}
-                  onToggle={() => setExpandedAccountId((current) => current === account.id ? null : account.id)}
-                  onSwitch={() => void switchAccount(account.id)}
-                  onRefresh={() => void refreshAccountAuthorization(account.id)}
-                  onEditAlias={() => editAccountAlias(account.id)}
-                  onReauthorize={() => setReauthorizeAccountId(account.id)}
-                  onAction={(action) => void accountAction(account.id, action)}
-                />
-              ))}
-            </div>
-            <button type="button" onClick={() => setAddAccountOpen(true)} className="mt-3 h-10 w-full rounded-xl border border-dashed border-[#9fc0ee] text-sm font-semibold text-[#3370ff] hover:bg-[#f5f9ff]">＋ 添加飞书组织或账号</button>
-          </section>
+        <section
+          data-settings-account-panel="true"
+          data-settings-grid-cell="account"
+          className="min-w-0 rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)] min-[900px]:col-start-1 min-[900px]:row-start-1"
+        >
+          <div><h2 className="text-base font-semibold text-[#102033]">账号管理</h2><p className="mt-1 text-xs text-[#58708d]">每个账号的凭据、任务、状态和通知相互隔离；暂停不会退出登录。</p></div>
+          <div className="mt-4 grid gap-3">
+            {accounts.map((account) => (
+              <SettingsAccountCard
+                key={account.id}
+                account={account}
+                active={account.id === activeAccount?.id}
+                expanded={expandedAccountId === account.id}
+                refreshing={refreshingAccountId === account.id}
+                onToggle={() => setExpandedAccountId((current) => current === account.id ? null : account.id)}
+                onSwitch={() => void switchAccount(account.id)}
+                onRefresh={() => void refreshAccountAuthorization(account.id)}
+                onEditAlias={() => editAccountAlias(account.id)}
+                onReauthorize={() => setReauthorizeAccountId(account.id)}
+                onAction={(action) => void accountAction(account.id, action)}
+              />
+            ))}
+          </div>
+          <button type="button" onClick={() => setAddAccountOpen(true)} className="mt-3 h-10 w-full rounded-xl border border-dashed border-[#9fc0ee] text-sm font-semibold text-[#3370ff] hover:bg-[#f5f9ff]">＋ 添加飞书组织或账号</button>
+        </section>
 
+        <section
+          data-settings-grid-cell="device"
+          className="min-w-0 rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)] min-[900px]:col-start-2 min-[900px]:row-start-1"
+        >
+          <SettingsGeneralPanel
+            inputCls={inputCls}
+            deviceDisplayName={deviceDisplayName}
+            setDeviceDisplayName={setDeviceDisplayName}
+            deviceId={deviceId}
+            platform={autostart?.platform}
+            embedded
+          />
+          <div data-settings-autostart="true" className="mt-4 flex items-center justify-between gap-4 border-t border-[#e4edf8] pt-4">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#294662]">开机自启动</p>
+              <p className="mt-1 text-xs leading-5 text-[#71869d]">
+                {autostart?.supported ?? true
+                  ? "登录当前系统账号后自动启动 LarkSync。开关立即生效。"
+                  : "当前系统暂不支持由 LarkSync 管理开机自启动。"}
+              </p>
+            </div>
+            <Switch
+              label="开机自启动"
+              checked={autostart?.enabled ?? false}
+              disabled={!(autostart?.supported ?? true) || autostartLoading || updatingAutostart}
+              onCheckedChange={(enabled) => void handleAutostartChange(enabled)}
+            />
+          </div>
+        </section>
+
+        <div
+          data-settings-grid-cell="applications"
+          className="min-w-0 min-[900px]:col-start-1 min-[900px]:row-start-2 min-[900px]:[&>*]:h-full"
+        >
           <SettingsAppProfilesPanel
             profiles={profiles}
             activeProfileId={activeAccount?.app_profile_id}
             onEdit={editAppProfile}
           />
+        </div>
 
-          <SettingsIgnoredDirectoriesPanel
-            tasks={tasks}
-            showIgnoredDirectorySettings={showIgnoredDirectorySettings}
-            toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
-            ignoreHiddenCachePaths={ignoreHiddenCachePaths}
-            setIgnoreHiddenCachePaths={setIgnoreHiddenCachePaths}
-            ignoredSubpathsMap={ignoredSubpathsMap}
-            ignoredPathDrafts={ignoredPathDrafts}
-            setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}
-            updatingIgnoredSubpaths={updatingIgnoredSubpaths}
-            handleSaveIgnoredSubpaths={handleSaveIgnoredSubpaths}
-            removeIgnoredSubpath={removeIgnoredSubpath}
-            addIgnoredSubpath={addIgnoredSubpath}
-            pickingIgnoredTaskId={pickingIgnoredTaskId}
-            handlePickIgnoredSubpath={handlePickIgnoredSubpath}
-          />
-        </main>
-
-        <aside data-settings-auxiliary-column="true" className="min-w-0 space-y-4">
-          <section className="rounded-xl border border-[#d7e4f5] bg-white p-4 shadow-[0_10px_28px_rgba(51,112,255,0.05)]">
-            <SettingsGeneralPanel
-              inputCls={inputCls}
-              deviceDisplayName={deviceDisplayName}
-              setDeviceDisplayName={setDeviceDisplayName}
-              deviceId={deviceId}
-              platform={autostart?.platform}
-              embedded
-            />
-            <div data-settings-autostart="true" className="mt-4 flex items-center justify-between gap-4 border-t border-[#e4edf8] pt-4">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-[#294662]">开机自启动</p>
-                <p className="mt-1 text-xs leading-5 text-[#71869d]">
-                  {autostart?.supported ?? true
-                    ? "登录当前系统账号后自动启动 LarkSync。开关立即生效。"
-                    : "当前系统暂不支持由 LarkSync 管理开机自启动。"}
-                </p>
-              </div>
-              <Switch
-                label="开机自启动"
-                checked={autostart?.enabled ?? false}
-                disabled={!(autostart?.supported ?? true) || autostartLoading || updatingAutostart}
-                onCheckedChange={(enabled) => void handleAutostartChange(enabled)}
-              />
-            </div>
-          </section>
+        <div
+          data-settings-grid-cell="strategy"
+          className="min-w-0 min-[900px]:col-start-2 min-[900px]:row-span-2 min-[900px]:row-start-2 min-[900px]:[&>*]:h-full"
+        >
           <SettingsSyncStrategyPanel
             syncMode={syncMode}
             setSyncMode={setSyncMode}
@@ -453,7 +450,29 @@ function SettingsLivePage() {
             setDeletePolicy={setDeletePolicy}
             showSaveAction={false}
           />
-        </aside>
+        </div>
+
+        <div
+          data-settings-grid-cell="ignored-rules"
+          className="min-w-0 min-[900px]:col-start-1 min-[900px]:row-start-3 min-[900px]:[&>*]:h-full"
+        >
+          <SettingsIgnoredDirectoriesPanel
+            tasks={tasks}
+            showIgnoredDirectorySettings={showIgnoredDirectorySettings}
+            toggleIgnoredDirectorySettings={() => setShowIgnoredDirectorySettings((prev) => !prev)}
+            ignoreHiddenCachePaths={ignoreHiddenCachePaths}
+            setIgnoreHiddenCachePaths={setIgnoreHiddenCachePaths}
+            ignoredSubpathsMap={ignoredSubpathsMap}
+            ignoredPathDrafts={ignoredPathDrafts}
+            setIgnoredPathDrafts={(updater) => setIgnoredPathDrafts(updater)}
+            updatingIgnoredSubpaths={updatingIgnoredSubpaths}
+            handleSaveIgnoredSubpaths={handleSaveIgnoredSubpaths}
+            removeIgnoredSubpath={removeIgnoredSubpath}
+            addIgnoredSubpath={addIgnoredSubpath}
+            pickingIgnoredTaskId={pickingIgnoredTaskId}
+            handlePickIgnoredSubpath={handlePickIgnoredSubpath}
+          />
+        </div>
       </div>
       <NameEditDialog
         open={Boolean(nameEditTarget)}

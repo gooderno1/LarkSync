@@ -98,7 +98,7 @@ vi.mock("../components/ui/toast", () => ({
 }));
 
 describe("SettingsPage smoke", () => {
-  it("renders the natural-height responsive settings workspace", () => {
+  it("renders the shared-row responsive settings workspace", () => {
     const html = renderToStaticMarkup(<SettingsPage />);
     const accountIndex = html.indexOf("账号管理");
     const appProfilesIndex = html.indexOf("应用配置");
@@ -136,12 +136,19 @@ describe("SettingsPage smoke", () => {
     expect(html).not.toContain('data-settings-current-account="true"');
     expect(html).toContain('data-settings-autostart="true"');
     expect(html).toContain('data-settings-workspace="true"');
-    expect(html).toContain('data-settings-primary-column="true"');
-    expect(html).toContain('data-settings-auxiliary-column="true"');
+    expect(html).toContain('data-settings-grid-cell="account"');
+    expect(html).toContain('data-settings-grid-cell="device"');
+    expect(html).toContain('data-settings-grid-cell="applications"');
+    expect(html).toContain('data-settings-grid-cell="strategy"');
+    expect(html).toContain('data-settings-grid-cell="ignored-rules"');
     expect(html).toContain('data-settings-page="true"');
     expect(html).toContain("grid-cols-1");
-    expect(html).toContain("items-start");
+    expect(html).toContain("items-stretch");
     expect(html).toContain("min-[900px]:grid-cols-[minmax(0,1fr)_minmax(340px,1fr)]");
+    expect(html).toContain("min-[900px]:row-start-1");
+    expect(html).toContain("min-[900px]:row-start-2");
+    expect(html).toContain("min-[900px]:row-start-3");
+    expect(html).toContain("min-[900px]:row-span-2");
     expect(html).toContain("min-[1200px]:gap-5");
     expect(html).toContain('data-settings-account-panel="true"');
     expect(html).toContain('data-settings-device-panel="true"');
@@ -159,11 +166,12 @@ describe("SettingsPage smoke", () => {
     expect(html).not.toContain("保存配置");
     expect(html).not.toContain("App Secret");
     expect(html).not.toContain("Redirect URI");
-    expect(accountIndex).toBeLessThan(appProfilesIndex);
-    expect(appProfilesIndex).toBeLessThan(ignoredRulesIndex);
-    expect(ignoredRulesIndex).toBeLessThan(currentDeviceIndex);
+    expect(accountIndex).toBeLessThan(currentDeviceIndex);
     expect(currentDeviceIndex).toBeLessThan(autostartIndex);
+    expect(currentDeviceIndex).toBeLessThan(appProfilesIndex);
+    expect(appProfilesIndex).toBeLessThan(syncStrategyIndex);
     expect(currentDeviceIndex).toBeLessThan(syncStrategyIndex);
+    expect(syncStrategyIndex).toBeLessThan(ignoredRulesIndex);
     expect(html).not.toContain("数据保护");
     expect(html).not.toContain("自动更新");
     expect(html).not.toContain("重置同步映射");

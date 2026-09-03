@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-09-03] v0.9.10-dev.1 fix(layout): 设置页改用共享行轨道对齐账号与设备及双栏底边；更新维护页双主面板按自然内容高度拉伸对齐
 [2026-09-03] v0.9.9 release: v0.9.9 settings layout rebalance
 [2026-09-03] v0.9.9-dev.1 feat(settings): 应用配置移至账号管理下方，设置页按账号/应用/文件范围与本机/同步行为重新配重；移除无操作价值的数据保护静态卡
 [2026-09-03] v0.9.8 release: v0.9.8 compact application management

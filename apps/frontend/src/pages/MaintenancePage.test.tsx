@@ -82,7 +82,7 @@ vi.mock("../components/ui/confirm-dialog", () => ({
 }));
 
 describe("MaintenancePage smoke", () => {
-  it("renders one natural-height responsive dual-panel workspace with module-owned actions", () => {
+  it("renders one natural-height responsive aligned dual-panel workspace with module-owned actions", () => {
     const html = renderToStaticMarkup(<MaintenancePage />);
 
     expect(html).toContain("版本与安装");
@@ -116,8 +116,9 @@ describe("MaintenancePage smoke", () => {
       'data-maintenance-page="true" class="mx-auto min-w-0 w-full max-w-[1440px] animate-fade-up"',
     );
     expect(html).toContain(
-      'data-maintenance-workspace="true" class="mt-5 grid min-w-0 grid-cols-1 items-start gap-4 min-[900px]:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] min-[1200px]:gap-5"',
+      'data-maintenance-workspace="true" class="mt-5 grid min-w-0 grid-cols-1 items-stretch gap-4 min-[900px]:grid-cols-[minmax(0,3fr)_minmax(360px,2fr)] min-[1200px]:gap-5"',
     );
+    expect(html.match(/min-\[900px\]:h-full/g)).toHaveLength(2);
     expect(html).not.toContain("grid-rows-[auto_minmax(0,1fr)]");
     expect(html).not.toContain('class="mt-auto border-t');
     expect(html.match(/检查更新/g)).toHaveLength(1);
