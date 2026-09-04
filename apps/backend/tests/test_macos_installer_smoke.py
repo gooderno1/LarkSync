@@ -205,6 +205,7 @@ def test_assert_bundle_metadata_requires_real_icon(tmp_path: Path) -> None:
         "CFBundleShortVersionString": "1.2.3",
         "CFBundleIconFile": "LarkSync.icns",
         "NSHighResolutionCapable": True,
+        "LSUIElement": True,
     }
     with (app / "Contents" / "Info.plist").open("wb") as stream:
         smoke.plistlib.dump(info, stream)
@@ -444,3 +445,46 @@ def test_wait_for_gui_result_rejects_webkit_fallback_after_native_app_exits(
             headless_webkit_runner=lambda: {"ok": True},
             headless_fallback_delay=0.0,
         )
+
+
+def test_bundle_metadata_requires_background_tray_identity(tmp_path: Path) -> None:
+    app_bundle = tmp_path / "LarkSync.app"
+    contents = app_bundle / "Contents"
+    resources = contents / "Resources"
+    resources.mkdir(parents=True)
+    (resources / "LarkSync.icns").write_bytes(b"icon")
+    info = {
+        "CFBundleIdentifier": "com.larksync.app",
+        "CFBundleDisplayName": "LarkSync",
+        "CFBundleName": "LarkSync",
+        "CFBundleShortVersionString": "0.9.11",
+        "CFBundleIconFile": "LarkSync.icns",
+        "NSHighResolutionCapable": True,
+        "LSUIElement": True,
+    }
+    with (contents / "Info.plist").open("wb") as stream:
+        smoke.plistlib.dump(info, stream)
+
+    assert smoke._assert_bundle_metadata(app_bundle)["LSUIElement"] is True
+
+
+def test_bundle_metadata_rejects_regular_tray_identity(tmp_path: Path) -> None:
+    app_bundle = tmp_path / "LarkSync.app"
+    contents = app_bundle / "Contents"
+    resources = contents / "Resources"
+    resources.mkdir(parents=True)
+    (resources / "LarkSync.icns").write_bytes(b"icon")
+    info = {
+        "CFBundleIdentifier": "com.larksync.app",
+        "CFBundleDisplayName": "LarkSync",
+        "CFBundleName": "LarkSync",
+        "CFBundleShortVersionString": "0.9.11",
+        "CFBundleIconFile": "LarkSync.icns",
+        "NSHighResolutionCapable": True,
+        "LSUIElement": False,
+    }
+    with (contents / "Info.plist").open("wb") as stream:
+        smoke.plistlib.dump(info, stream)
+
+    with pytest.raises(RuntimeError, match="LSUIElement"):
+        smoke._assert_bundle_metadata(app_bundle)

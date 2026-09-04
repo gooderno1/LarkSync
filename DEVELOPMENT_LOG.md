@@ -1,5 +1,38 @@
 # DEVELOPMENT LOG
 
+## v0.9.11-dev.2（2026-09-04）
+
+- 开发原因：
+  - macOS 打包版请求 `/logo-horizontal.png` 时返回 HTTP 200，但 `Content-Type` 为 `text/html`，绑定后的侧边栏 Logo 无法解码。
+  - PyInstaller 将 `Contents/Frameworks/apps/frontend/dist` 链接到 `Contents/Resources/apps/frontend/dist`；旧安全校验只解析目标文件，没有解析静态根目录，导致合法 PNG 被误判为越界并回退 `index.html`。
+  - 单次启动的托盘父进程和 WKWebView 子进程均使用 Regular 激活策略，`NSRunningApplication` 实测两者均为 `0`，Dock 与应用切换器出现两个 LarkSync。
+  - 再次启动遇到单实例锁后仍调用 `open_desktop_window()`，会绕过主进程状态并创建额外的 WebView 子进程。
+  - macOS 全屏窗口关闭沿用跨平台 `window.hide()`；pywebview 最终对全屏 `NSWindow` 执行 `orderOut_`，可能把黑色全屏 Space 留在前台。
+- 实现方式：
+  - 静态文件边界检查同时对前端根目录和候选文件执行 `resolve()`；候选文件必须仍位于解析后的根目录内，路径穿越保护保持不变。
+  - Bundle 增加 `LSUIElement=true`；托盘父进程启动时显式设置 `NSApplicationActivationPolicyAccessory`，WKWebView 子进程继续使用 Regular 策略。
+  - 桌面窗口控制描述符固定到当前运行数据目录的 `runtime/desktop-window-control.json`；第二次启动最多等待 5 秒并通过认证回环通道恢复已有窗口，不再生成新窗口进程。
+  - macOS 红色关闭按钮通过 Cocoa 主线程调用 `NSApplication.hide_`，让系统负责切离全屏 Space；Windows 与其他平台继续使用原有异步 `window.hide()`。
+  - AppDelegate 接管重新打开回调；恢复时先 `unhide_`，再激活应用并将原生窗口置前；删除每 200 ms 从后台线程读取 AppKit 状态的轮询器。
+  - 原生安装冒烟增加 Logo 可见性和 `naturalWidth > 0` 解码检查，并强制校验 Bundle 的 `LSUIElement=true`。
+- 当前结果：
+  - 打包后端对 `/logo-horizontal.png` 返回 `image/png`；文件识别为 600×97 RGBA PNG，长度 59,245 bytes。
+  - 隔离实例实测只有一个 Regular 桌面应用；托盘父进程为 Accessory `1`，WKWebView 子进程为 Regular `0`。
+  - 同一隔离数据目录再次启动在 0.4 秒内正常退出；原有 WKWebView PID 保持不变，窗口子进程数量仍为 1。
+  - 新版通过终端 `Ctrl+C` 完整退出后，托盘、窗口、后端与资源跟踪子进程均已清理，端口 18765 已释放。
+  - 本机生成 arm64 `LarkSync-v0.9.11-dev.2.dmg`；大小 69,372,819 bytes，SHA256 为 `E869ED3ED3A5105136BA4BC938ADBB0E6F656CAB886BBA052D3318759E4D9764`。
+- 验证方式：
+  - macOS 静态资源、窗口、打包和安装冒烟定向测试共 77 项通过。
+  - 后端收集 750 项：748 项通过，2 项按既有条件跳过；测试使用临时数据目录和 file Token Store，不读取真实 Keychain 凭据。
+  - 前端 42 个测试文件共 134 项通过；TypeScript、ESLint 与 Vite 生产构建通过。
+  - `python scripts/build_installer.py --dmg` 等价流程在本机 Python 3.12.14、Node 24.19.0 显式非发布基线开关下通过；arm64 Mach-O、ad-hoc `codesign --verify --deep --strict` 与 UDZO DMG 创建通过。
+  - `scripts/macos_installer_smoke.py` 完成 DMG 挂载、安装复制、Bundle/`LSUIElement`、Keychain、后端健康检查和真实 Cocoa/WKWebView 首屏验证；结果包含 `logo_visible=true`、`logo_decoded=true`、`stage=ui_verified`。
+  - 独立运行验证记录：Logo HTTP 类型正确；父/子激活策略分别为 `1/0`；第二次启动没有增加窗口 PID；统一退出没有遗留进程。
+- 遗留问题：
+  - macOS 在最终全屏交互测试时处于锁屏状态，Computer Use 无法自动解锁；Cocoa 调用与主线程行为已由测试覆盖，但“进入全屏后点击红色关闭按钮”的最终视觉验收需在解锁桌面后人工执行一次。
+  - 本地未配置 Apple Developer ID 与公证凭据；本次产物为 ad-hoc 签名，不代表正式公证结果。
+  - 本机未安装发布基线 Python 3.14 与 Node 25；正式基线和 Intel x86_64 仍由 GitHub Actions 验证。
+
 ## v0.9.11-dev.1（2026-09-04）
 
 - 开发原因：

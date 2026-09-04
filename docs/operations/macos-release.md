@@ -112,12 +112,12 @@ DMG 默认由 `create-dmg` 生成带图标布局的镜像；构建机未安装�
 
 - 挂载 DMG，并验证`Applications`投放入口。
 - 复制 App 到隔离的临时安装目录。
-- 校验 Bundle ID、版本、`.icns`、HiDPI 元数据和代码签名。
+- 校验 Bundle ID、版本、`.icns`、HiDPI 元数据、`LSUIElement=true` 后台托盘身份和代码签名。
 - 使用随机临时账户完成 Keychain 写入、读取和删除。
 - 启动安装版后端并检查`127.0.0.1:18765/health`。
 - 写入隔离 OAuth 测试配置。
 - 通过 LaunchServices 启动真实 App，并确认打包入口、Cocoa 窗口创建和`webview_starting`阶段均已到达。
-- 交互式 Mac 直接在原生 WKWebView 断言当前 Device Flow 账号连接首屏、`choose_method` 阶段与“开始第 1 次扫码”操作可见且可用。
+- 交互式 Mac 直接在原生 WKWebView 断言当前 Device Flow 账号连接首屏、`choose_method` 阶段、“开始第 1 次扫码”操作可见且可用，并要求 LarkSync Logo 已成功解码而不是收到 SPA HTML。
 - GitHub 托管 Mac runner 无交互式 WindowServer 时，要求 App 自身写入`webview_starting`且对应原生 PID 在 WebKit 回退前仍存活；macOS 双架构任务显式依赖独立 Linux headless Playwright WebKit 任务，后者断言 1080×720 第 1 次扫码完成检查点、第 2 次扫码二维码状态为`ready`、图片可见且来源是 PNG data URL。托管 runner 不宣称验证原生窗口像素。
 
 任何步骤失败都会阻止发布。

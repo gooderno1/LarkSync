@@ -158,12 +158,14 @@ def test_run_desktop_window_creates_expected_window(monkeypatch) -> None:
     assert events[1] == ("start", (), {"debug": False, "gui": "edgechromium"})
 
 
-def test_close_button_hides_window_instead_of_ending_host() -> None:
+def test_close_button_hides_window_instead_of_ending_host(monkeypatch) -> None:
     hidden: list[bool] = []
 
     class FakeWindow:
         def hide(self) -> None:
             hidden.append(True)
+
+    monkeypatch.setattr(desktop_window.sys, "platform", "win32")
 
     callback = desktop_window._make_hide_on_close_handler(
         FakeWindow(),
@@ -172,6 +174,46 @@ def test_close_button_hides_window_instead_of_ending_host() -> None:
 
     assert callback() is False
     assert hidden == [True]
+
+
+def test_macos_close_hides_application_on_cocoa_main_thread(monkeypatch) -> None:
+    calls: list[tuple[str, object]] = []
+    scheduled: list[object] = []
+
+    class FakeApplication:
+        def hide_(self, sender) -> None:
+            calls.append(("hide_app", sender))
+
+    class FakeNSApplication:
+        @staticmethod
+        def sharedApplication():
+            return FakeApplication()
+
+    class FakeAppKit:
+        NSApplication = FakeNSApplication
+
+    class FakeAppHelper:
+        @staticmethod
+        def callAfter(callback) -> None:
+            scheduled.append(callback)
+
+    class FakeWindow:
+        def hide(self) -> None:
+            calls.append(("hide_window", None))
+
+    monkeypatch.setattr(desktop_window.sys, "platform", "darwin")
+
+    callback = desktop_window._make_hide_on_close_handler(
+        FakeWindow(),
+        appkit=FakeAppKit(),
+        app_helper=FakeAppHelper(),
+    )
+
+    assert callback() is False
+    assert calls == []
+    assert len(scheduled) == 1
+    scheduled[0]()
+    assert calls == [("hide_app", None)]
 
 
 def test_grant_desktop_window_foreground_permission_targets_child_process(monkeypatch) -> None:
@@ -256,6 +298,9 @@ def test_bring_desktop_window_to_front_activates_macos_app(monkeypatch) -> None:
     scheduled: list[object] = []
 
     class FakeApplication:
+        def unhide_(self, sender) -> None:
+            calls.append(("unhide", sender))
+
         def activateIgnoringOtherApps_(self, value: bool) -> None:
             calls.append(("activate", value))
 
@@ -289,7 +334,30 @@ def test_bring_desktop_window_to_front_activates_macos_app(monkeypatch) -> None:
     assert calls == []
     assert len(scheduled) == 1
     scheduled[0]()
-    assert calls == [("activate", True), ("front", None)]
+    assert calls == [("unhide", None), ("activate", True), ("front", None)]
+
+
+def test_configure_macos_tray_as_accessory_app(monkeypatch) -> None:
+    calls: list[int] = []
+
+    class FakeApplication:
+        def setActivationPolicy_(self, policy: int) -> bool:
+            calls.append(policy)
+            return True
+
+    class FakeNSApplication:
+        @staticmethod
+        def sharedApplication():
+            return FakeApplication()
+
+    class FakeAppKit:
+        NSApplication = FakeNSApplication
+        NSApplicationActivationPolicyAccessory = 1
+
+    monkeypatch.setattr(tray_app.sys, "platform", "darwin")
+
+    assert tray_app._configure_macos_tray_activation_policy(appkit=FakeAppKit()) is True
+    assert calls == [1]
 
 
 def test_install_macos_quit_delegate_runs_on_cocoa_main_thread(monkeypatch) -> None:
@@ -338,6 +406,7 @@ def test_install_macos_quit_delegate_runs_on_cocoa_main_thread(monkeypatch) -> N
 def test_macos_quit_delegate_allows_termination_and_invokes_callback(monkeypatch) -> None:
     installed: list[object] = []
     quit_calls: list[bool] = []
+    reopen_calls: list[bool] = []
 
     class FakeNSObject:
         @classmethod
@@ -372,9 +441,11 @@ def test_macos_quit_delegate_allows_termination_and_invokes_callback(monkeypatch
     monkeypatch.setattr(desktop_window, "_MACOS_QUIT_DELEGATE", None)
     monkeypatch.setattr(desktop_window, "_MACOS_QUIT_DELEGATE_CLASS", None)
     monkeypatch.setattr(desktop_window, "_MACOS_QUIT_CALLBACK", None)
+    monkeypatch.setattr(desktop_window, "_MACOS_REOPEN_CALLBACK", None)
 
     assert desktop_window._install_macos_quit_delegate(
         on_quit=lambda: quit_calls.append(True),
+        on_reopen=lambda: reopen_calls.append(True),
         appkit=FakeAppKit(),
         app_helper=ImmediateAppHelper(),
         foundation=FakeFoundation(),
@@ -384,7 +455,9 @@ def test_macos_quit_delegate_allows_termination_and_invokes_callback(monkeypatch
     delegate = installed[0]
     assert delegate.applicationShouldTerminate_(None) is True
     assert delegate.applicationSupportsSecureRestorableState_(None) is True
+    assert delegate.applicationShouldHandleReopen_hasVisibleWindows_(None, False) is True
     assert quit_calls == [True]
+    assert reopen_calls == [True]
 
 
 def test_ui_smoke_probe_writes_success_result(tmp_path: Path) -> None:
@@ -395,11 +468,14 @@ def test_ui_smoke_probe_writes_success_result(tmp_path: Path) -> None:
         def evaluate_js(self, script: str):
             assert 'data-account-connect-root="true"' in script
             assert 'data-testid="start-two-step-connect"' in script
+            assert 'img[alt="LarkSync"]' in script
             return {
                 "account_connect_visible": True,
                 "connect_phase": "choose_method",
                 "connect_action_visible": True,
                 "connect_action_enabled": True,
+                "logo_visible": True,
+                "logo_decoded": True,
             }
 
         def destroy(self) -> None:
@@ -689,17 +765,34 @@ def test_tray_route_actions_prefer_desktop_window(monkeypatch) -> None:
     assert browser_opened == []
 
 
-def test_duplicate_tray_launch_opens_desktop_window(monkeypatch) -> None:
+def test_duplicate_tray_launch_activates_existing_desktop_window(monkeypatch) -> None:
+    activated: list[str] = []
     opened: list[str] = []
     browser_opened: list[str] = []
 
     monkeypatch.setattr(tray_app.sys, "argv", ["tray_app.py"])
     monkeypatch.setattr(tray_app, "_acquire_lock", lambda: False)
+    monkeypatch.setattr(tray_app, "_configure_macos_tray_activation_policy", lambda: True)
     monkeypatch.setattr(tray_app, "get_dashboard_url", lambda: "http://127.0.0.1:8000/")
+    monkeypatch.setattr(
+        tray_app,
+        "_activate_running_desktop_window",
+        lambda url: activated.append(url) or True,
+    )
     monkeypatch.setattr(tray_app, "open_desktop_window", lambda url: opened.append(url))
     monkeypatch.setattr(tray_app.webbrowser, "open", lambda url: browser_opened.append(url))
 
     tray_app.main()
 
-    assert opened == ["http://127.0.0.1:8000/"]
+    assert activated == ["http://127.0.0.1:8000/"]
+    assert opened == []
     assert browser_opened == []
+
+
+def test_desktop_window_control_file_is_shared_per_runtime(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(desktop_window, "data_dir", lambda: tmp_path)
+
+    assert desktop_window.desktop_window_control_file() == (
+        tmp_path / "runtime" / "desktop-window-control.json"
+    )
+    assert desktop_window._new_control_file() == desktop_window.desktop_window_control_file()

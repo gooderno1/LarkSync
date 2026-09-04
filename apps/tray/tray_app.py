@@ -13,6 +13,7 @@ LarkSync 系统托盘应用 — 主入口
 from __future__ import annotations
 
 import atexit
+import importlib
 import sys
 import os
 import re
@@ -60,6 +61,7 @@ from apps.tray.desktop_window import (
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_WIDTH,
     DesktopWindowLaunchResult,
+    desktop_window_control_file,
     grant_desktop_window_foreground_permission,
     open_browser_dashboard,
     open_desktop_window,
@@ -1174,6 +1176,36 @@ def _release_lock() -> None:
     _LOCK_SOCKET = None
 
 
+def _configure_macos_tray_activation_policy(*, appkit: Any | None = None) -> bool:
+    """Keep the tray owner out of Dock/App Switcher; the WebView child stays regular."""
+    if sys.platform != "darwin":
+        return True
+    try:
+        cocoa = appkit or importlib.import_module("AppKit")
+        policy = getattr(cocoa, "NSApplicationActivationPolicyAccessory", 1)
+        result = cocoa.NSApplication.sharedApplication().setActivationPolicy_(policy)
+        return result is not False
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        return False
+
+
+def _activate_running_desktop_window(
+    url: str,
+    *,
+    timeout: float = 5.0,
+    interval: float = 0.1,
+) -> bool:
+    """Ask the primary instance to reveal its window without spawning another App."""
+    deadline = time.monotonic() + max(timeout, 0.0)
+    control_file = desktop_window_control_file()
+    while True:
+        if send_desktop_window_command(control_file, url=url):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(max(interval, 0.01))
+
+
 def _parse_args() -> argparse.Namespace:
     """解析命令行参数。"""
     parser = argparse.ArgumentParser(
@@ -1221,6 +1253,8 @@ def main() -> None:
             )
         )
 
+    _configure_macos_tray_activation_policy()
+
     runtime_config = ConfigManager.get().config
     lock_port = _int_env("LARKSYNC_LOCK_PORT", 48901)
     production_backend_running = (
@@ -1246,8 +1280,8 @@ def main() -> None:
 
     if not _acquire_lock():
         print("LarkSync 已在运行中，请勿重复启动。")
-        # 尝试打开桌面窗口让用户看到现有实例；不可用时由 helper 回退浏览器。
-        open_desktop_window(get_dashboard_url())
+        if not _activate_running_desktop_window(get_dashboard_url()):
+            print("现有窗口仍在启动，请稍后从 Dock 或菜单栏打开。")
         return
 
     if args.dev:

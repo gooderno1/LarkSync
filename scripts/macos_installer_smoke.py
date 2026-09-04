@@ -111,6 +111,7 @@ def _assert_bundle_metadata(app_bundle: Path) -> dict[str, object]:
         "CFBundleDisplayName": "LarkSync",
         "CFBundleName": "LarkSync",
         "NSHighResolutionCapable": True,
+        "LSUIElement": True,
     }
     for key, value in expected.items():
         if info.get(key) != value:

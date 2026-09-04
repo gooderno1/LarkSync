@@ -155,6 +155,7 @@ if sys.platform == "darwin":
             "CFBundleVersion": bundle_short_version,
             "LSApplicationCategoryType": "public.app-category.productivity",
             "LSMinimumSystemVersion": "12.0",
+            "LSUIElement": True,
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "Copyright © LarkSync contributors",
         },

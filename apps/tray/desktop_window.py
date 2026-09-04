@@ -17,14 +17,14 @@ import secrets
 import socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
-import uuid
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Literal
+
+from src.core.paths import data_dir
 
 
 DEFAULT_WINDOW_TITLE = "LarkSync"
@@ -52,6 +52,7 @@ LaunchMode = Literal["webview", "browser"]
 _MACOS_QUIT_DELEGATE: Any | None = None
 _MACOS_QUIT_DELEGATE_CLASS: Any | None = None
 _MACOS_QUIT_CALLBACK: Callable[[], Any] | None = None
+_MACOS_REOPEN_CALLBACK: Callable[[], Any] | None = None
 
 
 def _colorref_from_hex(value: str) -> int:
@@ -116,7 +117,11 @@ def bring_desktop_window_to_front(
             main_thread = app_helper or importlib.import_module("PyObjCTools.AppHelper")
 
             def activate() -> None:
-                cocoa.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+                application = cocoa.NSApplication.sharedApplication()
+                unhide = getattr(application, "unhide_", None)
+                if callable(unhide):
+                    unhide(None)
+                application.activateIgnoringOtherApps_(True)
                 native = getattr(window, "native", None)
                 make_key = getattr(native, "makeKeyAndOrderFront_", None)
                 if callable(make_key):
@@ -157,6 +162,7 @@ def bring_desktop_window_to_front(
 def _install_macos_quit_delegate(
     *,
     on_quit: Callable[[], Any] | None = None,
+    on_reopen: Callable[[], Any] | None = None,
     appkit: Any | None = None,
     app_helper: Any | None = None,
     foundation: Any | None = None,
@@ -170,8 +176,10 @@ def _install_macos_quit_delegate(
         main_thread = app_helper or importlib.import_module("PyObjCTools.AppHelper")
 
         def install() -> None:
-            global _MACOS_QUIT_CALLBACK, _MACOS_QUIT_DELEGATE, _MACOS_QUIT_DELEGATE_CLASS
+            global _MACOS_QUIT_CALLBACK, _MACOS_QUIT_DELEGATE
+            global _MACOS_QUIT_DELEGATE_CLASS, _MACOS_REOPEN_CALLBACK
             _MACOS_QUIT_CALLBACK = on_quit
+            _MACOS_REOPEN_CALLBACK = on_reopen
             if delegate_factory is not None:
                 delegate = delegate_factory()
             else:
@@ -185,6 +193,17 @@ def _install_macos_quit_delegate(
                             return base.YES
 
                         def applicationSupportsSecureRestorableState_(self, _application):
+                            return base.YES
+
+                        def applicationShouldHandleReopen_hasVisibleWindows_(
+                            self,
+                            _application,
+                            has_visible_windows,
+                        ):
+                            if not has_visible_windows:
+                                callback = _MACOS_REOPEN_CALLBACK
+                                if callback is not None:
+                                    callback()
                             return base.YES
 
                     _MACOS_QUIT_DELEGATE_CLASS = LarkSyncQuitDelegate
@@ -217,6 +236,8 @@ def _make_hide_on_close_handler(
     window: Any,
     *,
     scheduler: Callable[[Callable[[], Any]], None] = _schedule_daemon,
+    appkit: Any | None = None,
+    app_helper: Any | None = None,
 ) -> Callable[[], bool]:
     """Convert the native close button into hide-to-tray.
 
@@ -225,39 +246,30 @@ def _make_hide_on_close_handler(
     cancels destruction without deadlocking the WinForms dispatcher.
     """
 
-    def _hide_on_close() -> bool:
+    if sys.platform == "darwin":
+        def _hide_macos_application() -> bool:
+            try:
+                cocoa = appkit or importlib.import_module("AppKit")
+                main_thread = app_helper or importlib.import_module("PyObjCTools.AppHelper")
+
+                def hide_application() -> None:
+                    cocoa.NSApplication.sharedApplication().hide_(None)
+
+                # Let windowShouldClose_ return first. Hiding the application,
+                # rather than ordering a fullscreen NSWindow out, lets macOS
+                # leave the fullscreen Space without showing a black frame.
+                main_thread.callAfter(hide_application)
+            except (AttributeError, ImportError, OSError, TypeError, ValueError):
+                scheduler(window.hide)
+            return False
+
+        return _hide_macos_application
+
+    def _hide_window() -> bool:
         scheduler(window.hide)
         return False
 
-    return _hide_on_close
-
-
-def _start_macos_reopen_monitor(window: Any, *, appkit: Any | None = None) -> None:
-    """Dock 再次激活隐藏的应用时恢复窗口，不干扰关闭到托盘行为。"""
-    if sys.platform != "darwin" or getattr(window, "_larksync_reopen_monitor", False):
-        return
-    setattr(window, "_larksync_reopen_monitor", True)
-
-    def monitor() -> None:  # pragma: no cover - requires Cocoa event loop
-        try:
-            cocoa = appkit or importlib.import_module("AppKit")
-            application = cocoa.NSApplication.sharedApplication()
-            was_active = bool(application.isActive())
-            while True:
-                time.sleep(0.2)
-                active = bool(application.isActive())
-                native = getattr(window, "native", None)
-                visible_reader = getattr(native, "isVisible", None)
-                visible = bool(visible_reader()) if callable(visible_reader) else True
-                if active and not was_active and not visible:
-                    window.restore()
-                    window.show()
-                    bring_desktop_window_to_front(window, appkit=cocoa)
-                was_active = active
-        except Exception:
-            return
-
-    threading.Thread(target=monitor, name="larksync-macos-reopen", daemon=True).start()
+    return _hide_window
 
 
 class DesktopWindowControlServer:
@@ -379,9 +391,12 @@ def send_desktop_window_command(
 
 
 def _new_control_file() -> Path:
-    return Path(tempfile.gettempdir()) / (
-        f"larksync-desktop-{os.getpid()}-{uuid.uuid4().hex}.json"
-    )
+    return desktop_window_control_file()
+
+
+def desktop_window_control_file() -> Path:
+    """Return the per-runtime descriptor shared by primary and duplicate launches."""
+    return data_dir() / "runtime" / "desktop-window-control.json"
 
 
 def _truthy_env(value: str | None) -> bool:
@@ -584,8 +599,9 @@ def run_desktop_window(
         window.events.shown += _apply_windows_titlebar_palette
     if sys.platform == "darwin" and getattr(getattr(window, "events", None), "shown", None) is not None:
         window.events.shown += lambda: bring_desktop_window_to_front(window)
-        window.events.shown += _install_macos_quit_delegate
-        window.events.shown += lambda: _start_macos_reopen_monitor(window)
+        window.events.shown += lambda: _install_macos_quit_delegate(
+            on_reopen=lambda: bring_desktop_window_to_front(window),
+        )
     closing_event = getattr(getattr(window, "events", None), "closing", None)
     if closing_event is not None:
         window.events.closing += _make_hide_on_close_handler(window)
@@ -662,13 +678,17 @@ def _run_ui_smoke_probe(window: Any, result_path: Path, timeout: float = 30.0) -
         (() => {
           const root = document.querySelector('[data-account-connect-root="true"]');
           const action = document.querySelector('[data-testid="start-two-step-connect"]');
+          const logo = document.querySelector('img[alt="LarkSync"]');
           const rect = action ? action.getBoundingClientRect() : null;
+          const logoRect = logo ? logo.getBoundingClientRect() : null;
           return {
             title: document.title,
             account_connect_visible: Boolean(root),
             connect_phase: root ? root.getAttribute('data-connect-phase') : null,
             connect_action_visible: Boolean(rect && rect.width > 0 && rect.height > 0),
-            connect_action_enabled: Boolean(action && !action.disabled)
+            connect_action_enabled: Boolean(action && !action.disabled),
+            logo_visible: Boolean(logoRect && logoRect.width > 0 && logoRect.height > 0),
+            logo_decoded: Boolean(logo && logo.complete && logo.naturalWidth > 0)
           };
         })()
     """
@@ -707,6 +727,8 @@ def _ui_smoke_result_ok(payload: dict[str, Any]) -> bool:
         and payload.get("connect_phase") == "choose_method"
         and payload.get("connect_action_visible")
         and payload.get("connect_action_enabled")
+        and payload.get("logo_visible")
+        and payload.get("logo_decoded")
     )
 
 

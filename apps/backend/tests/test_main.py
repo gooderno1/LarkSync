@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import src.main as main
@@ -74,6 +75,32 @@ def test_health_check() -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_packaged_frontend_root_asset_follows_bundle_symlink(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    resources_dist = tmp_path / "Resources" / "apps" / "frontend" / "dist"
+    resources_dist.mkdir(parents=True)
+    (resources_dist / "index.html").write_text("<html>index</html>", encoding="utf-8")
+    logo_bytes = b"\x89PNG\r\n\x1a\nlogo"
+    (resources_dist / "logo-horizontal.png").write_bytes(logo_bytes)
+
+    framework_dist = tmp_path / "Frameworks" / "apps" / "frontend" / "dist"
+    framework_dist.parent.mkdir(parents=True)
+    framework_dist.symlink_to(resources_dist, target_is_directory=True)
+
+    monkeypatch.setattr(main, "_FRONTEND_DIST", framework_dist)
+    monkeypatch.setattr(main, "_INDEX_HTML", framework_dist / "index.html")
+    app = FastAPI()
+    main._configure_static_frontend_routes(app)
+
+    response = TestClient(app).get("/logo-horizontal.png")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content == logo_bytes
 
 
 def test_snapshot_profile_blocks_local_mutation_routes() -> None:

@@ -270,8 +270,9 @@ def _configure_static_frontend_routes(app: FastAPI) -> None:
                                   "health", "tray/", "docs", "openapi")):
             return HTMLResponse("Not found", status_code=404)
 
-        static_file = _FRONTEND_DIST / full_path
-        if static_file.is_file() and _FRONTEND_DIST in static_file.resolve().parents:
+        frontend_root = _FRONTEND_DIST.resolve()
+        static_file = (_FRONTEND_DIST / full_path).resolve()
+        if static_file.is_file() and frontend_root in static_file.parents:
             suffix = static_file.suffix.lower()
             media_type = _MIME_MAP.get(suffix)
             return FileResponse(str(static_file), media_type=media_type)

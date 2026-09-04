@@ -392,6 +392,7 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     assert "CFBundleDisplayName" in content
     assert "CFBundleShortVersionString" in content
     assert "LSMinimumSystemVersion" in content
+    assert "LSUIElement" in content
     assert "LARKSYNC_MACOS_CODESIGN_IDENTITY" in content
     assert "entitlements_file" in content
     assert "\n        ,\n" not in content
@@ -416,6 +417,7 @@ def test_checked_in_spec_includes_webview_hiddenimports() -> None:
     assert 'icon=str(macos_icon)' in spec
     assert '"CFBundleDisplayName": "LarkSync"' in spec
     assert '"LSMinimumSystemVersion": "12.0"' in spec
+    assert '"LSUIElement": True' in spec
 
 
 def test_sign_macos_app_uses_hardened_runtime_for_developer_id(monkeypatch, tmp_path: Path) -> None:
