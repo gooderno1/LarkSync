@@ -113,7 +113,7 @@ npm run dev
 - uvicorn 后端（`http://localhost:18765`，`--reload` 热重载）
 - 系统托盘图标
 
-改前端代码即时生效，改后端代码自动重启。退出：托盘右键"退出"或 Ctrl+C。
+改前端代码即时生效，改后端代码自动重启。退出：托盘右键“退出”或 Ctrl+C。macOS 红色关闭按钮只隐藏窗口；使用 `⌘Q`、应用菜单“退出 LarkSync”或托盘“退出 LarkSync”会停止桌面窗口、后端与开发服务。
 
 Vite 日志输出到 `data/logs/vite-dev.log`。
 托盘主进程与后端启动都会自动过滤不兼容 `PYTHONPATH`（例如误指向其它 Python 版本的 `site-packages`），避免本机环境污染导致 `npm run dev` 或托盘显示异常。
@@ -301,7 +301,7 @@ python scripts/build_installer.py --dmg
 - 脚本默认会先构建前端（`apps/frontend/npm run build`），再执行 PyInstaller。
 - 若前端已提前构建，可加 `--skip-frontend` 跳过前端构建阶段。
 - 如需显式指定 macOS 打包架构，可设置 `LARKSYNC_MACOS_TARGET_ARCH=arm64`、`x86_64` 等 PyInstaller 支持值；如需输出带架构后缀的 DMG 文件名，可同时设置 `LARKSYNC_MACOS_DMG_SUFFIX`。
-- Windows 生成安装包依赖 `makensis`（NSIS）；macOS 生成 DMG 依赖 `create-dmg`。
+- Windows 生成安装包依赖 `makensis`（NSIS）。macOS 优先使用 `create-dmg` 生成带布局的镜像；未安装时自动回退系统自带的 `hdiutil`，无需 Homebrew。可用 `LARKSYNC_DMG_TOOL=auto|create-dmg|hdiutil` 显式选择。
 - 脚本会自动过滤与当前解释器版本不匹配的 `PYTHONPATH` `site-packages`（例如 `Python312` 与 `Python314` 混用），减少本机环境污染导致的打包失败。
 
 ### 10.2 一行稳定版发布（维护者）

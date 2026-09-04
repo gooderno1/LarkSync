@@ -1,5 +1,35 @@
 # DEVELOPMENT LOG
 
+## v0.9.11-dev.1（2026-09-04）
+
+- 开发原因：
+  - v0.9.10 的窗口控制服务与 Dock 恢复监测线程直接调用 AppKit，违反 Cocoa 主线程约束。
+  - 窗口 `closing` 事件统一返回取消，导致 macOS `⌘Q` 也可能被当成关闭到菜单栏，无法可靠结束窗口与后端进程。
+  - DMG 脚本强制依赖 Homebrew `create-dmg`，并用现代 macOS 默认不存在的 `python` 命令读取版本。
+  - 原生安装冒烟仍查找已移除的旧 Onboarding/OAuth QR 节点；headless WebKit 回退没有确认原生 App 是否仍存活。
+- 实现方式：
+  - 窗口恢复与置前通过 `PyObjCTools.AppHelper.callAfter` 调度到 Cocoa 主线程。
+  - 桌面窗口安装专用 AppDelegate：红色关闭按钮仍隐藏窗口，`⌘Q` 与应用菜单退出允许子进程正常结束；菜单栏父进程监测正常退出并执行统一清理。
+  - `LarkSyncTray.stop()` 在停止图标前清理桌面窗口、Vite 与后端，清理流程保持幂等。
+  - DMG 工具新增 `auto|create-dmg|hdiutil` 选择；默认优先 `create-dmg`，缺失时使用系统 `hdiutil` 创建含 `/Applications` 投放入口的 UDZO 镜像；版本读取改用 `awk`。
+  - 原生 WKWebView 冒烟改为验证 `data-account-connect-root`、`choose_method` 与 `start-two-step-connect`；无窗口服务器的回退路径先校验原生 PID 存活，再采信独立 WebKit 两次扫码结果。
+  - 后端管理器测试使用与当前解释器不同的动态 Python 版本标签，兼容 Python 3.12 与发布基线 Python 3.14。
+- 当前结果：
+  - macOS 窗口置前不再从后台线程直接调用 AppKit。
+  - 用户可区分关闭窗口与完整退出，完整退出会清理窗口控制文件和所有托管子进程。
+  - 未安装 `create-dmg`、未配置 `python` 别名的标准 macOS 环境可以使用系统工具完成 DMG 构建。
+  - 安装冒烟与 v0.9.10 当前 Device Flow 两次扫码界面保持一致，原生应用崩溃不能被 headless 结果掩盖。
+- 验证方式：
+  - 测试先行：新增用例在实现前产生 7 项预期失败；实现后补充 Quit delegate 放行与回调验证，macOS 打包、桌面窗口、安装冒烟和后端管理器定向测试共 74 项通过。
+  - 后端全量共 744 项：742 项通过，2 项按既有条件跳过；同时修正本地文件上传断言只接受 Windows 路径分隔符的问题。
+  - 前端 TypeScript、ESLint、42 个测试文件共 134 项 Vitest 以及 Vite 生产构建通过。
+  - 本机 macOS 26.6.2 Apple Silicon 使用 Python 3.12.14、Node 24.19.0 的显式非发布基线开关完成 PyInstaller 与 `hdiutil` DMG 构建；产物为 arm64 Mach-O，ad-hoc `codesign --verify --deep --strict` 通过，镜像格式为 UDZO。
+  - `scripts/macos_installer_smoke.py --arch-suffix arm64` 完成 DMG 挂载、`Applications` 投放入口、隔离安装复制、Keychain 写入/读取/删除、后端健康检查和真实 Cocoa/WKWebView 验证；结果为 `account_connect_visible=true`、`connect_phase=choose_method`、连接操作可见且可用。
+  - 本地产物 `LarkSync-v0.9.11-dev.1-arm64.dmg` 大小为 69,543,735 bytes，SHA256 为 `1D056F801009A8E0886DBF04E57D0685649EAF9041CCC1D8576177C6921E0782`。
+- 遗留问题：
+  - 本地没有 Apple Developer ID 与公证凭据；本次只能验证 ad-hoc 签名和本机安装链路，正式公证仍由凭据齐全的发布流水线执行。
+  - 本机没有发布基线 Python 3.14 与 Node 25；发布基线构建和 Intel x86_64 产物仍由双架构 GitHub Actions 验证。
+
 ## v0.9.10 正式发布（2026-09-03）
 
 - 开发原因：

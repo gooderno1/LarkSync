@@ -50,6 +50,9 @@ apps/tray/icons/
 # Local AI tooling config
 opencode.json
 
+# macOS Finder metadata
+.DS_Store
+
 # Local launchers (not for public repo)
 /LarkSync.bat
 /LarkSync.pyw

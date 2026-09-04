@@ -66,7 +66,7 @@ Secrets 只注入临时 runner。构建结束后删除临时 P12 和签名 keych
 
 ## 无 Apple 凭据的安装方式
 
-ad-hoc 签名版本仍会经过双架构构建、Bundle 校验、DMG 挂载、安装复制、Keychain、后端健康检查和首屏二维码 smoke，但没有 Apple Developer 身份和公证票据。用户首次打开时：
+ad-hoc 签名版本仍会经过双架构构建、Bundle 校验、DMG 挂载、安装复制、Keychain、后端健康检查、原生账号连接首屏和两次扫码 WebKit smoke，但没有 Apple Developer 身份和公证票据。用户首次打开时：
 
 1. 从本项目官方 GitHub Release 下载与机器架构匹配的 DMG，并核对 SHA256。
 2. 打开 DMG，将`LarkSync.app`拖入`Applications`，然后尝试打开一次。
@@ -104,6 +104,8 @@ PR/main 的 macOS 构建使用 ad-hoc 签名，用于尽早检查 Bundle 结构�
 7. `stapler staple`与`stapler validate`。
 8. Gatekeeper assessment。
 
+DMG 默认由 `create-dmg` 生成带图标布局的镜像；构建机未安装该命令时自动使用 macOS 自带的 `hdiutil`，并保留 `LarkSync.app` 与指向 `/Applications` 的投放入口。可用 `LARKSYNC_DMG_TOOL=auto|create-dmg|hdiutil` 固定构建工具。
+
 ## 安装 smoke
 
 `python scripts/macos_installer_smoke.py --arch-suffix arm64`会：
@@ -115,7 +117,7 @@ PR/main 的 macOS 构建使用 ad-hoc 签名，用于尽早检查 Bundle 结构�
 - 启动安装版后端并检查`127.0.0.1:18765/health`。
 - 写入隔离 OAuth 测试配置。
 - 通过 LaunchServices 启动真实 App，并确认打包入口、Cocoa 窗口创建和`webview_starting`阶段均已到达。
-- 交互式 Mac 直接在原生 WKWebView 断言授权首屏和二维码。
-- GitHub 托管 Mac runner 无交互式 WindowServer 时，仅要求 App 自身写入`webview_starting`；macOS 双架构任务显式依赖独立 Linux headless Playwright WebKit 任务，后者断言 1080×720 授权首屏存在、二维码状态为`ready`、图片可见且来源是 PNG data URL。托管 runner 不宣称验证原生窗口持续存活。
+- 交互式 Mac 直接在原生 WKWebView 断言当前 Device Flow 账号连接首屏、`choose_method` 阶段与“开始第 1 次扫码”操作可见且可用。
+- GitHub 托管 Mac runner 无交互式 WindowServer 时，要求 App 自身写入`webview_starting`且对应原生 PID 在 WebKit 回退前仍存活；macOS 双架构任务显式依赖独立 Linux headless Playwright WebKit 任务，后者断言 1080×720 第 1 次扫码完成检查点、第 2 次扫码二维码状态为`ready`、图片可见且来源是 PNG data URL。托管 runner 不宣称验证原生窗口像素。
 
 任何步骤失败都会阻止发布。

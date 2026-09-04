@@ -411,3 +411,36 @@ def test_wait_for_gui_result_uses_webkit_fallback_for_stable_headless_native_loo
     assert payload["native_stage"] == "webview_starting"
     assert payload["native_pid_alive"] is True
     assert payload["webkit"]["qr_state"] == "ready"
+
+
+def test_wait_for_gui_result_rejects_webkit_fallback_after_native_app_exits(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    result_path = tmp_path / "result.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "completed": False,
+                "ok": False,
+                "stage": "webview_starting",
+                "pid": 4242,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class SuccessfulOpenHelper:
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(smoke, "_pid_is_alive", lambda _pid: False)
+
+    with pytest.raises(RuntimeError, match="原生 WKWebView 进程已退出"):
+        smoke._wait_for_gui_result(
+            result_path,
+            SuccessfulOpenHelper(),
+            1.0,
+            headless_webkit_runner=lambda: {"ok": True},
+            headless_fallback_delay=0.0,
+        )

@@ -49,6 +49,10 @@ _HWND_NOTOPMOST = -2
 
 LaunchMode = Literal["webview", "browser"]
 
+_MACOS_QUIT_DELEGATE: Any | None = None
+_MACOS_QUIT_DELEGATE_CLASS: Any | None = None
+_MACOS_QUIT_CALLBACK: Callable[[], Any] | None = None
+
 
 def _colorref_from_hex(value: str) -> int:
     """Convert an RGB hex color to the BGR COLORREF expected by DWM."""
@@ -103,16 +107,22 @@ def bring_desktop_window_to_front(
     *,
     user32: Any | None = None,
     appkit: Any | None = None,
+    app_helper: Any | None = None,
 ) -> bool:
     """Activate a restored desktop window using the native platform API."""
     if sys.platform == "darwin":
         try:
             cocoa = appkit or importlib.import_module("AppKit")
-            cocoa.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-            native = getattr(window, "native", None)
-            make_key = getattr(native, "makeKeyAndOrderFront_", None)
-            if callable(make_key):
-                make_key(None)
+            main_thread = app_helper or importlib.import_module("PyObjCTools.AppHelper")
+
+            def activate() -> None:
+                cocoa.NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+                native = getattr(window, "native", None)
+                make_key = getattr(native, "makeKeyAndOrderFront_", None)
+                if callable(make_key):
+                    make_key(None)
+
+            main_thread.callAfter(activate)
             return True
         except (AttributeError, ImportError, OSError, TypeError, ValueError):
             return False
@@ -141,6 +151,50 @@ def bring_desktop_window_to_front(
         foreground = int(windows_api.GetForegroundWindow())
         return foreground == hwnd or (raised and lowered)
     except (AttributeError, OSError, TypeError, ValueError):
+        return False
+
+
+def _install_macos_quit_delegate(
+    *,
+    on_quit: Callable[[], Any] | None = None,
+    appkit: Any | None = None,
+    app_helper: Any | None = None,
+    foundation: Any | None = None,
+    delegate_factory: Callable[[], Any] | None = None,
+) -> bool:
+    """让 macOS 的退出命令结束进程，同时保留红色关闭按钮隐藏窗口。"""
+    if sys.platform != "darwin":
+        return True
+    try:
+        cocoa = appkit or importlib.import_module("AppKit")
+        main_thread = app_helper or importlib.import_module("PyObjCTools.AppHelper")
+
+        def install() -> None:
+            global _MACOS_QUIT_CALLBACK, _MACOS_QUIT_DELEGATE, _MACOS_QUIT_DELEGATE_CLASS
+            _MACOS_QUIT_CALLBACK = on_quit
+            if delegate_factory is not None:
+                delegate = delegate_factory()
+            else:
+                base = foundation or importlib.import_module("Foundation")
+                if _MACOS_QUIT_DELEGATE_CLASS is None:
+                    class LarkSyncQuitDelegate(base.NSObject):
+                        def applicationShouldTerminate_(self, _application):
+                            callback = _MACOS_QUIT_CALLBACK
+                            if callback is not None:
+                                callback()
+                            return base.YES
+
+                        def applicationSupportsSecureRestorableState_(self, _application):
+                            return base.YES
+
+                    _MACOS_QUIT_DELEGATE_CLASS = LarkSyncQuitDelegate
+                delegate = _MACOS_QUIT_DELEGATE_CLASS.alloc().init()
+            _MACOS_QUIT_DELEGATE = delegate
+            cocoa.NSApplication.sharedApplication().setDelegate_(delegate)
+
+        main_thread.callAfter(install)
+        return True
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
         return False
 
 
@@ -530,6 +584,7 @@ def run_desktop_window(
         window.events.shown += _apply_windows_titlebar_palette
     if sys.platform == "darwin" and getattr(getattr(window, "events", None), "shown", None) is not None:
         window.events.shown += lambda: bring_desktop_window_to_front(window)
+        window.events.shown += _install_macos_quit_delegate
         window.events.shown += lambda: _start_macos_reopen_monitor(window)
     closing_event = getattr(getattr(window, "events", None), "closing", None)
     if closing_event is not None:
@@ -599,22 +654,21 @@ def _write_ui_smoke_state(result_path: Path, payload: dict[str, Any]) -> None:
 
 
 def _run_ui_smoke_probe(window: Any, result_path: Path, timeout: float = 30.0) -> None:
-    """在真实 WebView 中验证首屏和二维码，并输出机器可读结果。"""
+    """在真实 WebView 中验证当前账号连接首屏，并输出机器可读结果。"""
     deadline = time.time() + max(timeout, 0.1)
     last_result: dict[str, Any] = {}
     last_error = ""
     script = """
         (() => {
-          const root = document.querySelector('[data-onboarding-root="true"]');
-          const panel = document.querySelector('[data-testid="oauth-qr-panel"]');
-          const image = document.querySelector('[data-testid="oauth-qr-image"]');
-          const rect = image ? image.getBoundingClientRect() : null;
+          const root = document.querySelector('[data-account-connect-root="true"]');
+          const action = document.querySelector('[data-testid="start-two-step-connect"]');
+          const rect = action ? action.getBoundingClientRect() : null;
           return {
             title: document.title,
-            onboarding_visible: Boolean(root),
-            qr_state: panel ? panel.getAttribute('data-qr-state') : null,
-            qr_visible: Boolean(rect && rect.width > 0 && rect.height > 0),
-            qr_is_data_url: Boolean(image && String(image.getAttribute('src') || '').startsWith('data:image/png;base64,'))
+            account_connect_visible: Boolean(root),
+            connect_phase: root ? root.getAttribute('data-connect-phase') : null,
+            connect_action_visible: Boolean(rect && rect.width > 0 && rect.height > 0),
+            connect_action_enabled: Boolean(action && !action.disabled)
           };
         })()
     """
@@ -649,10 +703,10 @@ def _run_ui_smoke_probe(window: Any, result_path: Path, timeout: float = 30.0) -
 
 def _ui_smoke_result_ok(payload: dict[str, Any]) -> bool:
     return bool(
-        payload.get("onboarding_visible")
-        and payload.get("qr_state") == "ready"
-        and payload.get("qr_visible")
-        and payload.get("qr_is_data_url")
+        payload.get("account_connect_visible")
+        and payload.get("connect_phase") == "choose_method"
+        and payload.get("connect_action_visible")
+        and payload.get("connect_action_enabled")
     )
 
 

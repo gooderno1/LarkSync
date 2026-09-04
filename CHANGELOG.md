@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-09-04] v0.9.11-dev.1 fix(macos): Cocoa 窗口激活改走主线程，完整退出时清理桌面与后端进程；DMG 增加系统 hdiutil 回退，安装冒烟对齐当前 Device Flow 首屏并校验原生 PID 存活
 [2026-09-03] v0.9.10 release: v0.9.10 aligned settings and maintenance layouts
 [2026-09-03] v0.9.10-dev.1 fix(layout): 设置页改用共享行轨道对齐账号与设备及双栏底边；更新维护页双主面板按自然内容高度拉伸对齐
 [2026-09-03] v0.9.9 release: v0.9.9 settings layout rebalance

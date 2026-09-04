@@ -47,9 +47,11 @@ def _setup_manager(monkeypatch, tmp_path: Path, frozen: bool):
 
 
 def _mismatched_site_packages_path() -> str:
+    current = f"{sys.version_info.major}{sys.version_info.minor}"
+    other = "312" if current != "312" else "311"
     if sys.platform == "win32":
-        return r"F:\File\Linux\Python312\site-packages"
-    return "/opt/python312/site-packages"
+        return fr"F:\File\Linux\Python{other}\site-packages"
+    return f"/opt/python{other}/site-packages"
 
 
 def _repo_backend_path() -> str:

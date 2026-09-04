@@ -624,7 +624,8 @@ class LarkSyncTray:
     def stop(self) -> None:
         """退出托盘应用，关闭所有子进程。"""
         self._running = False
-        if self._icon:
+        self._cleanup_all()
+        if getattr(self, "_icon", None):
             try:
                 self._icon.stop()
             except Exception:
@@ -659,6 +660,22 @@ class LarkSyncTray:
             process.wait(timeout=5)
         except Exception:
             pass
+
+    def _monitor_desktop_window_exit(self, process: subprocess.Popen) -> None:
+        """把 macOS 桌面窗口的正常退出视为用户明确退出整个应用。"""
+        try:
+            return_code = process.wait()
+        except Exception:
+            return
+        if process is not getattr(self, "_desktop_window_process", None):
+            return
+        self._desktop_window_process = None
+        control_file = getattr(self, "_desktop_window_control_file", None)
+        self._desktop_window_control_file = None
+        if control_file is not None:
+            control_file.unlink(missing_ok=True)
+        if return_code == 0 and getattr(self, "_running", False):
+            self.stop()
 
     # ---- Vite 前端开发服务器管理 ----
 
@@ -798,6 +815,13 @@ class LarkSyncTray:
             if process is not None:
                 self._desktop_window_process = process
                 self._desktop_window_control_file = getattr(result, "control_file", None)
+                if sys.platform == "darwin":
+                    threading.Thread(
+                        target=self._monitor_desktop_window_exit,
+                        args=(process,),
+                        daemon=True,
+                        name="larksync-macos-window-exit",
+                    ).start()
         return result
 
     def _on_open_desktop_window(self, icon=None, item=None) -> None:

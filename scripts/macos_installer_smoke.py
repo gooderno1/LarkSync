@@ -7,7 +7,7 @@ macOS DMG 安装 / 启动 smoke 检查。
 2. 将 LarkSync.app 复制到临时 Applications 目录
 3. 校验 Bundle 图标、Info.plist 与代码签名
 4. 启动后端并配置隔离的 OAuth smoke 凭证
-5. 启动真实 Cocoa/WKWebView，确认引导页和二维码可见
+5. 启动真实 Cocoa/WKWebView，确认当前账号连接首屏可见
 """
 
 from __future__ import annotations
@@ -181,6 +181,13 @@ def _wait_for_gui_result(
                     and payload.get("stage") == "webview_starting"
                     and time.time() - started_at >= max(headless_fallback_delay, 0.0)
                 ):
+                    native_pid = int(payload["pid"])
+                    native_pid_alive = _pid_is_alive(native_pid)
+                    if not native_pid_alive:
+                        raise RuntimeError(
+                            f"原生 WKWebView 进程已退出，不能使用 headless WebKit 结果替代: "
+                            f"pid={native_pid}"
+                        )
                     webkit_result = headless_webkit_runner()
                     if not webkit_result.get("ok"):
                         raise RuntimeError(
@@ -191,8 +198,8 @@ def _wait_for_gui_result(
                         "ok": True,
                         "validation_mode": "launchservices-stage+headless-webkit",
                         "native_stage": str(payload.get("stage")),
-                        "native_pid": int(payload["pid"]),
-                        "native_pid_alive": _pid_is_alive(payload.get("pid")),
+                        "native_pid": native_pid,
+                        "native_pid_alive": native_pid_alive,
                         "webkit": webkit_result,
                     }
                 time.sleep(0.25)

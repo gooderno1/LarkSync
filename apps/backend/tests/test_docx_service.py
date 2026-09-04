@@ -1,4 +1,6 @@
 import hashlib
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -614,7 +616,7 @@ async def test_replace_document_content_uploads_local_file_link_as_file_block(tm
 
     assert len(file_uploader.calls) == 1
     upload_call = file_uploader.calls[0]
-    assert upload_call[0].endswith("attachments\\方案.docx")
+    assert Path(upload_call[0]) == tmp_path / "attachments" / "方案.docx"
     assert upload_call[1] == "n1_file"
     assert upload_call[2] == "docx_file"
     assert upload_call[3] is False

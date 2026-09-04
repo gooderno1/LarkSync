@@ -11,11 +11,6 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   fi
 fi
 
-if ! command -v create-dmg >/dev/null 2>&1; then
-  echo "ERROR: create-dmg not found. Install with: brew install create-dmg"
-  exit 1
-fi
-
 if [[ ! -d "$APP_BUNDLE" ]]; then
   echo "ERROR: .app bundle not found: $APP_BUNDLE"
   exit 1
@@ -23,22 +18,8 @@ fi
 
 APP_VERSION="${APP_VERSION:-}"
 if [[ -z "$APP_VERSION" ]]; then
-  APP_VERSION="$(
-    LARKSYNC_ROOT="$ROOT_DIR" python - <<'PY'
-import os
-import re
-from pathlib import Path
-
-root = Path(os.environ.get("LARKSYNC_ROOT", ".")).resolve()
-pyproject = root / "apps" / "backend" / "pyproject.toml"
-if not pyproject.is_file():
-    print("0.0.0")
-    raise SystemExit
-content = pyproject.read_text(encoding="utf-8")
-match = re.search(r'^version\\s*=\\s*\"([^\"]+)\"', content, re.MULTILINE)
-print(match.group(1) if match else "0.0.0")
-PY
-  )"
+  APP_VERSION="$(awk -F '"' '/^[[:space:]]*version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/apps/backend/pyproject.toml" 2>/dev/null || true)"
+  APP_VERSION="${APP_VERSION:-0.0.0}"
 fi
 
 APP_ARCH_SUFFIX="${APP_ARCH_SUFFIX:-}"
@@ -49,13 +30,63 @@ else
 fi
 OUTPUT_PATH="$DIST_DIR/$DMG_NAME"
 
-create-dmg \
-  --volname "LarkSync" \
-  --window-size 600 400 \
-  --icon-size 100 \
-  --app-drop-link 450 200 \
-  --icon "LarkSync.app" 150 200 \
-  "$OUTPUT_PATH" \
-  "$APP_BUNDLE"
+DMG_TOOL="${LARKSYNC_DMG_TOOL:-auto}"
+case "$DMG_TOOL" in
+  auto)
+    if command -v create-dmg >/dev/null 2>&1; then
+      DMG_TOOL="create-dmg"
+    else
+      DMG_TOOL="hdiutil"
+    fi
+    ;;
+  create-dmg|hdiutil)
+    ;;
+  *)
+    echo "ERROR: unsupported LARKSYNC_DMG_TOOL: $DMG_TOOL (expected auto, create-dmg, or hdiutil)"
+    exit 1
+    ;;
+esac
+
+if [[ "$DMG_TOOL" == "create-dmg" ]]; then
+  if ! command -v create-dmg >/dev/null 2>&1; then
+    echo "ERROR: create-dmg not found. Install with: brew install create-dmg"
+    exit 1
+  fi
+  rm -f "$OUTPUT_PATH"
+  create-dmg \
+    --volname "LarkSync" \
+    --window-size 600 400 \
+    --icon-size 100 \
+    --app-drop-link 450 200 \
+    --icon "LarkSync.app" 150 200 \
+    "$OUTPUT_PATH" \
+    "$APP_BUNDLE"
+else
+  if ! command -v hdiutil >/dev/null 2>&1; then
+    echo "ERROR: hdiutil not found; cannot create a macOS DMG"
+    exit 1
+  fi
+
+  STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/larksync-dmg.XXXXXX")"
+  cleanup() {
+    rm -rf "$STAGING_DIR"
+  }
+  trap cleanup EXIT
+
+  rm -f "$OUTPUT_PATH"
+  if command -v ditto >/dev/null 2>&1; then
+    ditto "$APP_BUNDLE" "$STAGING_DIR/LarkSync.app"
+  else
+    cp -R "$APP_BUNDLE" "$STAGING_DIR/LarkSync.app"
+  fi
+  ln -s /Applications "$STAGING_DIR/Applications"
+
+  hdiutil create \
+    -volname "LarkSync" \
+    -srcfolder "$STAGING_DIR" \
+    -ov \
+    -format UDZO \
+    "$OUTPUT_PATH"
+fi
 
 echo "OK: DMG created at $OUTPUT_PATH"

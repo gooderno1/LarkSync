@@ -1,5 +1,6 @@
 import importlib.util
 import os
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -290,6 +291,62 @@ def test_build_dmg_exits_when_app_bundle_missing(monkeypatch, tmp_path: Path) ->
 
     with pytest.raises(SystemExit):
         bi._build_dmg()
+
+
+def test_macos_create_dmg_script_falls_back_to_hdiutil(tmp_path: Path) -> None:
+    project_root = tmp_path / "repo"
+    script_path = project_root / "scripts" / "installer" / "macos" / "create_dmg.sh"
+    source_script = PROJECT_ROOT / "scripts" / "installer" / "macos" / "create_dmg.sh"
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text(source_script.read_text(encoding="utf-8"), encoding="utf-8")
+
+    app_bundle = project_root / "dist" / "LarkSync.app"
+    executable = app_bundle / "Contents" / "MacOS" / "LarkSync"
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.write_text("binary", encoding="utf-8")
+    pyproject = project_root / "apps" / "backend" / "pyproject.toml"
+    pyproject.parent.mkdir(parents=True, exist_ok=True)
+    pyproject.write_text('[project]\nversion = "v9.9.9"\n', encoding="utf-8")
+
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    hdiutil = fake_bin / "hdiutil"
+    hdiutil.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "printf '%s\\n' \"$@\" > \"$FAKE_HDIUTIL_ARGS\"\n"
+        "output=\"${@: -1}\"\n"
+        "mkdir -p \"$(dirname \"$output\")\"\n"
+        "printf 'fake-dmg' > \"$output\"\n",
+        encoding="utf-8",
+    )
+    hdiutil.chmod(0o755)
+    args_path = tmp_path / "hdiutil-args.txt"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        "APP_ARCH_SUFFIX": "arm64",
+        "LARKSYNC_DMG_TOOL": "hdiutil",
+        "FAKE_HDIUTIL_ARGS": str(args_path),
+    }
+    env.pop("APP_VERSION", None)
+
+    completed = subprocess.run(
+        ["/bin/bash", str(script_path)],
+        cwd=project_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    expected = project_root / "dist" / "LarkSync-v9.9.9-arm64.dmg"
+    assert completed.returncode == 0, completed.stderr
+    assert expected.read_bytes() == b"fake-dmg"
+    hdiutil_args = args_path.read_text(encoding="utf-8")
+    assert "-volname\nLarkSync\n" in hdiutil_args
+    assert str(expected) in hdiutil_args
+    assert f"OK: DMG created at {expected}" in completed.stdout
 
 
 def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(

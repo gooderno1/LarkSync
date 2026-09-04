@@ -253,6 +253,7 @@ def test_bring_desktop_window_to_front_uses_temporary_topmost_fallback(monkeypat
 
 def test_bring_desktop_window_to_front_activates_macos_app(monkeypatch) -> None:
     calls: list[object] = []
+    scheduled: list[object] = []
 
     class FakeApplication:
         def activateIgnoringOtherApps_(self, value: bool) -> None:
@@ -266,6 +267,11 @@ def test_bring_desktop_window_to_front_activates_macos_app(monkeypatch) -> None:
     class FakeAppKit:
         NSApplication = FakeNSApplication
 
+    class FakeAppHelper:
+        @staticmethod
+        def callAfter(callback) -> None:
+            scheduled.append(callback)
+
     class FakeNative:
         def makeKeyAndOrderFront_(self, sender) -> None:
             calls.append(("front", sender))
@@ -275,8 +281,110 @@ def test_bring_desktop_window_to_front_activates_macos_app(monkeypatch) -> None:
 
     monkeypatch.setattr(desktop_window.sys, "platform", "darwin")
 
-    assert desktop_window.bring_desktop_window_to_front(FakeWindow(), appkit=FakeAppKit()) is True
+    assert desktop_window.bring_desktop_window_to_front(
+        FakeWindow(),
+        appkit=FakeAppKit(),
+        app_helper=FakeAppHelper(),
+    ) is True
+    assert calls == []
+    assert len(scheduled) == 1
+    scheduled[0]()
     assert calls == [("activate", True), ("front", None)]
+
+
+def test_install_macos_quit_delegate_runs_on_cocoa_main_thread(monkeypatch) -> None:
+    scheduled: list[object] = []
+    installed: list[object] = []
+    delegate = object()
+    on_quit = lambda: None
+
+    class FakeApplication:
+        def setDelegate_(self, value) -> None:
+            installed.append(value)
+
+    class FakeNSApplication:
+        @staticmethod
+        def sharedApplication():
+            return FakeApplication()
+
+    class FakeAppKit:
+        NSApplication = FakeNSApplication
+
+    class FakeAppHelper:
+        @staticmethod
+        def callAfter(callback) -> None:
+            scheduled.append(callback)
+
+    monkeypatch.setattr(desktop_window.sys, "platform", "darwin")
+    monkeypatch.setattr(desktop_window, "_MACOS_QUIT_DELEGATE", None)
+    monkeypatch.setattr(desktop_window, "_MACOS_QUIT_CALLBACK", None)
+
+    assert desktop_window._install_macos_quit_delegate(
+        on_quit=on_quit,
+        appkit=FakeAppKit(),
+        app_helper=FakeAppHelper(),
+        delegate_factory=lambda: delegate,
+    ) is True
+    assert installed == []
+    assert len(scheduled) == 1
+
+    scheduled[0]()
+
+    assert installed == [delegate]
+    assert desktop_window._MACOS_QUIT_DELEGATE is delegate
+    assert desktop_window._MACOS_QUIT_CALLBACK is on_quit
+
+
+def test_macos_quit_delegate_allows_termination_and_invokes_callback(monkeypatch) -> None:
+    installed: list[object] = []
+    quit_calls: list[bool] = []
+
+    class FakeNSObject:
+        @classmethod
+        def alloc(cls):
+            return cls()
+
+        def init(self):
+            return self
+
+    class FakeFoundation:
+        NSObject = FakeNSObject
+        YES = True
+
+    class FakeApplication:
+        def setDelegate_(self, value) -> None:
+            installed.append(value)
+
+    class FakeNSApplication:
+        @staticmethod
+        def sharedApplication():
+            return FakeApplication()
+
+    class FakeAppKit:
+        NSApplication = FakeNSApplication
+
+    class ImmediateAppHelper:
+        @staticmethod
+        def callAfter(callback) -> None:
+            callback()
+
+    monkeypatch.setattr(desktop_window.sys, "platform", "darwin")
+    monkeypatch.setattr(desktop_window, "_MACOS_QUIT_DELEGATE", None)
+    monkeypatch.setattr(desktop_window, "_MACOS_QUIT_DELEGATE_CLASS", None)
+    monkeypatch.setattr(desktop_window, "_MACOS_QUIT_CALLBACK", None)
+
+    assert desktop_window._install_macos_quit_delegate(
+        on_quit=lambda: quit_calls.append(True),
+        appkit=FakeAppKit(),
+        app_helper=ImmediateAppHelper(),
+        foundation=FakeFoundation(),
+    ) is True
+    assert len(installed) == 1
+
+    delegate = installed[0]
+    assert delegate.applicationShouldTerminate_(None) is True
+    assert delegate.applicationSupportsSecureRestorableState_(None) is True
+    assert quit_calls == [True]
 
 
 def test_ui_smoke_probe_writes_success_result(tmp_path: Path) -> None:
@@ -284,12 +392,14 @@ def test_ui_smoke_probe_writes_success_result(tmp_path: Path) -> None:
     destroyed: list[bool] = []
 
     class FakeWindow:
-        def evaluate_js(self, _script: str):
+        def evaluate_js(self, script: str):
+            assert 'data-account-connect-root="true"' in script
+            assert 'data-testid="start-two-step-connect"' in script
             return {
-                "onboarding_visible": True,
-                "qr_state": "ready",
-                "qr_visible": True,
-                "qr_is_data_url": True,
+                "account_connect_visible": True,
+                "connect_phase": "choose_method",
+                "connect_action_visible": True,
+                "connect_action_enabled": True,
             }
 
         def destroy(self) -> None:
@@ -515,6 +625,48 @@ def test_tray_stop_desktop_window_kills_running_process(monkeypatch) -> None:
     assert waited == [5]
     assert tray._desktop_window_process is None
     assert tray._desktop_window_control_file is None
+
+
+def test_tray_stop_cleans_up_children_before_stopping_icon() -> None:
+    tray = object.__new__(tray_app.LarkSyncTray)
+    events: list[str] = []
+
+    class FakeIcon:
+        def stop(self) -> None:
+            events.append("icon")
+
+    tray._running = True
+    tray._icon = FakeIcon()
+    tray._cleanup_all = lambda: events.append("cleanup")
+
+    tray.stop()
+
+    assert tray._running is False
+    assert events == ["cleanup", "icon"]
+
+
+def test_clean_macos_desktop_window_exit_stops_parent_app(tmp_path: Path) -> None:
+    tray = object.__new__(tray_app.LarkSyncTray)
+    control_file = tmp_path / "desktop-control.json"
+    control_file.write_text("{}", encoding="utf-8")
+    stopped: list[bool] = []
+
+    class CleanExitProcess:
+        def wait(self):
+            return 0
+
+    process = CleanExitProcess()
+    tray._running = True
+    tray._desktop_window_process = process
+    tray._desktop_window_control_file = control_file
+    tray.stop = lambda: stopped.append(True)
+
+    tray._monitor_desktop_window_exit(process)
+
+    assert tray._desktop_window_process is None
+    assert tray._desktop_window_control_file is None
+    assert control_file.exists() is False
+    assert stopped == [True]
 
 
 def test_tray_route_actions_prefer_desktop_window(monkeypatch) -> None:
