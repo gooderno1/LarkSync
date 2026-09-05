@@ -29,6 +29,36 @@ def test_macos_app_icon_is_valid_multiresolution_icns(monkeypatch, tmp_path: Pat
         assert generated.height >= 512
 
 
+def test_macos_development_app_icon_uses_separate_visible_badge(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "brand.png"
+    stable_output = tmp_path / "LarkSync.icns"
+    development_output = tmp_path / "LarkSync-Dev.icns"
+    Image.new("RGBA", (1024, 1024), (51, 112, 255, 255)).save(source)
+    monkeypatch.setattr(icon_generator, "BRAND_ICON", source)
+    monkeypatch.setattr(icon_generator, "MACOS_APP_ICON", stable_output)
+    monkeypatch.setattr(icon_generator, "MACOS_DEV_APP_ICON", development_output)
+
+    assert (
+        icon_generator.generate_macos_development_app_icon(force=True)
+        == development_output
+    )
+    assert development_output.is_file()
+    assert not stable_output.exists()
+
+    with Image.open(development_output) as generated:
+        rgba = generated.convert("RGBA")
+        width, height = rgba.size
+        badge_pixels = 0
+        badge_region = rgba.crop((width // 2, height * 2 // 3, width, height))
+        for red, green, blue, alpha in badge_region.get_flattened_data():
+            if alpha > 220 and red > 220 and 70 < green < 190 and blue < 80:
+                badge_pixels += 1
+        assert badge_pixels > width * height * 0.01
+
+
 def test_macos_template_icons_fill_menu_bar_canvas(monkeypatch, tmp_path: Path) -> None:
     icons_dir = tmp_path / "icons"
     source = tmp_path / "brand.png"

@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-09-05] v0.9.12-dev.1 feat(macos): 预发布版本自动使用带橙色 DEV 徽标的独立应用图标，并由 Bundle 安装冒烟核对 Release Channel 与图标文件
 [2026-09-05] v0.9.11 fix(ci): 将依赖 /bin/bash 的 DMG shell 集成测试限制为 macOS，避免 Windows 正式质量门误执行平台专属测试
 [2026-09-05] v0.9.11 release: v0.9.11 macOS desktop identity and lifecycle fixes
 [2026-09-04] v0.9.11-dev.2 fix(macos): 修复打包静态 Logo 被 SPA HTML 替代、托盘与窗口重复显示、重复启动创建额外窗口及全屏关闭黑屏；安装冒烟新增 Logo 解码与后台托盘身份门禁

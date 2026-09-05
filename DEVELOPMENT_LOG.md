@@ -1,5 +1,35 @@
 # DEVELOPMENT LOG
 
+## v0.9.12-dev.1（2026-09-05）
+
+- 开发原因：
+  - 本机测试阶段使用的安装包与正式版共用同一应用图标，用户从 Finder、Dock 或应用切换器无法直观看出当前运行的是测试构建还是正式 Release。
+  - 账号连接记录实际保存在源码工作区测试数据库，正式安装版读取 `~/Library/Application Support/LarkSync` 后显示首次登录；凭据没有丢失，但相同图标放大了环境混淆。
+- 实现方式：
+  - 保留正式版 `LarkSync.icns`，新增由现有品牌图自动生成的 `LarkSync-Dev.icns`，右下角使用高对比度橙色圆角 `DEV` 徽标。
+  - PyInstaller Spec 根据完整语义版本判断发布通道：版本包含预发布后缀时选择开发版图标，否则选择正式版图标。
+  - Bundle 写入 `LarkSyncReleaseChannel=development|stable`；macOS 安装冒烟要求 Release Channel 与 `CFBundleIconFile` 严格对应。
+  - 当前代码版本更新为 `v0.9.12-dev.1`；正式稳定版本仍为 `v0.9.11`。
+  - 将本机原测试构建移动到废纸篓，并从公开 Release 下载 arm64 DMG；SHA256 与发布记录一致后重新安装正式版。
+- 当前结果：
+  - 开发版图标在 1024px ICNS 中显示橙色 `DEV` 徽标，小尺寸 Dock 图标仍可通过橙色角标识别；正式图标生成路径和文件名保持不变。
+  - `LarkSync-Dev.icns` 大小为 492,378 bytes，SHA256 为 `AA01041267E4E4B004A37F336F75A9645C178422B3759979D63D424D94A4706D`；打包后 Bundle 内图标与源文件摘要一致。
+  - 本机生成 arm64 `LarkSync-v0.9.12-dev.1.dmg`；大小为 69,793,751 bytes，SHA256 为 `F97E43ABC8F93E8357E4CE098B182AFE145AB2B79A7CB768A1CEC9ECC828537A`。
+  - 本机 `/Applications/LarkSync.app` 已替换为 GitHub Release `v0.9.11` 的 arm64 正式构建，Bundle 版本为 `0.9.11`，代码签名校验和后端健康检查通过。
+  - 正式版不导入源码工作区账号记录；用户按确认选择在正式版重新登录一次。
+- 验证方式：
+  - 测试先行：开发版图标常量、生成入口、Spec 选择和安装冒烟门禁在实现前产生 4 项预期失败。
+  - 图标生成、构建脚本和 macOS 安装冒烟定向测试共 48 项通过。
+  - 图标、构建、macOS 冒烟、版本与 Release 相关定向测试共 77 项通过。
+  - 后端收集 753 项：751 项通过、2 项按既有条件跳过；前端 TypeScript、ESLint、42 个测试文件共 134 项测试及 Vite 生产构建通过。
+  - 生成的 `LarkSync-Dev.icns` 为 1024px 多分辨率 ICNS；自动像素检查确认右下角橙色徽标面积超过整张图的 1%。
+  - 本机 Python 3.12.14、Node 24.19.0 在显式非发布基线开关下完成 PyInstaller、ad-hoc 签名与 `hdiutil` DMG 构建；Bundle 实测为 `CFBundleIconFile=LarkSync-Dev.icns`、`LarkSyncReleaseChannel=development`。
+  - `scripts/macos_installer_smoke.py` 完成 DMG 挂载、隔离安装复制、开发版图标门禁、Keychain、后端健康检查和真实 Cocoa/WKWebView 首屏验证；结果包含 `logo_visible=true`、`logo_decoded=true`、`stage=ui_verified`。
+  - 正式 arm64 DMG 大小为 65,750,703 bytes，SHA256 为 `C002E3D89B3F060198C9D4E569C1C1EB764DC1ED53D32CE001DB17E799B2EEF8`。
+- 遗留问题：
+  - 测试版与正式版仍共享应用名称和 Bundle ID；本次只按用户要求区分图标，不改变数据目录、自动更新通道或并行安装模型。
+  - 本机正式版尚未重新授权账号；该登录操作由用户自行完成。
+
 ## v0.9.11 正式发布（2026-09-05）
 
 - 开发原因：

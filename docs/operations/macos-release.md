@@ -93,9 +93,9 @@ Apple 官方说明：[安全打开 Mac App](https://support.apple.com/102445)。
 
 PR/main 的 macOS 构建使用 ad-hoc 签名，用于尽早检查 Bundle 结构和运行时。正式 tag 构建先检测六项 Apple 凭据：全部缺失时继续使用 ad-hoc 签名；全部存在时设置`LARKSYNC_REQUIRE_MACOS_NOTARIZATION=1`；部分存在时立即失败并提示补齐或清空。
 
-所有正式 macOS 构建均执行步骤 1-5；仅 Developer ID 模式继续执行步骤 6-8：
+所有 macOS 构建均执行步骤 1-5；仅 Developer ID 模式继续执行步骤 6-8：
 
-1. 生成 `.icns` 与菜单栏 Template 图标。
+1. 生成稳定版、带橙色 `DEV` 徽标的预发布版 `.icns` 与菜单栏 Template 图标；语义版本包含预发布后缀时自动选择 `LarkSync-Dev.icns`，稳定版选择 `LarkSync.icns`。
 2. PyInstaller 构建 App Bundle。
 3. 使用 Developer ID 和 Hardened Runtime 签名。
 4. `codesign --verify --deep --strict`。
@@ -112,7 +112,7 @@ DMG 默认由 `create-dmg` 生成带图标布局的镜像；构建机未安装�
 
 - 挂载 DMG，并验证`Applications`投放入口。
 - 复制 App 到隔离的临时安装目录。
-- 校验 Bundle ID、版本、`.icns`、HiDPI 元数据、`LSUIElement=true` 后台托盘身份和代码签名。
+- 校验 Bundle ID、版本、Release Channel 对应的 `.icns`、HiDPI 元数据、`LSUIElement=true` 后台托盘身份和代码签名。
 - 使用随机临时账户完成 Keychain 写入、读取和删除。
 - 启动安装版后端并检查`127.0.0.1:18765/health`。
 - 写入隔离 OAuth 测试配置。

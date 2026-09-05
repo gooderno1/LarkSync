@@ -204,6 +204,7 @@ def test_assert_bundle_metadata_requires_real_icon(tmp_path: Path) -> None:
         "CFBundleName": "LarkSync",
         "CFBundleShortVersionString": "1.2.3",
         "CFBundleIconFile": "LarkSync.icns",
+        "LarkSyncReleaseChannel": "stable",
         "NSHighResolutionCapable": True,
         "LSUIElement": True,
     }
@@ -215,6 +216,34 @@ def test_assert_bundle_metadata_requires_real_icon(tmp_path: Path) -> None:
 
     (resources / "LarkSync.icns").write_bytes(b"icns")
     assert smoke._assert_bundle_metadata(app)["CFBundleIdentifier"] == "com.larksync.app"
+
+
+def test_assert_bundle_metadata_requires_development_badge_icon(tmp_path: Path) -> None:
+    app = tmp_path / "LarkSync.app"
+    resources = app / "Contents" / "Resources"
+    resources.mkdir(parents=True)
+    info = {
+        "CFBundleIdentifier": "com.larksync.app",
+        "CFBundleDisplayName": "LarkSync",
+        "CFBundleName": "LarkSync",
+        "CFBundleShortVersionString": "1.2.3",
+        "CFBundleIconFile": "LarkSync.icns",
+        "LarkSyncReleaseChannel": "development",
+        "NSHighResolutionCapable": True,
+        "LSUIElement": True,
+    }
+    with (app / "Contents" / "Info.plist").open("wb") as stream:
+        smoke.plistlib.dump(info, stream)
+    (resources / "LarkSync.icns").write_bytes(b"stable-icon")
+
+    with pytest.raises(RuntimeError, match="开发版图标"):
+        smoke._assert_bundle_metadata(app)
+
+    info["CFBundleIconFile"] = "LarkSync-Dev.icns"
+    with (app / "Contents" / "Info.plist").open("wb") as stream:
+        smoke.plistlib.dump(info, stream)
+    (resources / "LarkSync-Dev.icns").write_bytes(b"development-icon")
+    assert smoke._assert_bundle_metadata(app)["LarkSyncReleaseChannel"] == "development"
 
 
 def test_run_macos_installer_smoke_rejects_non_macos(
@@ -459,6 +488,7 @@ def test_bundle_metadata_requires_background_tray_identity(tmp_path: Path) -> No
         "CFBundleName": "LarkSync",
         "CFBundleShortVersionString": "0.9.11",
         "CFBundleIconFile": "LarkSync.icns",
+        "LarkSyncReleaseChannel": "stable",
         "NSHighResolutionCapable": True,
         "LSUIElement": True,
     }
@@ -480,6 +510,7 @@ def test_bundle_metadata_rejects_regular_tray_identity(tmp_path: Path) -> None:
         "CFBundleName": "LarkSync",
         "CFBundleShortVersionString": "0.9.11",
         "CFBundleIconFile": "LarkSync.icns",
+        "LarkSyncReleaseChannel": "stable",
         "NSHighResolutionCapable": True,
         "LSUIElement": False,
     }

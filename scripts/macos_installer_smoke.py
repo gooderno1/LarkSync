@@ -118,9 +118,28 @@ def _assert_bundle_metadata(app_bundle: Path) -> dict[str, object]:
             raise RuntimeError(f"Info.plist 字段异常: {key}={info.get(key)!r}, expected={value!r}")
     if not str(info.get("CFBundleShortVersionString") or "").strip():
         raise RuntimeError("Info.plist 缺少 CFBundleShortVersionString")
+    release_channel = str(info.get("LarkSyncReleaseChannel") or "").strip()
+    if release_channel not in {"stable", "development"}:
+        raise RuntimeError(
+            "Info.plist 缺少有效的 LarkSyncReleaseChannel："
+            f"{release_channel!r}"
+        )
     icon_name = str(info.get("CFBundleIconFile") or "").strip()
     if not icon_name:
         raise RuntimeError("Info.plist 缺少 CFBundleIconFile")
+    expected_icon = (
+        "LarkSync-Dev.icns"
+        if release_channel == "development"
+        else "LarkSync.icns"
+    )
+    normalized_icon_name = Path(icon_name).name
+    if not Path(normalized_icon_name).suffix:
+        normalized_icon_name = f"{normalized_icon_name}.icns"
+    if normalized_icon_name != expected_icon:
+        label = "开发版图标" if release_channel == "development" else "正式版图标"
+        raise RuntimeError(
+            f"{label}异常: {normalized_icon_name!r}, expected={expected_icon!r}"
+        )
     icon_path = app_bundle / "Contents" / "Resources" / icon_name
     if not icon_path.suffix:
         icon_path = icon_path.with_suffix(".icns")

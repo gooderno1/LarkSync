@@ -375,6 +375,7 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     monkeypatch.setattr(bi, "SPEC_FILE", spec_file)
     monkeypatch.setattr(bi, "WINDOWS_ICON", project_root / "assets" / "branding" / "LarkSync.ico")
     monkeypatch.setattr(bi, "MACOS_ICON", project_root / "assets" / "branding" / "LarkSync.icns")
+    monkeypatch.setattr(bi, "MACOS_DEV_ICON", project_root / "assets" / "branding" / "LarkSync-Dev.icns")
     monkeypatch.setattr(bi, "MACOS_ENTITLEMENTS", project_root / "scripts" / "installer" / "macos" / "LarkSync.entitlements")
 
     bi._generate_spec()
@@ -393,6 +394,8 @@ def test_generate_spec_includes_required_hiddenimports_and_filtered_datas(
     assert "'arm64'" in content
     assert "'x86_64'" in content
     assert "LarkSync.icns" in content
+    assert "LarkSync-Dev.icns" in content
+    assert "LarkSyncReleaseChannel" in content
     assert "CFBundleDisplayName" in content
     assert "CFBundleShortVersionString" in content
     assert "LSMinimumSystemVersion" in content
@@ -419,6 +422,8 @@ def test_checked_in_spec_includes_webview_hiddenimports() -> None:
     assert '"webview.platforms.edgechromium"' in spec
     assert '"webview.platforms.winforms"' in spec
     assert 'icon=str(macos_icon)' in spec
+    assert '"LarkSync-Dev.icns"' in spec
+    assert '"LarkSyncReleaseChannel"' in spec
     assert '"CFBundleDisplayName": "LarkSync"' in spec
     assert '"LSMinimumSystemVersion": "12.0"' in spec
     assert '"LSUIElement": True' in spec

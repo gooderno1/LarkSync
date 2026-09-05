@@ -49,11 +49,13 @@ frontend_dist = project_root / "apps" / "frontend" / "dist"
 tray_icons = project_root / "apps" / "tray" / "icons"
 branding_dir = project_root / "assets" / "branding"
 win_icon = branding_dir / "LarkSync.ico"
-macos_icon = branding_dir / "LarkSync.icns"
 macos_entitlements = project_root / "scripts" / "installer" / "macos" / "LarkSync.entitlements"
 backend_pyproject = project_root / "apps" / "backend" / "pyproject.toml"
 bundle_version = os.getenv("LARKSYNC_BUNDLE_VERSION", "0.0.0").lstrip("v")
 bundle_short_version = bundle_version.split("-")[0]
+development_build = "-" in bundle_version
+macos_icon = branding_dir / ("LarkSync-Dev.icns" if development_build else "LarkSync.icns")
+release_channel = "development" if development_build else "stable"
 codesign_identity = os.getenv("LARKSYNC_MACOS_CODESIGN_IDENTITY", "").strip() or None
 
 datas = []
@@ -153,6 +155,7 @@ if sys.platform == "darwin":
             "CFBundleName": "LarkSync",
             "CFBundleShortVersionString": bundle_short_version,
             "CFBundleVersion": bundle_short_version,
+            "LarkSyncReleaseChannel": release_channel,
             "LSApplicationCategoryType": "public.app-category.productivity",
             "LSMinimumSystemVersion": "12.0",
             "LSUIElement": True,

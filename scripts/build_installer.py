@@ -37,6 +37,7 @@ BRANDING_DIR = PROJECT_ROOT / "assets" / "branding"
 BRAND_ICON = BRANDING_DIR / "LarkSync_Logo_Icon_FullColor.png"
 WINDOWS_ICON = BRANDING_DIR / "LarkSync.ico"
 MACOS_ICON = BRANDING_DIR / "LarkSync.icns"
+MACOS_DEV_ICON = BRANDING_DIR / "LarkSync-Dev.icns"
 MACOS_ENTITLEMENTS = PROJECT_ROOT / "scripts" / "installer" / "macos" / "LarkSync.entitlements"
 BUILD_BASELINE_PYTHON = (3, 14)
 BUILD_BASELINE_PYTHON_LABEL = "Python 3.14.x"
@@ -310,13 +311,20 @@ def step_build_frontend() -> None:
 def step_generate_icons() -> None:
     print("\n[2/4] 生成托盘图标...")
     sys.path.insert(0, str(PROJECT_ROOT))
-    from apps.tray.icon_generator import generate_icons, generate_macos_app_icon
+    from apps.tray.icon_generator import (
+        generate_icons,
+        generate_macos_app_icon,
+        generate_macos_development_app_icon,
+    )
     icons = generate_icons(force=True)
     macos_icon = generate_macos_app_icon(force=True)
+    macos_dev_icon = generate_macos_development_app_icon(force=True)
     _ensure_windows_icon()
     print(f"  ✓ 生成了 {len(icons)} 个托盘图标")
     if macos_icon:
         print(f"  ✓ macOS 应用图标: {macos_icon}")
+    if macos_dev_icon:
+        print(f"  ✓ macOS 测试版应用图标: {macos_dev_icon}")
 
 
 def step_pyinstaller() -> None:
@@ -428,10 +436,12 @@ def _resolve_project_root() -> Path:
 
 
 project_root = _resolve_project_root()
-macos_icon = project_root / 'assets' / 'branding' / 'LarkSync.icns'
 macos_entitlements = project_root / 'scripts' / 'installer' / 'macos' / 'LarkSync.entitlements'
 bundle_version = os.getenv('LARKSYNC_BUNDLE_VERSION', '0.0.0').lstrip('v')
 bundle_short_version = bundle_version.split('-')[0]
+development_build = '-' in bundle_version
+macos_icon = project_root / 'assets' / 'branding' / ({MACOS_DEV_ICON.name!r} if development_build else {MACOS_ICON.name!r})
+release_channel = 'development' if development_build else 'stable'
 codesign_identity = os.getenv('LARKSYNC_MACOS_CODESIGN_IDENTITY', '').strip() or None
 
 a = Analysis(
@@ -497,6 +507,7 @@ if sys.platform == 'darwin':
             'CFBundleName': 'LarkSync',
             'CFBundleShortVersionString': bundle_short_version,
             'CFBundleVersion': bundle_short_version,
+            'LarkSyncReleaseChannel': release_channel,
             'LSApplicationCategoryType': 'public.app-category.productivity',
             'LSMinimumSystemVersion': '12.0',
             'LSUIElement': True,

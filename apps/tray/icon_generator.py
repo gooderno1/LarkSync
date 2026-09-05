@@ -15,6 +15,7 @@ ICONS_DIR = Path(__file__).resolve().parent / "icons"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BRAND_ICON = PROJECT_ROOT / "assets" / "branding" / "LarkSync_Logo_Icon_FullColor.png"
 MACOS_APP_ICON = PROJECT_ROOT / "assets" / "branding" / "LarkSync.icns"
+MACOS_DEV_APP_ICON = PROJECT_ROOT / "assets" / "branding" / "LarkSync-Dev.icns"
 
 
 def generate_icons(size: int = 64, force: bool = False) -> dict[str, Path]:
@@ -77,21 +78,41 @@ def generate_icons(size: int = 64, force: bool = False) -> dict[str, Path]:
 
 def generate_macos_app_icon(force: bool = False) -> Path | None:
     """从品牌图生成包含多分辨率表示的 macOS ICNS 应用图标。"""
+    return _generate_macos_app_icon(MACOS_APP_ICON, force=force, development=False)
+
+
+def generate_macos_development_app_icon(force: bool = False) -> Path | None:
+    """生成带 DEV 徽标的 macOS 测试版 ICNS，避免与正式版混淆。"""
+    return _generate_macos_app_icon(
+        MACOS_DEV_APP_ICON,
+        force=force,
+        development=True,
+    )
+
+
+def _generate_macos_app_icon(
+    output: Path,
+    *,
+    force: bool,
+    development: bool,
+) -> Path | None:
     try:
         from PIL import Image
     except ImportError:
         return None
     if not BRAND_ICON.is_file():
         return None
-    if MACOS_APP_ICON.is_file() and not force:
-        return MACOS_APP_ICON
+    if output.is_file() and not force:
+        return output
 
-    MACOS_APP_ICON.parent.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
     source = Image.open(str(BRAND_ICON)).convert("RGBA")
     canvas = _prepare_macos_app_icon(source, 1024)
+    if development:
+        canvas = _apply_development_badge(canvas)
     # Pillow 的 ICNS writer 会从 1024px 主图生成 macOS 需要的多尺寸表示。
-    canvas.save(str(MACOS_APP_ICON), format="ICNS")
-    return MACOS_APP_ICON
+    canvas.save(str(output), format="ICNS")
+    return output
 
 
 def _prepare_macos_app_icon(source: "Image.Image", size: int) -> "Image.Image":
@@ -130,6 +151,73 @@ def _prepare_macos_app_icon(source: "Image.Image", size: int) -> "Image.Image":
         Image.LANCZOS,
     )
     canvas.alpha_composite(mark, ((size - mark.width) // 2, (size - mark.height) // 2))
+    return canvas
+
+
+def _apply_development_badge(source: "Image.Image") -> "Image.Image":
+    """在应用图标右下角绘制高对比度 DEV 徽标，小尺寸 Dock 中仍可识别。"""
+    from PIL import ImageDraw, ImageFont
+
+    canvas = source.copy().convert("RGBA")
+    size = min(canvas.size)
+    left = int(size * 0.47)
+    top = int(size * 0.72)
+    right = int(size * 0.945)
+    bottom = int(size * 0.91)
+    radius = int(size * 0.055)
+    shadow_offset = int(size * 0.014)
+    draw = ImageDraw.Draw(canvas)
+    draw.rounded_rectangle(
+        (
+            left + shadow_offset,
+            top + shadow_offset,
+            right + shadow_offset,
+            bottom + shadow_offset,
+        ),
+        radius=radius,
+        fill=(15, 23, 42, 90),
+    )
+    draw.rounded_rectangle(
+        (left, top, right, bottom),
+        radius=radius,
+        fill=(255, 122, 26, 255),
+        outline=(255, 255, 255, 255),
+        width=max(4, size // 128),
+    )
+
+    font_size = max(12, int(size * 0.105))
+    font = None
+    for candidate in (
+        "/System/Library/Fonts/SFNS.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ):
+        try:
+            font = ImageFont.truetype(candidate, font_size)
+            break
+        except OSError:
+            continue
+    if font is None:
+        try:
+            font = ImageFont.load_default(size=font_size)
+        except TypeError:
+            font = ImageFont.load_default()
+
+    label = "DEV"
+    label_box = draw.textbbox((0, 0), label, font=font, stroke_width=max(1, size // 512))
+    label_width = label_box[2] - label_box[0]
+    label_height = label_box[3] - label_box[1]
+    label_x = left + (right - left - label_width) // 2
+    label_y = top + (bottom - top - label_height) // 2 - label_box[1]
+    draw.text(
+        (label_x, label_y),
+        label,
+        font=font,
+        fill=(255, 255, 255, 255),
+        stroke_width=max(1, size // 512),
+        stroke_fill=(178, 63, 0, 255),
+    )
     return canvas
 
 
@@ -305,8 +393,11 @@ def get_macos_icon_path(state: str) -> Path | None:
 if __name__ == "__main__":
     icons = generate_icons(size=64, force=True)
     app_icon = generate_macos_app_icon(force=True)
+    development_app_icon = generate_macos_development_app_icon(force=True)
     for name, path in icons.items():
         print(f"  {name}: {path}")
     print(f"\n生成了 {len(icons)} 个图标到 {ICONS_DIR}")
     if app_icon:
         print(f"macOS 应用图标: {app_icon}")
+    if development_app_icon:
+        print(f"macOS 测试版应用图标: {development_app_icon}")
