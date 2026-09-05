@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-09-05] v0.9.11 release: v0.9.11 macOS desktop identity and lifecycle fixes
 [2026-09-04] v0.9.11-dev.2 fix(macos): 修复打包静态 Logo 被 SPA HTML 替代、托盘与窗口重复显示、重复启动创建额外窗口及全屏关闭黑屏；安装冒烟新增 Logo 解码与后台托盘身份门禁
 [2026-09-04] v0.9.11-dev.1 fix(macos): Cocoa 窗口激活改走主线程，完整退出时清理桌面与后端进程；DMG 增加系统 hdiutil 回退，安装冒烟对齐当前 Device Flow 首屏并校验原生 PID 存活
 [2026-09-03] v0.9.10 release: v0.9.10 aligned settings and maintenance layouts

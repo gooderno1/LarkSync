@@ -12,7 +12,7 @@ ENTRY_RE = re.compile(
     r"^\[(?P<date>\d{4}-\d{2}-\d{2})\]\s+(?P<version>v?\d+\.\d+\.\d+(?:-dev\.\d+)?)\s+(?P<message>.+)$"
 )
 DEV_LOG_HEADING_RE = re.compile(
-    r"^##\s+(?P<version>v?\d+\.\d+\.\d+(?:-dev\.\d+)?|v?\d+\.\d+\.\d+\s+release)\s+\((?P<date>\d{4}-\d{2}-\d{2})\)$"
+    r"^##\s+(?P<version>v?\d+\.\d+\.\d+(?:-dev\.\d+)?|v?\d+\.\d+\.\d+\s+release)\s*[（(](?P<date>\d{4}-\d{2}-\d{2})[）)]$"
 )
 
 

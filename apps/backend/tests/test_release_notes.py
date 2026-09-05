@@ -158,6 +158,28 @@ def test_parse_development_log_supports_current_readability_headings() -> None:
     assert sections[0].tests == ["后端 583 项测试通过。"]
 
 
+def test_parse_development_log_supports_full_width_date_parentheses() -> None:
+    development_log = """
+# DEVELOPMENT LOG
+
+## v0.9.11-dev.2（2026-09-04）
+
+- 开发原因：
+  - macOS 打包版 Logo 无法显示。
+- 当前结果：
+  - Logo 已按 PNG 正确返回。
+- 验证方式：
+  - 安装冒烟通过。
+""".strip()
+
+    sections = release_notes.parse_development_log(development_log)
+
+    assert len(sections) == 1
+    assert sections[0].version == "v0.9.11-dev.2"
+    assert sections[0].date == "2026-09-04"
+    assert sections[0].results == ["Logo 已按 PNG 正确返回。"]
+
+
 def test_parse_development_log_stops_at_unrecognized_level_two_heading() -> None:
     development_log = """
 # DEVELOPMENT LOG
