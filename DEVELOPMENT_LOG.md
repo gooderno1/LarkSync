@@ -25,6 +25,7 @@
   - 生成的 `LarkSync-Dev.icns` 为 1024px 多分辨率 ICNS；自动像素检查确认右下角橙色徽标面积超过整张图的 1%。
   - 本机 Python 3.12.14、Node 24.19.0 在显式非发布基线开关下完成 PyInstaller、ad-hoc 签名与 `hdiutil` DMG 构建；Bundle 实测为 `CFBundleIconFile=LarkSync-Dev.icns`、`LarkSyncReleaseChannel=development`。
   - `scripts/macos_installer_smoke.py` 完成 DMG 挂载、隔离安装复制、开发版图标门禁、Keychain、后端健康检查和真实 Cocoa/WKWebView 首屏验证；结果包含 `logo_visible=true`、`logo_decoded=true`、`stage=ui_verified`。
+  - `main` 流水线 `33967299287` 成功；质量门、WebKit 登录流程、macOS Intel x86_64 与 Apple Silicon arm64 的开发版图标构建、DMG 安装启动冒烟全部通过，非正式 Tag 按条件跳过 Release 资产上传。
   - 正式 arm64 DMG 大小为 65,750,703 bytes，SHA256 为 `C002E3D89B3F060198C9D4E569C1C1EB764DC1ED53D32CE001DB17E799B2EEF8`。
 - 遗留问题：
   - 测试版与正式版仍共享应用名称和 Bundle ID；本次只按用户要求区分图标，不改变数据目录、自动更新通道或并行安装模型。
