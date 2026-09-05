@@ -12,11 +12,20 @@
   - 后端、前端、根项目及两个 lockfile 的版本元数据统一更新为 `v0.9.11`。
   - 正式 Tag 触发 `Release Build`，执行 Python 3.14、Node 25 质量门、Windows 静默安装、WebKit 登录流程、Windows NSIS 和 macOS 双架构构建及安装启动冒烟。
 - 当前结果：
-  - 正式发布流程待 Tag 推送后执行；完成后补记 Release 地址、资产大小、SHA256 与流水线结果。
+  - 正式 Tag `v0.9.11` 指向提交 `e9a373bd797d6bb159067dbc820f4f3a1eeed1e0`；该提交已合入 `main`，并作为正式构建输入。
+  - GitHub Release 已公开并设为 Latest：`https://github.com/gooderno1/LarkSync/releases/tag/v0.9.11`；不是草稿或预发布。
+  - Windows 安装包 `LarkSync-Setup-v0.9.11.exe` 大小为 58,674,562 bytes，SHA256 为 `DF036FD74292FDCF46DAACD1307E0FC49D5B708E61AB91BF880C3EDD41D9F0D`。
+  - Apple Silicon 安装包 `LarkSync-v0.9.11-arm64.dmg` 大小为 65,750,703 bytes，SHA256 为 `C002E3D89B3F060198C9D4E569C1C1EB764DC1ED53D32CE001DB17E799B2EEF8`。
+  - Intel 安装包 `LarkSync-v0.9.11-x86_64.dmg` 大小为 66,679,871 bytes，SHA256 为 `DCFE78157E00A635009CD2891EF1E2D718A561C6CF828257B1FD4D354878701F`。
+  - 三个平台安装包及三个独立 `.sha256` 文件共六个资产均为 `uploaded`；三个校验文件内容已与 GitHub 安装包资产 digest 逐项核对一致。
 - 验证方式：
   - 发布前后端收集 750 项：748 项通过、2 项按既有条件跳过；前端 42 个测试文件共 134 项通过，TypeScript、ESLint 与 Vite 生产构建通过。
+  - 发布相关 `test_release.py`、`test_release_notes.py`、`test_version.py`、`test_release_workflow.py` 共 29 项通过。
   - `v0.9.11-dev.2` arm64 DMG 已通过挂载、安装复制、Bundle/`LSUIElement`、Keychain、后端健康检查和真实 Cocoa/WKWebView 首屏冒烟；Logo 解码、父子激活策略、重复启动单窗口与统一退出均有独立验证证据。
   - 首次 `main` 流水线 `33959388766` 在 Windows 质量门准确暴露平台专属测试误执行；失败位置为启动不存在的 `/bin/bash`，不是产品实现或测试断言失败。
+  - 首次 Tag 流水线 `33959968406` 复现同一平台门禁问题；修复后第二次 Tag 流水线 `33960969773` 完成全部安装包构建与冒烟，但因远端开发日志内容传输不完整在发布说明生成阶段停止，失败运行未保留不完整 Release 资产。
+  - 最终 Tag 流水线 `33965467172` 成功；质量门、Windows 静默安装、WebKit 两次扫码、Windows NSIS、macOS arm64/x86_64 构建、两类 macOS 安装启动冒烟及六个资产上传全部通过。
+  - 同一发布提交的 `main` 流水线 `33961340628` 成功；非 Tag 分支按条件跳过正式资产上传，但完成质量门、WebKit 和 macOS 双架构打包启动验证。
 - 遗留问题：
   - 最终全屏红色关闭按钮的人工视觉验收仍需在解锁桌面后执行；Cocoa 主线程调用与隐藏/恢复路径已有自动化测试覆盖。
   - 本机未配置 Apple Developer ID 与公证凭据；若仓库 Secret 仍为空，流水线将发布 ad-hoc 签名 DMG，首次打开可能需要在系统设置中手动放行。
