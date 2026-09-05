@@ -293,6 +293,10 @@ def test_build_dmg_exits_when_app_bundle_missing(monkeypatch, tmp_path: Path) ->
         bi._build_dmg()
 
 
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="macOS-only DMG shell integration requires /bin/bash",
+)
 def test_macos_create_dmg_script_falls_back_to_hdiutil(tmp_path: Path) -> None:
     project_root = tmp_path / "repo"
     script_path = project_root / "scripts" / "installer" / "macos" / "create_dmg.sh"
