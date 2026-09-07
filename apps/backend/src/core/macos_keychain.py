@@ -72,7 +72,16 @@ class MacOSKeychain:
         with self._operations:
             self.ensure_available()
             try:
-                yield _frameworks()
+                api, foundation = _frameworks()
+                # 文件型登录钥匙串会忽略 SecItem 的 UI 参数（Chromium FB16959400）。
+                # 进程内串行设置，调用完成或失败都恢复，绝不更改系统/其他进程策略。
+                status, was_allowed = api.SecKeychainGetUserInteractionAllowed(None)
+                self._check(status)
+                self._check(api.SecKeychainSetUserInteractionAllowed(self._interactive.get()))
+                try:
+                    yield api, foundation
+                finally:
+                    self._check(api.SecKeychainSetUserInteractionAllowed(was_allowed))
             except KeychainAccessError:
                 raise
             except Exception as exc:

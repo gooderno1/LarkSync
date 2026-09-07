@@ -26,8 +26,18 @@ class FakeSecurity:
         self.denied = False
         self.identities = {}
         self.serial = 0
+        self.interaction_allowed = True
+        self.interaction_during_calls = []
+
+    def SecKeychainGetUserInteractionAllowed(self, output):
+        return 0, self.interaction_allowed
+
+    def SecKeychainSetUserInteractionAllowed(self, allowed):
+        self.interaction_allowed = allowed
+        return 0
 
     def _call(self, operation, query):
+        self.interaction_during_calls.append(self.interaction_allowed)
         self.calls.append((operation, dict(query)))
         return (query["service"], query["account"])
 
@@ -138,3 +148,21 @@ def test_explicit_retry_authorizes_failed_item_even_before_database_commit(nativ
         backend.retry_pending()
     assert api.calls[-1] == ("get", {"class": "generic", "service": "uncommitted-profile",
                                       "account": "secret", "return_data": True, "limit": "one"})
+
+
+def test_file_keychain_disables_process_interaction_and_restores_after_denial(native):
+    backend, api = native
+    api.denied = True
+    with pytest.raises(macos_keychain.KeychainAccessError):
+        backend.get_password("test", "account")
+    assert api.interaction_during_calls == [False]
+    assert api.interaction_allowed is True
+
+
+def test_explicit_interaction_restores_preexisting_process_setting(native):
+    backend, api = native
+    api.interaction_allowed = False
+    with backend.interactive_retry():
+        assert backend.get_password("test", "account") is None
+    assert api.interaction_during_calls == [True]
+    assert api.interaction_allowed is False

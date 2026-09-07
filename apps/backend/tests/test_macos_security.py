@@ -138,7 +138,10 @@ def test_factory_only_selects_macos_store_on_macos(memory_keychain, monkeypatch)
     assert type(security.get_token_store("windows")) is KeyringTokenStore
 
 
-def test_installer_smoke_uses_actual_token_store_and_cleans_temporary_credentials(memory_keychain):
+def test_installer_smoke_uses_actual_token_store_and_cleans_temporary_credentials(memory_keychain, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[3]))
     from apps.tray.launcher import _run_macos_token_store_smoke
 
     _backend, values, _calls = memory_keychain
