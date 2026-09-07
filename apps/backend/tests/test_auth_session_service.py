@@ -309,7 +309,7 @@ async def test_reauthorize_session_returns_stable_storage_failure(monkeypatch) -
         "status": "credential_storage_failed",
         "message": (
             "飞书授权已完成，但新凭据未能安全保存。原授权仍保留，"
-            "请重新开始授权；如果持续出现，请检查 Windows 凭据管理器。"
+            "请检查系统凭据库（macOS 钥匙串 / Windows 凭据管理器）后重新授权。"
         ),
     }
     assert await service.poll_device(session.id) == result

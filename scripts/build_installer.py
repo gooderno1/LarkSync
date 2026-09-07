@@ -453,7 +453,7 @@ a = Analysis(
     ],
     hiddenimports=[
 {hiddenimports_lines}
-    ],
+    ] + (['Security'] if sys.platform == 'darwin' else []),
     hookspath=[str(project_root / "scripts" / "pyinstaller_hooks")],
     hooksconfig={{}},
     runtime_hooks=[],

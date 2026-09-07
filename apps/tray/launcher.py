@@ -112,6 +112,15 @@ def _run_keychain_smoke(result_path: Path) -> int:
     account = f"ci-{os.getpid()}-{secrets.token_hex(4)}"
     value = secrets.token_urlsafe(32)
     payload: dict[str, object]
+    if sys.platform == "darwin":
+        from apps.tray.config import BACKEND_DIR
+
+        if str(BACKEND_DIR) not in sys.path:
+            sys.path.insert(0, str(BACKEND_DIR))
+        payload = _run_macos_token_store_smoke(account)
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        return 0 if payload.get("ok") else 1
     try:
         keyring.set_password("com.larksync.app.smoke", account, value)
         payload = {"ok": keyring.get_password("com.larksync.app.smoke", account) == value}
@@ -125,6 +134,33 @@ def _run_keychain_smoke(result_path: Path) -> int:
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     return 0 if payload.get("ok") else 1
+
+
+def _run_macos_token_store_smoke(account: str) -> dict[str, object]:
+    """使用业务实际存储验证长 Token、跨实例重载、更新与注销，不请求真实账号。"""
+    from src.core.security import MacOSKeyringTokenStore, TokenData
+
+    account_id = f"installer-smoke-{account}"
+    store = MacOSKeyringTokenStore(account_id)
+    first = TokenData("a" * 4200, "r" * 4600, None)
+    refreshed = TokenData("b" * 4300, "s" * 4700, None)
+    try:
+        store.set(first)
+        loaded = MacOSKeyringTokenStore(account_id).get()
+        store.set(refreshed)
+        updated = MacOSKeyringTokenStore(account_id).reload()
+        store.clear()
+        cleared = MacOSKeyringTokenStore(account_id).get() is None
+        return {"ok": loaded == first and updated == refreshed and cleared,
+                "long_token_roundtrip": loaded == first,
+                "refresh_roundtrip": updated == refreshed, "cleared": cleared}
+    except Exception as exc:
+        return {"ok": False, "error_type": type(exc).__name__}
+    finally:
+        try:
+            store.clear()
+        except Exception:
+            pass
 
 
 def entrypoint(argv: list[str] | None = None) -> int:

@@ -9,6 +9,7 @@ import { ToastProvider } from "./components/ui/toast";
 import App from "./App";
 import "./index.css";
 import { AccountProvider } from "./hooks/useAccounts";
+import { KeychainAccessBoundary } from "./components/KeychainAccessBoundary";
 
 try {
   const saved = window.localStorage.getItem("larksync-theme");
@@ -31,7 +32,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <AccountProvider>
-          <App />
+          <KeychainAccessBoundary><App /></KeychainAccessBoundary>
         </AccountProvider>
       </ToastProvider>
     </QueryClientProvider>

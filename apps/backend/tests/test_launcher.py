@@ -84,6 +84,8 @@ def test_packaged_launcher_enables_frozen_multiprocessing_before_argument_routin
 
 
 def test_packaged_launcher_keychain_smoke_round_trips_and_deletes(monkeypatch, tmp_path: Path) -> None:
+    # 旧 keyring smoke 路由；macOS 业务存储 smoke 另行覆盖。
+    monkeypatch.setattr(launcher, "sys", types.SimpleNamespace(platform="win32"))
     values: dict[tuple[str, str], str] = {}
     fake_keyring = types.ModuleType("keyring")
     fake_keyring.set_password = lambda service, account, value: values.__setitem__((service, account), value)  # type: ignore[attr-defined]

@@ -108,6 +108,15 @@ DMG 默认由 `create-dmg` 生成带图标布局的镜像；构建机未安装�
 
 ## 安装 smoke
 
+### v0.9.12 钥匙串授权回归
+
+- 后台 Keychain 查询使用 `kSecUseAuthenticationUIFail`；需要系统授权时只显示应用内恢复入口，不循环唤起密码窗口。
+- 用户点击“重试钥匙串访问”后，工作线程才允许系统交互；取消后保留数据并继续暂停。
+- macOS Token 使用 `token_bundle.macos.v1` 单条目，`SecItemUpdate` 原位更新；旧格式首次成功读取后复制迁移。
+- 删除 `.app` 不会执行钥匙串清理。用户数据目录 `~/Library/Application Support/LarkSync` 也独立于应用包。
+- 安装冒烟必须调用业务实际存储类，验证 4,200/4,600 字符模拟 Token、跨实例读取、4,300/4,700 字符刷新及清除；不得把随机短密码 round-trip 当作完整凭据链路验收。
+- 真机另行验证旧版覆盖升级、只删除应用后重装、拒绝与始终允许、重启和刷新；CI 无交互式桌面时不宣称已验证实际系统弹窗。
+
 `python scripts/macos_installer_smoke.py --arch-suffix arm64`会：
 
 - 挂载 DMG，并验证`Applications`投放入口。

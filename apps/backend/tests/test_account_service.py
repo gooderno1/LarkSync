@@ -16,6 +16,41 @@ from src.services.account_service import AccountService
 
 
 @pytest.mark.asyncio
+async def test_migrated_account_does_not_reopen_global_keychain_or_rewrite_token(monkeypatch):
+    from types import SimpleNamespace
+    from src.services import account_service as module
+    from src.db.models import Account, AppProfile
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    async with maker() as session:
+        session.add(AppProfile(id="legacy-default-app", brand="feishu", app_id="cli_test",
+                               secret_ref="legacy", source="legacy", enabled=True, created_at=1, updated_at=1))
+        session.add(Account(id=module.LEGACY_ACCOUNT_ID, app_profile_id="legacy-default-app", brand="feishu",
+                            open_id="ou_test", state="connected", auth_protocol="device_v2",
+                            created_at=1, updated_at=1))
+        await session.commit()
+    store = MemoryTokenStore()
+    token = TokenData("access", "refresh", None, auth_protocol="device_v2")
+    store.set(token)
+    monkeypatch.setattr(store, "set", lambda value: pytest.fail("unchanged token must not be rewritten"))
+
+    def factory(account_id):
+        assert account_id == module.LEGACY_ACCOUNT_ID, "must not access global legacy credentials"
+        return store
+
+    monkeypatch.setattr(module.ConfigManager, "get", lambda: SimpleNamespace(config=SimpleNamespace(
+        auth_client_id="", auth_client_secret="")))
+    service = AccountService(session_maker=maker, token_store_factory=factory,
+                             secret_store=MemorySecretStore(), device_id="test")
+    assert await service.migrate_legacy_install() is True
+    assert store.get() == token
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_accounts_have_isolated_credentials_and_active_preference() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:

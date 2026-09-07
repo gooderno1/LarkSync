@@ -16,6 +16,7 @@ from loguru import logger
 
 from .config import ConfigManager
 from .paths import data_dir
+from . import macos_keychain
 
 
 @dataclass(frozen=True)
@@ -61,22 +62,26 @@ class SecretStore:
     def set(self, namespace: str, value: str) -> None:
         raise NotImplementedError
 
+    def reload(self, namespace: str) -> Optional[str]:
+        return self.get(namespace)
+
     def clear(self, namespace: str) -> None:
         raise NotImplementedError
 
 
 class KeyringSecretStore(SecretStore):
     _service = "larksync.app-profile"
+    _keyring = keyring
 
     def get(self, namespace: str) -> Optional[str]:
-        return keyring.get_password(self._service, namespace)
+        return self._keyring.get_password(self._service, namespace)
 
     def set(self, namespace: str, value: str) -> None:
-        keyring.set_password(self._service, namespace, value)
+        self._keyring.set_password(self._service, namespace, value)
 
     def clear(self, namespace: str) -> None:
         try:
-            keyring.delete_password(self._service, namespace)
+            self._keyring.delete_password(self._service, namespace)
         except keyring.errors.PasswordDeleteError:
             pass
 
@@ -99,6 +104,7 @@ class KeyringTokenStore(TokenStore):
     """使用分片 Token 包和活动清单规避 Windows CredWrite 长度限制。"""
 
     _service = "larksync"
+    _keyring = keyring
     _BUNDLE_FORMAT = "chunked_bundle_v1"
     _KEY_ACTIVE_BUNDLE = "token_bundle.active"
     _KEY_STAGING_BUNDLE = "token_bundle.staging"
@@ -135,7 +141,7 @@ class KeyringTokenStore(TokenStore):
     def _read_from_keyring(self) -> Optional[TokenData]:
         # Windows 凭据管理器属于同步系统调用，只允许首次加载或显式 reload。
         try:
-            active_manifest = keyring.get_password(
+            active_manifest = self._keyring.get_password(
                 self._service, self._KEY_ACTIVE_BUNDLE
             )
             if active_manifest:
@@ -151,19 +157,19 @@ class KeyringTokenStore(TokenStore):
             raise CredentialStorageError("系统安全凭据读取失败") from exc
 
     def _read_legacy_formats(self) -> Optional[TokenData]:
-        access_token = keyring.get_password(self._service, self._KEY_ACCESS)
+        access_token = self._keyring.get_password(self._service, self._KEY_ACCESS)
         if access_token:
-            refresh_raw = keyring.get_password(self._service, self._KEY_REFRESH) or ""
+            refresh_raw = self._keyring.get_password(self._service, self._KEY_REFRESH) or ""
             refresh_token = "" if refresh_raw == "_empty_" else refresh_raw
-            expires_raw = keyring.get_password(self._service, self._KEY_EXPIRES)
+            expires_raw = self._keyring.get_password(self._service, self._KEY_EXPIRES)
             expires_at = float(expires_raw) if expires_raw else None
-            open_id_raw = keyring.get_password(self._service, self._KEY_OPEN_ID)
-            account_name_raw = keyring.get_password(self._service, self._KEY_ACCOUNT_NAME)
-            scope_raw = keyring.get_password(self._service, "scope")
-            refresh_expires_raw = keyring.get_password(
+            open_id_raw = self._keyring.get_password(self._service, self._KEY_OPEN_ID)
+            account_name_raw = self._keyring.get_password(self._service, self._KEY_ACCOUNT_NAME)
+            scope_raw = self._keyring.get_password(self._service, "scope")
+            refresh_expires_raw = self._keyring.get_password(
                 self._service, "refresh_expires_at"
             )
-            auth_protocol_raw = keyring.get_password(self._service, "auth_protocol")
+            auth_protocol_raw = self._keyring.get_password(self._service, "auth_protocol")
             return TokenData(
                 access_token=access_token,
                 refresh_token=refresh_token,
@@ -176,7 +182,7 @@ class KeyringTokenStore(TokenStore):
                 ),
                 auth_protocol=(auth_protocol_raw or "device_v2").strip() or "device_v2",
             )
-        raw = keyring.get_password(self._service, self._KEY_LEGACY)
+        raw = self._keyring.get_password(self._service, self._KEY_LEGACY)
         if not raw:
             return None
         data = json.loads(raw)
@@ -205,7 +211,7 @@ class KeyringTokenStore(TokenStore):
             chunks: list[str] = []
             for index in range(chunk_count):
                 key = self._chunk_key(generation, index)
-                value = keyring.get_password(self._service, key)
+                value = self._keyring.get_password(self._service, key)
                 if value is None:
                     raise ValueError(f"活动凭据缺少分片 {index}")
                 chunks.append(value)
@@ -271,7 +277,7 @@ class KeyringTokenStore(TokenStore):
     def set(self, token: TokenData) -> None:
         with self._cache_lock:
             try:
-                previous_manifest = keyring.get_password(
+                previous_manifest = self._keyring.get_password(
                     self._service, self._KEY_ACTIVE_BUNDLE
                 )
             except Exception as exc:
@@ -292,16 +298,16 @@ class KeyringTokenStore(TokenStore):
             written_keys: list[str] = []
             switched = False
             try:
-                keyring.set_password(
+                self._keyring.set_password(
                     self._service, self._KEY_STAGING_BUNDLE, manifest_raw
                 )
                 for index, chunk in enumerate(chunks):
                     key = self._chunk_key(generation, index)
-                    keyring.set_password(self._service, key, chunk)
+                    self._keyring.set_password(self._service, key, chunk)
                     written_keys.append(key)
                 if self._read_bundle(manifest_raw) != token:
                     raise CredentialStorageError("系统安全凭据回读不一致")
-                keyring.set_password(
+                self._keyring.set_password(
                     self._service, self._KEY_ACTIVE_BUNDLE, manifest_raw
                 )
                 switched = True
@@ -357,7 +363,7 @@ class KeyringTokenStore(TokenStore):
     def _restore_active_manifest(self, previous_manifest: str | None) -> None:
         try:
             if previous_manifest:
-                keyring.set_password(
+                self._keyring.set_password(
                     self._service, self._KEY_ACTIVE_BUNDLE, previous_manifest
                 )
             else:
@@ -400,7 +406,7 @@ class KeyringTokenStore(TokenStore):
         self, active_manifest_raw: str | None
     ) -> None:
         try:
-            staging_raw = keyring.get_password(
+            staging_raw = self._keyring.get_password(
                 self._service, self._KEY_STAGING_BUNDLE
             )
             if not staging_raw:
@@ -440,7 +446,7 @@ class KeyringTokenStore(TokenStore):
 
     def _delete_key(self, key: str) -> None:
         try:
-            keyring.delete_password(self._service, key)
+            self._keyring.delete_password(self._service, key)
         except keyring.errors.PasswordDeleteError:
             pass
 
@@ -457,10 +463,10 @@ class KeyringTokenStore(TokenStore):
 
     def clear(self) -> None:
         with self._cache_lock:
-            active_manifest = keyring.get_password(
+            active_manifest = self._keyring.get_password(
                 self._service, self._KEY_ACTIVE_BUNDLE
             )
-            staging_manifest = keyring.get_password(
+            staging_manifest = self._keyring.get_password(
                 self._service, self._KEY_STAGING_BUNDLE
             )
             if active_manifest:
@@ -471,6 +477,109 @@ class KeyringTokenStore(TokenStore):
             self._delete_key(self._KEY_STAGING_BUNDLE)
             for key in self._legacy_keys():
                 self._delete_key(key)
+            self._cached_token = None
+            self._cache_loaded = True
+
+
+class MacOSKeyringSecretStore(KeyringSecretStore):
+    def __init__(self) -> None:
+        self._keyring = macos_keychain.backend
+        self._values: dict[str, str | None] = {}
+        self._lock = RLock()
+
+    def get(self, namespace: str) -> str | None:
+        self._keyring.ensure_available()
+        with self._lock:
+            if namespace not in self._values:
+                self._values[namespace] = super().get(namespace)
+            return self._values[namespace]
+
+    def reload(self, namespace: str) -> str | None:
+        self._keyring.ensure_available()
+        with self._lock:
+            self._values.pop(namespace, None)
+            return self.get(namespace)
+
+    def set(self, namespace: str, value: str) -> None:
+        self._keyring.ensure_available()
+        with self._lock:
+            super().set(namespace, value)
+            self._values[namespace] = value
+
+    def clear(self, namespace: str) -> None:
+        self._keyring.ensure_available()
+        with self._lock:
+            super().clear(namespace)
+            self._values[namespace] = None
+
+
+class MacOSKeyringTokenStore(KeyringTokenStore):
+    """完整 Token 作为单个 Keychain 条目原位更新；保留旧格式读取能力。"""
+
+    _KEY_MACOS_BUNDLE = "token_bundle.macos.v1"
+
+    def __init__(self, account_id: str | None = None) -> None:
+        super().__init__(account_id)
+        self._keyring = macos_keychain.backend
+
+    def _ensure_available(self) -> None:
+        try:
+            self._keyring.ensure_available()
+        except macos_keychain.KeychainAccessError as exc:
+            raise CredentialStorageError(str(exc)) from exc
+
+    def get(self) -> TokenData | None:
+        self._ensure_available()
+        return super().get()
+
+    def reload(self) -> TokenData | None:
+        self._ensure_available()
+        return super().reload()
+
+    def _read_from_keyring(self) -> TokenData | None:
+        try:
+            raw = self._keyring.get_password(self._service, self._KEY_MACOS_BUNDLE)
+            if raw is not None:
+                payload = json.loads(raw)
+                if not isinstance(payload, dict) or payload.get("format") != "macos_single_v1":
+                    raise ValueError("macOS Token 包格式无效")
+                return self._token_from_payload(payload.get("token"), default_protocol="device_v2")
+            token = super()._read_from_keyring()
+            if token is not None:
+                # 只复制，不在迁移读取中删除旧凭据；系统写入成功才采用新格式。
+                self._write_single(token)
+            return token
+        except CredentialStorageError:
+            raise
+        except Exception as exc:
+            raise CredentialStorageError("macOS 系统安全凭据读取失败") from exc
+
+    def _write_single(self, token: TokenData) -> None:
+        payload = json.loads(base64.urlsafe_b64decode(self._encode_token(token)))
+        raw = json.dumps({"format": "macos_single_v1", "token": payload}, ensure_ascii=False)
+        self._keyring.set_password(self._service, self._KEY_MACOS_BUNDLE, raw)
+
+    def set(self, token: TokenData) -> None:
+        self._ensure_available()
+        with self._cache_lock:
+            try:
+                # SecItemUpdate / Add 的成功状态代表整个值已持久化，无分片切换窗口。
+                self._write_single(token)
+            except Exception as exc:
+                raise CredentialStorageError("macOS 系统安全凭据写入失败") from exc
+            self._cached_token = token
+            self._cache_loaded = True
+
+    def clear(self) -> None:
+        self._ensure_available()
+        with self._cache_lock:
+            try:
+                # 先移除所有旧格式，再删除新格式，防止退出后回退到旧 Token。
+                super().clear()
+                self._keyring.delete_password(self._service, self._KEY_MACOS_BUNDLE)
+            except Exception as exc:
+                self._cache_loaded = False
+                raise CredentialStorageError("macOS 系统安全凭据清除失败") from exc
             self._cached_token = None
             self._cache_loaded = True
 
@@ -607,7 +716,7 @@ def get_token_store(account_id: str | None = None) -> TokenStore:
 
     config = ConfigManager.get().config
     store = os.getenv("LARKSYNC_TOKEN_STORE", config.token_store).lower()
-    resolved_account_id = (account_id or current_account_id() or "").strip()
+    resolved_account_id = (account_id if account_id is not None else current_account_id() or "").strip()
     cache_key = (store, resolved_account_id)
     cached = _shared_token_stores.get(cache_key)
     if cached is not None:
@@ -616,6 +725,8 @@ def get_token_store(account_id: str | None = None) -> TokenStore:
         cached = MemoryTokenStore()
     elif store == "file":
         cached = FileTokenStore(account_id=resolved_account_id or None)
+    elif macos_keychain.enabled():
+        cached = MacOSKeyringTokenStore(account_id=resolved_account_id or None)
     else:
         cached = KeyringTokenStore(account_id=resolved_account_id or None)
     _shared_token_stores[cache_key] = cached
@@ -625,5 +736,5 @@ def get_token_store(account_id: str | None = None) -> TokenStore:
 def get_secret_store() -> SecretStore:
     global _shared_secret_store
     if _shared_secret_store is None:
-        _shared_secret_store = KeyringSecretStore()
+        _shared_secret_store = MacOSKeyringSecretStore() if macos_keychain.enabled() else KeyringSecretStore()
     return _shared_secret_store

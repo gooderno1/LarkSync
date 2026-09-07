@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import json
 import time
 import uuid
@@ -185,7 +187,7 @@ class AccountService:
                 self._secret_store.set(profile.secret_ref, app_secret)
             scoped_store = self._token_store_factory(LEGACY_ACCOUNT_ID)
             scoped_token = scoped_store.get()
-            legacy_token = self._token_store_factory("").get()
+            legacy_token = self._token_store_factory("").get() if scoped_token is None else None
             # V2 重新授权后，账号命名空间中的凭据就是新的事实来源。后续启动
             # 不能再用仍留在全局命名空间中的 v0.8 凭据把它覆盖回 V1。
             migrated_token = self._select_legacy_migration_token(
@@ -195,7 +197,8 @@ class AccountService:
             )
             if migrated_token is not None:
                 protocol = migrated_token.auth_protocol
-                scoped_store.set(migrated_token)
+                if migrated_token != scoped_token:
+                    scoped_store.set(migrated_token)
                 if migrated_token.open_id:
                     account.open_id = migrated_token.open_id
                 account.account_name = migrated_token.account_name or account.account_name
@@ -223,6 +226,33 @@ class AccountService:
             payload["auth_client_secret"] = ""
             config_manager.save_config(payload)
         return True
+
+    async def retry_keychain_access(self) -> None:
+        """用户主动恢复：数据库访问留在事件循环，系统交互在工作线程执行。"""
+        from src.core import macos_keychain
+
+        if not macos_keychain.enabled():
+            return
+        async with self._session_maker() as session:
+            account_ids = list((await session.execute(
+                select(Account.id).where(Account.removed_at.is_(None))
+            )).scalars())
+            secret_refs = list((await session.execute(
+                select(AppProfile.secret_ref).where(AppProfile.enabled.is_(True))
+            )).scalars())
+
+        def unlock() -> None:
+            with macos_keychain.backend.interactive_retry():
+                macos_keychain.backend.retry_pending()
+                for account_id in account_ids:
+                    token = self._token_store_factory(account_id).reload()
+                    if account_id == LEGACY_ACCOUNT_ID and token is None:
+                        self._token_store_factory("").reload()
+                for secret_ref in secret_refs:
+                    self._secret_store.reload(secret_ref)
+
+        await asyncio.to_thread(unlock)
+        await self.migrate_legacy_install()
 
     @staticmethod
     def _select_legacy_migration_token(

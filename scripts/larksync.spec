@@ -103,7 +103,7 @@ a = Analysis(
         "webview.platforms",
         "webview.platforms.edgechromium",
         "webview.platforms.winforms",
-    ],
+    ] + (["Security"] if sys.platform == "darwin" else []),
     hookspath=[str(project_root / "scripts" / "pyinstaller_hooks")],
     hooksconfig={},
     runtime_hooks=[],

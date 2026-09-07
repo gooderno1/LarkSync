@@ -8,6 +8,7 @@ loguru>=0.7
 aiosqlite>=0.19
 httpx>=0.25
 keyring>=25.0
+pyobjc-framework-Security>=11.0; sys_platform == "darwin"
 
 # 系统托盘 (桌面模式)
 pystray>=0.19.5

@@ -15,6 +15,7 @@ from src.services.tenant_metadata_service import TenantMetadataService
 from src.core.account_context import account_scope
 from src.core.paths import data_dir
 from src.core.security import CredentialStorageError
+from src.core import macos_keychain
 
 
 router = APIRouter(tags=["accounts"])
@@ -27,6 +28,19 @@ class ManualAppProfileRequest(BaseModel):
     app_secret: str = Field(min_length=1)
     brand: str = "feishu"
     display_name: str | None = None
+
+
+@router.get("/auth/keychain/status")
+async def keychain_status() -> dict[str, object]:
+    return macos_keychain.access_status()
+
+
+@router.post("/auth/keychain/retry")
+async def retry_keychain_access() -> dict[str, object]:
+    if macos_keychain.enabled():
+        await account_service.retry_keychain_access()
+        await account_runtime_registry.reload()
+    return macos_keychain.access_status()
 
 
 class RegistrationRequest(BaseModel):

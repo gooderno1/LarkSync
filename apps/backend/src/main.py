@@ -37,6 +37,8 @@ from src.core.logging import init_logging
 from src.core.config import AppConfig, ConfigManager, RuntimeProfile
 from src.core.paths import bundle_root
 from src.core.account_context import account_scope
+from src.core import macos_keychain
+from src.core.security import CredentialStorageError
 from src.db.session import init_db
 from src.services.conflict_service import ConflictService
 from src.services.problem_service import ProblemService
@@ -306,6 +308,15 @@ def create_app(
             init_logging_fn=init_logging_fn,
         ),
     )
+
+    @app.exception_handler(CredentialStorageError)
+    @app.exception_handler(macos_keychain.KeychainAccessError)
+    async def _credential_exception_handler(request: Request, exc: Exception):
+        status = macos_keychain.access_status()
+        detail = status["message"] or "系统安全凭据暂不可用。请检查系统凭据库后重试；账号和同步数据仍保留。"
+        return JSONResponse(status_code=503, content={
+            "detail": detail, "code": "credential_storage_unavailable",
+        })
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception):

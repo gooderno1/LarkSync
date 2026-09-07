@@ -1,5 +1,8 @@
 import asyncio
+import sys
 from pathlib import Path
+
+import pytest
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -89,7 +92,12 @@ def test_packaged_frontend_root_asset_follows_bundle_symlink(
 
     framework_dist = tmp_path / "Frameworks" / "apps" / "frontend" / "dist"
     framework_dist.parent.mkdir(parents=True)
-    framework_dist.symlink_to(resources_dist, target_is_directory=True)
+    try:
+        framework_dist.symlink_to(resources_dist, target_is_directory=True)
+    except OSError as exc:
+        if sys.platform == "win32" and getattr(exc, "winerror", None) == 1314:
+            pytest.skip("当前 Windows 用户没有创建符号链接权限；macOS 必须执行此测试")
+        raise
 
     monkeypatch.setattr(main, "_FRONTEND_DIST", framework_dist)
     monkeypatch.setattr(main, "_INDEX_HTML", framework_dist / "index.html")

@@ -181,7 +181,7 @@ jobs:
       - name: Run macOS-targeted backend tests
         working-directory: apps/backend
         run: |
-          python -m pytest tests/test_build_installer.py tests/test_macos_installer_smoke.py tests/test_icon_generator.py tests/test_desktop_window.py tests/test_launcher.py tests/test_tray_notifier.py tests/test_update_service.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_backend_manager.py tests/test_tray_autostart.py tests/test_security.py tests/test_paths.py -q
+          python -m pytest tests/test_build_installer.py tests/test_macos_installer_smoke.py tests/test_icon_generator.py tests/test_desktop_window.py tests/test_launcher.py tests/test_tray_notifier.py tests/test_update_service.py tests/test_system_update_api.py tests/test_tray_update_install.py tests/test_backend_manager.py tests/test_tray_autostart.py tests/test_security.py tests/test_macos_keychain.py tests/test_macos_security.py tests/test_keychain_api.py tests/test_account_service.py tests/test_main.py tests/test_paths.py -q
 
       - name: Build macOS installer smoke
         env:
