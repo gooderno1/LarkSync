@@ -9,11 +9,21 @@
   - 纳入 `v0.9.12-dev.1` 的测试版 DEV 图标；正式版使用稳定版图标与 Release Channel。
   - 根项目、后端、前端与两个 lockfile 版本统一为 `v0.9.12`，通过正式 Tag 构建 Windows 与 macOS 双架构安装包。
 - 当前结果：
-  - 发布内容已准备，正式 Tag、Release 资产和最终构建结果在流水线结束后补录。
+  - 正式 Tag `v0.9.12` 指向提交 `095c7689570a50171d0ea32ef8776452303c212a`；该提交已推送至 `main` 并作为正式构建输入。
+  - GitHub Release 已公开并设为 Latest：`https://github.com/gooderno1/LarkSync/releases/tag/v0.9.12`；不是草稿或预发布。
+  - Windows 安装包 `LarkSync-Setup-v0.9.12.exe` 为 58,822,983 bytes，SHA256 为 `9d10ca1abe51ebdf99ff9029e15fac1d8d67e3a1655cdf83e2cca4e9fd8a637d`。
+  - Apple Silicon 安装包 `LarkSync-v0.9.12-arm64.dmg` 为 66,293,770 bytes，SHA256 为 `2091403e967743e8ee1efcf7ecd702c066b875d278523fbd65721160382b0055`。
+  - Intel 安装包 `LarkSync-v0.9.12-x86_64.dmg` 为 67,181,335 bytes，SHA256 为 `fd4025d30131ff549b29b842eb904968c18d8f0fe685b840fda57cd5f55d4748`。
+  - 三个平台安装包及三个独立 `.sha256` 文件共六个资产均为 `uploaded`；已实际下载核对文件大小、SHA256、校验文件内容与 GitHub 资产 digest，全部一致。
+  - Release 正文按两个开发版本归档用户可见行为，并补齐覆盖安装、主动钥匙串恢复、旧分片逐项授权、ad-hoc 签名限制与全部安装包校验值。
 - 验证方式：
   - 本地发布版本、说明生成器和工作流相关测试共 29 项通过。
   - 发布前 `main` 流水线 `34095887805` 已完成 Windows 后端 775 项通过、1 项平台跳过；137 项前端测试、ESLint、TypeScript、生产构建、Windows 静默安装脚本和 WebKit 两次扫码检查均通过。
   - 同一流水线 macOS arm64/x86_64 的定向测试、DMG 构建与安装启动检查全部成功；打包应用实际 Keychain 检查均返回 `long_token_roundtrip=true`、`refresh_roundtrip=true`、`cleared=true`。
+  - 正式 Tag 流水线 `34096872254` 全部成功；再次通过后端 775 项、1 项平台跳过、前端 137 项、质量门和三平台正式安装包构建上传。
+  - 同一发布提交的 `main` 流水线 `34096868441` 也全部成功；分支质量门、WebKit 与 macOS 双架构打包安装验证通过。
+  - 正式 arm64/x86_64 DMG 均完成挂载、隔离安装复制、签名与稳定版 Bundle 检查、后端健康检查和实际 Keychain 长凭据读写刷新清除。
+  - 两种正式 Mac 包的原生 Cocoa/WKWebView 首屏检查均返回 `stage=ui_verified`、`logo_decoded=true`、`connect_action_enabled=true`；此次正式包检查未使用 headless WebKit 回退。
 - 遗留问题：
   - 当前发布仍使用 ad-hoc 签名；旧条目在升级后可能需要主动逐项授权，不能承诺所有机器零授权提示。
   - CI 验证真实系统钥匙串调用与安装启动；用户现场“始终允许”后的 ACL 行为仍需交互式 Mac 复核。
