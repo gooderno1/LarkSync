@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+import os
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 
 _LOCAL_TEMP_FILE_PREFIXES = ("~$",)
@@ -38,7 +39,7 @@ def is_hidden_or_cache_relative_path(relative: Path) -> bool:
         cleaned = part.strip()
         if not cleaned or cleaned == ".":
             continue
-        if cleaned.startswith(".") or cleaned.lower() == "__pycache__":
+        if cleaned.startswith(".") or cleaned.lower() in {"__pycache__", "node_modules"}:
             return True
     return False
 
@@ -82,7 +83,23 @@ def should_ignore_sync_path(
     return False
 
 
+def iter_sync_local_files(
+    root: Path, *, should_ignore: Callable[[Path], bool],
+) -> Iterator[Path]:
+    """先剪枝忽略目录，再枚举文件；不遍历依赖库或其目录链接。"""
+    if should_ignore(root):
+        return
+    for directory, subdirs, filenames in os.walk(root, topdown=True, followlinks=False):
+        parent = Path(directory)
+        subdirs[:] = [name for name in subdirs if not should_ignore(parent / name)]
+        for name in filenames:
+            path = parent / name
+            if not should_ignore(path) and path.is_file():
+                yield path
+
+
 __all__ = [
+    "iter_sync_local_files",
     "is_hidden_or_cache_relative_path",
     "is_temporary_local_name",
     "should_ignore_sync_path",

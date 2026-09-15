@@ -13,6 +13,7 @@ from src.services.drive_service import DriveNode, DriveService
 from src.services.export_task_service import ExportTaskService
 from src.services.file_downloader import FileDownloader
 from src.services.file_uploader import FileUploader
+from src.services.path_sanitizer import sanitize_path_segment
 from src.services.sheet_service import SheetService
 from src.services.sync_download_support_service import (
     DownloadCandidate,
@@ -141,7 +142,10 @@ class SyncDownloadOrchestrationService:
     ) -> None:
         try:
             tree = await runtime.drive_service.scan_folder(
-                task.cloud_folder_token, name=task.name or "同步根目录"
+                task.cloud_folder_token, name=task.name or "同步根目录",
+                skip_folder=lambda parts: self._should_ignore_path(
+                    task, Path(task.local_path).joinpath(*(sanitize_path_segment(part) for part in parts)),
+                ),
             )
             folders = list(self._flatten_folders(tree))
             await self._sync_cloud_folder_links(task, folders)
@@ -160,15 +164,15 @@ class SyncDownloadOrchestrationService:
                 self._build_download_candidate(task, node, relative_dir)
                 for node, relative_dir in files
             ]
+            candidates = [
+                item for item in candidates if not self._should_ignore_path(task, item.target_path)
+            ]
             candidates = await self._hydrate_export_sub_ids(
                 candidates,
                 runtime.drive_service,
                 sheet_service=runtime.sheet_service,
                 bitable_service=runtime.bitable_service,
             )
-            candidates = [
-                item for item in candidates if not self._should_ignore_path(task, item.target_path)
-            ]
             selected_candidates, duplicated_candidates = self._select_download_candidates(
                 candidates,
                 persisted_by_path,

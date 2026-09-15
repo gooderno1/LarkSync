@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-09-16] v0.9.13-dev.1 fix(sync): 默认排除任意层级 node_modules；本地与云端目录提前剪枝，避免依赖库及目录链接触发批量上传、目录数量超限与重复扫描；沿用路径排除证据结案且保留既有文件
+
 [2026-09-07] v0.9.12 release: v0.9.12 macOS keychain access recovery
 [2026-09-07] v0.9.12-dev.2 fix(macos): 后台钥匙串访问禁止系统弹窗，失败后暂停并提供主动恢复入口；Token 单条目原位更新、App Secret 缓存及已迁移凭据去重读取，安装冒烟覆盖长凭据和刷新
 [2026-09-05] v0.9.12-dev.1 feat(macos): 预发布版本自动使用带橙色 DEV 徽标的独立应用图标，并由 Bundle 安装冒烟核对 Release Channel 与图标文件

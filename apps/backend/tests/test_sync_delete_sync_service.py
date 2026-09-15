@@ -8,6 +8,33 @@ from src.services.sync_delete_sync_service import SyncDeleteSyncService
 from src.services.sync_link_service import SyncLinkItem
 from src.services.sync_runner_state import SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
+from src.services.sync_path_policy import should_ignore_sync_path
+
+
+@pytest.mark.asyncio
+async def test_pruned_dependency_cloud_tree_does_not_schedule_local_deletion(tmp_path: Path) -> None:
+    tombstones = _TombstoneService()
+    service = _service(_LinkService(), tombstones)
+    service._should_ignore_path = lambda task, path: should_ignore_sync_path(
+        task_root=task.local_path, path=path, ignore_hidden_cache_paths=True,
+    )
+    task = SyncTaskItem(
+        id="task-pruned", name="剪枝保留文件", local_path=tmp_path.as_posix(),
+        cloud_folder_token="root", cloud_folder_name=None, base_path=None,
+        sync_mode="bidirectional", update_mode="auto", enabled=True,
+        created_at=0, updated_at=0,
+    )
+    events = []
+    await service.enqueue_cloud_missing_deletes(
+        task=task, status=SyncTaskStatus(task_id=task.id), cloud_paths=set(),
+        known_cloud_tokens=set(),
+        persisted_links=[SyncLinkItem(
+            local_path=str(tmp_path / "project/node_modules/pkg/index.js"),
+            cloud_token="existing-dependency", cloud_type="file", task_id=task.id, updated_at=0,
+        )],
+        record_event=lambda *args: events.append(args),
+    )
+    assert events == []
 
 
 class _LinkService:

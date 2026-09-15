@@ -31,7 +31,7 @@ class FakeDriveService:
         self._tree = tree
         self.calls: list[tuple[str, str | None]] = []
 
-    async def scan_folder(self, folder_token: str, name: str | None = None) -> DriveNode:
+    async def scan_folder(self, folder_token: str, name: str | None = None, *, skip_folder=None) -> DriveNode:
         self.calls.append((folder_token, name))
         return self._tree
 
@@ -829,7 +829,11 @@ async def test_runner_download_skips_internal_md_mirror_folder(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
-async def test_runner_download_skips_task_ignored_subpaths(tmp_path: Path) -> None:
+@pytest.mark.parametrize("folder_name,ignored_subpaths", [("GENESIS", ["GENESIS"]), ("node_modules", [])])
+async def test_runner_download_skips_task_ignored_subpaths(
+    tmp_path: Path, folder_name: str, ignored_subpaths: list[str], monkeypatch,
+) -> None:
+    monkeypatch.setattr(ConfigManager.get().config, "ignore_hidden_cache_paths", True)
     tree = DriveNode(
         token="root",
         name="根目录",
@@ -837,7 +841,7 @@ async def test_runner_download_skips_task_ignored_subpaths(tmp_path: Path) -> No
         children=[
             DriveNode(
                 token="folder-genesis",
-                name="GENESIS",
+                name=folder_name,
                 type="folder",
                 children=[
                     DriveNode(
@@ -875,7 +879,7 @@ async def test_runner_download_skips_task_ignored_subpaths(tmp_path: Path) -> No
         base_path=None,
         sync_mode="download_only",
         update_mode="auto",
-        ignored_subpaths=["GENESIS"],
+        ignored_subpaths=ignored_subpaths,
         enabled=True,
         created_at=0,
         updated_at=0,
@@ -887,7 +891,7 @@ async def test_runner_download_skips_task_ignored_subpaths(tmp_path: Path) -> No
     assert status.total_files == 1
     assert status.completed_files == 1
     assert (tmp_path / "主文档.md").exists()
-    assert not (tmp_path / "GENESIS").exists()
+    assert not (tmp_path / folder_name).exists()
 
 
 async def _exercise_restart_task_restarts_running_task_with_latest_config(tmp_path: Path) -> None:
@@ -1987,7 +1991,9 @@ async def test_handle_moved_directory_rebases_pending_descendants(
 
 
 @pytest.mark.asyncio
-async def test_handle_local_event_ignores_temporary_files(tmp_path: Path) -> None:
+@pytest.mark.parametrize("relative", ["~$会议纪要.docx", "project/node_modules/pkg/index.js"])
+async def test_handle_local_event_ignores_temporary_files(tmp_path: Path, relative: str, monkeypatch) -> None:
+    monkeypatch.setattr(ConfigManager.get().config, "ignore_hidden_cache_paths", True)
     runner = SyncTaskRunner(link_service=FakeLinkService())
     task = SyncTaskItem(
         id="task-temp-event",
@@ -2002,7 +2008,8 @@ async def test_handle_local_event_ignores_temporary_files(tmp_path: Path) -> Non
         created_at=0,
         updated_at=0,
     )
-    path = tmp_path / "~$会议纪要.docx"
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("temp", encoding="utf-8")
     event = FileChangeEvent(
         event_type="created",
@@ -2018,7 +2025,8 @@ async def test_handle_local_event_ignores_temporary_files(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_scan_for_unlinked_files_skips_temporary_files(tmp_path: Path) -> None:
+async def test_scan_for_unlinked_files_skips_temporary_files(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(ConfigManager.get().config, "ignore_hidden_cache_paths", True)
     runner = SyncTaskRunner(link_service=FakeLinkService())
     task = SyncTaskItem(
         id="task-temp-scan",
@@ -2039,6 +2047,9 @@ async def test_scan_for_unlinked_files_skips_temporary_files(tmp_path: Path) -> 
     real_path.write_text("# real", encoding="utf-8")
     empty_marker = tmp_path / "package_marker"
     empty_marker.write_bytes(b"")
+    dependency = tmp_path / "project/node_modules/pkg/index.js"
+    dependency.parent.mkdir(parents=True)
+    dependency.write_text("dependency", encoding="utf-8")
 
     queued = await runner._scan_for_unlinked_files(task)
 
@@ -2048,6 +2059,7 @@ async def test_scan_for_unlinked_files_skips_temporary_files(tmp_path: Path) -> 
     assert str(real_path) in pending
     assert str(temp_path) not in pending
     assert str(empty_marker) not in pending
+    assert str(dependency) not in pending
 
 
 @pytest.mark.asyncio

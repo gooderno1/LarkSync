@@ -4,6 +4,33 @@ import pytest
 from src.services.drive_service import DriveService
 
 
+@pytest.mark.asyncio
+async def test_scan_folder_prunes_dependencies_and_shortcuts_before_api_calls() -> None:
+    client = FakeClient([
+        {"code": 0, "data": {"files": [
+            {"token": "ignored", "name": "node_modules", "type": "folder"},
+            {"token": "project", "name": "project", "type": "folder"},
+        ]}},
+        {"code": 0, "data": {"files": [
+            {"token": "shortcut", "name": "node_modules", "type": "shortcut",
+             "shortcut_info": {"target_token": "shared", "target_type": "folder"}},
+            {"token": "shared", "name": "docs", "type": "folder"},
+        ]}},
+        {"code": 0, "data": {"files": [
+            {"token": "document", "name": "note", "type": "docx"},
+        ]}},
+    ])
+    tree = await DriveService(client=client).scan_folder(
+        "root", skip_folder=lambda parts: "node_modules" in parts,
+    )
+    assert [call[2]["params"]["folder_token"] for call in client.requests] == [
+        "root", "project", "shared",
+    ]
+    assert tree.children[0].children == []
+    assert tree.children[1].children[0].children == []
+    assert tree.children[1].children[1].children[0].token == "document"
+
+
 class FakeClient:
     def __init__(self, responses: list[dict]) -> None:
         self._responses = responses

@@ -49,7 +49,7 @@ from src.services.sync_download_orchestration_service import (
 )
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_path_upload_service import SyncPathUploadService
-from src.services.sync_path_policy import should_ignore_sync_path
+from src.services.sync_path_policy import iter_sync_local_files, should_ignore_sync_path
 from src.services.sync_cloud_folder_service import SyncCloudFolderService
 from src.services.sync_markdown_cloud_doc_service import SyncMarkdownCloudDocService
 from src.services.sync_markdown_upload_service import SyncMarkdownUploadService
@@ -2021,11 +2021,9 @@ class SyncTaskRunner:
         root = Path(task.local_path)
         if not root.exists():
             return []
-        return [
-            path
-            for path in root.rglob("*")
-            if path.is_file() and not self._should_ignore_path(task, path)
-        ]
+        return iter_sync_local_files(
+            root, should_ignore=lambda path: self._should_ignore_path(task, path),
+        )
 
     async def _scan_for_unlinked_files(self, task: SyncTaskItem) -> int:
         """全量扫描本地目录，将没有 SyncLink 的文件加入待上传队列。
@@ -2046,11 +2044,7 @@ class SyncTaskRunner:
 
         def _collect_candidates() -> list[Path]:
             candidates: list[Path] = []
-            for path in root.rglob("*"):
-                if not path.is_file():
-                    continue
-                if self._should_ignore_path(task, path):
-                    continue
+            for path in self._iter_local_files(task):
                 if skip_md and path.suffix.lower() == ".md":
                     continue
                 try:
@@ -2254,7 +2248,9 @@ class SyncTaskRunner:
             if event.is_directory:
                 def _collect_destination_files() -> list[Path]:
                     try:
-                        return [candidate for candidate in path.rglob("*") if candidate.is_file()]
+                        return list(iter_sync_local_files(
+                            path, should_ignore=lambda candidate: self._should_ignore_path(task, candidate),
+                        ))
                     except OSError:
                         return []
 
@@ -2538,7 +2534,10 @@ class SyncTaskRunner:
         self, task: SyncTaskItem, drive_service: DriveService
     ) -> None:
         tree = await drive_service.scan_folder(
-            task.cloud_folder_token, name=task.name or "同步根目录"
+            task.cloud_folder_token, name=task.name or "同步根目录",
+            skip_folder=lambda parts: self._should_ignore_path(
+                task, Path(task.local_path).joinpath(*(sanitize_path_segment(part) for part in parts)),
+            ),
         )
         folders = list(_flatten_folders(tree))
         await self._sync_cloud_folder_links(
@@ -2561,6 +2560,8 @@ class SyncTaskRunner:
                 )
             else:
                 local_path = target_dir / sanitize_filename(node.name)
+            if self._should_ignore_path(task, local_path):
+                continue
             await self._link_service.upsert_link(
                 local_path=str(local_path),
                 cloud_token=token,

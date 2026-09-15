@@ -868,12 +868,13 @@ async def test_reconcile_current_state_keeps_error_when_task_root_is_unavailable
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("excluded_dir", ["__pycache__", "project/node_modules/pkg"])
 async def test_reconcile_current_state_uses_current_ignore_and_task_recovery(
-    tmp_path,
+    tmp_path, excluded_dir,
 ) -> None:
     session_maker, event_service, service = await _build_services(tmp_path)
     task_root = tmp_path / "sync-root"
-    ignored = task_root / "__pycache__" / "module.pyc"
+    ignored = task_root / excluded_dir / "module.pyc"
     ignored.parent.mkdir(parents=True)
     ignored.write_bytes(b"cache")
     async with session_maker() as session:

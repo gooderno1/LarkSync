@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.services.feishu_client import FeishuClient
@@ -202,9 +203,12 @@ class DriveService:
         name: str | None = None,
         parent_token: str | None = None,
         visited: set[str] | None = None,
+        *,
+        skip_folder: Callable[[tuple[str, ...]], bool] | None = None,
+        _relative_parts: tuple[str, ...] = (),
     ) -> DriveNode:
         visited = visited or set()
-        if folder_token in visited:
+        if folder_token in visited or (skip_folder and skip_folder(_relative_parts)):
             return DriveNode(
                 token=folder_token,
                 name=name or folder_token,
@@ -226,7 +230,10 @@ class DriveService:
         while True:
             file_list = await self.list_files(folder_token, page_token=page_token)
             for item in file_list.files:
-                child = await self._build_node(item, visited)
+                child = await self._build_node(
+                    item, visited, skip_folder=skip_folder,
+                    relative_parts=(*_relative_parts, item.name),
+                )
                 node.children.append(child)
 
             if not file_list.has_more:
@@ -236,7 +243,11 @@ class DriveService:
             page_token = file_list.next_page_token
         return node
 
-    async def _build_node(self, item: DriveFile, visited: set[str]) -> DriveNode:
+    async def _build_node(
+        self, item: DriveFile, visited: set[str], *,
+        skip_folder: Callable[[tuple[str, ...]], bool] | None = None,
+        relative_parts: tuple[str, ...] = (),
+    ) -> DriveNode:
         if item.type == "shortcut" and item.shortcut_info:
             target_token = item.shortcut_info.target_token or item.token
             target_type = item.shortcut_info.target_type or item.type
@@ -246,6 +257,8 @@ class DriveService:
                     name=item.name,
                     parent_token=item.parent_token,
                     visited=visited,
+                    skip_folder=skip_folder,
+                    _relative_parts=relative_parts,
                 )
             return DriveNode(
                 token=target_token,
@@ -265,6 +278,8 @@ class DriveService:
                 name=item.name,
                 parent_token=item.parent_token,
                 visited=visited,
+                skip_folder=skip_folder,
+                _relative_parts=relative_parts,
             )
 
         return DriveNode(

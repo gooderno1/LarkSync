@@ -137,7 +137,7 @@ class DownloadDriveService:
     def __init__(self, tree: DriveNode) -> None:
         self._tree = tree
 
-    async def scan_folder(self, folder_token: str, name: str | None = None) -> DriveNode:
+    async def scan_folder(self, folder_token: str, name: str | None = None, *, skip_folder=None) -> DriveNode:
         return self._tree
 
     async def close(self) -> None:

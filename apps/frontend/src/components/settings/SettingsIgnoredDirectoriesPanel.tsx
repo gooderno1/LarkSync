@@ -60,7 +60,7 @@ export function SettingsIgnoredDirectoriesPanel({
               <div>
                 <p className="text-sm font-semibold text-[#102033]">默认忽略隐藏/缓存路径</p>
                 <p className="mt-1 text-[11px] leading-5 text-[#7e91a8]">
-                  启用后，会默认跳过所有以 `.` 开头的文件或目录，以及 `__pycache__`。关闭后，仅保留任务级忽略目录和系统保留目录规则。
+                  启用后，会默认跳过所有以 `.` 开头的文件或目录，以及任意层级的 `__pycache__`、`node_modules` 目录。关闭后，仅保留任务级忽略目录和系统保留目录规则。
                 </p>
               </div>
               <div className="flex items-center gap-3">
