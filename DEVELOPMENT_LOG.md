@@ -7,11 +7,23 @@
 - 实现方式：
   - 纳入 v0.9.13-dev.1 的默认依赖目录过滤、本地提前剪枝、云端目录过滤与历史问题结案规则。
   - 根项目、后端、前端及两个 lockfile 统一为 v0.9.13，正式 Tag 触发 Windows 与 macOS 双架构安装包构建。
-  - Release 说明从开发日志生成；构建完成后以实际安装包补齐三个平台的 SHA256。
+  - Release 说明从开发日志生成，以实际下载的安装包补齐三个平台的 SHA256。
 - 当前结果：
-  - 稳定版版本元数据和用户可见变更说明已整理；正式构建及资产核验结果将在发布完成后回填。
+  - 正式 Tag v0.9.13 指向提交 ba939e34c912a342cfa2e0b2edf93074facd1588；通过该 Tag 构建稳定版安装包。
+  - GitHub Release 已公开并设为 Latest：https://github.com/gooderno1/LarkSync/releases/tag/v0.9.13；不是草稿或预发布。
+  - 安装包 LarkSync-Setup-v0.9.13.exe 为 58,861,652 bytes；SHA256 为 ff2729ba0bcc54d7176db049d282bc57f35a7cab3d1818c1017a08448eb6c217。
+  - 安装包 LarkSync-v0.9.13-arm64.dmg 为 66,321,826 bytes；SHA256 为 127a9fedaa5384986dca31d901d53bea853662ee5f528f9cc420712a3656c8a1。
+  - 安装包 LarkSync-v0.9.13-x86_64.dmg 为 67,227,032 bytes；SHA256 为 0cabd41be35ab221e6b0460084c694fe83b712f5d774d40c9d81c961cc779ebe。
+  - 三个安装包及三个独立 .sha256 文件共六个资产均已上传；实际下载后的大小、SHA256、校验文件内容和 GitHub 资产 digest 全部一致。
+  - Release 正文按 dev.1 归档行为变化，补齐 Windows/macOS 安装选择、ad-hoc 签名限制与三个安装包校验值。
 - 验证方式：
+  - 本地发布版本、Release 说明生成器和工作流相关测试共 29 项通过；五份版本文件及两个 lockfile 的根包版本均一致。
+  - 正式 Tag 流水线 35001717933 已全部成功；Windows、Apple Silicon 和 Intel 安装包构建与上传完成，macOS 双架构安装启动检查通过。
+  - 正式 Tag 流水线 35001717933 的 Windows 后端 793 项通过、1 项平台跳过，前端 137 项通过；ESLint、TypeScript、生产构建、Windows 静默安装脚本与 WebKit 首屏检查通过。
+  - 正式 arm64/x86_64 DMG 均完成挂载、隔离安装复制、Bundle/签名核验与后端健康检查；原生窗口返回 stage=ui_verified、logo_decoded=true、connect_action_enabled=true。
+  - 两种正式 Mac 包的实际 Keychain 长凭据读写、刷新和清除均成功：long_token_roundtrip=true、refresh_roundtrip=true、cleared=true。
   - 功能变更已完成本地后端 792 项通过、2 项平台跳过，以及前端检查、开发启动和 Windows 打包启动验证；完整证据见下方 dev.1 记录。
+  - 发布前 dev.1 分支流水线的 Windows 质量门、WebKit 和 Intel Mac 检查通过；Apple Silicon 旧构建仍未结束，正式 Tag 的双架构检查成功后取消该重复运行，正式验收以 Tag 35001717933 为准。
 - 遗留问题：
   - macOS 延续 ad-hoc 签名发布，首次打开可能需要在“系统设置 → 隐私与安全性”选择“仍要打开”。
   - 既有本地和云端依赖文件不会自动删除；SQLite 写锁和历史数据维护不在本次发布范围内。
