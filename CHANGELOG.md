@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-09-16] v0.9.13 release: v0.9.13 dependency directory filtering
 [2026-09-16] v0.9.13-dev.1 fix(sync): 默认排除任意层级 node_modules；本地与云端目录提前剪枝，避免依赖库及目录链接触发批量上传、目录数量超限与重复扫描；沿用路径排除证据结案且保留既有文件
 
 [2026-09-07] v0.9.12 release: v0.9.12 macOS keychain access recovery
