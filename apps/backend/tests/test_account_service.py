@@ -422,3 +422,62 @@ async def test_account_summary_keeps_unread_counts_separate() -> None:
     assert summary[0].unread_errors == 1
     assert summary[0].unread_messages == 1
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("account_id", ["account-a", None])
+async def test_mark_all_notifications_read_has_no_page_limit(account_id: str | None) -> None:
+    from sqlalchemy import select
+    from src.db.models import NotificationRecord
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        maker = async_sessionmaker(engine, expire_on_commit=False)
+        service = AccountService(
+            session_maker=maker,
+            secret_store=MemorySecretStore(),
+            token_store_factory=lambda _account_id: MemoryTokenStore(),
+            device_id="device-test",
+        )
+        async with maker() as session:
+            session.add_all([
+                NotificationRecord(
+                    id=f"notification-{index}",
+                    account_id="account-a" if index < 1001 else "account-b",
+                    category="sync_error", severity="error", title="同步失败",
+                    body="历史通知", created_at=float(index), read_at=None,
+                )
+                for index in range(1003)
+            ])
+            session.add(NotificationRecord(
+                id="already-read", account_id="account-a", category="message",
+                severity="info", title="已读消息", body="保留原已读时间",
+                created_at=1.0, read_at=2.0,
+            ))
+            await session.commit()
+
+        assert await service.mark_all_notifications_read(account_id) == (1001 if account_id else 1003)
+        assert await service.mark_all_notifications_read(account_id) == 0
+        async with maker() as session:
+            records = (await session.execute(select(NotificationRecord))).scalars().all()
+        assert len(records) == 1004
+        for record in records:
+            if record.id == "already-read":
+                assert record.read_at == 2.0
+            elif account_id and record.account_id != account_id:
+                assert record.read_at is None
+            else:
+                assert record.read_at is not None
+                assert record.read_at > 2.0
+
+        new_item = await service.create_notification(
+            account_id="account-a", category="message", severity="info",
+            title="后续新通知", body="批量已读后产生的消息仍未读",
+        )
+        assert new_item.read_at is None
+        unread = await service.list_notifications(account_id="account-a", unread_only=True)
+        assert [item.id for item in unread] == [new_item.id]
+    finally:
+        await engine.dispose()

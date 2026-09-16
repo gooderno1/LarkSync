@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from loguru import logger
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.core.device import current_device_id
@@ -769,21 +769,15 @@ class AccountService:
             await session.commit()
 
     async def mark_all_notifications_read(self, account_id: str | None = None) -> int:
-        items = await self.list_notifications(account_id=account_id, unread_only=True, limit=500)
-        if not items:
-            return 0
-        ids = [item.id for item in items]
+        stmt = update(NotificationRecord).where(NotificationRecord.read_at.is_(None))
+        if account_id:
+            stmt = stmt.where(NotificationRecord.account_id == account_id)
         async with self._session_maker() as session:
-            records = (
-                await session.execute(
-                    select(NotificationRecord).where(NotificationRecord.id.in_(ids))
-                )
-            ).scalars().all()
-            now = time.time()
-            for record in records:
-                record.read_at = now
+            result = await session.execute(
+                stmt.values(read_at=time.time()).execution_options(synchronize_session=False)
+            )
             await session.commit()
-        return len(records)
+            return int(result.rowcount)
 
     async def list_account_summaries(self) -> list[AccountSummary]:
         accounts = await self.list_accounts()
