@@ -109,6 +109,11 @@ class DesktopConflictStatus(BaseModel):
     unresolved: int
 
 
+class DesktopProblemStatus(BaseModel):
+    unresolved: int
+    by_category: dict[str, int]
+
+
 class DesktopUpdateStatus(BaseModel):
     current_version: str
     latest_version: str | None = None
@@ -122,6 +127,7 @@ class DesktopStatusResponse(BaseModel):
     runtime: DesktopRuntimeStatus
     auth: DesktopAuthStatus
     tasks: DesktopTaskStatus
+    problems: DesktopProblemStatus
     conflicts: DesktopConflictStatus
     update: DesktopUpdateStatus
 
@@ -131,6 +137,7 @@ class TrayStatusResponse(BaseModel):
     tasks_total: int
     tasks_running: int
     tasks_paused: int
+    unresolved_problems: int
     unresolved_conflicts: int
     last_error: str | None = None
     last_sync_time: float | None = None
@@ -219,16 +226,20 @@ async def build_desktop_status(request: Request) -> DesktopStatusResponse:
     config = ConfigManager.get().config
     runner = getattr(request.app.state, "sync_runner", None)
     task_service = getattr(request.app.state, "sync_task_service", None)
-    conflict_service = getattr(request.app.state, "conflict_service", None)
+
+    # 待处理状态统一来自问题中心；原始冲突的覆盖结果仅用于详情和执行。
+    # 只读当前摘要，不在 5 秒托盘轮询中触发历史回填或修改问题状态。
+    try:
+        problem_summary = DesktopProblemStatus(
+            **await request.app.state.problem_service.get_summary()
+        )
+    except Exception:
+        logger.exception("读取桌面问题摘要失败")
+        raise HTTPException(status_code=503, detail="暂时无法读取当前问题状态") from None
 
     statuses = runner.list_statuses() if runner is not None else {}
     tasks = await task_service.list_tasks() if task_service is not None else []
     enabled_task_ids = {task.id for task in tasks if task.enabled}
-    conflicts = (
-        await conflict_service.list_conflicts(include_resolved=False)
-        if conflict_service is not None
-        else []
-    )
     errors = [status.last_error for status in statuses.values() if status.last_error]
     last_sync = max(
         (status.finished_at for status in statuses.values() if status.finished_at),
@@ -274,7 +285,10 @@ async def build_desktop_status(request: Request) -> DesktopStatusResponse:
             last_error=errors[0] if errors else None,
             last_sync_time=last_sync,
         ),
-        conflicts=DesktopConflictStatus(unresolved=len(conflicts)),
+        problems=problem_summary,
+        conflicts=DesktopConflictStatus(
+            unresolved=problem_summary.by_category.get("conflict", 0)
+        ),
         update=DesktopUpdateStatus(
             current_version=get_version(),
             latest_version=update_status.latest_version,
@@ -292,6 +306,7 @@ def desktop_status_to_tray_status(status: DesktopStatusResponse) -> TrayStatusRe
         tasks_total=status.tasks.total,
         tasks_running=status.tasks.running,
         tasks_paused=status.tasks.paused,
+        unresolved_problems=status.problems.unresolved,
         unresolved_conflicts=status.conflicts.unresolved,
         last_error=status.tasks.last_error,
         last_sync_time=status.tasks.last_sync_time,

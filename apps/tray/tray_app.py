@@ -1054,7 +1054,13 @@ class LarkSyncTray:
 
                 # 查询聚合状态
                 status = self._fetch_tray_status()
-                if status is None:
+                unresolved = status.get("unresolved_problems") if status else None
+                if (
+                    status is None
+                    or not status.get("backend_running")
+                    or type(unresolved) is not int
+                    or unresolved < 0
+                ):
                     self._set_state("error")
                 else:
                     conflicts = int(status.get("unresolved_conflicts", 0) or 0)
@@ -1071,15 +1077,15 @@ class LarkSyncTray:
                         continue
                     self._last_conflict_count = 0
 
-                    if status.get("tasks_running", 0) > 0:
-                        self._set_state("syncing")
-                    elif status.get("last_error"):
+                    if unresolved > 0:
                         self._set_state("error")
+                    elif status.get("tasks_running", 0) > 0:
+                        self._set_state("syncing")
                     else:
                         self._set_state("idle")
 
             except Exception:
-                pass  # 轮询异常不应中断
+                self._set_state("error")  # 轮询异常不应中断，也不能保留正常状态。
 
             time.sleep(STATUS_POLL_INTERVAL)
 

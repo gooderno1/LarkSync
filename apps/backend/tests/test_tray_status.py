@@ -2,12 +2,17 @@ import asyncio
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Generator
+from unittest.mock import AsyncMock
 
 # 确保从任意工作目录运行 pytest 时都能找到 src 包
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
+REPO_ROOT = BACKEND_ROOT.parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import pytest
 from fastapi.testclient import TestClient
@@ -84,6 +89,9 @@ def test_tray_status_conflict_count(
     assert resp.status_code == 200
     conflict_id = resp.json()["id"]
 
+    # 冲突先由统一问题服务归档，再由所有展示入口读取同一摘要。
+    tray_client.get("/problems/summary?refresh=true")
+
     # /tray/status 应返回未解决冲突数量
     status = tray_client.get("/tray/status").json()
     assert status["unresolved_conflicts"] == 1
@@ -91,9 +99,149 @@ def test_tray_status_conflict_count(
     # 解决冲突后，数量应变为 0
     resolve = tray_client.post(f"/conflicts/{conflict_id}/resolve", json={"action": "use_cloud"})
     assert resolve.status_code == 200
+    tray_client.get("/problems/summary?refresh=true")
 
     status_after = tray_client.get("/tray/status").json()
     assert status_after["unresolved_conflicts"] == 0
+
+
+def test_desktop_and_tray_counts_share_problem_lifecycle_and_account_scope(
+    tray_client: TestClient, monkeypatch
+) -> None:
+    import src.main as main
+    from src.db.models import ConflictRecord, ProblemRecord
+
+    async def seed() -> None:
+        async with get_session_maker()() as session:
+            for index, (account, state, category) in enumerate([
+                ("account-a", "resolved", "conflict"),
+                ("account-a", "resolved", "conflict"),
+                ("account-a", "ignored", "conflict"),
+                ("account-b", "open", "conflict"),
+                ("account-b", "in_progress", "upload"),
+                ("account-b", "waiting", "local_io"),
+            ]):
+                session.add(ProblemRecord(
+                    id=f"problem-{index}", account_id=account,
+                    fingerprint=f"fingerprint-{index}", category=category,
+                    severity="high", state=state, title="测试问题", summary="测试",
+                    object_kind="conflict" if category == "conflict" else "sync_object",
+                    object_key=f"file-{index}.md", first_seen_at=1.0,
+                    last_seen_at=1.0, classifier_version="test",
+                    resolution_verification="path_excluded" if state == "resolved" else None,
+                ))
+            for index in range(3):
+                session.add(ConflictRecord(
+                    id=f"conflict-{index}", account_id="account-a",
+                    local_path=f"node_modules/file-{index}.md", cloud_token=f"token-{index}",
+                    local_hash="local", db_hash="baseline", cloud_version=2, db_version=1,
+                    local_preview="保留本地证据", cloud_preview="保留云端证据",
+                    created_at=1.0, resolved=False,
+                ))
+            await session.commit()
+
+    asyncio.run(seed())
+    monkeypatch.setattr(main.sync_runner, "list_statuses", lambda: {
+        "old-task": SyncTaskStatus(task_id="old-task", state="failed", last_error="历史失败")
+    })
+    # 统计接口必须只读摘要，不扫描旧冲突，也不触发历史回填。
+    monkeypatch.setattr(main.conflict_service, "list_conflicts", AsyncMock(
+        side_effect=AssertionError("统计不应读取旧冲突队列")
+    ))
+    monkeypatch.setattr(main.problem_service, "refresh_sources", AsyncMock(
+        side_effect=AssertionError("状态查询不应回填历史")
+    ))
+    for account, count, conflicts in [("account-a", 0, 0), ("account-b", 3, 1)]:
+        headers = {"X-LarkSync-Account-ID": account}
+        summary = tray_client.get("/problems/summary", headers=headers).json()
+        desktop = tray_client.get("/system/desktop/status", headers=headers).json()
+        tray = tray_client.get("/tray/status", headers=headers).json()
+        assert summary["unresolved"] == desktop["problems"]["unresolved"] == tray["unresolved_problems"] == count
+        assert desktop["conflicts"]["unresolved"] == tray["unresolved_conflicts"] == conflicts
+        assert tray["last_error"] == "历史失败"  # 诊断信息保留，但不构成待处理计数。
+
+    async def check_original_conflicts() -> None:
+        async with get_session_maker()() as session:
+            for index in range(3):
+                conflict = await session.get(ConflictRecord, f"conflict-{index}")
+                assert conflict and not conflict.resolved
+                assert conflict.local_preview == "保留本地证据"
+                assert conflict.cloud_preview == "保留云端证据"
+    asyncio.run(check_original_conflicts())
+
+
+def test_tray_status_does_not_report_zero_when_problem_summary_fails(
+    tray_client: TestClient, monkeypatch
+) -> None:
+    import src.main as main
+
+    monkeypatch.setattr(main.problem_service, "get_summary", AsyncMock(
+        side_effect=RuntimeError("summary unavailable")
+    ))
+    response = tray_client.get("/tray/status")
+    assert response.status_code == 503
+    assert "unresolved_problems" not in response.json()
+
+
+@pytest.mark.parametrize(("payload", "expected"), [
+    ({"unresolved_problems": 0, "last_error": "历史错误"}, "idle"),
+    ({"unresolved_problems": 0, "tasks_running": 1}, "syncing"),
+    ({"unresolved_problems": 1, "unresolved_conflicts": 0}, "error"),
+    ({"unresolved_problems": 1, "tasks_running": 1}, "error"),
+    ({"unresolved_problems": 1, "unresolved_conflicts": 1}, "error"),
+    ({"last_error": None}, "error"),
+    ({"unresolved_problems": None}, "error"),
+    ({"unresolved_problems": 0, "backend_running": False}, "error"),
+    (None, "error"),
+])
+def test_tray_poll_uses_current_problems_instead_of_historical_errors(
+    monkeypatch: pytest.MonkeyPatch, payload: dict[str, object] | None, expected: str
+) -> None:
+    from apps.tray import tray_app
+
+    tray = object.__new__(tray_app.LarkSyncTray)
+    tray._running = True
+    tray._last_conflict_count = 0
+    tray._backend = SimpleNamespace(maybe_auto_restart=lambda: False)
+    states = []
+    notifications = []
+    status = None if payload is None else {"backend_running": True, **payload}
+    monkeypatch.setattr(tray, "_handle_pending_install_request", lambda: False)
+    monkeypatch.setattr(tray, "_fetch_tray_status", lambda: status)
+    monkeypatch.setattr(tray, "_set_state", states.append)
+    monkeypatch.setattr(tray, "_notify", lambda *args, **kwargs: notifications.append(args))
+    monkeypatch.setattr(tray_app.time, "sleep", lambda _: setattr(tray, "_running", False))
+    tray._poll_status_loop()
+    assert states == [expected]
+    assert len(notifications) == int(bool(payload and payload.get("unresolved_conflicts")))
+
+
+def test_tray_clears_problem_state_and_does_not_repeat_conflict_notifications(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from apps.tray import tray_app
+
+    tray = object.__new__(tray_app.LarkSyncTray)
+    tray._running = True
+    tray._last_conflict_count = 0
+    tray._backend = SimpleNamespace(maybe_auto_restart=lambda: False)
+    samples = iter([
+        {"backend_running": True, "unresolved_problems": 1, "unresolved_conflicts": 1},
+        {"backend_running": True, "unresolved_problems": 1, "unresolved_conflicts": 1},
+        {"backend_running": True, "unresolved_problems": 0, "unresolved_conflicts": 0,
+         "last_error": "上次运行的历史错误"},
+    ])
+    states: list[str] = []
+    notices: list[tuple] = []
+    monkeypatch.setattr(tray, "_handle_pending_install_request", lambda: False)
+    monkeypatch.setattr(tray, "_fetch_tray_status", lambda: next(samples))
+    monkeypatch.setattr(tray, "_set_state", states.append)
+    monkeypatch.setattr(tray, "_notify", lambda *args, **kwargs: notices.append(args))
+    monkeypatch.setattr(tray_app.time, "sleep", lambda _: setattr(tray, "_running", len(states) < 3))
+    tray._poll_status_loop()
+    assert states == ["error", "error", "idle"]
+    assert len(notices) == 1
+    assert tray._last_conflict_count == 0
 
 
 def test_tray_status_ignores_stale_running_state_for_disabled_tasks(

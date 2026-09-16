@@ -31,6 +31,10 @@ export type DesktopStatus = {
     last_error?: string | null;
     last_sync_time?: number | null;
   };
+  problems: {
+    unresolved: number;
+    by_category: Record<string, number>;
+  };
   conflicts: {
     unresolved: number;
   };
@@ -72,6 +76,10 @@ export const desktopStatusPlaceholder: DesktopStatus = {
     failed: 0,
     last_error: null,
     last_sync_time: null,
+  },
+  problems: {
+    unresolved: 0,
+    by_category: {},
   },
   conflicts: {
     unresolved: 0,

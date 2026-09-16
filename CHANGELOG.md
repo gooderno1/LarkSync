@@ -1,5 +1,6 @@
 # CHANGELOG
 
+[2026-09-16] v0.9.15-dev.1 fix(tray): 托盘和桌面聚合状态复用当前账号问题摘要，排除已结案旧冲突及历史错误，补齐其他未解决问题与查询失败提示
 [2026-09-16] v0.9.14 release: v0.9.14 notification read-all and dashboard problem counts
 [2026-09-16] v0.9.14-dev.2 fix(dashboard): 总览优先处理、健康状态与顶栏按当前账号的未解决问题统计，排除旧冲突及历史活动事件
 [2026-09-16] v0.9.14-dev.1 fix(notifications): 全部已读改为按账号一次性更新全部未读通知，移除 500 条分页上限；通知抽屉显示处理结果与已读状态
