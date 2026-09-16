@@ -12,7 +12,17 @@
 - 验证方式：
   - 本地前端全部 143 项测试、ESLint、TypeScript 与生产构建通过；后端相关 53 项测试通过。
   - 两项修复均完成隔离开发联调和 Windows 打包目录安装启动验证。
-  - 远端发布质量门、三平台安装包及 SHA256 在标签流水线完成后核验。
+  - 正式标签流水线 `35070698682` 全部通过：完整质量门、WebKit、Windows 安装包、macOS Intel 与 Apple Silicon 安装启动检查。
+  - 从 Release 下载三个安装包，逐个核对实际 SHA256、随附校验文件与 GitHub 资产 digest，全部一致；Release 共包含 6 个资产。
+  - Release 已设为最新正式版：`isDraft=false`、`isPrerelease=false`；发布说明按两个开发版本展开并列出全部校验值。
+  - 发布地址：https://github.com/gooderno1/LarkSync/releases/tag/v0.9.14
+  - 本机现有 v0.9.13 安装未替换；打包验证使用独立安装目录和合成数据。
+- 安装包校验：
+  - Windows：`a459fbf73170cecca9db9d60622fecae9448425aa87c8de51cb1347d30002385`。
+  - macOS Apple Silicon：`ac5b5b9af77a2f05e99468f686c56f84d1c205c3b4f6352f9fffd9988f859f9a`。
+  - macOS Intel：`3e4362877ca608b188bf4c89f1abcc7532797ec7a215bfd825b4dba40fd61f99`。
+- 遗留问题：
+  - macOS 沿用 ad-hoc 签名发布，尚未配置 Developer ID 与 Apple 公证凭据。
 
 ## v0.9.14-dev.2（2026-09-16）
 
@@ -56,7 +66,7 @@
   - 执行 `python scripts/build_installer.py`，将 Windows 独立目录产物复制到测试安装目录启动；真实点击同样处理 1,125 条，健康检查正常。
   - 打包验证使用独立数据、文件凭据和端口，未运行会覆盖现有安装的 NSIS 安装器，未连接真实飞书云端。
 - 遗留问题：
-  - 永久修复尚未发布到稳定版；v0.9.13 当前积压未读已处理，后续升级包含该修复的版本才能消除 500 条上限。
+  - 修复已随 v0.9.14 正式发布；仍使用 v0.9.13 的安装需升级才能消除 500 条上限。
 
 ## v0.9.13 正式发布（2026-09-16）
 
