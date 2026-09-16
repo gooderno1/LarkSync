@@ -1,8 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DesktopTopBar } from "./DesktopTopBar";
 import { Sidebar } from "./Sidebar";
+
+const problemState = vi.hoisted(() => ({ summary: { unresolved: 3 } }));
+vi.mock("../hooks/useProblems", () => ({ useProblemSummary: () => problemState }));
+afterEach(() => { problemState.summary.unresolved = 3; });
 
 const desktopStatus = vi.hoisted(() => ({
   runtime: {
@@ -91,6 +95,12 @@ vi.mock("./ThemeToggle", () => ({
 }));
 
 describe("desktop shell status", () => {
+  it("uses current problems instead of stale desktop conflict/task counters", () => {
+    problemState.summary.unresolved = 0;
+    const html = renderToStaticMarkup(<DesktopTopBar activeTab="dashboard" onNavigate={vi.fn()} />);
+    expect(html).toContain("0 个待处理");
+    expect(html).not.toContain("3 个待处理");
+  });
   it("assigns persistent status to the sidebar and sync scope to the command bar", () => {
     const html = renderToStaticMarkup(
       <>

@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../hooks/useAuth";
 import { useTasks } from "../hooks/useTasks";
-import { useConflicts } from "../hooks/useConflicts";
+import { useProblems, type ProblemFilters } from "../hooks/useProblems";
 import { useWebSocketLog } from "../hooks/useWebSocketLog";
 import { apiFetchForAccount } from "../lib/api";
 import { useAccounts } from "../hooks/useAccounts";
@@ -31,7 +31,7 @@ import {
   IconShieldCheck,
   IconTasks,
 } from "../components/Icons";
-import type { ConflictItem, NavKey, SyncLogEntry, SyncTask, SyncTaskStatus, Tone } from "../types";
+import type { ProblemItem, NavKey, SyncLogEntry, SyncTask, SyncTaskStatus, Tone } from "../types";
 
 type SyncLogResponse = {
   total: number;
@@ -53,6 +53,12 @@ type SyncLogResponseRaw = {
 };
 
 type Props = { onNavigate: (tab: NavKey) => void };
+
+// 与问题中心共享状态、账号范围和查询失效机制；历史活动不代表当前待处理事项。
+const ATTENTION_FILTERS: ProblemFilters = {
+  state: "open,in_progress,waiting", categories: [], severities: [],
+  taskId: "", search: "", since: null, offset: 0, limit: 1,
+};
 
 const FAILURE_STATUSES = new Set(["failed", "delete_failed", "cancelled"]);
 const CONFLICT_STATUSES = new Set(["conflict"]);
@@ -330,34 +336,15 @@ export function buildRecentRow(entry: SyncLogEntry): DashboardRecentRow {
   };
 }
 
-function buildAttentionPreview(entry: SyncLogEntry): DashboardAttentionPreview {
-  const normalizedPath = entry.path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  const pathParts = normalizedPath.split("/").filter(Boolean);
-  const fileName = pathParts[pathParts.length - 1] || entry.taskName;
-  const folderPath = pathParts.length > 1
-    ? `${pathParts.slice(0, -1).join("/")}/`
-    : entry.taskName;
-
+function buildProblemAttentionPreview(problem: ProblemItem): DashboardAttentionPreview {
+  const pathParts = (problem.object_path ?? "").replace(/\\/g, "/").split("/").filter(Boolean);
   return {
-    id: `${entry.taskId}-${entry.timestamp}-${entry.path}`,
-    title: statusLabelMap[entry.status] || entry.status,
-    fileName,
-    folderPath,
-    timeLabel: formatShortTime(entry.timestamp),
-    tone: getDashboardEventTone(entry.status),
-  };
-}
-
-function buildConflictAttentionPreview(conflict: ConflictItem): DashboardAttentionPreview {
-  const normalizedPath = conflict.local_path.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  const pathParts = normalizedPath.split("/").filter(Boolean);
-  return {
-    id: conflict.id,
-    title: "冲突待处理",
-    fileName: pathParts[pathParts.length - 1] || "未命名文件",
-    folderPath: pathParts.length > 1 ? `${pathParts.slice(0, -1).join("/")}/` : "本地文件",
-    timeLabel: formatShortTime(conflict.created_at),
-    tone: "danger",
+    id: problem.id,
+    title: problem.title,
+    fileName: pathParts[pathParts.length - 1] || problem.summary || problem.title,
+    folderPath: pathParts.length > 1 ? `${pathParts.slice(0, -1).join("/")}/` : "",
+    timeLabel: formatShortTime(problem.last_seen_at),
+    tone: problem.severity === "critical" || problem.severity === "high" ? "danger" : "warning",
   };
 }
 
@@ -583,7 +570,7 @@ export function DashboardPage({ onNavigate }: Props) {
   const accountId = activeAccountId || "";
   const { connected } = useAuth();
   const { tasks, taskLoading, statusMap, runTask } = useTasks();
-  const { conflicts } = useConflicts();
+  const { problems, summary: problemSummary, error: problemError } = useProblems(ATTENTION_FILTERS, null);
   const { entries: wsEntries } = useWebSocketLog(accountId, connected);
 
   const syncLogsQuery = useQuery<SyncLogResponse>({
@@ -633,42 +620,34 @@ export function DashboardPage({ onNavigate }: Props) {
     return mapped;
   }, [syncLogEntries]);
 
-  const unresolvedConflicts = conflicts.filter((c) => !c.resolved);
   const today = new Date();
   const enabledTasks = tasks.filter((t) => t.enabled).length;
   const runningTasks = selectRunningTasks(tasks, statusMap).length;
   const pausedTasks = tasks.length - enabledTasks;
   const waitingTasks = Math.max(0, enabledTasks - runningTasks);
   const todayEventCount = syncLogEntries.filter((e) => isSameDay(e.timestamp, today)).length;
-  const failedEventCount = syncLogEntries.filter((e) => FAILURE_STATUSES.has(e.status)).length;
-  const deletePendingCount = syncLogEntries.filter((e) => DELETE_PENDING_STATUSES.has(e.status)).length;
-  const queuedSyncCount = syncLogEntries.filter((e) => QUEUED_SYNC_STATUSES.has(e.status)).length;
-  const pendingEventCount = deletePendingCount + queuedSyncCount;
-  const attentionCount = failedEventCount + unresolvedConflicts.length;
+  const attentionCount = problemSummary?.unresolved ?? 0;
+  const conflictCount = problemSummary?.by_category.conflict ?? 0;
+  const otherProblemCount = Math.max(0, attentionCount - conflictCount);
+  const problemStatusUnknown = !problemSummary || Boolean(problemError);
+  const problemStatusMessage = problemError ? "问题状态暂不可用" : "正在读取问题状态";
   const lastSuccess = syncLogEntries.find((e) => SUCCESS_STATUSES.has(e.status));
   const healthTone: Tone =
-    failedEventCount > 0 ? "danger" :
-      unresolvedConflicts.length > 0 || pendingEventCount > 0 ? "warning" :
-        runningTasks > 0 ? "info" :
-          enabledTasks > 0 ? "success" : "neutral";
+    problemStatusUnknown ? "neutral" :
+      otherProblemCount > 0 ? "danger" :
+        conflictCount > 0 ? "warning" :
+          runningTasks > 0 ? "info" : enabledTasks > 0 ? "success" : "neutral";
   const healthLabel =
-    failedEventCount > 0 ? "有失败" :
-      unresolvedConflicts.length > 0 ? "有冲突" :
-        deletePendingCount > 0 ? "待删除" :
-          queuedSyncCount > 0 ? "有队列" :
-            runningTasks > 0 ? "同步中" :
-              enabledTasks > 0 ? "健康" : "未启用";
+    problemStatusUnknown ? "待确认" :
+      otherProblemCount > 0 ? "有问题" :
+        conflictCount > 0 ? "有冲突" :
+          runningTasks > 0 ? "同步中" : enabledTasks > 0 ? "健康" : "未启用";
   const healthHint =
-    failedEventCount > 0 ? `${failedEventCount} 条失败或取消事件需要排查` :
-      unresolvedConflicts.length > 0 ? `${unresolvedConflicts.length} 个冲突需要处理` :
-        deletePendingCount > 0 ? `待删除 ${deletePendingCount} 项，处于安全宽限队列` :
-          queuedSyncCount > 0 ? `队列中 ${queuedSyncCount} 项等待执行` :
-            runningTasks > 0 ? `正在同步 ${runningTasks} 个任务` :
-              enabledTasks > 0 ? "系统运行正常" : "请先启用同步任务";
+    problemStatusUnknown ? problemStatusMessage :
+      attentionCount > 0 ? `${attentionCount} 个问题需要处理` :
+        runningTasks > 0 ? `正在同步 ${runningTasks} 个任务` :
+          enabledTasks > 0 ? "系统运行正常" : "请先启用同步任务";
 
-  const focusEntries = syncLogEntries.filter((entry) =>
-    FAILURE_STATUSES.has(entry.status) || DELETE_PENDING_STATUSES.has(entry.status) || QUEUED_SYNC_STATUSES.has(entry.status)
-  );
   const runningTaskList = useMemo(
     () => selectRunningTasks(tasks, statusMap),
     [tasks, statusMap]
@@ -689,9 +668,7 @@ export function DashboardPage({ onNavigate }: Props) {
   );
   const attentionPreviewEntries = showcaseMode
     ? [SHOWCASE_ATTENTION_PREVIEW]
-    : unresolvedConflicts.length > 0
-      ? [buildConflictAttentionPreview(unresolvedConflicts[0])]
-      : focusEntries.slice(0, 1).map(buildAttentionPreview);
+    : attentionCount > 0 ? problems.slice(0, 1).map(buildProblemAttentionPreview) : [];
   const displayHealthTone = showcaseMode ? "success" : healthTone;
   const displayHealthLabel = showcaseMode ? "健康" : healthLabel;
   const displayHealthHint = showcaseMode ? "系统运行正常" : healthHint;
@@ -702,16 +679,15 @@ export function DashboardPage({ onNavigate }: Props) {
   const displayPausedTasks = showcaseMode ? 0 : pausedTasks;
   const displayLastSyncValue = showcaseMode ? "2 分钟前" : formatDashboardRelativeTime(lastSuccess?.timestamp);
   const displayLastSyncHint = showcaseMode ? "下一次：1 分钟后" : lastSuccess ? lastSuccess.taskName : `今日日志事件 ${todayEventCount} 条`;
-  const displayAttentionValue = showcaseMode ? 1 : attentionCount + pendingEventCount;
+  const displayAttentionValue = showcaseMode ? 1 : problemStatusUnknown ? "—" : attentionCount;
   const displayAttentionHint = showcaseMode
     ? "冲突 1 个 / 问题 0 个"
-    : `冲突 ${unresolvedConflicts.length} / 问题 ${failedEventCount} / 队列 ${pendingEventCount}`;
+    : problemStatusUnknown ? problemStatusMessage : `冲突 ${conflictCount} / 其他问题 ${otherProblemCount}`;
   const displayRealtimeMetrics = showcaseMode ? SHOWCASE_REALTIME_METRICS : realtimeMetrics;
   const displayTodayActivityCount = showcaseMode ? 12 : todayEventCount;
   const displayTodayActivityHint = `下载 ${displayRealtimeMetrics.incomingEvents} / 上传 ${displayRealtimeMetrics.outgoingEvents}`;
   const taskCoverage = displayTotalTasks > 0 ? Math.round((displayEnabledTasks / displayTotalTasks) * 100) : 0;
   const transferEventCount = displayRealtimeMetrics.incomingEvents + displayRealtimeMetrics.outgoingEvents;
-  const hasConflictAttention = showcaseMode || unresolvedConflicts.length > 0;
 
   return (
     <section className="dashboard-clarity flex min-h-full min-w-0 flex-col animate-fade-up">
@@ -734,7 +710,7 @@ export function DashboardPage({ onNavigate }: Props) {
             <StatCard label="总体状态" value={displayHealthLabel} hint={displayHealthHint} tone={displayHealthTone} icon={<IconShieldCheck className="h-20 w-20" />} iconFrame="plain" />
             <StatCard label="今日活动" value={`${displayTodayActivityCount}`} hint={displayTodayActivityHint} tone={displayTodayActivityCount > 0 ? "info" : "neutral"} icon={<IconActivity className="h-8 w-8" />} />
             <StatCard label="最近同步" value={displayLastSyncValue} hint={displayLastSyncHint} tone="success" icon={<IconClock className="h-14 w-14 text-[#12b8c8]" />} iconFrame="plain" valueClassName="text-[21px] tracking-[-0.02em]" />
-            <StatCard label="待处理项" value={`${displayAttentionValue}`} hint={displayAttentionHint} tone={displayAttentionValue > 0 ? "warning" : "success"} icon={<IconAlertCircle className="h-14 w-14" />} iconFrame="plain" />
+            <StatCard label="待处理项" value={`${displayAttentionValue}`} hint={displayAttentionHint} tone={problemStatusUnknown && !showcaseMode ? "neutral" : attentionCount > 0 || showcaseMode ? "warning" : "success"} icon={<IconAlertCircle className="h-14 w-14" />} iconFrame="plain" />
           </div>
 
           <Panel
@@ -929,7 +905,7 @@ export function DashboardPage({ onNavigate }: Props) {
             <div className="mt-3">
               {attentionPreviewEntries.length === 0 ? (
                 <div className="flex h-[70px] items-center justify-center rounded-lg border border-dashed border-[#c9d8ec] px-4 text-center text-sm font-medium text-[#52657a]">
-                  暂无待处理问题。
+                  {problemStatusUnknown ? problemStatusMessage : attentionCount > 0 ? "正在读取待处理问题…" : "暂无待处理问题。"}
                 </div>
               ) : (
                 attentionPreviewEntries.map((entry, index) => (
@@ -938,7 +914,7 @@ export function DashboardPage({ onNavigate }: Props) {
                     className={`flex h-[70px] w-full items-center gap-3 rounded-lg border p-3 text-left transition hover:brightness-[0.98] ${attentionCardStyles[entry.tone]}`}
                     data-dashboard-attention-card="summary"
                     data-dashboard-attention-tone={entry.tone}
-                    onClick={() => onNavigate(hasConflictAttention ? "conflicts" : "activity")}
+                    onClick={() => onNavigate("conflicts")}
                     type="button"
                   >
                     <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/70 ${inlineStatusStyles[entry.tone]}`}>

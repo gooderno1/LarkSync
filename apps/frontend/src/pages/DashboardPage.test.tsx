@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildRealtimeMetrics,
@@ -10,6 +10,33 @@ import {
   selectDashboardRecentRows,
   shouldUseDashboardShowcase,
 } from "./DashboardPage";
+
+import type { ProblemItem, ProblemSummary } from "../types";
+
+const problemState = vi.hoisted(() => ({
+  problems: [] as ProblemItem[],
+  summary: undefined as ProblemSummary | undefined,
+  error: null as string | null,
+  useProblems: vi.fn(),
+}));
+vi.mock("../hooks/useProblems", () => ({
+  useProblems: (...args: unknown[]) => {
+    problemState.useProblems(...args);
+    return problemState;
+  },
+}));
+beforeEach(() => {
+  problemState.problems = [{
+    id: "current-conflict", category: "conflict", state: "open", severity: "high",
+    title: "当前文档冲突", object_path: "D:/Docs/current.md", last_seen_at: 3,
+  } as ProblemItem];
+  problemState.summary = {
+    total: 20, unresolved: 3, by_state: { open: 1, waiting: 1, in_progress: 1, resolved: 17 },
+    by_category: { conflict: 1, transfer: 2 }, by_severity: { high: 1, medium: 2 },
+  };
+  problemState.error = null;
+  problemState.useProblems.mockClear();
+});
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({
@@ -122,7 +149,10 @@ vi.mock("../hooks/useTasks", () => ({
 
 vi.mock("../hooks/useConflicts", () => ({
   useConflicts: () => ({
-    conflicts: [],
+    conflicts: Array.from({ length: 4 }, (_, index) => ({
+      id: `old-${index}`, local_path: `D:/Docs/node_modules/old-${index}.md`,
+      created_at: 1, resolved: false,
+    })),
   }),
 }));
 
@@ -196,6 +226,48 @@ describe("DashboardPage smoke", () => {
     expect(html).toContain("当前没有正在运行的任务");
     expect(html).toContain("任务状态");
     expect(html).not.toContain("12.4 MB/s");
+  });
+});
+
+
+describe("dashboard current problems", () => {
+  it("ignores legacy conflicts and historical failed/pending events after problems are resolved or ignored", () => {
+    problemState.problems = [];
+    problemState.summary = {
+      total: 20, unresolved: 0, by_state: { resolved: 18, ignored: 2 },
+      by_category: {}, by_severity: {},
+    };
+    const html = renderToStaticMarkup(<DashboardPage onNavigate={vi.fn()} />);
+    expect(html).toContain("冲突 0 / 其他问题 0");
+    expect(html).toContain("暂无待处理问题。");
+    expect(html).toContain("系统运行正常");
+    expect(html).not.toContain('data-dashboard-attention-card="summary"');
+    expect(html).not.toContain("有冲突");
+    expect(html).not.toContain("有失败");
+    expect(html).toContain("删除失败"); // 历史事件仍保留在最近同步
+  });
+
+  it("counts all unresolved states once, regardless of preview page size or history", () => {
+    const html = renderToStaticMarkup(<DashboardPage onNavigate={vi.fn()} />);
+    expect(html).toContain("冲突 1 / 其他问题 2");
+    expect(html).toContain("3 个问题需要处理");
+    expect(html).toContain("当前文档冲突");
+    expect(html).toContain("current.md");
+    expect(html).not.toContain("old-0.md");
+    expect(problemState.useProblems).toHaveBeenCalledWith(expect.objectContaining({
+      state: "open,in_progress,waiting", categories: [], severities: [],
+      taskId: "", search: "", since: null, offset: 0, limit: 1,
+    }), null);
+  });
+
+  it("does not claim a healthy empty state when problem statistics fail", () => {
+    problemState.summary = undefined;
+    problemState.problems = [];
+    problemState.error = "network error";
+    const html = renderToStaticMarkup(<DashboardPage onNavigate={vi.fn()} />);
+    expect(html).toContain("问题状态暂不可用");
+    expect(html).not.toContain("系统运行正常");
+    expect(html).not.toContain("暂无待处理问题。");
   });
 });
 

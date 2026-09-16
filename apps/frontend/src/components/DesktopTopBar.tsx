@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDesktopStatus } from "../hooks/useDesktopStatus";
+import { useProblemSummary } from "../hooks/useProblems";
 import { useTasks } from "../hooks/useTasks";
 import { useToast } from "./ui/toast";
 import { IconChevronDown, IconDownloadTray, IconRefresh, IconSettings, IconSyncCircle } from "./Icons";
@@ -19,7 +20,8 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
 
   const enabledTasks = useMemo(() => tasks.filter((task) => task.enabled), [tasks]);
   const accountName = desktopStatus.auth.account_name;
-  const pendingCount = desktopStatus.conflicts.unresolved + Math.max(0, desktopStatus.tasks.failed || 0);
+  const { summary: problemSummary, error: problemError } = useProblemSummary();
+  const pendingCount = problemSummary && !problemError ? problemSummary.unresolved : null;
   const runtimeMutationsDisabled = desktopStatus.runtime.profile === "snapshot_test";
 
   useEffect(() => {
@@ -67,13 +69,13 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
       <div
         data-command-scope="true"
         className="flex min-w-0 items-center gap-3 text-[13px] leading-5 font-medium text-[#52657a]"
-        aria-label={`${desktopStatus.tasks.enabled} 个任务已启用，${desktopStatus.tasks.running} 个正在运行，${pendingCount} 个待处理`}
+        aria-label={`${desktopStatus.tasks.enabled} 个任务已启用，${desktopStatus.tasks.running} 个正在运行，${pendingCount ?? "—"} 个待处理`}
       >
         <span className="whitespace-nowrap text-[#334762]">{desktopStatus.tasks.enabled} 个任务已启用</span>
         <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
         <span className="whitespace-nowrap">{desktopStatus.tasks.running} 个正在运行</span>
         <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
-        <span className={pendingCount > 0 ? "whitespace-nowrap text-[#b45309]" : "whitespace-nowrap"}>{pendingCount} 个待处理</span>
+        <span className={(pendingCount ?? 0) > 0 ? "whitespace-nowrap text-[#b45309]" : "whitespace-nowrap"}>{pendingCount ?? "—"} 个待处理</span>
       </div>
 
       <div className="flex w-[460px] min-w-0 shrink-0 items-center">
