@@ -9,11 +9,13 @@ from src.db.models import (
     ConflictRecord,
     ProblemOccurrence,
     ProblemRecord,
+    ProblemRecoveryFact,
     SyncMeta,
     SyncRun,
     SyncRunEvent,
     SyncTask,
     SyncTaskCheckState,
+    LEGACY_ACCOUNT_ID,
 )
 from src.db.session import get_session_maker, init_db
 from src.services.problem_service import ProblemService
@@ -1520,3 +1522,175 @@ async def test_initialize_live_cursor_fast_forwards_without_losing_history_check
     assert refreshed.events_seen == 1
     assert total == 1
     assert items[0].object_path == "new.md"
+
+
+async def _seed_network_failure(session_maker, event_service, service, *, direction="upload", message="ReadTimeout('')"):
+    await _insert_task(session_maker)
+    async with session_maker() as session:
+        session.add(SyncRun(
+            run_id="network-failed-run", task_id="task-1", state="failed",
+            trigger_source=f"scheduled_{direction}" if direction else "manual",
+            started_at=9.0, finished_at=11.0, created_at=9.0, updated_at=11.0,
+        ))
+        await session.commit()
+    await event_service.append_batch([SyncEventRecord(
+        timestamp=10.0, task_id="task-1", task_name="市场资料备份", status="failed",
+        path="D:/Work/Marketing/demo.md", message=message, run_id="network-failed-run",
+    )])
+    await service.refresh_sources()
+    _, items = await service.list_problems(state="open", limit=20, offset=0)
+    assert len(items) == 1
+    return items[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("direction,success,opposite", [("upload", "uploaded", "downloaded"), ("download", "downloaded", "uploaded")])
+@pytest.mark.parametrize("message", ["ReadTimeout('')", "HTTP 429", "HTTP 503"])
+async def test_network_failure_recovers_only_in_its_run_direction(tmp_path, direction, success, opposite, message) -> None:
+    session_maker, events, service = await _build_services(tmp_path)
+    problem = await _seed_network_failure(session_maker, events, service, direction=direction, message=message)
+    assert problem.category == "network_remote"
+    assert problem.operation_family == direction
+    await events.append_batch([SyncEventRecord(
+        timestamp=20.0, task_id="task-1", task_name="市场资料备份", status=opposite,
+        path="D:/Work/Marketing/demo.md", message=None, run_id="opposite-run",
+    )])
+    await service.refresh_sources()
+    assert (await service.get_problem(problem.id)).state == "open"
+    await events.append_batch([SyncEventRecord(
+        timestamp=30.0, task_id="task-1", task_name="市场资料备份", status=success,
+        path="d:\\work\\marketing\\DEMO.md", message=None, run_id="recovered-run",
+    )])
+    await service.refresh_sources()
+    recovered = await service.get_problem(problem.id)
+    assert recovered.state == "resolved"
+    assert recovered.resolved_by_run_id == "recovered-run"
+    assert recovered.last_good_at == 30.0
+    await events.append_batch([SyncEventRecord(
+        timestamp=40.0, task_id="task-1", task_name="市场资料备份", status="failed",
+        path="D:/Work/Marketing/demo.md", message=message, run_id="network-failed-run",
+    )])
+    await service.refresh_sources()
+    reopened = await service.get_problem(problem.id)
+    assert reopened.state == "open"
+    assert reopened.occurrence_count == 2
+    assert reopened.resolved_by_event_id is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("direction", ["upload", "download"])
+@pytest.mark.parametrize("state", ["open", "waiting", "ignored"])
+async def test_network_legacy_direction_repair_uses_consumed_recovery_fact(tmp_path, direction, state) -> None:
+    session_maker, events, service = await _build_services(tmp_path)
+    problem = await _seed_network_failure(session_maker, events, service, direction=direction)
+    await events.append_batch([SyncEventRecord(
+        timestamp=20.0, task_id="task-1", task_name="市场资料备份",
+        status="uploaded" if direction == "upload" else "downloaded",
+        path="D:/Work/Marketing/demo.md", message=None, run_id="recovered-run",
+    )])
+    await service.refresh_sources()
+    # Reproduce v0.9.15 persisted state after the success cursor has advanced.
+    async with session_maker() as session:
+        record = await session.get(ProblemRecord, problem.id)
+        record.operation_family = "diagnostic"
+        record.resolution_key = service.build_resolution_key(task_id="task-1", object_key="demo.md", operation_family="diagnostic")
+        record.state = state
+        record.resolved_at = record.last_good_at = None
+        record.resolved_by_event_id = record.resolved_by_run_id = None
+        record.resolution_verification = "waiting_for_later_run"
+        record.ignored_reason = "临时忽略" if state == "ignored" else None
+        record.ignored_at = 12.0 if state == "ignored" else None
+        cursor_before = (await session.get(SyncMeta, "problem_event_cursor_v4")).value
+        await session.commit()
+    service = ProblemService(session_maker)
+    result = await service.refresh_sources(event_limit=1)
+    repaired = await service.get_problem(problem.id)
+    assert result.events_seen == 0
+    assert repaired.state == "resolved"
+    assert repaired.operation_family == direction
+    assert repaired.category == "network_remote"
+    assert repaired.fingerprint == problem.fingerprint
+    assert repaired.occurrence_count == 1
+    assert repaired.resolved_by_run_id == "recovered-run"
+    assert repaired.last_good_at == repaired.resolved_at == 20.0
+    assert repaired.resolution_verification == "same_object_operation_succeeded"
+    assert repaired.ignored_at is repaired.ignored_reason is None
+    assert len(await service.list_occurrences(problem.id, limit=20, offset=0)) == 1
+    await service.refresh_sources(event_limit=1)
+    assert await service.get_problem(problem.id) == repaired
+    async with session_maker() as session:
+        assert (await session.get(SyncMeta, "problem_event_cursor_v4")).value == cursor_before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mismatch", ["direction", "path", "task", "account", "earlier", "same_time", "unknown_direction", "source_account", "source_task"])
+async def test_network_legacy_repair_rejects_unrelated_recovery(tmp_path, mismatch) -> None:
+    session_maker, events, service = await _build_services(tmp_path)
+    problem = await _seed_network_failure(session_maker, events, service, direction=None if mismatch == "unknown_direction" else "upload")
+    async with session_maker() as session:
+        record = await session.get(ProblemRecord, problem.id)
+        record.operation_family = "diagnostic"
+        record.resolution_key = service.build_resolution_key(task_id="task-1", object_key="demo.md", operation_family="diagnostic")
+        if mismatch in {"source_account", "source_task"}:
+            run = await session.get(SyncRun, "network-failed-run")
+            if mismatch == "source_account":
+                run.account_id = "other-account"
+            else:
+                run.task_id = "other-task"
+        family = "download" if mismatch == "direction" else "upload"
+        task_id = "other-task" if mismatch == "task" else "task-1"
+        key = service.build_resolution_key(task_id=task_id, object_key="other.md" if mismatch == "path" else "demo.md", operation_family=family)
+        session.add(ProblemRecoveryFact(
+            event_id="unrelated-success", task_id=task_id,
+            account_id="other-account" if mismatch == "account" else LEGACY_ACCOUNT_ID,
+            resolution_key=key, operation_family=family, run_id="unrelated-run",
+            occurred_at=9.0 if mismatch == "earlier" else 10.0 if mismatch == "same_time" else 20.0,
+            created_at=20.0,
+        ))
+        await session.commit()
+    await service.refresh_sources()
+    repaired = await service.get_problem(problem.id)
+    assert repaired.state == "open"
+    assert repaired.resolved_by_event_id is None
+    expected = "diagnostic" if mismatch in {"unknown_direction", "source_account", "source_task"} else "upload"
+    assert repaired.operation_family == expected
+    verified = await service.verify_problem(problem.id)
+    assert verified.state == "open"
+
+
+@pytest.mark.asyncio
+async def test_network_direction_migration_repairs_missing_family(tmp_path) -> None:
+    session_maker, events, service = await _build_services(tmp_path)
+    problem = await _seed_network_failure(session_maker, events, service)
+    async with session_maker() as session:
+        record = await session.get(ProblemRecord, problem.id)
+        record.operation_family = None
+        await session.commit()
+    await service.refresh_sources(event_limit=1)
+    assert (await service.get_problem(problem.id)).operation_family == "upload"
+
+
+@pytest.mark.asyncio
+async def test_network_direction_migration_drains_batches_without_unknown_blocking(tmp_path) -> None:
+    session_maker, events, service = await _build_services(tmp_path)
+    first = await _seed_network_failure(session_maker, events, service)
+    await events.append_batch([
+        SyncEventRecord(timestamp=11.0, task_id="task-1", task_name="市场资料备份",
+            status="failed", path="D:/Work/Marketing/unknown.md", message="ReadTimeout('')", run_id=None),
+        SyncEventRecord(timestamp=12.0, task_id="task-1", task_name="市场资料备份",
+            status="failed", path="D:/Work/Marketing/second.md", message="ReadTimeout('')", run_id="network-failed-run"),
+    ])
+    await service.refresh_sources()
+    async with session_maker() as session:
+        records = (await session.execute(select(ProblemRecord))).scalars().all()
+        for record in records:
+            record.operation_family = "diagnostic"
+        await session.commit()
+    for expected in [1, 2, 2]:
+        async with session_maker() as session:
+            await service._repair_network_problem_operations(session, limit=1)
+            await session.commit()
+        _, items = await service.list_problems(state="open", limit=20, offset=0)
+        assert sum(item.operation_family == "upload" for item in items) == expected
+        assert next(item for item in items if item.object_key == "unknown.md").operation_family == "diagnostic"
+    assert (await service.get_problem(first.id)).state == "open"

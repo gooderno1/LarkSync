@@ -488,6 +488,7 @@ class ProblemService:
             task_rows = await session.execute(select(SyncTask.id, SyncTask.local_path))
             task_roots = {str(task_id): str(root) for task_id, root in task_rows.all()}
             await self._migrate_active_event_problems(session, task_roots=task_roots)
+            await self._repair_network_problem_operations(session)
             await self._recount_legacy_occurrences(session)
             cursor_timestamp, cursor_event_id = await self._load_event_cursor(session)
             event_stmt = (
@@ -646,6 +647,70 @@ class ProblemService:
                 updated_at=now,
             )
         )
+
+    async def _repair_network_problem_operations(
+        self, session: AsyncSession, *, limit: int = 500,
+    ) -> None:
+        """修正旧网络问题的方向，并使用已消费的成功事实结案。"""
+        rows = await session.execute(
+            select(ProblemRecord, SyncRun.trigger_source)
+            .select_from(ProblemRecord)
+            .join(SyncRunEvent, SyncRunEvent.id == ProblemRecord.latest_event_id)
+            .join(SyncRun, SyncRun.run_id == SyncRunEvent.run_id)
+            .where(ProblemRecord.category == "network_remote")
+            .where(ProblemRecord.state.in_(["open", "in_progress", "waiting", "ignored"]))
+            .where(or_(
+                ProblemRecord.operation_family == "diagnostic",
+                ProblemRecord.operation_family.is_(None),
+            ))
+            .where(SyncRunEvent.status == "failed")
+            .where(SyncRunEvent.account_id == ProblemRecord.account_id)
+            .where(SyncRunEvent.task_id == ProblemRecord.task_id)
+            .where(SyncRun.account_id == ProblemRecord.account_id)
+            .where(SyncRun.task_id == ProblemRecord.task_id)
+            .where(or_(
+                func.lower(SyncRun.trigger_source).contains("upload"),
+                func.lower(SyncRun.trigger_source).contains("download"),
+            ))
+            .order_by(ProblemRecord.last_seen_at.asc(), ProblemRecord.id.asc())
+            .limit(max(1, limit))
+        )
+        for problem, trigger_source in rows.all():
+            direction = self.operation_hint_from_trigger(trigger_source)
+            if direction not in {"upload", "download"}:
+                continue
+            problem.operation_family = direction
+            problem.resolution_key = self.build_resolution_key(
+                task_id=problem.task_id or "",
+                object_key=problem.object_key,
+                operation_family=direction,
+            )
+            recovery = await self._latest_recovery_fact(session, problem)
+            if recovery is not None:
+                problem.state = "resolved"
+                problem.resolved_at = recovery.occurred_at
+                problem.last_good_at = recovery.occurred_at
+                problem.resolved_by_run_id = recovery.run_id
+                problem.resolved_by_event_id = recovery.event_id
+                problem.resolution_verification = "same_object_operation_succeeded"
+                problem.ignored_reason = None
+                problem.ignored_at = None
+
+    @staticmethod
+    async def _latest_recovery_fact(
+        session: AsyncSession, problem: ProblemRecord,
+    ) -> ProblemRecoveryFact | None:
+        row = await session.execute(
+            select(ProblemRecoveryFact)
+            .where(ProblemRecoveryFact.account_id == problem.account_id)
+            .where(ProblemRecoveryFact.task_id == problem.task_id)
+            .where(ProblemRecoveryFact.resolution_key == problem.resolution_key)
+            .where(ProblemRecoveryFact.operation_family == problem.operation_family)
+            .where(ProblemRecoveryFact.occurred_at > problem.last_seen_at)
+            .order_by(ProblemRecoveryFact.occurred_at.desc(), ProblemRecoveryFact.event_id.desc())
+            .limit(1)
+        )
+        return row.scalar_one_or_none()
 
     async def _migrate_active_event_problems(
         self,
@@ -1209,14 +1274,7 @@ class ProblemService:
                 resolved = bool(conflict and conflict.resolved)
                 verification = "source_resolved" if resolved else "not_verified"
             elif problem.resolution_key:
-                recovery_row = await session.execute(
-                    select(ProblemRecoveryFact)
-                    .where(ProblemRecoveryFact.resolution_key == problem.resolution_key)
-                    .where(ProblemRecoveryFact.occurred_at > problem.last_seen_at)
-                    .order_by(ProblemRecoveryFact.occurred_at.desc())
-                    .limit(1)
-                )
-                recovery = recovery_row.scalar_one_or_none()
+                recovery = await self._latest_recovery_fact(session, problem)
                 resolved = recovery is not None
                 if recovery is not None:
                     verification = "same_object_operation_succeeded"
@@ -1256,7 +1314,9 @@ class ProblemService:
             event.message,
             operation_hint=operation_hint,
         )
-        operation_family = self.operation_family_for_problem(classification.category, event.status)
+        operation_family = self.operation_family_for_problem(
+            classification.category, event.status, operation_hint=operation_hint,
+        )
         resolution_key = self.build_resolution_key(
             task_id=event.task_id,
             object_key=object_key,
@@ -1440,7 +1500,11 @@ class ProblemService:
             problem.actionability = "diagnostic_only"
 
     @staticmethod
-    def operation_family_for_problem(category: str, stage: str) -> str:
+    def operation_family_for_problem(
+        category: str, stage: str, *, operation_hint: str | None = None,
+    ) -> str:
+        if category == "network_remote" and operation_hint in {"upload", "download"}:
+            return operation_hint
         if category == "upload":
             return "upload"
         if category == "download":

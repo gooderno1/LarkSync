@@ -1,5 +1,7 @@
 # CHANGELOG
 
+[2026-09-29] v0.9.16 release: 修复网络异常恢复结案与历史成功证据回填
+[2026-09-29] v0.9.16-dev.1 fix(problems): 网络异常按所属运行的上传或下载方向关联恢复事实；分批修正历史诊断方向并补结案，严格校验账号、任务、对象、方向和成功时间
 [2026-09-16] v0.9.15 release: unify tray and problem center actionable status
 [2026-09-16] v0.9.15-dev.1 fix(tray): 托盘和桌面聚合状态复用当前账号问题摘要，排除已结案旧冲突及历史错误，补齐其他未解决问题与查询失败提示
 [2026-09-16] v0.9.14 release: v0.9.14 notification read-all and dashboard problem counts
