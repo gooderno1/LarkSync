@@ -1,6 +1,10 @@
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
+from types import SimpleNamespace
+from src.core.config import AppConfig, RuntimeProfile
+from src.services.sync_path_mode import PathSyncRule
 
 import src.api.sync_tasks as sync_tasks_api
 from src.services.sync_event_store import SyncEventRecord
@@ -16,9 +20,28 @@ def test_task_update_requires_restart_for_ignored_subpaths() -> None:
     assert _task_update_requires_restart(payload) is True
 
 
+def test_task_update_requires_restart_when_rules_are_added_or_cleared() -> None:
+    assert _task_update_requires_restart(SyncTaskUpdateRequest(path_sync_rules=[]))
+    assert _task_update_requires_restart(SyncTaskUpdateRequest(path_sync_rules=[
+        {"path": "one.md", "kind": "file", "sync_mode": "download_only"},
+    ]))
+
+
 def test_task_update_does_not_require_restart_for_name_only() -> None:
     payload = SyncTaskUpdateRequest(name="新名称")
     assert _task_update_requires_restart(payload) is False
+
+
+def test_readonly_runtime_rejects_upload_rule(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sync_tasks_api.ConfigManager, "get", lambda: SimpleNamespace(
+        config=AppConfig(runtime_profile=RuntimeProfile.live_readonly),
+    ))
+    with pytest.raises(HTTPException) as caught:
+        sync_tasks_api._enforce_task_runtime(
+            sync_mode="download_only", cloud_folder_token="root", delete_policy="off",
+            path_sync_rules=[PathSyncRule(path="draft.md", kind="file", sync_mode="upload_only")],
+        )
+    assert caught.value.status_code == 403
 
 
 def _build_task() -> SyncTaskItem:

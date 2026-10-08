@@ -532,6 +532,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
             <dl className="mt-2 space-y-1 text-xs">
               {[
                 ["同步模式", modeLabels[task.sync_mode] || task.sync_mode],
+                ["独立规则", `${task.path_sync_rules?.length || 0} 项`],
                 ["更新策略", updateModeLabels[task.update_mode || "auto"]],
                 ["冲突处理", "云端优先（保留副本）"],
                 ["删除联动", deletePolicyLabel(task.delete_policy)],

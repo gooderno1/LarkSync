@@ -1,4 +1,5 @@
-import type { SyncTask } from "../types";
+import type { PathSyncRule, SyncTask } from "../types";
+import { rulesEqual } from "./pathSyncRules";
 import { syncModeSupportsUpload } from "./constants";
 import { parseDeleteGraceMinutes } from "./taskManagement";
 
@@ -8,6 +9,7 @@ export type TaskSettingsDraft = {
   mdSyncMode: "enhanced" | "download_only" | "doc_only";
   deletePolicy: "off" | "safe" | "strict";
   deleteGraceMinutes: string;
+  pathSyncRules: PathSyncRule[];
 };
 
 export type TaskSettingsRisk = {
@@ -23,6 +25,7 @@ export function createTaskSettingsDraft(task: SyncTask): TaskSettingsDraft {
     mdSyncMode: (task.md_sync_mode || "enhanced") as TaskSettingsDraft["mdSyncMode"],
     deletePolicy: (task.delete_policy || "safe") as TaskSettingsDraft["deletePolicy"],
     deleteGraceMinutes: String(task.delete_grace_minutes ?? 30),
+    pathSyncRules: (task.path_sync_rules || []).map((rule) => ({ ...rule })),
   };
 }
 
@@ -43,6 +46,7 @@ export function countTaskSettingsDraftChanges(
   draft: TaskSettingsDraft,
 ): number {
   let changes = 0;
+  if (!rulesEqual(draft.pathSyncRules, baseline.pathSyncRules)) changes += 1;
   if (draft.syncMode !== baseline.syncMode) changes += 1;
   if (draft.updateMode !== baseline.updateMode) changes += 1;
   if (draft.mdSyncMode !== baseline.mdSyncMode) changes += 1;
@@ -63,6 +67,7 @@ export function buildTaskSettingsPatch(
   draft: TaskSettingsDraft,
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
+  if (!rulesEqual(draft.pathSyncRules, task.path_sync_rules || [])) patch.path_sync_rules = draft.pathSyncRules;
   if (draft.syncMode !== task.sync_mode) patch.sync_mode = draft.syncMode;
   if (draft.updateMode !== (task.update_mode || "auto")) patch.update_mode = draft.updateMode;
   if (draft.mdSyncMode !== (task.md_sync_mode || "enhanced")) patch.md_sync_mode = draft.mdSyncMode;
@@ -78,6 +83,7 @@ export function buildTaskSettingsPatch(
 export function getTaskSettingsRisk(
   syncMode: string,
   deletePolicy: TaskSettingsDraft["deletePolicy"],
+  rules: PathSyncRule[] = [],
 ): TaskSettingsRisk {
   if (deletePolicy === "strict") {
     return {
@@ -86,11 +92,11 @@ export function getTaskSettingsRisk(
       description: "删除会立即联动执行，请先确认本地与云端目录范围。",
     };
   }
-  if (syncModeSupportsUpload(syncMode)) {
+  if (syncModeSupportsUpload(syncMode) || rules.some((rule) => syncModeSupportsUpload(rule.sync_mode))) {
     return {
       label: "中风险",
       tone: "warning",
-      description: "该模式可以写入云端，修改前请确认内容流向。",
+      description: "任务模式或独立规则允许写入云端，请确认各对象的内容流向。",
     };
   }
   return {

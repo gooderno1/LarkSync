@@ -15,6 +15,7 @@ from src.services.sync_block_service import SyncBlockService
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_runner_state import SyncFileEvent, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
+from src.services.sync_path_mode import can_delete_path, path_supports_direction
 from src.services.sync_tombstone_service import SyncTombstoneService
 
 ShouldIgnorePath = Callable[[SyncTaskItem, Path], bool]
@@ -99,6 +100,10 @@ class SyncDeleteSyncService:
         link = await self._link_service.get_by_local_path(str(local_path))
         if not link:
             return False
+        if self._should_ignore_path(task, local_path) or not can_delete_path(
+            task, local_path, "upload", is_directory=link.cloud_type == "folder",
+        ):
+            return False
         expire_at = time.time() + grace_seconds
         try:
             tombstone = await self._tombstone_service.create_or_refresh(
@@ -156,6 +161,10 @@ class SyncDeleteSyncService:
         sorted_links = sorted(links, key=lambda item: len(Path(item.local_path).parts))
         for link in sorted_links:
             local_path = Path(link.local_path)
+            if self._should_ignore_path(task, local_path) or not can_delete_path(
+                task, local_path, "upload", is_directory=link.cloud_type == "folder",
+            ):
+                continue
             if local_path.exists():
                 continue
             is_descendant_of_missing_folder = any(
@@ -220,6 +229,8 @@ class SyncDeleteSyncService:
         )
         for link in sorted_links:
             if self._should_ignore_path(task, Path(link.local_path)):
+                continue
+            if not can_delete_path(task, Path(link.local_path), "download", is_directory=link.cloud_type == "folder"):
                 continue
             if (
                 known_cloud_tokens
@@ -319,6 +330,19 @@ class SyncDeleteSyncService:
                         task,
                     )
                     continue
+                direction = "upload" if tombstone.source == "local" else "download"
+                if not can_delete_path(
+                    task, local_path, direction, is_directory=tombstone.cloud_type == "folder",
+                ):
+                    await self._tombstone_service.mark_status(
+                        tombstone.id, status="cancelled", reason="当前对象同步规则禁止该方向删除",
+                    )
+                    record_event(
+                        status,
+                        SyncFileEvent(path=str(local_path), status="skipped", message="对象规则已变更，取消删除联动"),
+                        task,
+                    )
+                    continue
                 if tombstone.source == "local":
                     if local_path.exists():
                         await self._tombstone_service.mark_status(
@@ -413,11 +437,10 @@ class SyncDeleteSyncService:
                         )
                         continue
 
-                await cleanup_md_mirror_copy(
-                    task=task,
-                    local_path=local_path,
-                    drive_service=drive_service,
-                )
+                if path_supports_direction(task, local_path, "upload"):
+                    await cleanup_md_mirror_copy(
+                        task=task, local_path=local_path, drive_service=drive_service,
+                    )
 
                 if local_path.exists():
                     if policy == DeletePolicy.strict:

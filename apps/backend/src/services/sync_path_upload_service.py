@@ -13,6 +13,7 @@ from src.services.import_task_service import ImportTaskService
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_runner_state import SyncFileEvent, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
+from src.services.sync_path_mode import path_supports_direction, task_for_path
 
 ShouldIgnorePathFn = Callable[[SyncTaskItem, Path], bool]
 ShouldUploadMarkdownDocFn = Callable[[SyncTaskItem], bool]
@@ -66,6 +67,13 @@ class SyncPathUploadService:
         force: bool = False,
     ) -> None:
         key = str(path)
+        if not path_supports_direction(task, path, "upload"):
+            status.skipped_files += 1
+            self._record_event(
+                status, SyncFileEvent(path=key, status="skipped", message="对象同步方式为仅下载，跳过上传"), None,
+            )
+            return
+        task = task_for_path(task, path)
         if key in self._uploading_paths:
             status.skipped_files += 1
             self._record_event(

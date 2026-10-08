@@ -15,6 +15,7 @@ import {
 } from "../../lib/taskSettings";
 import { deletePolicyLabel } from "../../lib/taskManagement";
 import { cn } from "../../lib/utils";
+import { PathSyncRulesEditor } from "./PathSyncRulesEditor";
 import type { SyncTask } from "../../types";
 import {
   IconArrowDown,
@@ -68,7 +69,7 @@ export function TaskSettingsPanel({
 
   const uploadEnabled = syncModeSupportsUpload(draft.syncMode);
   const changeCount = countTaskSettingsDraftChanges(baseline, draft);
-  const risk = getTaskSettingsRisk(draft.syncMode, draft.deletePolicy);
+  const risk = getTaskSettingsRisk(draft.syncMode, draft.deletePolicy, draft.pathSyncRules);
 
   useEffect(() => {
     onDirtyChange?.(changeCount > 0);
@@ -86,8 +87,8 @@ export function TaskSettingsPanel({
     try {
       await onSave(buildTaskSettingsPatch(task, draft));
       setBaseline(draft);
-    } catch {
-      setSaveError("保存失败，请检查连接后重试。");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "保存失败，请检查连接后重试。");
     } finally {
       setSaving(false);
     }
@@ -112,7 +113,7 @@ export function TaskSettingsPanel({
       <div className="grid grid-cols-[minmax(0,1fr)_272px] items-stretch">
         <div className="min-w-0 divide-y divide-[#edf3fb] px-5">
           <section className="py-3">
-            <div className="mb-3"><h4 className="text-sm font-semibold text-[#102033]">内容流向</h4><p className="mt-1 text-xs text-[#52657a]">决定内容从哪里读取、是否允许写入云端。</p></div>
+            <div className="mb-3"><h4 className="text-sm font-semibold text-[#102033]">内容流向</h4><p className="mt-1 text-xs text-[#52657a]">任务的默认同步方式，文档与文件夹可在下方单独设置。</p></div>
             <div className="grid grid-cols-3 gap-3" role="group" aria-label="内容流向">
               {syncModes.map(({ value, label, desc, Icon }) => (
                 <button
@@ -138,6 +139,8 @@ export function TaskSettingsPanel({
             </div>
           </section>
 
+          <PathSyncRulesEditor task={{ ...task, sync_mode: draft.syncMode }} rules={draft.pathSyncRules} onChange={(rules) => updateDraft("pathSyncRules", rules)} disabled={saving} />
+
           <section className="py-3">
             <div className="mb-3"><h4 className="text-sm font-semibold text-[#102033]">写入方式</h4><p className="mt-1 text-xs text-[#52657a]">控制文档更新粒度和 Markdown 上行行为。</p></div>
             <div className="grid grid-cols-2 gap-4">
@@ -161,7 +164,7 @@ export function TaskSettingsPanel({
               ) : (
                 <div className="rounded-lg border border-dashed border-[#c9d8ec] bg-[#f8fbff] px-3 py-2.5">
                   <p className="text-xs font-medium text-[#334762]">MD 上传模式不适用</p>
-                  <p className="mt-1 text-[11px] leading-4 text-[#52657a]">当前任务为仅下载，不会写入云端。</p>
+                  <p className="mt-1 text-[11px] leading-4 text-[#52657a]">{draft.pathSyncRules.some((rule) => syncModeSupportsUpload(rule.sync_mode)) ? "独立规则允许上传的 Markdown 将作为飞书文档写入。" : "当前任务为仅下载，不会写入云端。"}</p>
                 </div>
               )}
             </div>
@@ -204,6 +207,7 @@ export function TaskSettingsPanel({
           <dl className="mt-4 space-y-3 text-xs">
             {[
               ["内容流向", modeLabels[draft.syncMode] || draft.syncMode],
+              ["独立规则", `${draft.pathSyncRules.length} 项`],
               ["更新模式", updateModeLabels[draft.updateMode] || draft.updateMode],
               ["MD 模式", uploadEnabled ? mdSyncModeLabels[draft.mdSyncMode] : "不适用"],
               ["删除策略", deletePolicyLabel(draft.deletePolicy)],

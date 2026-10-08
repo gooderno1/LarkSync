@@ -58,7 +58,7 @@ class SyncUploadOrchestrationService:
         allow_deletes: bool = True,
     ) -> None:
         try:
-            if task.sync_mode == "upload_only":
+            if task.sync_mode == "upload_only" or any(rule.sync_mode == "upload_only" for rule in task.path_sync_rules):
                 await self._prefill_links_from_cloud(task, runtime.drive_service)
             if allow_deletes:
                 await self._enqueue_missing_local_deletes(task=task, status=status)
@@ -93,7 +93,7 @@ class SyncUploadOrchestrationService:
         force_paths: set[str] | None = None,
     ) -> None:
         try:
-            if task.sync_mode == "upload_only":
+            if task.sync_mode == "upload_only" or any(rule.sync_mode == "upload_only" for rule in task.path_sync_rules):
                 await self._prefill_links_from_cloud(task, runtime.drive_service)
             if allow_deletes:
                 await self._enqueue_missing_local_deletes(task=task, status=status)

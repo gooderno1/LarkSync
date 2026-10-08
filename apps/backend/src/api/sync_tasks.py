@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -40,6 +41,8 @@ from src.services.sync_task_service import (
 )
 from src.services.sync_task_check_state_service import SyncTaskCheckStateService
 from src.services.sync_tombstone_service import SyncTombstoneService
+from src.services.sync_path_mode import PathSyncRule, mode_supports_direction
+from src.services.sync_task_browse_service import SyncTaskBrowseResponse, browse_task_entries
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 service = SyncTaskService()
@@ -55,7 +58,12 @@ def _enforce_task_runtime(
     sync_mode: str,
     cloud_folder_token: str,
     delete_policy: str | None,
+    path_sync_rules: list[PathSyncRule] | None = None,
 ) -> None:
+    if path_sync_rules:
+        upload = mode_supports_direction(sync_mode, "upload") or any(mode_supports_direction(rule.sync_mode, "upload") for rule in path_sync_rules)
+        download = mode_supports_direction(sync_mode, "download") or any(mode_supports_direction(rule.sync_mode, "download") for rule in path_sync_rules)
+        sync_mode = "bidirectional" if upload and download else "upload_only" if upload else "download_only"
     issues = validate_task_runtime(
         ConfigManager.get().config,
         sync_mode=sync_mode,
@@ -77,6 +85,7 @@ def _task_update_requires_restart(payload: SyncTaskUpdateRequest) -> bool:
             payload.update_mode,
             payload.md_sync_mode,
             payload.ignored_subpaths,
+            payload.path_sync_rules,
             payload.delete_policy,
             payload.delete_grace_minutes,
         )
@@ -158,6 +167,7 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
     _enforce_task_runtime(
         sync_mode=payload.sync_mode.value,
         cloud_folder_token=payload.cloud_folder_token,
+        path_sync_rules=payload.path_sync_rules,
         delete_policy=(
             payload.delete_policy.value
             if payload.delete_policy
@@ -169,13 +179,14 @@ async def create_task(payload: SyncTaskCreateRequest) -> SyncTaskResponse:
             name=payload.name,
             local_path=payload.local_path,
             cloud_folder_token=payload.cloud_folder_token,
-        cloud_folder_name=payload.cloud_folder_name,
-        base_path=payload.base_path,
-        sync_mode=payload.sync_mode.value,
-        update_mode=payload.update_mode,
-        md_sync_mode=payload.md_sync_mode,
-        ignored_subpaths=payload.ignored_subpaths,
-        delete_policy=payload.delete_policy.value if payload.delete_policy else None,
+            cloud_folder_name=payload.cloud_folder_name,
+            base_path=payload.base_path,
+            sync_mode=payload.sync_mode.value,
+            update_mode=payload.update_mode,
+            md_sync_mode=payload.md_sync_mode,
+            ignored_subpaths=payload.ignored_subpaths,
+            path_sync_rules=payload.path_sync_rules,
+            delete_policy=payload.delete_policy.value if payload.delete_policy else None,
             delete_grace_minutes=payload.delete_grace_minutes,
             is_test=payload.is_test,
             enabled=payload.enabled,
@@ -197,6 +208,7 @@ async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskR
     _enforce_task_runtime(
         sync_mode=payload.sync_mode.value if payload.sync_mode else current.sync_mode,
         cloud_folder_token=payload.cloud_folder_token or current.cloud_folder_token,
+        path_sync_rules=payload.path_sync_rules if payload.path_sync_rules is not None else current.path_sync_rules,
         delete_policy=(
             payload.delete_policy.value
             if payload.delete_policy
@@ -209,13 +221,14 @@ async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskR
             name=payload.name,
             local_path=payload.local_path,
             cloud_folder_token=payload.cloud_folder_token,
-        cloud_folder_name=payload.cloud_folder_name,
-        base_path=payload.base_path,
-        sync_mode=payload.sync_mode.value if payload.sync_mode else None,
-        update_mode=payload.update_mode,
-        md_sync_mode=payload.md_sync_mode,
-        ignored_subpaths=payload.ignored_subpaths,
-        delete_policy=payload.delete_policy.value if payload.delete_policy else None,
+            cloud_folder_name=payload.cloud_folder_name,
+            base_path=payload.base_path,
+            sync_mode=payload.sync_mode.value if payload.sync_mode else None,
+            update_mode=payload.update_mode,
+            md_sync_mode=payload.md_sync_mode,
+            ignored_subpaths=payload.ignored_subpaths,
+            path_sync_rules=payload.path_sync_rules,
+            delete_policy=payload.delete_policy.value if payload.delete_policy else None,
             delete_grace_minutes=payload.delete_grace_minutes,
             is_test=payload.is_test,
             enabled=payload.enabled,
@@ -276,6 +289,7 @@ async def run_task(task_id: str) -> SyncTaskStatusResponse:
     _enforce_task_runtime(
         sync_mode=item.sync_mode,
         cloud_folder_token=item.cloud_folder_token,
+        path_sync_rules=item.path_sync_rules,
         delete_policy=item.delete_policy or config.delete_policy.value,
     )
     status = runner.start_task(item)
@@ -286,6 +300,26 @@ async def run_task(task_id: str) -> SyncTaskStatusResponse:
 async def get_task_status(task_id: str) -> SyncTaskStatusResponse:
     status = runner.get_status(task_id)
     return SyncTaskStatusResponse.from_status(status)
+
+
+@router.get("/tasks/{task_id}/entries", response_model=SyncTaskBrowseResponse)
+async def get_task_entries(
+    task_id: str,
+    path: str = Query(default=""),
+    search: str = Query(default="", max_length=200),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> SyncTaskBrowseResponse:
+    item = await service.get_task(task_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    links = await SyncLinkService().list_by_task(task_id)
+    try:
+        return await asyncio.to_thread(browse_task_entries, item, links, path=path, search=search, offset=offset, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"无法读取任务目录：{exc}") from exc
 
 
 @router.post("/markdown/replace")

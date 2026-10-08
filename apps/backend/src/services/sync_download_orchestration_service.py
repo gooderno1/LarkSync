@@ -22,6 +22,7 @@ from src.services.sync_download_support_service import (
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_runner_state import SyncFileEvent, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
+from src.services.sync_path_mode import path_supports_direction, task_for_path
 from src.services.transcoder import DocxTranscoder
 
 FlattenFoldersFn = Callable[[DriveNode], Iterable[Any]]
@@ -177,6 +178,8 @@ class SyncDownloadOrchestrationService:
                 candidates,
                 persisted_by_path,
             )
+            selected_candidates = [item for item in selected_candidates if path_supports_direction(task, item.target_path, "download")]
+            duplicated_candidates = [item for item in duplicated_candidates if path_supports_direction(task, item.target_path, "download")]
             if selected_paths or selected_cloud_tokens:
                 selected_candidates = [
                     item
@@ -266,6 +269,9 @@ class SyncDownloadOrchestrationService:
         force_paths: set[str] | None,
         allow_cloud_writes: bool,
     ) -> None:
+        if not path_supports_direction(task, candidate.target_path, "download"):
+            return
+        task = task_for_path(task, candidate.target_path)
         node = candidate.node
         effective_token = candidate.effective_token
         effective_type = candidate.effective_type

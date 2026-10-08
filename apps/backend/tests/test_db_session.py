@@ -98,10 +98,10 @@ async def test_schema_v6_adds_ignored_at_without_changing_existing_problem_state
         ).scalar_one()
     await dispose_engines()
 
-    assert CURRENT_SCHEMA_VERSION == 13
+    assert CURRENT_SCHEMA_VERSION == 14
     assert "ignored_at" in columns
     assert (row.state, row.ignored_reason, row.ignored_at) == ("open", None, None)
-    assert version == "13"
+    assert version == str(CURRENT_SCHEMA_VERSION)
 
 
 @pytest.mark.asyncio
@@ -187,7 +187,7 @@ async def test_schema_v9_automatically_backs_up_and_scopes_legacy_data(
         ).scalar_one()
     await dispose_engines()
 
-    backups = list(tmp_path.glob("v8-single-account.db.pre-v13-*.bak"))
+    backups = list(tmp_path.glob(f"v8-single-account.db.pre-v{CURRENT_SCHEMA_VERSION}-*.bak"))
     assert len(backups) == 1
     assert task_account == "legacy-default-account"
     assert tuple(link) == ("legacy-default-account", "D:/Sync/a.md")
@@ -211,7 +211,7 @@ async def test_schema_v12_adds_tenant_permission_diagnostic_fields(tmp_path: Pat
         ).scalar_one()
     await dispose_engines()
 
-    assert version == "13"
+    assert version == str(CURRENT_SCHEMA_VERSION)
     assert {
         "tenant_key",
         "tenant_display_id",
@@ -300,7 +300,7 @@ async def test_schema_v13_backfills_local_organization_names_and_notifies_once(
     assert "飞书组织 1" in notices[0].body
     assert notices[0].source_id == "organization-name:v13:needs-name"
     assert notice_count == 1
-    assert version == "13"
+    assert version == str(CURRENT_SCHEMA_VERSION)
 
 
 @pytest.mark.asyncio

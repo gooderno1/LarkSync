@@ -115,6 +115,15 @@ export type ProblemSummary = {
   by_severity: Record<string, number>;
 };
 
+export type PathSyncRule = {
+  path: string;
+  kind: "file" | "folder";
+  sync_mode: "bidirectional" | "download_only" | "upload_only";
+};
+
+export type SyncTaskEntry = { path: string; kind: "file" | "folder"; sync_mode: string };
+export type SyncTaskEntries = { path: string; items: SyncTaskEntry[]; total: number };
+
 export type SyncTask = {
   id: string;
   account_id?: string;
@@ -127,6 +136,7 @@ export type SyncTask = {
   update_mode?: string | null;
   md_sync_mode?: "enhanced" | "download_only" | "doc_only" | null;
   ignored_subpaths?: string[] | null;
+  path_sync_rules?: PathSyncRule[];
   delete_policy?: "off" | "safe" | "strict" | null;
   delete_grace_minutes?: number | null;
   is_test?: boolean;

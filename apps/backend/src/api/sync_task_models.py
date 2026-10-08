@@ -7,9 +7,11 @@ from pydantic import BaseModel, Field
 from src.core.config import DeletePolicy, SyncMode
 from src.services.sync_runner import SyncFileEvent, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
+from src.services.sync_path_mode import PathSyncRule
 
 
 class SyncTaskCreateRequest(BaseModel):
+    path_sync_rules: list[PathSyncRule] = Field(default_factory=list, max_length=500)
     name: str | None = Field(default=None, description="任务名称")
     local_path: str = Field(..., description="本地同步根目录")
     cloud_folder_token: str = Field(..., description="云端文件夹 token")
@@ -33,6 +35,7 @@ class SyncTaskCreateRequest(BaseModel):
 
 
 class SyncTaskUpdateRequest(BaseModel):
+    path_sync_rules: list[PathSyncRule] | None = Field(default=None, max_length=500)
     name: str | None = None
     local_path: str | None = None
     cloud_folder_token: str | None = None
@@ -49,6 +52,7 @@ class SyncTaskUpdateRequest(BaseModel):
 
 
 class SyncTaskResponse(BaseModel):
+    path_sync_rules: list[PathSyncRule] = Field(default_factory=list)
     id: str
     account_id: str
     name: str | None

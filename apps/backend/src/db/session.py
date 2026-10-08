@@ -33,7 +33,7 @@ class SchemaMigration:
     upgrade: MigrationFn
 
 
-CURRENT_SCHEMA_VERSION = 13
+CURRENT_SCHEMA_VERSION = 14
 
 
 def create_engine(database_url: Optional[str] = None) -> AsyncEngine:
@@ -925,6 +925,12 @@ async def _rebuild_sync_mappings_v9(conn, *, legacy_account_id: str) -> None:
     )
 
 
+async def _apply_schema_v14(conn) -> None:
+    await _ensure_column(
+        conn, table="sync_tasks", column="path_sync_rules", column_type="TEXT", default_value=None,
+    )
+
+
 _SCHEMA_MIGRATIONS = [
     SchemaMigration(
         version=1,
@@ -990,6 +996,11 @@ _SCHEMA_MIGRATIONS = [
         version=13,
         description="为旧账号补齐稳定本地组织名称并发送一次性可改名通知",
         upgrade=_apply_schema_v13,
+    ),
+    SchemaMigration(
+        version=14,
+        description="为同步任务增加文档与文件夹独立同步方向规则",
+        upgrade=_apply_schema_v14,
     ),
 ]
 

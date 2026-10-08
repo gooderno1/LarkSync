@@ -12,6 +12,7 @@ from src.core.account_context import account_scope
 from src.services.sync_runner import SyncTaskRunner
 from src.services.sync_schedule_checkpoint_service import SyncScheduleCheckpointService
 from src.services.sync_task_service import SyncTaskService, SyncTaskItem
+from src.services.sync_path_mode import task_supports_direction
 
 
 @dataclass
@@ -114,7 +115,7 @@ class SyncScheduler:
         for task in tasks:
             if not task.enabled:
                 continue
-            if task.sync_mode in {"bidirectional", "upload_only"}:
+            if task_supports_direction(task, "upload"):
                 with account_scope(task.account_id):
                     self._runner.ensure_watcher(task)
 
@@ -370,11 +371,11 @@ class SyncScheduler:
 
 
 def _should_upload(task: SyncTaskItem) -> bool:
-    return task.enabled and task.sync_mode in {"bidirectional", "upload_only"}
+    return task.enabled and task_supports_direction(task, "upload")
 
 
 def _should_download(task: SyncTaskItem) -> bool:
-    return task.enabled and task.sync_mode in {"bidirectional", "download_only"}
+    return task.enabled and task_supports_direction(task, "download")
 
 
 def _safe_interval(value: float | int | None) -> float:

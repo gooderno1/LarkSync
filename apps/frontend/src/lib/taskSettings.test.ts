@@ -34,6 +34,7 @@ describe("taskSettings", () => {
       mdSyncMode: "download_only",
       deletePolicy: "safe",
       deleteGraceMinutes: "30",
+      pathSyncRules: [],
     });
   });
 
@@ -59,5 +60,15 @@ describe("taskSettings", () => {
     expect(getTaskSettingsRisk("download_only", "safe").label).toBe("低风险");
     expect(getTaskSettingsRisk("bidirectional", "safe").label).toBe("中风险");
     expect(getTaskSettingsRisk("download_only", "strict").label).toBe("高风险");
+  });
+
+  it("saves and clears independent rules as one atomic task change", () => {
+    const draft = { ...createTaskSettingsDraft(task), pathSyncRules: [
+      { path: "draft.md", kind: "file" as const, sync_mode: "upload_only" as const },
+    ] };
+    expect(countTaskSettingsChanges(task, draft)).toBe(1);
+    expect(buildTaskSettingsPatch(task, draft)).toEqual({ path_sync_rules: draft.pathSyncRules });
+    expect(getTaskSettingsRisk("download_only", "safe", draft.pathSyncRules).label).toBe("中风险");
+    expect(buildTaskSettingsPatch({ ...task, path_sync_rules: draft.pathSyncRules }, createTaskSettingsDraft(task))).toEqual({ path_sync_rules: [] });
   });
 });

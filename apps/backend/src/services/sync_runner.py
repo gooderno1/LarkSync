@@ -58,6 +58,9 @@ from src.services.sync_run_service import SyncRunService
 from src.services.sync_task_check_state_service import SyncTaskCheckStateService
 from src.services.sync_runner_state import SYNC_LOG_LIMIT, SyncFileEvent, SyncState, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
+from src.services.sync_path_mode import (
+    effective_sync_mode, path_supports_direction, task_supports_direction, task_for_path,
+)
 from src.services.sync_tombstone_service import SyncTombstoneService
 from src.services.sync_upload_orchestration_service import (
     SyncUploadOrchestrationService,
@@ -397,7 +400,7 @@ class SyncTaskRunner:
         )
         self._schedule_run_started(task, status)
         self._running_tasks.add(task.id)
-        if task.sync_mode in {"bidirectional", "upload_only"}:
+        if task_supports_direction(task, "upload"):
             self._ensure_watcher(task)
         logger.info(
             "启动同步任务: id={} mode={} local={} cloud={}",
@@ -474,6 +477,8 @@ class SyncTaskRunner:
         task: SyncTaskItem,
         path: Path,
     ) -> SyncTaskStatus:
+        if self._should_ignore_path(task, path) or not path_supports_direction(task, path, "upload"):
+            raise ValueError("当前对象同步规则禁止上传，请先调整任务设置")
         return await self._run_manual_resolution(
             task,
             message=f"冲突处理：使用本地版本 {path.name}",
@@ -492,6 +497,8 @@ class SyncTaskRunner:
         path: Path,
         cloud_token: str,
     ) -> SyncTaskStatus:
+        if self._should_ignore_path(task, path) or not path_supports_direction(task, path, "download"):
+            raise ValueError("当前对象同步规则禁止下载，请先调整任务设置")
         return await self._run_manual_resolution(
             task,
             message=f"冲突处理：使用云端版本 {path.name}",
@@ -750,18 +757,15 @@ class SyncTaskRunner:
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
         try:
             await self._run_additive_reconciliation_if_needed(task, status)
-            if task.sync_mode == "download_only":
-                await self._run_download(task, status)
-            elif task.sync_mode == "upload_only":
-                await self._run_upload(task, status)
-            elif task.sync_mode == "bidirectional":
-                await self._run_download(task, status)
-                await self._run_upload(task, status)
-            else:
+            if task.sync_mode not in {"bidirectional", "download_only", "upload_only"}:
                 status.state = "failed"
                 status.last_error = f"未知同步模式: {task.sync_mode}"
                 status.finished_at = time.time()
                 return
+            if task_supports_direction(task, "download"):
+                await self._run_download(task, status)
+            if task_supports_direction(task, "upload"):
+                await self._run_upload(task, status)
             status.state = "failed" if status.failed_files > 0 else "success"
             status.finished_at = time.time()
         except asyncio.CancelledError:
@@ -824,18 +828,20 @@ class SyncTaskRunner:
             last_run,
         )
         preexisting_local_files: list[Path] = []
-        if task.sync_mode == "bidirectional":
+        upload_enabled = task_supports_direction(task, "upload")
+        download_enabled = task_supports_direction(task, "download")
+        if upload_enabled and download_enabled:
             preexisting_local_files = list(self._iter_local_files(task))
-        if task.sync_mode in {"bidirectional", "download_only"}:
+        if download_enabled:
             await self._run_download(task, status, allow_deletes=False)
-        if task.sync_mode == "bidirectional":
+        if upload_enabled and download_enabled:
             await self._run_upload_paths(
                 task,
                 status,
                 preexisting_local_files,
                 allow_deletes=False,
             )
-        elif task.sync_mode == "upload_only":
+        elif upload_enabled:
             await self._run_upload(task, status, allow_deletes=False)
         self._record_event(
             status,
@@ -1032,7 +1038,7 @@ class SyncTaskRunner:
         local_path: Path,
         cloud_mtime: float,
     ) -> bool:
-        if task.sync_mode != "bidirectional":
+        if effective_sync_mode(task, local_path) != "bidirectional":
             return False
         if not local_path.exists() or not local_path.is_file():
             return False
@@ -1316,7 +1322,7 @@ class SyncTaskRunner:
                 link.cloud_token,
             )
             return False
-        if task.sync_mode != "bidirectional":
+        if effective_sync_mode(task, path) != "bidirectional":
             return False
         if link.cloud_type not in {"docx", "doc"}:
             return False
@@ -1612,6 +1618,8 @@ class SyncTaskRunner:
         changed: list[Path] = []
         filtered_count = 0
         for path in paths:
+            if self._should_ignore_path(task, path) or not path_supports_direction(task, path, "upload"):
+                continue
             link = link_by_path.get(self._normalize_local_path_key(path))
             if link is None or link.local_size is None or link.local_mtime is None:
                 changed.append(path)
@@ -2021,8 +2029,10 @@ class SyncTaskRunner:
         root = Path(task.local_path)
         if not root.exists():
             return []
-        return iter_sync_local_files(
-            root, should_ignore=lambda path: self._should_ignore_path(task, path),
+        return (
+            path for path in iter_sync_local_files(
+                root, should_ignore=lambda path: self._should_ignore_path(task, path),
+            ) if path_supports_direction(task, path, "upload")
         )
 
     async def _scan_for_unlinked_files(self, task: SyncTaskItem) -> int:
@@ -2036,7 +2046,6 @@ class SyncTaskRunner:
         if not root.exists():
             return 0
 
-        skip_md = not self._should_upload_markdown_doc(task)
         links = await self._link_service.list_by_task(task.id)
         linked_paths = {
             os.path.normcase(os.path.normpath(link.local_path)) for link in links
@@ -2045,7 +2054,7 @@ class SyncTaskRunner:
         def _collect_candidates() -> list[Path]:
             candidates: list[Path] = []
             for path in self._iter_local_files(task):
-                if skip_md and path.suffix.lower() == ".md":
+                if path.suffix.lower() == ".md" and not self._should_upload_markdown_doc(task_for_path(task, path)):
                     continue
                 try:
                     if path.stat().st_size == 0:
@@ -2135,6 +2144,10 @@ class SyncTaskRunner:
         )
 
     def _ensure_watcher(self, task: SyncTaskItem) -> None:
+        self._task_meta[task.id] = task
+        if not task_supports_direction(task, "upload"):
+            self._stop_watcher(task.id)
+            return
         if self._config_manager.config.effective_disable_watcher:
             logger.debug("运行配置已禁用目录监听: task_id={}", task.id)
             return
@@ -2151,7 +2164,7 @@ class SyncTaskRunner:
 
         def _on_event(event: FileChangeEvent) -> None:
             asyncio.run_coroutine_threadsafe(
-                self._handle_local_event_in_account(task, event), loop
+                self._handle_local_event_in_account(self._task_meta.get(task.id, task), event), loop
             )
 
         watcher = WatcherService(Path(task.local_path), on_event=_on_event)
@@ -2236,7 +2249,7 @@ class SyncTaskRunner:
         )
 
     async def _handle_local_event(self, task: SyncTaskItem, event: FileChangeEvent) -> None:
-        if task.sync_mode == "download_only":
+        if not task_supports_direction(task, "upload"):
             return
         path = Path(event.dest_path or event.src_path)
         status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
@@ -2256,14 +2269,15 @@ class SyncTaskRunner:
 
                 moved_files = await asyncio.to_thread(_collect_destination_files)
                 for moved_path in moved_files:
-                    if not self._should_ignore_path(task, moved_path):
+                    if not self._should_ignore_path(task, moved_path) and path_supports_direction(task, moved_path, "upload"):
                         self.queue_local_change(
                             task.id,
                             moved_path,
                             changed_at=event.timestamp,
                         )
                 return
-            self.queue_local_change(task.id, path, changed_at=event.timestamp)
+            if path_supports_direction(task, path, "upload"):
+                self.queue_local_change(task.id, path, changed_at=event.timestamp)
             return
         if self._should_ignore_path(task, path):
             return
@@ -2290,7 +2304,8 @@ class SyncTaskRunner:
             return
         if event.is_directory:
             return
-        self.queue_local_change(task.id, path, changed_at=event.timestamp)
+        if path_supports_direction(task, path, "upload"):
+            self.queue_local_change(task.id, path, changed_at=event.timestamp)
 
     async def _apply_block_update(
         self,
@@ -2498,7 +2513,7 @@ class SyncTaskRunner:
             local_path = Path(task.local_path) / relative_dir
             if self._should_ignore_path(task, local_path):
                 continue
-            if create_local_dirs:
+            if create_local_dirs and path_supports_direction(task, local_path, "download"):
                 self._silence_path(task.id, local_path)
                 local_path.mkdir(parents=True, exist_ok=True)
             token, node_type = _resolve_target(node)

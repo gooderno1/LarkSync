@@ -15,6 +15,7 @@ from src.core.account_context import current_account_id
 from src.core.security import get_token_store
 from src.db.models import Account, LEGACY_ACCOUNT_ID, SyncTask
 from src.db.session import get_session_maker
+from src.services.sync_path_mode import PathSyncRule, normalize_path_rules
 
 _OWNER_OPEN_ID_UNSET = object()
 _MD_SYNC_MODE_ENHANCED = "enhanced"
@@ -49,6 +50,7 @@ class SyncTaskItem:
     owner_open_id: str | None = None
     is_test: bool = False
     account_id: str = LEGACY_ACCOUNT_ID
+    path_sync_rules: list[PathSyncRule] = field(default_factory=list)
 
 
 class SyncTaskValidationError(ValueError):
@@ -83,6 +85,7 @@ class SyncTaskService:
         update_mode: str = "auto",
         md_sync_mode: str = _MD_SYNC_MODE_ENHANCED,
         ignored_subpaths: list[str] | None = None,
+        path_sync_rules: list[PathSyncRule | dict] | None = None,
         delete_policy: str | None = None,
         delete_grace_minutes: int | None = None,
         is_test: bool = False,
@@ -104,6 +107,7 @@ class SyncTaskService:
             ignored_subpaths,
         )
         resolved_open_id = owner_open_id or self._effective_owner_open_id()
+        resolved_rules = self._normalize_path_rules(clean_local_path, path_sync_rules or [])
         resolved_delete_policy, resolved_delete_grace = self._resolve_task_delete_settings(
             delete_policy=delete_policy,
             delete_grace_minutes=delete_grace_minutes,
@@ -120,6 +124,7 @@ class SyncTaskService:
             update_mode=update_mode,
             md_sync_mode=self._normalize_md_sync_mode(md_sync_mode),
             ignored_subpaths=self._serialize_ignored_subpaths(resolved_ignored_subpaths),
+            path_sync_rules=json.dumps([rule.model_dump() for rule in resolved_rules], ensure_ascii=False),
             delete_policy=resolved_delete_policy,
             delete_grace_minutes=resolved_delete_grace,
             is_test=bool(is_test),
@@ -211,6 +216,7 @@ class SyncTaskService:
         update_mode: str | None = None,
         md_sync_mode: str | None = None,
         ignored_subpaths: list[str] | None = None,
+        path_sync_rules: list[PathSyncRule | dict] | None = None,
         delete_policy: str | None = None,
         delete_grace_minutes: int | None = None,
         is_test: bool | None = None,
@@ -248,6 +254,10 @@ class SyncTaskService:
                 if ignored_subpaths is not None
                 else self._parse_ignored_subpaths(record.ignored_subpaths)
             )
+            target_rules = self._normalize_path_rules(
+                target_local_path,
+                path_sync_rules if path_sync_rules is not None else self._parse_path_rules(record.path_sync_rules),
+            )
             await self._validate_task_mapping(
                 session=session,
                 local_path=target_local_path,
@@ -275,6 +285,8 @@ class SyncTaskService:
                 record.ignored_subpaths = self._serialize_ignored_subpaths(
                     target_ignored_subpaths
                 )
+            if path_sync_rules is not None or local_path is not None:
+                record.path_sync_rules = json.dumps([rule.model_dump() for rule in target_rules], ensure_ascii=False)
             if delete_policy is not None:
                 record.delete_policy = self._normalize_delete_policy(delete_policy)
             if delete_grace_minutes is not None and delete_grace_minutes >= 0:
@@ -651,6 +663,7 @@ class SyncTaskService:
             update_mode=record.update_mode,
             md_sync_mode=resolved_md_sync_mode,
             ignored_subpaths=ignored_subpaths,
+            path_sync_rules=self._parse_path_rules(record.path_sync_rules),
             delete_policy=resolved_policy,
             delete_grace_minutes=resolved_grace,
             is_test=bool(record.is_test),
@@ -661,6 +674,20 @@ class SyncTaskService:
             owner_device_id=record.owner_device_id,
             owner_open_id=record.owner_open_id,
         )
+
+
+    @staticmethod
+    def _normalize_path_rules(root: str, rules: list[PathSyncRule | dict]) -> list[PathSyncRule]:
+        try:
+            return normalize_path_rules(root, rules)
+        except ValueError as exc:
+            raise SyncTaskValidationError(str(exc)) from exc
+
+    @staticmethod
+    def _parse_path_rules(raw: str | None) -> list[PathSyncRule]:
+        if not raw:
+            return []
+        return [PathSyncRule.model_validate(item) for item in json.loads(raw)]
 
 
 __all__ = ["SyncTaskItem", "SyncTaskService", "SyncTaskValidationError"]
