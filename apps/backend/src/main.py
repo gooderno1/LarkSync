@@ -42,6 +42,7 @@ from src.core.security import CredentialStorageError
 from src.db.session import init_db
 from src.services.conflict_service import ConflictService
 from src.services.problem_service import ProblemService
+from src.services.problem_file_verification_service import ProblemFileVerificationService
 from src.services.sync_log_maintenance_service import SyncLogMaintenanceService
 from src.services.sync_run_service import SyncRunService
 from src.services.sync_scheduler import SyncScheduler
@@ -216,6 +217,7 @@ async def _backfill_problem_sources(app: FastAPI) -> None:
         return
     await asyncio.sleep(5)
     last_reconcile_at = 0.0
+    file_verifier = ProblemFileVerificationService()
     while True:
         try:
             result = await refresh(event_limit=20)
@@ -235,6 +237,9 @@ async def _backfill_problem_sources(app: FastAPI) -> None:
                         reconciled.scanned,
                         reconciled.resolved,
                     )
+                verified = await file_verifier.reconcile()
+                if verified.resolved:
+                    logger.info("文件一致性核验自动结案: resolved={}", verified.resolved)
             await asyncio.sleep(2 if result.events_seen >= 20 else 15)
         except asyncio.CancelledError:
             raise

@@ -135,6 +135,7 @@ function Diagnosis({
           <p className="mt-3 rounded-md border border-[#bde5cc] bg-[#f2fbf5] px-3 py-2 text-xs leading-5 text-[#257044]">
             已于 {formatTimestamp(problem.resolved_at)} 自动确认恢复
             {problem.resolution_verification === "same_object_operation_succeeded" ? "，依据是同一对象、同一操作后续成功" : ""}。
+            {problem.resolution_verification === "same_object_content_verified" ? "本地、云端和同步基线的文件内容已核验一致。" : ""}
           </p>
         ) : null}
         {problem.state === "ignored" ? (

@@ -46,6 +46,7 @@ RECOVERY_STATUSES = {
     "created",
     "linked",
     "mirrored",
+    "upload_verified",
 }
 LEGACY_PROBLEM_EVENT_CURSOR_KEY = "problem_event_cursor_v3"
 PROBLEM_HISTORY_CURSOR_KEY = "problem_history_cursor_v3"
@@ -692,7 +693,7 @@ class ProblemService:
                 problem.last_good_at = recovery.occurred_at
                 problem.resolved_by_run_id = recovery.run_id
                 problem.resolved_by_event_id = recovery.event_id
-                problem.resolution_verification = "same_object_operation_succeeded"
+                problem.resolution_verification = await self._recovery_verification(session, recovery)
                 problem.ignored_reason = None
                 problem.ignored_at = None
 
@@ -711,6 +712,15 @@ class ProblemService:
             .limit(1)
         )
         return row.scalar_one_or_none()
+
+    @staticmethod
+    async def _recovery_verification(
+        session: AsyncSession, recovery: ProblemRecoveryFact,
+    ) -> str:
+        event = await session.get(SyncRunEvent, recovery.event_id)
+        if event is not None and event.status == "upload_verified":
+            return "same_object_content_verified"
+        return "same_object_operation_succeeded"
 
     async def _migrate_active_event_problems(
         self,
@@ -1277,7 +1287,7 @@ class ProblemService:
                 recovery = await self._latest_recovery_fact(session, problem)
                 resolved = recovery is not None
                 if recovery is not None:
-                    verification = "same_object_operation_succeeded"
+                    verification = await self._recovery_verification(session, recovery)
                     problem.resolved_by_run_id = recovery.run_id
                     problem.resolved_by_event_id = recovery.event_id
                     problem.last_good_at = recovery.occurred_at
@@ -1452,7 +1462,10 @@ class ProblemService:
             problem.last_good_at = event.timestamp
             problem.resolved_by_run_id = event.run_id
             problem.resolved_by_event_id = event.id
-            problem.resolution_verification = "same_object_operation_succeeded"
+            problem.resolution_verification = (
+                "same_object_content_verified" if event.status == "upload_verified"
+                else "same_object_operation_succeeded"
+            )
             problem.ignored_reason = None
             problem.ignored_at = None
 
@@ -1528,6 +1541,7 @@ class ProblemService:
             "created": "upload",
             "linked": "upload",
             "mirrored": "upload",
+            "upload_verified": "upload",
             "downloaded": "download",
             "deleted": "delete",
         }.get(status.strip().lower())

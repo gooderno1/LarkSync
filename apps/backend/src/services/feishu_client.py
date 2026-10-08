@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar, Token
-from typing import Iterator
+from typing import AsyncIterator, Iterator
 from urllib.parse import urlparse
 from pathlib import Path
 
@@ -80,6 +80,36 @@ class FeishuClient:
         response = await self._client.request(method, url, headers=headers, **kwargs)
         self._write_audit_record(method, url, response)
         return response
+
+    @asynccontextmanager
+    async def stream(self, method: str, url: str) -> AsyncIterator[httpx.Response]:
+        """Stream a read with the same authentication, policy and rate limits."""
+        if method.strip().upper() not in SAFE_HTTP_METHODS:
+            raise ValueError("流式读取仅支持只读 HTTP 方法")
+        self._enforce_cloud_policy(method, url)
+        limiter = self._rate_limiter or get_global_rate_limiter(
+            self._config.feishu_rate_per_second, self._config.feishu_rate_burst,
+        )
+        for attempt in range(max(1, self._max_retries)):
+            await limiter.acquire()
+            token = await self._auth_service.get_valid_access_token()
+            request = self._client.build_request(
+                method, url, headers={"Authorization": f"Bearer {token}"},
+            )
+            response = await self._client.send(request, stream=True)
+            try:
+                self._write_audit_record(method, url, response)
+                if (
+                    response.status_code in RETRYABLE_STATUS_CODES | {429}
+                    and attempt + 1 < self._max_retries
+                ):
+                    await response.aclose()
+                    await self._sleep_backoff(attempt, response)
+                    continue
+                yield response
+                return
+            finally:
+                await response.aclose()
 
     def _write_audit_record(
         self, method: str, url: str, response: httpx.Response

@@ -39,6 +39,7 @@ export const intervalUnitLabels: Record<string, string> = {
 export const statusLabelMap: Record<string, string> = {
   downloaded: "下载",
   uploaded: "上传",
+  upload_verified: "已核验一致",
   deleted: "删除成功",
   delete_pending: "待删除",
   delete_failed: "删除失败",

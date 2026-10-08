@@ -182,6 +182,51 @@ async def test_request_acquires_rate_limit_token_before_http_call() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_read_authenticates_rate_limits_retries_and_closes():
+    limiter = FakeRateLimiter()
+    requests = []
+
+    async def handle(request):
+        requests.append(request)
+        if len(requests) == 1:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+        return httpx.Response(200, content=b"Word bytes")
+
+    client = FeishuClient(
+        auth_service=FakeAuthService(), rate_limiter=limiter,
+        max_retries=2, backoff_base=0.0,
+        config=AppConfig(runtime_profile=RuntimeProfile.live_readonly),
+    )
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    try:
+        async with client.stream("GET", "https://open.feishu.cn/mock") as response:
+            assert await response.aread() == b"Word bytes"
+        assert response.is_closed
+        assert limiter.calls == 2
+        assert len(requests) == 2
+        assert all(request.headers["Authorization"] == "Bearer token" for request in requests)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_rejects_snapshot_reads_and_write_methods():
+    client = FeishuClient(
+        auth_service=FakeAuthService(),
+        config=AppConfig(runtime_profile=RuntimeProfile.snapshot_test),
+    )
+    try:
+        with pytest.raises(CloudAccessDenied, match="snapshot_test"):
+            async with client.stream("GET", "https://open.feishu.cn/mock"):
+                pytest.fail("snapshot profile must not read cloud content")
+        with pytest.raises(ValueError, match="只读"):
+            async with client.stream("POST", "https://open.feishu.cn/mock"):
+                pytest.fail("stream API must not write cloud content")
+    finally:
+        await client.close()
+
+@pytest.mark.asyncio
 async def test_request_audit_excludes_authorization_and_payload(tmp_path) -> None:
     audit_path = tmp_path / "cloud-audit.jsonl"
     client = FeishuClient(

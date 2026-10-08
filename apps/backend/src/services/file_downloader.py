@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from src.services.feishu_client import FeishuClient
@@ -40,6 +41,23 @@ class FileDownloader:
             f"{self._base_url}/open-apis/drive/v1/export_tasks/file/{file_token}/download"
         )
         return await self._download_to_path(url, file_name, target_dir, mtime)
+
+    async def matches_file(
+        self, file_token: str, *, expected_hash: str, expected_size: int,
+    ) -> bool:
+        """Verify binary content without writing files or buffering the response."""
+        url = f"{self._base_url}/open-apis/drive/v1/files/{file_token}/download"
+        async with self._client.stream("GET", url) as response:
+            if response.status_code != 200:
+                raise RuntimeError(f"文件核验下载失败: HTTP {response.status_code}")
+            hasher = hashlib.sha256()
+            size = 0
+            async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+                size += len(chunk)
+                if size > expected_size:
+                    return False
+                hasher.update(chunk)
+            return size == expected_size and hasher.hexdigest() == expected_hash
 
     async def _download_to_path(
         self,
