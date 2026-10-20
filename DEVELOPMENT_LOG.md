@@ -1,5 +1,51 @@
 # DEVELOPMENT LOG
 
+## v0.11.0-dev.1 AI 任务管理与项目入口（2026-10-20）
+
+- 开发原因：
+  - 用户交给 AI 一个 Git 链接后，旧 README 夹杂大量版本历史，首次安装与当前授权路径难以定位。
+  - 旧技能依赖仓库根目录；安装包没有可直接返回 JSON 的控制台入口。
+  - CLI 缺少明确账号绑定、完整任务规则输入、无写入预览和同步完成判断。
+- 实现方式：
+  - 将标准库 CLI 移入 `integrations/skills/larksync`；保留 `scripts/larksync_cli.py` 和旧 OpenClaw 源码入口兼容。
+  - 新增 `capabilities`、`schema`、账号/应用发现和 Device Flow 注册、授权、轮询、取消、重新授权命令。
+  - 多账号要求显式 `--account-id`；单账号可自动选择，后续请求始终使用同一个账号头，不修改 UI 当前账号。
+  - 新增 `/drive/files` 单页查询，默认 100 条，允许 1—200 条；通过 `next_page_token` 翻页，不默认递归全盘。
+  - 新增 JSON 任务创建、读取、修改、暂停、恢复、运行等待、诊断和目录浏览。
+  - 预览默认仅下载、删除联动关闭；验证当前系统绝对路径、文件夹链接、忽略路径和方向规则，不做网络或文件写入。
+  - 修改预览只包含指定字段；省略方向时标注依赖已有任务，不推断现有方向；空数组可清空规则。
+  - 等待默认 60 秒，上限 3600 秒；仅成功终态且有结束时间、无失败文件时返回 `sync_complete: true`。超时不取消任务，运行 ID 改变时返回 `RUN_REPLACED`。
+  - 状态读取和删除任务先验证账号归属，再访问运行器；修复其他账号任务可能被查询或取消的问题。
+  - CLI 参数错误返回 exit 2 和 JSON；API/环境错误返回 exit 1。旧版 SPA 网页响应返回 `INVALID_RESPONSE`，提示检查 v0.11.0+ 配套应用。
+  - 安装包增加 `LarkSyncCLI`；构建同时生成自包含 Skill ZIP 和 SHA256，Windows Release 流程上传这两个通用资产。
+  - README 从 383 行、约 76 KB 收敛为 87 行、约 6.5 KB；版本历史保留在既有日志中，新增 AI 使用指南并更新快速开始和使用教程。
+- 当前结果：
+  - Codex / WorkBuddy 可通过通用技能调用同一套任务接口；无需额外模型服务或同步引擎。
+  - 原生 CLI 可独立于系统 Python 运行；Python 技能入口仅依赖标准库，可完整复制到仓库外。
+  - 同步频率仍为全局配置，明确影响全部任务；没有引入任务级时间表。
+  - `auth-status` 保持本地凭据检查语义；`auth-verify` 实际验证 Drive 读取，不将其解释为写入权限验证。
+  - 旧 bootstrap 的 `completed` 保留为配置完成；新增 `configuration_complete` / `sync_complete`，后续需要 `task-wait`。
+- 验证方式：
+  - 完整后端回归：924 项通过、2 项平台跳过；之后两处 CLI 提示修正的定向回归 57 项通过。最终收集总数为 928 项。
+  - 前端：46 个测试文件、148 项通过；ESLint、TypeScript 与 Vite 构建通过。
+  - 技能：通过 skill-creator `quick_validate.py`；复制到独立目录后可运行 capabilities；ZIP 内容与 SHA256 由测试验证。
+  - 开发启动：`npm run dev` 使用隔离端口 18168 / 13768、独立数据、合成账号；前后端均返回 HTTP 200。
+  - 真实 HTTP：17 次 CLI 调用覆盖预览、创建、读取、修改、目录浏览、暂停、恢复、等待、诊断和删除。
+  - 隔离样例：UI 当前为账号 A，CLI 固定账号 B；A 查询或删除 B 的任务被拒绝，UI 当前账号保持 A。
+  - 结果样例：无凭据的合成账号运行失败，CLI 返回 `sync_complete: false`；删除任务后本地 example.md 保留。
+  - 文档：入口文档与技能引用的本地链接无缺失；`docs/local_specs` 无待提交文件。
+  - Windows 构建：Python 3.14.2 / Node 25.2.1，`python scripts/build_installer.py --nsis --skip-frontend` 成功；前端已单独完成构建。
+  - 安装内容检查：完整复制到独立可写目录启动，后端 18169 返回 `packaged=true`、版本 `v0.11.0-dev.1`，静态前端可用且首页返回 HTTP 200。
+  - 原生 CLI：capabilities 返回 48 个命令；在独立安装目录执行 task-update 预览，方向返回 `depends_on_existing_task`。
+  - 技能独立性：复制到系统临时目录，用 Python `-I` 隔离模式运行成功；最终 ZIP 中的 CLI 字节与源码一致。
+  - 安装包 SHA256：`b90bf49af3ebbef5ff6f7de188e9b04e7fc1e60055d643c570608bc49e7e57b2`。
+  - 技能 ZIP SHA256：`61f8a63c5c0b7a076b40b784d34077da4050c1ce7eb4f4a736c8caa8cee46385`。
+- 遗留与发布边界：
+  - 当前为开发版本，尚未创建正式 Release；主页保留稳定版 v0.10.1 与开发版功能的区别。
+  - 真实飞书扫码需要用户参与；本次合成账号验证不代表真实云端同步已完成。
+  - macOS 构建/原生运行与 WorkBuddy 导入界面需要对应客户端实机验收，未将兼容设计表述为实机通过。
+  - Windows NSIS 会关闭同名正式进程并写系统安装项；本次安装体验使用独立目录启动，不覆盖用户正式安装。
+
 ## v0.10.1 正式发布（2026-10-08）
 
 - 发布原因：

@@ -1,5 +1,7 @@
 # LarkSync Feishu Local Cache Skill
 
+> v0.11.0 起，新接入请使用自包含的通用技能 `integrations/skills/larksync`，参考仓库 `docs/AI_GUIDE.md`。本文记录旧 OpenClaw 兼容流程，helper 依赖完整源码目录；不要单独复制旧技能目录。bootstrap 会修改全局频率，配置完成不表示同步完成。
+
 把飞书文档“变成本地知识库”的 OpenClaw 集成技能。  
 核心目标：让 OpenClaw **优先读本地同步副本**，而不是每次都打飞书 API，从源头降低 token 消耗与限流风险。
 

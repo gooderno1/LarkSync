@@ -710,6 +710,8 @@ def main() -> None:
     step_generate_icons()
     step_pyinstaller()
     step_platform_installer(nsis=args.nsis, dmg=args.dmg)
+    run([sys.executable, str(PROJECT_ROOT / "scripts" / "build_agent_bundle.py"),
+         "--version", _read_version(), "--output-dir", str(OUTPUT_DIR)], cwd=PROJECT_ROOT)
 
     print("\n" + "=" * 50)
     print("  构建完成！")

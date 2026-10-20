@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-CLI_PATH = ROOT / "scripts" / "larksync_cli.py"
+CLI_PATH = ROOT / "integrations/skills/larksync/scripts/larksync_cli.py"
 
 spec = importlib.util.spec_from_file_location("larksync_cli", CLI_PATH)
 if spec is None or spec.loader is None:
@@ -189,7 +189,8 @@ def test_do_bootstrap_cache_requires_oauth(monkeypatch: pytest.MonkeyPatch) -> N
     assert result["phase"] == "needs_oauth"
     assert result["completed"] is False
     assert result["next_step"]["type"] == "complete_oauth"
-    assert result["next_step"]["login_url"] == "http://localhost:8000/auth/login"
+    assert result["next_step"]["login_url"] == "http://localhost:8000"
+    assert "auth-start --register" in result["next_step"]["commands"]
 
 
 def test_do_bootstrap_cache_requires_drive_permission(
@@ -291,6 +292,8 @@ def test_do_bootstrap_cache_runs_end_to_end(monkeypatch: pytest.MonkeyPatch) -> 
     assert result["task"]["task"]["id"] == "task-1"
     assert result["run_now"]["task_id"] == "task-1"
     assert result["task_status"]["status"]["state"] == "running"
+    assert result["configuration_complete"] is True
+    assert result["sync_complete"] is False
     assert calls == ["configure", "create", "run", "status"]
 
 

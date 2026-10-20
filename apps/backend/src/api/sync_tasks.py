@@ -248,6 +248,8 @@ async def update_task(task_id: str, payload: SyncTaskUpdateRequest) -> SyncTaskR
 
 @router.delete("/tasks/{task_id}")
 async def delete_task(task_id: str) -> dict:
+    if await service.get_task(task_id) is None:
+        raise HTTPException(status_code=404, detail="Task not found")
     runner.cancel_task(task_id)
     deleted = await service.delete_task(task_id)
     if not deleted:
@@ -298,8 +300,18 @@ async def run_task(task_id: str) -> SyncTaskStatusResponse:
 
 @router.get("/tasks/{task_id}/status", response_model=SyncTaskStatusResponse)
 async def get_task_status(task_id: str) -> SyncTaskStatusResponse:
+    if await service.get_task(task_id) is None:
+        raise HTTPException(status_code=404, detail="Task not found")
     status = runner.get_status(task_id)
     return SyncTaskStatusResponse.from_status(status)
+
+
+@router.get("/tasks/{task_id}", response_model=SyncTaskResponse)
+async def get_task(task_id: str) -> SyncTaskResponse:
+    item = await service.get_task(task_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return SyncTaskResponse.from_item(item)
 
 
 @router.get("/tasks/{task_id}/entries", response_model=SyncTaskBrowseResponse)

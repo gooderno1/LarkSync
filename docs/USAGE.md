@@ -1,445 +1,79 @@
-# LarkSync 使用教程（持续更新）
+# LarkSync 使用教程
 
-本文档用于记录当前版本的使用与测试流程，会随项目迭代同步维护。
+适用：当前稳定版 v0.10.1；AI 新任务接口适用 v0.11.0-dev.1 及后续版本。更新时间：2026-10-20。
 
-## 0. 当前版本（截至 2026-09-02）
-- 最新稳定版：`v0.9.7`（见 `CHANGELOG.md` 顶部）
-- 后端版本：`apps/backend/pyproject.toml` 中为 `v0.9.7`
-- 前端版本：`apps/frontend/package.json` 中为 `0.9.7`
-- 根目录版本：`package.json` 中为 `v0.9.7`
+## 安装与账号连接
 
-## 0.1 首次试用推荐路径
+普通用户下载 [桌面安装包](https://github.com/gooderno1/LarkSync/releases)，不需要安装 Python、Node.js 或 `lark-cli`。Windows 运行安装程序；macOS 选择正确 CPU 架构，将应用拖入 Applications。
 
-如果你是第一次安装 LarkSync，建议优先阅读 [快速开始](QUICK_START.md)，并从 `download_only` 模式开始：
+启动后点击“开始扫码连接”，按页面提示完成个人应用注册与账号授权。首次可能有两次扫码，后续直接选择已有应用添加账号。组织禁止自动注册时，在高级入口添加自建应用后扫码；旧 OAuth 回调方式是兼容路径，详见 [授权指南](OAUTH_GUIDE.md)。不要在配置文件中手写 App Secret 或令牌。
 
-1. 下载并安装最新稳定版安装包。
-2. 按 [OAuth 配置指南](OAUTH_GUIDE.md) 完成飞书授权。
-3. 选择一个小型飞书测试目录和一个新的本地目录。
-4. 创建 `download_only` 同步任务。
-5. 在日志中心确认首次同步成功后，再考虑扩大目录或启用双向同步。
+多个账号会同时执行各自任务；切换左侧账号仅改变管理界面的范围，不停止其他账号。
 
-双向同步会修改云端或本地内容。重要目录正式接入前，请先完成小目录试运行。
+## 创建与维护任务
 
-## 1. 环境准备
-- Node.js 18+（用于前端）
-- Python 3.10+（后端 FastAPI + 系统托盘）
+1. 在“同步任务”中新建任务，选择本地目录和可访问的云文件夹。
+2. 首次建议选择“仅下载”，并关闭删除联动。
+3. 根据需要添加忽略子路径，或给某个文档 / 子文件夹单独设置方向。
+4. 保存后启用的任务可能立即执行。在活动管理查看运行，在问题中心处理失败和冲突。
+5. 等待同步完成后检查本地 Markdown、图片和附件，再扩大同步范围。
 
-## 2. 依赖安装
-- 根目录：`npm install`
-- 前端：`cd apps/frontend` 后执行 `npm install`
-- 后端：`cd apps/backend` 后执行 `python -m pip install -r requirements.txt`
-  - 开发依赖：`python -m pip install -r requirements-dev.txt`
+修改任务会应用新配置；暂停会取消正在运行的任务并停止后续调度，恢复可能立即开始同步。删除任务会移除任务和映射，保留本地与云端文件。文件移动、重命名后，按相对路径设置的规则可能需要调整。
 
-## 3. 配置飞书 OAuth
-### 3.1 设置页配置（推荐）
-1) 先在飞书控制台完成：
-   - 创建企业自建应用
-   - 配置 OAuth 回调地址
-   - 添加用户身份权限（Scopes）
-2) 打开 LarkSync 的"设置"页，填写：
-   - App ID
-   - App Secret
-   - Redirect URI
+方向包括 `download_only`、`upload_only` 和 `bidirectional`。忽略路径优先于方向规则；文件规则优先于文件夹规则，子文件夹覆盖父文件夹，其他对象继承任务默认方向。详见 [同步逻辑](SYNC_LOGIC.md)。
 
-详细步骤见 `docs/OAUTH_GUIDE.md`。
+## 通过 AI 操作
 
-> 授权地址 / Token 地址为可选项，通常留空即可使用默认值。
+使用 Codex / WorkBuddy 可通过对话创建、修改、暂停、恢复和诊断任务。请按 [AI 使用指南](AI_GUIDE.md) 安装通用技能，并使用 v0.11.0+ 配套应用。
 
-### 3.2 data/config.json（可选）
-在 `data/config.json` 中填入飞书应用信息：
-
-```json
-{
-  "auth_authorize_url": "FEISHU_AUTH_AUTHORIZE_URL",
-  "auth_token_url": "FEISHU_AUTH_TOKEN_URL",
-  "auth_client_id": "YOUR_APP_ID",
-  "auth_client_secret": "YOUR_APP_SECRET",
-  "auth_redirect_uri": "http://localhost:18765/auth/callback",
-  "auth_scopes": [
-    "drive:drive",
-    "docx:document",
-    "docx:document.block:convert"
-  ],
-  "sync_mode": "bidirectional",
-  "token_store": "keyring",
-  "upload_interval_value": 60,
-  "upload_interval_unit": "seconds",
-  "upload_daily_time": "01:00",
-  "download_interval_value": 1,
-  "download_interval_unit": "days",
-  "download_daily_time": "01:00",
-  "device_display_name": "我的主力设备",
-  "delete_policy": "safe",
-  "delete_grace_minutes": 30
-}
-```
-
-说明：
-- 回调地址统一为 `http://localhost:18765/auth/callback`。
-- `auth_scopes` 为可选字段，默认值已内置；旧配置中的 `docs:doc` 会在运行时自动迁移到新版 Docx scopes，历史默认配置中的重复只读权限与通讯录权限会被忽略。
-
-### 3.3 环境变量（可覆盖）
-- `LARKSYNC_SYNC_MODE`
-- `LARKSYNC_DATABASE_URL` / `LARKSYNC_DB_PATH`
-- `LARKSYNC_AUTH_AUTHORIZE_URL`
-- `LARKSYNC_AUTH_TOKEN_URL`
-- `LARKSYNC_AUTH_CLIENT_ID`
-- `LARKSYNC_AUTH_CLIENT_SECRET`
-- `LARKSYNC_AUTH_REDIRECT_URI`
-- `LARKSYNC_AUTH_SCOPES`
-- `LARKSYNC_TOKEN_STORE`
-- `LARKSYNC_UPLOAD_INTERVAL_VALUE`
-- `LARKSYNC_UPLOAD_INTERVAL_UNIT`
-- `LARKSYNC_UPLOAD_DAILY_TIME`
-- `LARKSYNC_DOWNLOAD_INTERVAL_VALUE`
-- `LARKSYNC_DOWNLOAD_INTERVAL_UNIT`
-- `LARKSYNC_DOWNLOAD_DAILY_TIME`
-- `LARKSYNC_DEVICE_NAME`（可选，作为设备显示名默认值）
-- `LARKSYNC_DELETE_POLICY`（`off` / `safe` / `strict`）
-- `LARKSYNC_DELETE_GRACE_MINUTES`（删除宽限时间，分钟）
-
-## 4. 启动（托盘模式）
-
-LarkSync 统一通过 **系统托盘** 运行。启动后在系统托盘区域显示图标，右键菜单可打开管理面板、暂停/恢复同步、查看日志等。
-
-### 4.1 开发调试（带热重载）
-
-```bash
-npm run dev
-```
-
-内部会启动：
-- Vite 前端开发服务器（`http://localhost:3666`，HMR 热重载）
-- uvicorn 后端（`http://localhost:18765`，`--reload` 热重载）
-- 系统托盘图标
-
-改前端代码即时生效，改后端代码自动重启。退出：托盘右键“退出”或 Ctrl+C。macOS 红色关闭按钮只隐藏窗口；使用 `⌘Q`、应用菜单“退出 LarkSync”或托盘“退出 LarkSync”会停止桌面窗口、后端与开发服务。
-
-Vite 日志输出到 `data/logs/vite-dev.log`。
-托盘主进程与后端启动都会自动过滤不兼容 `PYTHONPATH`（例如误指向其它 Python 版本的 `site-packages`），避免本机环境污染导致 `npm run dev` 或托盘显示异常。
-若托盘未显示，请先完整退出旧实例后重启（检查端口 `48901` 是否仍被占用），并确认已安装 `apps/backend/requirements.txt` 中的 `pystray` 与 `Pillow`。
-
-### 4.2 日常使用（无热重载）
-
-先构建前端，再启动托盘：
-
-```bash
-# 构建前端（代码更新后需重新执行）
-python scripts/build.py
-
-# 启动
-# Windows：双击 LarkSync.bat 或 LarkSync.pyw
-# macOS：双击 LarkSync.command
-# 通用：python apps/tray/tray_app.py
-```
-
-前后端由 FastAPI 统一服务于 `http://localhost:18765`。
-
-## 5. 主要功能使用
-### 5.1 同步任务配置
-- 前端"同步任务"页可新建任务，包含本地路径、云端文件夹 token 与同步模式。
-- 支持"选择本地文件夹"按钮调用系统对话框（不可用时可手动输入路径）。
-- 支持云端目录选择器，点击文件夹即可自动填充 token。
-- 下载模式任务保存后会自动触发一次同步，也可点击"立即同步"手动触发。
-- 双向/仅上传任务保存后会自动启动上传调度，按配置间隔处理本地变更队列。
-- 每个任务可单独配置 MD 上传模式（默认 `enhanced`）：
-  - `enhanced`：本地 MD 上行会更新云文档，并维护云端 `_LarkSync_MD_Mirror` 副本。
-  - `download_only`：仅做云端下行，不执行本地 MD 上行。
-  - `doc_only`：仅更新云文档，不保留云端 MD 副本（复杂格式可能有损耗风险）。
-- 支持停用/启用与删除任务。
-- 新建/编辑任务会执行映射约束校验（同设备同账号维度）：
-  - 一个本地目录只能绑定一个云端目录。
-  - 一个云端目录只能绑定一个本地目录。
-  - 禁止父子本地目录同时创建任务（避免重复扫描和循环同步）。
-- 任务卡片显示状态、进度与最近错误信息。
-- 完成率按“`完成 / (总数 - 跳过)`”计算，跳过项不再拉低完成率。
-- 长路径显示优化：本地/云端路径默认显示后半段；点击“展开”后会按换行完整展示，不再溢出边框。
-- 测试任务不再按名称/路径关键词推断，统一以后端 `is_test` 字段识别；你新建任务默认是正式任务。
-- 仅在开发/测试模式且存在 `is_test=true` 的任务时，页面才显示“显示/隐藏测试任务”按钮。
-- 下载侧支持 Docx 与普通文件类型；Sheet/Bitable 等类型会显示为"跳过"。
-- Docx 内嵌 `sheet` 会优先转 Markdown 表格；若本地仍是历史 `sheet_token` 占位，系统会在下次下载时自动重转一次（即使云端 mtime 未变化）。
-- 若云端为快捷方式（Shortcut），会解析为目标类型后下载。
-- 上传侧支持：
-  - 已映射 Docx：本地 Markdown 变更会按 `update_mode` 执行局部或全量更新。
-  - 新增普通文件：会上传到任务对应云端文件夹。
-  - Markdown 新建 Docx：先导入创建云端文档，再覆盖内容。
-  - 新建 Docx 导入完成后，会自动清理同目录用于导入的临时 `.md` 源文件，避免云端出现重复第三份文档。
-- 文档内链接若指向已同步文件，会改写为本地相对路径；附件块会下载到同目录 `attachments/`。
-- 同步日志在"日志中心"按时间倒序展示（默认每 5 秒刷新）。
-- 日志筛选支持状态多选与任务多选：
-  - 默认选择“所有日志（推荐）”，会展示全量状态并自动覆盖后续新增状态类型。
-  - 可按任务复选过滤，不再是单选。
-  - 删除联动相关状态可单独筛选：`delete_pending`（待删除）、`deleted`（删除成功）、`delete_failed`（删除失败）。
-- 系统日志页默认“最新优先”；若后端不可达或读取失败，页面会显示明确错误提示。
-
-### 5.2 同步策略（可配置）
-- **本地 → 云端**：默认每 60 秒触发一次上传周期。
-- **云端 → 本地**：默认每天 01:00 触发一次下载（可手动触发）。
-- 间隔单位支持：秒 / 小时 / 天。
-- 当单位为"天"时，需填写具体触发时间（HH:MM）。
-- 自动更新开启后，系统会按“检查间隔（小时）”自动检查稳定版并自动下载更新包。
-- 更新包下载完成后，可在设置页确认“立即安装”；确认后托盘会退出当前应用并启动安装程序。
-- 每次 OAuth 登录成功后，系统会额外触发一次“立即检查更新”。
-- “更多设置”拥有独立保存按钮，不再和“同步策略”共用一次保存动作。
-- “保存更多设置”按钮位于“展开/收起设置”旁，便于同一区域完成修改与提交。
-- 删除同步策略（任务级，位于“同步任务 -> 任务管理”）：
-  - `off`：关闭删除联动（本地/云端删除不会同步到另一侧）。
-  - `safe`：启用墓碑+宽限期，宽限到期后执行删除；云端删除同步到本地时，先移动到 `.larksync_trash/`。
-  - `strict`：不使用宽限期，删除会尽快联动执行。
-  - 宽限时间单位为“分钟”；`strict` 模式下宽限固定为 `0`。
-  - 删除失败会自动进入重试队列（5 分钟退避），避免历史 `failed` 长期不再执行。
-  - 删除执行时会同步清理云端 `_LarkSync_MD_Mirror` 中对应 MD 副本，避免镜像残留。
-- “设置 -> 更多设置”不再直接控制删除策略；仅保留全局默认值作为新任务初始值。
-- 文档同步策略补充：
-  - `enhanced` 模式：下行（云端 Docx → 本地 MD）和上行（本地 MD → 云端）都会同步维护 `_LarkSync_MD_Mirror`。
-  - `download_only` 模式：仅云端下行，不执行本地 MD 上行。
-  - `doc_only` 模式：上行只更新云文档，不保留 `_LarkSync_MD_Mirror` 副本。
-
-### 5.3 登录与连接状态
-- 打开前端页面，点击"连接飞书"。
-- 授权完成后会自动跳转回前端首页，随后显示 Connected 状态。
-- 首屏会先做真实授权状态检测，再决定是否进入引导向导；已授权时不会再闪现授权页。
-- 侧边栏会显示“设备显示名称 + 飞书昵称”，用于用户可读展示。
-- 设备显示名称可在“设置 -> 更多设置”中修改。
-- 登录引导页支持明/暗主题切换；默认主题为明亮模式。
-- 若出现“已连接（昵称未同步）”，表示 OAuth 主连接可用，但账号昵称还未补齐；重新授权并刷新页面通常可恢复。
-  - 从 `v0.5.33` 起，后端会在 `/auth/status` 自动补齐 `open_id`。
-  - 从 `v0.5.35` 起，后端会一并补齐并缓存飞书昵称（`name`）。
-
-### 5.4 云端目录树
-- 页面点击"刷新"即可拉取云端目录树。
-- 后端接口：`GET /drive/tree`（可选参数 `folder_token`）。
-> 若提示 Access denied，请在飞书控制台"权限管理"添加用户身份权限（至少包含 `drive:drive`、`docx:document`、`docx:document.block:convert`），并重新授权。
-
-### 5.5 冲突管理（日志中心子模块）
-- 前端日志中心可查看冲突列表并执行"使用本地/云端"。
-- 后端接口：
-  - `GET /conflicts`
-  - `POST /conflicts`
-  - `POST /conflicts/check`
-  - `POST /conflicts/{id}/resolve`
-
-### 5.6 任务归属与设备验证
-- 从 `v0.5.29` 起，同步任务按 **设备 + 飞书账号** 双重归属：
-  - 设备维度：`device_id`
-  - 账号维度：飞书 OAuth 返回的 `open_id`
-- `device_id` / `open_id` 仅用于内部归属判断，不在主界面直接展示。
-- 同设备多账号场景下，任务不会互相可见。
-- 历史任务若缺少 `open_id`，会在首次访问时自动归属当前账号。
-- 当前实现不引入独立本地账号体系，登录统一沿用飞书 OAuth。
-- 从 `v0.5.33` 起，任务访问改为严格双重匹配（`owner_device_id` + `owner_open_id`），不再放行空 `owner_open_id` 任务。
-- 对于历史空 `owner_open_id` 任务，系统仅会自动迁移“可确认为本机路径”的任务；其他历史任务会被隐藏，避免跨设备串任务。
-- 若升级后发现旧任务不再显示，通常是历史任务未满足安全迁移条件；可在当前设备重新创建任务（推荐），或联系开发补充手动认领工具。
-
-## 6. 图片与附件同步
-- 当 Markdown 中包含本地图片路径（如 `![](assets/logo.png)`）时，上传流程会：
-  1) 调用飞书素材上传接口获取 `file_token`。
-  2) 生成 Docx 图片块并插入文档。
-- 建议使用相对路径，并确保 `base_path` 指向 Markdown 文件所在目录（可在同步任务配置中填写）。
-
-## 7. 测试
-- 本地联调测试（默认）：
-```bash
-npm run dev
-```
-  - 启动托盘 + 前端 HMR + 后端热重载，作为日常本地测试入口。
-
-- 打包体验测试（用户级）：
-```bash
-python scripts/build_installer.py
-# Windows 安装包
-python scripts/build_installer.py --nsis
-# macOS 安装包
-python scripts/build_installer.py --dmg
-```
-  - 产物安装后需验证：启动、托盘菜单、面板打开、退出流程。
-
-- 后端（建议先进入干净虚拟环境）：
-```bash
-cd apps/backend
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-dev.txt
-python -m pytest
-```
-- 前端：
-```bash
-cd apps/frontend
-npm install
-npm run build
-npx tsc --noEmit
-```
-- 说明：若后端测试出现 `ImportError: cannot import name 'FixtureDef' from 'pytest'`，通常是本机全局 `pytest` 与 `pytest-asyncio` 版本冲突，建议使用项目虚拟环境重新安装依赖后再执行。
-
-## 8. 运行日志
-- 后端运行日志：`data/logs/larksync.log`（10MB 轮转，保留 10 天）
-- 后端 stderr：`data/logs/backend-stderr.log`
-- Vite 开发日志：`data/logs/vite-dev.log`（仅 `--dev` 模式）
-
-## 9. 测试重置（可选）
-- 如需模拟“新用户首次登录”并隔离历史任务数据，可执行：
-  1) 停止当前运行中的 LarkSync。
-  2) 归档 `data/larksync.db*` 到 `data/archive/<timestamp>/`。
-  3) 清空本地 token（调用 `/auth/logout` 或清理 token 存储）。
-  4) 重新启动 `npm run dev`，系统会自动创建空数据库。
-
-## 10. 本地打包、发布与安装包下载
-### 10.1 本地打包（当前真实做法）
-统一使用脚本：`scripts/build_installer.py`。
-
-```bash
-# 仅生成 PyInstaller 目录产物（dist/LarkSync/）
-python scripts/build_installer.py
-
-# Windows：额外生成 NSIS 安装包（dist/LarkSync-Setup-<version>.exe）
-python scripts/build_installer.py --nsis
-
-# macOS：额外生成 DMG（本地默认 dist/LarkSync-<version>.dmg）
-python scripts/build_installer.py --dmg
-```
-
-说明：
-- 脚本默认会先构建前端（`apps/frontend/npm run build`），再执行 PyInstaller。
-- 若前端已提前构建，可加 `--skip-frontend` 跳过前端构建阶段。
-- 如需显式指定 macOS 打包架构，可设置 `LARKSYNC_MACOS_TARGET_ARCH=arm64`、`x86_64` 等 PyInstaller 支持值；如需输出带架构后缀的 DMG 文件名，可同时设置 `LARKSYNC_MACOS_DMG_SUFFIX`。
-- Windows 生成安装包依赖 `makensis`（NSIS）。macOS 优先使用 `create-dmg` 生成带布局的镜像；未安装时自动回退系统自带的 `hdiutil`，无需 Homebrew。可用 `LARKSYNC_DMG_TOOL=auto|create-dmg|hdiutil` 显式选择。
-- 脚本会自动过滤与当前解释器版本不匹配的 `PYTHONPATH` `site-packages`（例如 `Python312` 与 `Python314` 混用），减少本机环境污染导致的打包失败。
-
-### 10.2 一行稳定版发布（维护者）
-
-```bash
-npm run release:publish
-```
-
-可选：自定义提交信息
-
-```bash
-npm run release:publish -- "release: v0.5.45"
-```
-
-该命令等价于 `python scripts/release.py --publish`，会自动：
-- 读取当前版本与 git tags，计算下一稳定版号；
-- 同步更新 `package.json` / `apps/frontend/package.json` / `apps/backend/pyproject.toml`；
-- 追加 `CHANGELOG.md`；
-- 执行 `git add .`、`git commit`、`git tag <version>`、`git push`、`git push origin <version>`。
-
-### 10.3 GitHub Release 构建说明（维护者）
-当前发布工作流：`.github/workflows/release-build.yml`。
-
-触发条件：
-- 推送 `v*` 标签（如 `v0.5.44`）会默认同时构建 Windows 与 macOS 安装包。
-- `pull_request` / `push main` 非 tag 场景会额外执行一轮 macOS 定向 pytest + 打包 smoke，用于提前验证 LaunchAgent / 更新安装 / `.app` + `dmg` 构建链路。
-- macOS smoke 在 DMG 构建后还会自动执行一轮安装/启动检查：挂载 DMG、复制 `.app`、启动 `LarkSync --backend` 并轮询 `/health`，尽量把“能构建但不能启动”的问题前移到 CI。
-- 标签不能包含 `-dev`，否则构建任务会被 `if` 条件跳过。
-- 如需手动重跑某个稳定版 tag 的 macOS 构建，可触发 `workflow_dispatch` 并将 `build_macos` 勾选为 `true`（同时选择稳定版 tag 作为 ref）。
-- macOS 工作流会按 runner 原生架构构建：`macos-13 -> x86_64`、`macos-14 -> arm64`；稳定版 tag 会上传 `LarkSync-<version>-x86_64.dmg` 与 `LarkSync-<version>-arm64.dmg` 两个产物，自动更新会优先匹配当前机器架构。
-- 未配置 Apple 发布凭据时，稳定版仍生成 ad-hoc 签名 DMG 并执行完整安装 smoke；用户首次打开需在 macOS「系统设置 → 隐私与安全性」选择「仍要打开」。六项 Apple 凭据全部配置后，工作流自动升级为 Developer ID 签名、公证、stapling 和 Gatekeeper 验证；只配置部分凭据会直接失败，避免误以为产物已公证。
-
-产物上传结果：
-- Windows：`dist/LarkSync-Setup-*.exe`
-- macOS：`dist/LarkSync-*.dmg`
-- 构建成功后由 workflow 自动上传到对应 GitHub Release。
-- Release 说明：工作流会自动执行 `python scripts/release_notes.py`，从 `CHANGELOG.md` 提取“当前稳定版到上一稳定版之间”的全部条目（可覆盖多个中间 dev 版本），并写入 Release body。
-
-注意：
-- 手动触发 `workflow_dispatch` 且未勾选 `build_macos` 时，macOS job 不会执行；但正式版 tag push 不受该开关影响。
-
-### 10.4 GitHub Release 下载安装包（使用者）
-- 发布页：<https://github.com/gooderno1/LarkSync/releases>
-- Windows：下载 `LarkSync-Setup-*.exe`
-- macOS：下载 `LarkSync-*.dmg`
-
-macOS 若提示无法验证开发者：先尝试打开应用一次，再前往「系统设置 → 隐私与安全性」，点击「仍要打开」。只应对从本项目官方 Release 下载且校验 SHA256 一致的安装包执行该操作。
-
-说明：
-- 自动更新依赖公开可访问的 GitHub Release；若仓库私有、暂无 Release 或无稳定版 tag，客户端会显示“暂无稳定版 Release”，不会继续下载更新包。
-
-## 11. 已知限制
-- 非 Markdown 文件的"覆盖更新"接口尚未接入。
-- 在线文档中的 `sheet` 内嵌表格当前为“优先转 Markdown 表格”；在权限不足、接口异常或超限场景下会回退为 `sheet_token` 占位输出。
-- 文档内附件块若字段结构不同，请提供 docx blocks JSON 样例以完善解析。
-
-## 12. OpenClaw Skill（降低飞书 API 调用）
-Skill 目录：
+源码环境下可执行：
 
 ```text
-integrations/openclaw/skills/larksync_feishu_local_cache/
+python scripts/larksync_cli.py capabilities
+python scripts/larksync_cli.py account-list
+python scripts/larksync_cli.py task-plan --spec-file task.json
+python scripts/larksync_cli.py --account-id ACCOUNT task-create --spec-file task.json
+python scripts/larksync_cli.py --account-id ACCOUNT task-wait --task-id TASK --timeout 60
 ```
 
-OpenClaw 代理 runbook：`integrations/openclaw/skills/larksync_feishu_local_cache/OPENCLAW_AGENT_GUIDE.md`
+JSON 示例、扫码步骤和错误处理见 [CLI 契约](CLI_AGENT_CONTRACT.md)。`ok: true` 表示请求成功；必须检查 `sync_complete` 才能判断同步完成。
 
-推荐默认模式：`download_only` + 每日一次下载同步。  
-目标：先把飞书文档低频同步到本地，再由 OpenClaw 优先本地读取，减少飞书 API 与 token 消耗。
+## 设置与数据
 
-说明：如果 OpenClaw 跑在 WSL，Windows 侧只需运行 LarkSync 安装包版（托盘程序）即可，不需要在 Windows 上拉源码构建。
+- 上传 / 下载频率在设置页统一配置，影响全部任务；目前不是任务级时间表。
+- 删除策略有 `off`、`safe`、`strict`；双向同步和删除策略应先在测试目录验证。
+- 开机自启动在“设置 → 当前设备”或托盘菜单中设置，系统启动项会即时更新。
+- 开发环境默认数据存储在仓库 `data/`；桌面安装版的数据位置以当前运行实例的设置和日志为准。不要混用开发与正式环境数据目录。
+- 凭据由应用按系统机制保存。不要将 token、密钥、个人数据或本地规格提交到 Git。
 
-常用命令：
+## 源码开发与验证
 
-```bash
-# 查看内置工作流模板
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-template --template daily-cache
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-plan --template daily-cache --entrypoint helper --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<token>"
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-execute --template daily-cache --dry-run --from-step bootstrap --to-step inspect-task --output-json-file data\\workflow.json --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<token>"
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-execute --template daily-cache --run-id demo-run --skip-completed --set "local_path=D:\\Knowledge\\FeishuMirror" --set "cloud_folder_token=<token>"
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-run-list --limit 10
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py workflow-run-show --run-id demo-run
+开发 / 打包基线：Python 3.14.x、Node.js 25.x。后端声明最低 Python 3.10；当前前端 Vite 需要现代 Node.js，不能沿用旧的 Node 18 环境。
 
-# 检查环境
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py check
-
-# 一键初始化本地缓存 + 建任务 + 首次执行
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py bootstrap-cache \
-  --local-path "D:\\Knowledge\\FeishuMirror" \
-  --cloud-folder-token "<token>" \
-  --sync-mode download_only \
-  --download-value 1 \
-  --download-unit days \
-  --download-time 01:00 \
-  --run-now
+```text
+npm install
+npm --prefix apps/frontend ci
+python -m pip install -r apps/backend/requirements.txt
+python -m pip install -r apps/backend/requirements-dev.txt
+npm run dev
 ```
 
-安全说明：
-- helper 默认仅允许 `localhost/127.0.0.1/::1` 作为 `base-url`。
-- 如需连接远程 LarkSync，必须显式开启（仅限可信网络）：
+默认前端 `http://localhost:3666`，后端 `http://localhost:18765`。与正式版并行测试使用 `npm run dev:test`；该入口分离端口、数据与测试凭据。测试范围和真实账号限制见 [真实数据测试指南](REAL_DATA_TESTING.md)。
 
-```bash
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_skill_helper.py --base-url "https://larksync.internal.example" --allow-remote-base-url check
+```text
+npm --prefix apps/frontend run lint
+npm --prefix apps/frontend run test
+npm --prefix apps/frontend run build
 ```
 
-WSL 场景（OpenClaw 在 WSL、LarkSync 在 Windows）：
+在 `apps/backend` 目录运行 `python -m pytest`。安装包构建：Windows `python scripts/build_installer.py --nsis`，macOS `python scripts/build_installer.py --dmg`。构建同时生成通用 Skill ZIP 和 SHA256 校验文件。
 
-```bash
-# 先诊断地址可达性
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py diagnose
+## 排障
 
-# 自动探测并执行
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py check
-python integrations/openclaw/skills/larksync_feishu_local_cache/scripts/larksync_wsl_helper.py bootstrap-cache \
-  --local-path "/mnt/d/Knowledge/FeishuMirror" \
-  --cloud-folder-token "<token>" \
-  --sync-mode download_only \
-  --download-value 1 \
-  --download-unit days \
-  --download-time 01:00 \
-  --run-now
-```
+- 后端不可达：先确认应用运行和所用端口；AI CLI 使用 `check`。
+- 扫码授权过期：重新开始会话；pending / slow_down 按返回间隔等待。
+- 没有目录权限：检查目标是否对当前账号可见，必要时重新授权；本地存在令牌不等于云权限有效。
+- 同步未完成：读取活动、问题中心或 `task-diagnostics`；超时不代表任务已经失败或完成。
+- 需要反馈：按 [反馈模板](FEEDBACK.md) 提供版本、系统、错误 ID 和脱敏日志。
 
-说明：
-- 诊断会同时探测 `localhost` / `host.docker.internal` / default gateway / `/etc/resolv.conf` nameserver。
-- 若全部不可达，优先排查 Windows 侧 LarkSync 是否已启动并监听 `18765` 端口。
-- 若你手动设置过 `LARKSYNC_BACKEND_BIND_HOST=127.0.0.1`，请改为 `0.0.0.0` 或移除后重启。
-- 若 Windows 侧不可达，脚本会输出诊断信息并停止，不会在 WSL 自动安装依赖或自动拉起后端。
-- 请先在 Windows 侧启动 LarkSync，再重新执行命令。
-- 飞书 OAuth 首次授权仍需要用户确认；首次授权后可无人值守运行。
-
-上架 ClawHub（建议先 dry-run）：
-
-```bash
-cd integrations/openclaw/skills/larksync_feishu_local_cache
-clawhub login
-clawhub sync --root . --dry-run
-clawhub publish . --slug larksync-feishu-local-cache --name "LarkSync Feishu Local Cache" --version 0.1.6 --changelog "fix(security): remove WSL auto-install and auto-start behaviors"
-```
-
-详见：`docs/OPENCLAW_SKILL.md` 与 `docs/CLI_AGENT_CONTRACT.md`。
-
-本教程会随版本更新持续完善。
+继续阅读：[快速开始](QUICK_START.md)、[FAQ](FAQ.md)、[安全与隐私](SECURITY_AND_PRIVACY.md)、[版本记录](../CHANGELOG.md)。

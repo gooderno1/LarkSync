@@ -5,6 +5,9 @@ homepage: https://github.com/gooderno1/LarkSync
 metadata: {"category":"integrations","tags":["openclaw","feishu","larksync","sync","local-cache"],"license":"CC-BY-NC-SA-4.0"}
 ---
 
+> 旧版兼容技能，仅在完整 LarkSync 源码仓库内使用。独立安装请改用 `integrations/skills/larksync/SKILL.md`；新任务按通用技能流程创建。本文件的 bootstrap 示例会更改全部任务的全局频率；配置完成后仍需 task-wait 验证同步。
+
+
 # LarkSync Feishu Local Cache Skill
 
 参考：

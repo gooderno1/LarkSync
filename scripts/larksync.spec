@@ -133,8 +133,25 @@ exe = EXE(
     icon=str(win_icon) if sys.platform == "win32" and win_icon.is_file() else None,
 )
 
+cli_analysis = Analysis(
+    [str(project_root / "integrations/skills/larksync/scripts/larksync_cli.py")],
+    pathex=[], binaries=[], datas=[], hiddenimports=[], hookspath=[],
+    hooksconfig={}, runtime_hooks=[], excludes=[], noarchive=False,
+)
+cli_pyz = PYZ(cli_analysis.pure)
+cli_exe = EXE(
+    cli_pyz, cli_analysis.scripts, [],
+    exclude_binaries=True, name="LarkSyncCLI", console=True, strip=False,
+    target_arch=_resolve_macos_target_arch(),
+    codesign_identity=codesign_identity if sys.platform == "darwin" else None,
+    entitlements_file=str(macos_entitlements) if sys.platform == "darwin" and macos_entitlements.is_file() else None,
+)
+
 coll = COLLECT(
     exe,
+    cli_exe,
+    cli_analysis.binaries,
+    cli_analysis.datas,
     a.binaries,
     a.zipfiles,
     a.datas,
