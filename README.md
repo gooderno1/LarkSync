@@ -10,7 +10,7 @@ LarkSync 是 Windows / macOS 常驻桌面应用。它将云文档转成 Markdown
 
 [下载安装包](https://github.com/gooderno1/LarkSync/releases) · [快速开始](docs/QUICK_START.md) · [通过 AI 使用](docs/AI_GUIDE.md) · [反馈问题](https://github.com/gooderno1/LarkSync/issues)
 
-> 当前稳定版 **v0.10.1**；本分支正在开发 **v0.11.0-dev.1**。下文的 AI 任务管理与通用 Skill 需要配套 v0.11.0 开发版或更新版本。正式发布前可从本仓库源码运行，不要将最新稳定安装包视为已经包含这些接口。
+> **V1.0 正式版已发布**（v1.0.0，2026-10-20）：飞书 / Lark 本地同步、AI 原生任务管理与通用 Skill 一起交付。提供 Windows、Apple Silicon 和 Intel 安装包，详见 [V1.0 发布说明与下载](https://github.com/gooderno1/LarkSync/releases/tag/v1.0.0)。
 
 ## 它能帮你做什么
 
@@ -29,7 +29,7 @@ LarkSync 是 Windows / macOS 常驻桌面应用。它将云文档转成 Markdown
 
 ## 开始使用
 
-1. 在 [Releases](https://github.com/gooderno1/LarkSync/releases) 选择 Windows `LarkSync-Setup-*.exe`，或匹配 Apple Silicon / Intel 的 macOS DMG；可使用同名 `.sha256` 校验下载文件。
+1. 在 [V1.0 发布页](https://github.com/gooderno1/LarkSync/releases/tag/v1.0.0) 选择 Windows `LarkSync-Setup-v1.0.0.exe`，或匹配 Apple Silicon（`arm64`）/ Intel（`x86_64`）的 macOS DMG；可使用同名 `.sha256` 校验下载文件。macOS 首次打开的系统放行步骤见 [快速开始](docs/QUICK_START.md)。
 2. 启动应用，点击“开始扫码连接”。首次通常需要先扫码创建个人应用，再扫码授权账号；无需安装 `lark-cli`。组织限制自动注册时，使用手动添加应用入口。
 3. 选择飞书文件夹和本地目录，创建一个**仅下载**任务。第一次建议从少量文档开始。
 4. 确认运行成功，并在本地看到 Markdown 和资源文件，再交给 AI 阅读或配置更多任务。
@@ -49,7 +49,7 @@ LarkSync 是 Windows / macOS 常驻桌面应用。它将云文档转成 Markdown
 - “把这个任务的 `参考资料` 子文件夹设为仅下载。”
 - “检查刚才同步失败的文件，告诉我需要处理什么。”
 
-**Codex**：安装 `integrations/skills/larksync` 到用户技能目录 `~/.agents/skills/larksync`，重新加载技能。**WorkBuddy**：将完整技能目录放入项目的 `.codebuddy/skills/larksync`，或在技能界面导入发布的 `LarkSync-Agent-Skill-*.zip`。客户端识别和调用步骤见 [AI 使用指南](docs/AI_GUIDE.md)。
+**Codex**：安装 `integrations/skills/larksync` 到用户技能目录 `~/.agents/skills/larksync`，重新加载技能。**WorkBuddy**：将完整技能目录放入项目的 `.codebuddy/skills/larksync`，或在技能界面导入 [V1.0 通用技能包](https://github.com/gooderno1/LarkSync/releases/download/v1.0.0/LarkSync-Agent-Skill-1.0.0.zip)。客户端识别和调用步骤见 [AI 使用指南](docs/AI_GUIDE.md)。
 
 应用负责保存凭据和执行同步；AI 使用附带的控制台 CLI 或技能中的纯 Python CLI。多账号必须明确选择账号；配置预览不写入；返回 `sync_complete: true` 才表示本次同步完成。
 

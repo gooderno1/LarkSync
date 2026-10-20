@@ -1,6 +1,6 @@
 # OpenClaw / AI Agent 本地飞书缓存教程
 
-> v0.11.0 起，新接入请使用自包含的通用技能 `integrations/skills/larksync`，参考仓库 `docs/AI_GUIDE.md`。本文记录旧 OpenClaw 兼容流程，helper 依赖完整源码目录；不要单独复制旧技能目录。bootstrap 会修改全局频率，配置完成不表示同步完成。
+> v1.0.0 起，新接入请使用自包含的通用技能 `integrations/skills/larksync`，参考仓库 `docs/AI_GUIDE.md`。本文记录旧 OpenClaw 兼容流程，helper 依赖完整源码目录；不要单独复制旧技能目录。bootstrap 会修改全局频率，配置完成不表示同步完成。
 
 更新时间：2026-05-28
 

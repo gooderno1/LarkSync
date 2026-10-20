@@ -46,7 +46,7 @@ def test_old_backend_html_fallback_reports_incompatible_response(monkeypatch, ca
     code, output = invoke(capsys, "schema")
     assert code == 1
     assert output["error_code"] == "INVALID_RESPONSE"
-    assert "0.11.0" in output["next_step"]
+    assert "1.0.0" in output["next_step"]
 
 
 def test_plan_normalizes_url_and_preserves_rules_without_io(tmp_path, monkeypatch, capsys):

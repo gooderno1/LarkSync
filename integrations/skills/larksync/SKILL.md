@@ -10,10 +10,10 @@ LarkSync 桌面应用负责授权、常驻同步和凭据存储。此技能通�
 
 ## 找到入口
 
-1. 已安装 v0.11.0 或更新版本时，优先使用安装目录的 `LarkSyncCLI.exe`（Windows），或 `/Applications/LarkSync.app/Contents/MacOS/LarkSyncCLI`（macOS）。CLI 需要与应用目录中的运行库一起保留。
+1. 已安装 v1.0.0 或更新版本时，优先使用安装目录的 `LarkSyncCLI.exe`（Windows），或 `/Applications/LarkSync.app/Contents/MacOS/LarkSyncCLI`（macOS）。CLI 需要与应用目录中的运行库一起保留。
 2. 否则使用本技能目录下 `scripts/larksync_cli.py`，需要 Python 3.10+，无第三方 Python 依赖。根据操作系统探测 `python`、`python3` 或 `py -3`，不要假设当前目录就是技能目录。
 3. 先调用 `capabilities`（离线）和 `check`。默认服务地址为 `http://localhost:18765`。后端未启动时，引导启动 LarkSync；不要自动占用其他服务端口。
-4. 源码与最新安装包入口：[GitHub](https://github.com/gooderno1/LarkSync)。v0.10.x 缺少新任务读取/目录分页接口，需使用 v0.11.0+ 应用；HTTP 404 不能被解释为已同步成功。
+4. 源码与最新安装包入口：[GitHub](https://github.com/gooderno1/LarkSync)。v0.10.x 缺少新任务读取/目录分页接口，需升级到 v1.0.0+ 应用；HTTP 404 不能被解释为已同步成功。
 
 以下 `CLI` 代表已确认的可执行程序或 Python + 脚本路径。使用参数数组传参，不拼接用户提供的 shell 命令。
 

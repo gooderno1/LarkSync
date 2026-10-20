@@ -259,7 +259,7 @@ def _must_ok(result: ApiResult, action: str) -> Any:
     detail = result.data.get("detail") if isinstance(result.data, dict) else result.data
     if isinstance(result.data, dict) and result.data.get("error_code") == "INVALID_RESPONSE":
         raise CliError("INVALID_RESPONSE", str(detail),
-                       next_step="确认使用配套 v0.11.0+ 应用，并检查 --base-url 指向后端端口。")
+                       next_step="确认使用配套 v1.0.0+ 应用，并检查 --base-url 指向后端端口。")
     codes = {0: "BACKEND_UNREACHABLE", 401: "AUTH_REQUIRED", 403: "PERMISSION_DENIED",
              404: "NOT_FOUND", 409: "CONFLICT", 422: "INVALID_ARGUMENT", 429: "RATE_LIMITED"}
     next_steps = {
@@ -1859,7 +1859,7 @@ def _dispatch_agent(args: argparse.Namespace, base_url: str) -> Any:
     if command == "capabilities":
         parser = _build_parser()
         commands = next(a.choices for a in parser._actions if isinstance(a, argparse._SubParsersAction))
-        return {"contract_version": "1.0", "minimum_app_version": "0.11.0",
+        return {"contract_version": "1.0", "minimum_app_version": "1.0.0",
                 "commands": sorted(commands), "task_fields": sorted(TASK_FIELDS),
                 "schedule_scope": "global", "account_selection": "--account-id; one account auto-selects",
                 "defaults": {"sync_mode": "download_only", "delete_policy": "off"},

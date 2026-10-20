@@ -2,7 +2,7 @@
 
 本文档定义 LarkSync 正式 CLI 在 Agent / Skill 场景下的稳定调用约定，目标是减少“靠 README 猜行为”的隐性耦合。
 
-v0.11.0 起，完整的任务 JSON、授权和维护命令见 [技能命令参考](../integrations/skills/larksync/references/commands.md)，客户端安装见 [AI 使用指南](AI_GUIDE.md)。`capabilities` 离线发现能力，`schema` 查询当前运行后端的 OpenAPI。
+v1.0.0 起，完整的任务 JSON、授权和维护命令见 [技能命令参考](../integrations/skills/larksync/references/commands.md)，客户端安装见 [AI 使用指南](AI_GUIDE.md)。`capabilities` 离线发现能力，`schema` 查询当前运行后端的 OpenAPI。
 
 ## 1. 统一输出约定
 
