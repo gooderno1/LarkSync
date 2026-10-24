@@ -1,4 +1,5 @@
 import type { SyncTaskOverview, SyncTaskRunSummary } from "../types";
+import { isTaskExecuting } from "./syncRuntime";
 
 const ACTION_RESULT_STATES = new Set(["failed", "cancelled"]);
 const ACTIVE_FILE_STATUSES = new Set([
@@ -30,7 +31,7 @@ export function getTaskOverviewActionCount(overview: SyncTaskOverview): number {
 }
 
 export function hasFocusedTaskActivity(overview: SyncTaskOverview): boolean {
-  if (overview.status.state === "running") return true;
+  if (isTaskExecuting(overview.status)) return true;
   if ((overview.problem_count ?? 0) > 0) return true;
   if (getTaskOverviewActionCount(overview) > 0) return true;
   if (overview.last_result && ACTION_RESULT_STATES.has(overview.last_result)) return true;

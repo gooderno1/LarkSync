@@ -279,7 +279,7 @@ async def build_desktop_status(request: Request) -> DesktopStatusResponse:
             running=sum(
                 1
                 for task_id, status in statuses.items()
-                if task_id in enabled_task_ids and status.state == "running"
+                if task_id in enabled_task_ids and status.is_running
             ),
             failed=sum(1 for status in statuses.values() if status.state == "failed"),
             last_error=errors[0] if errors else None,

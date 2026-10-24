@@ -1,3 +1,5 @@
+import { RuntimeSummary } from "./RuntimeSummary";
+import type { RuntimeView } from "../../lib/syncRuntime";
 import { useEffect, useState } from "react";
 
 import {
@@ -26,8 +28,7 @@ import {
 
 type TaskSettingsPanelProps = {
   task: SyncTask;
-  processed: number;
-  total: number;
+  runtimeView?: RuntimeView;
   onClose: () => void;
   onDelete: () => void | Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
@@ -48,8 +49,7 @@ const deletePolicies = [
 
 export function TaskSettingsPanel({
   task,
-  processed,
-  total,
+  runtimeView,
   onClose,
   onDelete,
   onDirtyChange,
@@ -230,8 +230,8 @@ export function TaskSettingsPanel({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#d7e4f5] bg-white px-5 py-3 text-[11px] text-[#52657a]">
-        <span>基准路径：<span className="font-mono text-[#334762]">{task.base_path || "默认同本地目录"}</span></span>
-        <span>最近处理：{processed}/{total}</span>
+        <span className="max-w-[40%] break-words">基准路径：<span className="font-mono text-[#334762]">{task.base_path || "默认同本地目录"}</span></span>
+        {runtimeView && <div className="min-w-0 flex-1"><RuntimeSummary view={runtimeView} /></div>}
       </div>
     </div>
   );

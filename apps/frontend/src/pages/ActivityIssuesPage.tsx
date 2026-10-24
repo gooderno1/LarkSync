@@ -1,3 +1,6 @@
+import { RuntimeSummary } from "../components/tasks/RuntimeSummary";
+import { describeSyncRuntime, isRecordedRunExecuting, isTaskExecuting, type RuntimeView } from "../lib/syncRuntime";
+import { useRuntimeClock } from "../hooks/useRuntimeClock";
 import { useEffect, useMemo, useState } from "react";
 
 import { StatusPill } from "../components/StatusPill";
@@ -48,7 +51,7 @@ function TaskRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const state = overview.status.state;
+  const state = isTaskExecuting(overview.status) ? "running" : overview.status.state;
   return (
     <button
       type="button"
@@ -81,8 +84,10 @@ function RunRow({
   run,
   selected,
   onSelect,
+  runtimeView,
 }: {
   run: SyncTaskRunSummary;
+  runtimeView?: RuntimeView;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -115,11 +120,11 @@ function RunRow({
           </p>
           <p className="mt-1 text-xs text-[#52657a]">{formatTimestamp(run.started_at)}</p>
         </div>
-        <StatusPill label={stateLabels[run.state] || run.state} tone={stateTones[run.state] || "neutral"} />
+        <StatusPill label={runtimeView ? "运行中" : stateLabels[run.state] || run.state} tone={runtimeView ? "info" : stateTones[run.state] || "neutral"} />
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 text-xs text-[#52657a]">
         <span>{summary}</span>
-        <span>{formatDuration(run.started_at, run.finished_at, run.last_event_at)}</span>
+        <span>{runtimeView ? runtimeView.elapsedLabel : run.state === "running" ? "进行中" : formatDuration(run.started_at, run.finished_at)}</span>
       </div>
     </button>
   );
@@ -139,7 +144,7 @@ function EventList({
   if (items.length === 0) {
     return (
       <div className="grid h-full min-h-40 place-items-center rounded-lg border border-dashed border-[#c9d8ec] text-sm text-[#52657a]">
-        当前运行没有匹配事件。
+        所选运行没有匹配事件。
       </div>
     );
   }
@@ -324,6 +329,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
     activeOverview,
     selectTask,
     selectedStatus,
+    statusUpdatedAt,
     recentRuns,
     activeRunId,
     selectedRun,
@@ -346,6 +352,9 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
     overviewQuery,
     diagnosticsQuery,
   } = useLogCenterTaskDiagnostics(true);
+  const runtimeNow = useRuntimeClock(isTaskExecuting(selectedStatus));
+  const runtimeView = describeSyncRuntime(selectedStatus, runtimeNow, statusUpdatedAt);
+  const currentTaskState = isTaskExecuting(activeOverview?.status) ? "running" : activeOverview?.status.state || "idle";
   const [selectedEvent, setSelectedEvent] = useState<SyncLogEntry | null>(null);
   const [taskSearch, setTaskSearch] = useState("");
 
@@ -436,12 +445,19 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
 
       <div className="grid grid-cols-4 overflow-hidden rounded-lg border border-[#d7e4f5] bg-white text-xs">
         <div className="px-4 py-2"><span className="text-[#52657a]">任务</span><strong className="ml-2 text-[#102033]">{sortedOverviews.length}</strong></div>
-        <div className="border-l border-[#edf3fb] px-4 py-2"><span className="text-[#52657a]">运行中</span><strong className="ml-2 text-[#3370ff]">{selectedStatus?.state === "running" ? 1 : 0}</strong></div>
+        <div className="border-l border-[#edf3fb] px-4 py-2"><span className="text-[#52657a]">运行中</span><strong className="ml-2 text-[#3370ff]">{sortedOverviews.filter((item) => isTaskExecuting(item.status)).length}</strong></div>
         <div className="border-l border-[#edf3fb] px-4 py-2"><span className="text-[#52657a]">{compact ? "异常" : "成功 / 失败"}</span><strong className="ml-2 text-[#102033]">{compact ? failedRuns : `${successfulRuns} / ${failedRuns}`}</strong></div>
         <div className="border-l border-[#edf3fb] px-4 py-2"><span className="text-[#52657a]">事件</span><strong className="ml-2 text-[#102033]">{selectedTimelineTotal}</strong></div>
       </div>
 
-      {activeOverview?.check_state ? (
+      {runtimeView.running && (
+        <section className="rounded-lg border border-[#d7e4f5] bg-white px-4 py-3" aria-label="当前任务执行">
+          <h2 className="mb-2 text-sm font-semibold text-[#102033]">当前任务执行 · {activeOverview?.task.name || "所选任务"}</h2>
+          <RuntimeSummary view={runtimeView} />
+        </section>
+      )}
+
+      {activeOverview?.check_state && !runtimeView.running ? (
         <div className={cn(
           "flex items-center justify-between gap-3 rounded-lg border px-4 py-2 text-xs",
           activeOverview.check_state.state === "failed"
@@ -478,9 +494,9 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
           <div className="min-w-0 flex-1">{taskSelector}</div>
           {activeOverview ? (
             <StatusPill
-              label={activeOverview.task.enabled ? stateLabels[activeOverview.status.state] || activeOverview.status.state : "已停用"}
-              tone={activeOverview.task.enabled ? stateTones[activeOverview.status.state] || "neutral" : "neutral"}
-              dot={activeOverview.status.state === "running"}
+              label={activeOverview.task.enabled ? stateLabels[currentTaskState] || currentTaskState : "已停用"}
+              tone={activeOverview.task.enabled ? stateTones[currentTaskState] || "neutral" : "neutral"}
+              dot={isTaskExecuting(activeOverview.status)}
             />
           ) : null}
           <span className="shrink-0 text-xs text-[#52657a]">真实活动 {visibleRuns.length} 条</span>
@@ -508,7 +524,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
           <aside className="flex min-h-0 flex-col rounded-xl border border-[#d7e4f5] bg-[#fbfdff] p-3">
             <div className="flex items-center justify-between"><h2 className="text-sm font-semibold text-[#102033]">{wide ? "运行列表" : "运行记录"}</h2><span className="text-xs text-[#52657a]">{visibleRuns.length} 条</span></div>
             <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto">
-              {visibleRuns.map((run) => <RunRow key={run.run_id} run={run} selected={activeRunId === run.run_id} onSelect={() => setSelectedRunId(run.run_id)} />)}
+              {visibleRuns.map((run) => <RunRow runtimeView={isRecordedRunExecuting(selectedStatus, run.run_id) ? runtimeView : undefined} key={run.run_id} run={run} selected={activeRunId === run.run_id} onSelect={() => setSelectedRunId(run.run_id)} />)}
               {visibleRuns.length === 0 ? <p className="rounded-lg border border-dashed border-[#c9d8ec] p-6 text-center text-sm text-[#52657a]">所选时间内暂无运行。</p> : null}
             </div>
           </aside>
@@ -520,7 +536,7 @@ function ActivityManagementLivePage({ layoutMode }: Props) {
               {EVENT_FILTERS.map((filter) => <option key={filter.value} value={filter.value}>{filter.label}</option>)}
             </select>
             <input value={eventSearch} onChange={(event) => { setEventSearch(event.target.value); setEventPage(1); }} placeholder="搜索对象或错误" className="h-9 min-w-[180px] flex-1 rounded-lg border border-[#c9d8ec] bg-white px-3 text-xs outline-none focus:border-[#3370ff]" />
-            <span className="text-xs text-[#52657a]">当前运行 {compactRunId(selectedRun?.run_id || activeRunId)} · 共 {selectedTimelineTotal} 条</span>
+            <span className="text-xs text-[#52657a]">所选运行 {compactRunId(selectedRun?.run_id || activeRunId)} · 共 {selectedTimelineTotal} 条</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
             {selectedEventsQuery.isFetching && selectedTimelineEntries.length === 0 ? <div className="h-full animate-pulse rounded-lg bg-[#eef5ff]" /> : selectedEventsQuery.error ? <div className="grid h-full min-h-48 place-items-center rounded-lg border border-[#fecdd3] bg-[#fff7f8] px-6 text-center text-sm text-[#be123c]"><div><p>运行事件读取失败：{selectedEventsQuery.error.message}</p><button type="button" onClick={() => selectedEventsQuery.refetch()} className="mt-3 rounded-lg border border-[#fda4af] bg-white px-4 py-2 text-xs font-semibold">重新读取</button></div></div> : <EventList items={selectedTimelineEntries} selected={selectedEvent} compact={compact} onSelect={setSelectedEvent} />}

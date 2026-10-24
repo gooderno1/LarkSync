@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { apiFetch } from "../lib/api";
+import { apiFetchForAccount } from "../lib/api";
+import { useAccounts } from "./useAccounts";
+import { useRuntimeClock } from "./useRuntimeClock";
+import { RUNTIME_STALE_MS } from "../lib/syncRuntime";
 
 export type DesktopStatus = {
   runtime: {
@@ -85,7 +88,7 @@ export const desktopStatusPlaceholder: DesktopStatus = {
     unresolved: 0,
   },
   update: {
-    current_version: "v0.8.0-dev.1",
+    current_version: "—",
     latest_version: null,
     update_available: false,
     last_check: null,
@@ -95,16 +98,21 @@ export const desktopStatusPlaceholder: DesktopStatus = {
 };
 
 export function useDesktopStatus() {
+  const { activeAccountId } = useAccounts();
+  const accountId = activeAccountId || "";
   const query = useQuery<DesktopStatus>({
-    queryKey: ["desktop-status"],
-    queryFn: () => apiFetch<DesktopStatus>("/system/desktop/status"),
+    queryKey: ["desktop-status", accountId],
+    queryFn: ({ signal }) => apiFetchForAccount<DesktopStatus>("/system/desktop/status", accountId, { signal }),
     staleTime: 5_000,
-    refetchInterval: 10_000,
+    refetchInterval: 5_000,
     placeholderData: desktopStatusPlaceholder,
   });
+  const now = useRuntimeClock(Boolean(query.dataUpdatedAt));
 
   return {
     status: query.data ?? desktopStatusPlaceholder,
+    updatedAt: query.dataUpdatedAt,
+    stale: !query.dataUpdatedAt || now - query.dataUpdatedAt >= RUNTIME_STALE_MS,
     loading: query.isLoading,
     isFetching: query.isFetching,
     error: query.error?.message ?? null,

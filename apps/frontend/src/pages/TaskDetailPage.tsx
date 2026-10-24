@@ -31,7 +31,6 @@ import {
 } from "../lib/constants";
 import { formatTimestamp } from "../lib/formatters";
 import { shortPath } from "../lib/logCenter";
-import { computeTaskProgress } from "../lib/progress";
 import { describeSyncRuntime, isTaskExecuting } from "../lib/syncRuntime";
 import { useRuntimeClock } from "../hooks/useRuntimeClock";
 import { RuntimeProgress } from "../components/tasks/RuntimeProgress";
@@ -63,9 +62,6 @@ const defaultIgnoredSubpaths = [".git/", "node_modules/", "__pycache__/", ".DS_S
 const liveStats: TaskDetailShowcaseStats = {
   localFiles: "文件统计：尚未统计",
   cloudFiles: "文件统计：尚未统计",
-  elapsed: "--",
-  remaining: "--",
-  speed: "--",
   runSizes: {},
 };
 
@@ -350,7 +346,6 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
   const problemSummary = buildProblemSummary(status, conflictCount, problems);
   const ignoredSubpaths = task.ignored_subpaths?.length ? task.ignored_subpaths : defaultIgnoredSubpaths;
   const usingDefaultIgnores = !task.ignored_subpaths?.length;
-  const progressState = computeTaskProgress(status);
   const cloudPath = task.cloud_folder_name || task.cloud_folder_token || "-";
 
   const handleRunTask = () => {
@@ -558,8 +553,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
       {settingsOpen ? (
         <TaskSettingsModal
           task={task}
-          processed={progressState.processed}
-          total={progressState.effectiveTotal}
+          runtimeView={describeSyncRuntime(status, runtimeNow, statusUpdatedAt)}
           onClose={() => setSettingsOpen(false)}
           onDelete={handleDeleteTask}
           onSave={handleSaveSettings}

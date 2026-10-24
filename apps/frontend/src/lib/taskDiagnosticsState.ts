@@ -1,4 +1,5 @@
 import { diagnosticActivityTime } from "./logCenter";
+import { isRecordedRunExecuting, isTaskExecuting } from "./syncRuntime";
 import type {
   SyncFileEvent,
   SyncTask,
@@ -57,19 +58,23 @@ export function deriveTaskDiagnosticsState({
   selectedStateKey: string;
   runAlert: RunAlertMeta | null;
 } {
-  const currentFile = selectedRun?.current_file ?? activeOverview?.current_file ?? null;
+  const currentFile = selectedRun ? selectedRun.current_file ?? null : activeOverview?.current_file ?? null;
   const diagnosticCounts = selectedRun?.counts ?? activeOverview?.counts ?? null;
   const lastActivityAt =
     selectedRun?.last_event_at ??
+    selectedRun?.finished_at ??
+    selectedRun?.started_at ??
+    selectedStatus?.runtime?.activity_at ??
     selectedStatus?.finished_at ??
     selectedStatus?.started_at ??
     selectedTask?.last_run_at ??
     activeOverview?.last_event_at ??
     null;
-  const selectedStateKey = selectedTask
-    ? (!selectedTask.enabled ? "paused" : selectedStatus?.state || "idle")
-    : "idle";
-  const runAlert = getRunAlertMeta(selectedRun?.last_error || selectedStatus?.last_error);
+  const selectedStateKey = selectedRun?.state
+    ? (isRecordedRunExecuting(selectedStatus, selectedRun.run_id) ? "running" : selectedRun.state)
+    : isTaskExecuting(selectedStatus) ? "running" : selectedTask
+      ? (!selectedTask.enabled ? "paused" : selectedStatus?.state || "idle") : "idle";
+  const runAlert = getRunAlertMeta(selectedRun?.state ? selectedRun.last_error : selectedRun?.last_error || selectedStatus?.last_error);
 
   return {
     currentFile,

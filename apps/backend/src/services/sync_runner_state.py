@@ -40,6 +40,10 @@ class SyncTaskStatus:
     last_files: list[SyncFileEvent] = field(default_factory=list)
     runtime: SyncRuntime | None = None
 
+    @property
+    def is_running(self) -> bool:
+        return self.runtime.active if self.runtime is not None else self.state == "running"
+
     def record_event(self, event: SyncFileEvent, limit: int = SYNC_LOG_LIMIT) -> None:
         self.last_files.append(event)
         if len(self.last_files) > limit:

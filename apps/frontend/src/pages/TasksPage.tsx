@@ -16,7 +16,6 @@ import {
   ModeIcon,
 } from "../components/Icons";
 import { modeLabels, stateLabels } from "../lib/constants";
-import { computeTaskProgress } from "../lib/progress";
 import { describeSyncRuntime, isTaskExecuting } from "../lib/syncRuntime";
 import { useRuntimeClock } from "../hooks/useRuntimeClock";
 import { deriveTaskHealth, summarizePath } from "../lib/taskManagement";
@@ -219,7 +218,6 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
   const pagedTasks = displayTasks.slice((activePage - 1) * pageSize, activePage * pageSize);
 
   const settingsTask = tasks.find((task) => task.id === settingsTaskId) || null;
-  const settingsProgress = computeTaskProgress(settingsTask ? statusMap[settingsTask.id] : undefined);
 
   const handleDelete = async (task: SyncTask) => {
     const ok = await confirm({
@@ -565,8 +563,7 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
       {settingsTask ? (
         <TaskSettingsModal
           task={settingsTask}
-          processed={settingsProgress.processed}
-          total={settingsProgress.effectiveTotal}
+          runtimeView={describeSyncRuntime(statusMap[settingsTask.id], runtimeNow, statusUpdatedAt)}
           onClose={() => setSettingsTaskId(null)}
           onDelete={async () => {
             const deleted = await handleDelete(settingsTask);

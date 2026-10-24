@@ -7,6 +7,18 @@ import {
 } from "./taskDiagnosticsState";
 
 describe("task diagnostics state helpers", () => {
+  it("keeps a historical result separate from a different live execution", () => {
+    const derived = deriveTaskDiagnosticsState({
+      selectedTask: { enabled: true } as never,
+      selectedStatus: { state: "running", current_run_id: "new", last_error: "new error" } as never,
+      selectedRun: { run_id: "old", state: "success", started_at: 10, finished_at: 20, last_error: null, counts: { uploaded: 2 } } as never,
+      activeOverview: { current_file: { path: "new.md" } } as never,
+    });
+    expect(derived.selectedStateKey).toBe("success");
+    expect(derived.currentFile).toBeNull();
+    expect(derived.runAlert).toBeNull();
+    expect(derived.lastActivityAt).toBe(20);
+  });
   it("sorts task overviews by latest activity descending", () => {
     const sorted = sortTaskOverviewsByActivity([
       {

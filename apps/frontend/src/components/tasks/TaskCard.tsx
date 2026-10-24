@@ -6,7 +6,9 @@ import {
   syncModeSupportsUpload,
   updateModeLabels,
 } from "../../lib/constants";
-import { computeTaskProgress } from "../../lib/progress";
+import { describeSyncRuntime, isTaskExecuting } from "../../lib/syncRuntime";
+import { useRuntimeClock } from "../../hooks/useRuntimeClock";
+import { RuntimeSummary } from "./RuntimeSummary";
 import {
   deletePolicyLabel,
   deriveTaskHealth,
@@ -126,9 +128,10 @@ export function TaskCard({
   onDelete,
   onOpenDetail,
 }: TaskCardProps) {
-  const stateKey = !task.enabled ? "paused" : status?.state || "idle";
-  const progressState = computeTaskProgress(status);
-  const progress = progressState.progress;
+  const running = isTaskExecuting(status);
+  const now = useRuntimeClock(running);
+  const view = describeSyncRuntime(status, now);
+  const stateKey = running ? "running" : !task.enabled ? "paused" : status?.state || "idle";
   const cloudPath = task.cloud_folder_name || task.cloud_folder_token || "-";
   const taskUploadEnabled = syncModeSupportsUpload(syncModeValue);
   const deleteGraceMinutes = parseDeleteGraceMinutes(
@@ -140,6 +143,7 @@ export function TaskCard({
   const health = deriveTaskHealth({
     enabled: task.enabled,
     state: status?.state,
+    running,
     lastFiles: status?.last_files,
     conflictCount,
     lastError: status?.last_error,
@@ -258,12 +262,7 @@ export function TaskCard({
         <span>失败 {status?.failed_files ?? 0}</span>
         <span className="text-[#c9d8ec]">|</span>
         <span>冲突 {conflictCount}</span>
-        {progress !== null ? (
-          <>
-            <span className="text-[#c9d8ec]">|</span>
-            <span>完成率：{progress}%</span>
-          </>
-        ) : null}
+
       </div>
       {pendingDetail.detail ? (
         <p className="mt-2 rounded-lg border border-[#f59e0b]/25 bg-[#fffbeb] px-3 py-2 text-xs leading-5 text-[#92400e]">
@@ -271,11 +270,7 @@ export function TaskCard({
         </p>
       ) : null}
       {status?.last_error ? <p className="mt-2 text-xs text-[#be123c]">错误：{status.last_error}</p> : null}
-      {progress !== null ? (
-        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[#dce8f8]">
-          <div className="h-full rounded-full bg-[#3370ff] transition-all" style={{ width: `${progress}%` }} />
-        </div>
-      ) : null}
+      {status && <div className="mt-3"><RuntimeSummary view={view} /></div>}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {onOpenDetail ? (
@@ -328,7 +323,7 @@ export function TaskCard({
               <p className="break-all">base_path：{task.base_path || "默认同本地目录"}</p>
               {status ? (
                 <p>
-                  已处理 {progressState.processed}/{progressState.effectiveTotal}，完成 {status.completed_files}
+                  {view.countLabel}；结果：完成 {status.completed_files}
                   ，删除 {status.deleted_files}，待删 {status.delete_pending_files}，删失败{" "}
                   {status.delete_failed_files}，跳过 {status.skipped_files}
                 </p>

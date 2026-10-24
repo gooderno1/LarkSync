@@ -5,6 +5,7 @@ import { useTasks } from "../hooks/useTasks";
 import { useToast } from "./ui/toast";
 import { IconChevronDown, IconDownloadTray, IconRefresh, IconSettings, IconSyncCircle } from "./Icons";
 import type { NavKey } from "../types";
+import { isTaskExecuting } from "../lib/syncRuntime";
 
 type DesktopTopBarProps = {
   activeTab: NavKey;
@@ -12,13 +13,15 @@ type DesktopTopBarProps = {
 };
 
 export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
-  const { status: desktopStatus, refetch: refetchDesktopStatus } = useDesktopStatus();
-  const { tasks, runTask } = useTasks();
+  const { status: desktopStatus, stale, refetch: refetchDesktopStatus } = useDesktopStatus();
+  const { tasks, statusMap, runTask } = useTasks();
   const { toast } = useToast();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
   const enabledTasks = useMemo(() => tasks.filter((task) => task.enabled), [tasks]);
+  const availableTasks = enabledTasks.filter((task) => !isTaskExecuting(statusMap?.[task.id]));
+  const runningLabel = stale ? "—" : desktopStatus.tasks.running;
   const accountName = desktopStatus.auth.account_name;
   const { summary: problemSummary, error: problemError } = useProblemSummary();
   const pendingCount = problemSummary && !problemError ? problemSummary.unresolved : null;
@@ -55,8 +58,12 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
       toast("暂无启用任务", "warning");
       return;
     }
-    enabledTasks.forEach((task) => runTask(task));
-    toast(`已触发 ${enabledTasks.length} 个任务同步`, "info");
+    if (availableTasks.length === 0) {
+      toast("启用任务均在运行中", "info");
+      return;
+    }
+    availableTasks.forEach((task) => runTask(task));
+    toast(`已触发 ${availableTasks.length} 个任务同步`, "info");
     void refetchDesktopStatus();
   };
 
@@ -69,11 +76,11 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
       <div
         data-command-scope="true"
         className="flex min-w-0 items-center gap-3 text-[13px] leading-5 font-medium text-[#52657a]"
-        aria-label={`${desktopStatus.tasks.enabled} 个任务已启用，${desktopStatus.tasks.running} 个正在运行，${pendingCount ?? "—"} 个待处理`}
+        aria-label={`${desktopStatus.tasks.enabled} 个任务已启用，${runningLabel} 个正在运行，${pendingCount ?? "—"} 个待处理${stale ? "，状态暂未更新" : ""}`}
       >
         <span className="whitespace-nowrap text-[#334762]">{desktopStatus.tasks.enabled} 个任务已启用</span>
         <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
-        <span className="whitespace-nowrap">{desktopStatus.tasks.running} 个正在运行</span>
+        <span className="whitespace-nowrap" title={stale ? "状态暂未更新" : undefined}>{runningLabel} 个正在运行</span>
         <span className="h-4 w-px bg-[#c6d7e9]" aria-hidden="true" />
         <span className={(pendingCount ?? 0) > 0 ? "whitespace-nowrap text-[#b45309]" : "whitespace-nowrap"}>{pendingCount ?? "—"} 个待处理</span>
       </div>
@@ -82,7 +89,7 @@ export function DesktopTopBar({ onNavigate }: DesktopTopBarProps) {
         <button
           className="inline-flex h-9 w-[128px] items-center justify-center gap-2 rounded-lg bg-[#3370FF] px-5 text-sm font-semibold text-white shadow-[0_8px_18px_rgba(51,112,255,0.2)] transition hover:bg-[#2563eb]"
           onClick={handleRunAll}
-          disabled={runtimeMutationsDisabled}
+          disabled={runtimeMutationsDisabled || stale || availableTasks.length === 0}
           data-runtime-mutations={runtimeMutationsDisabled ? "disabled" : "enabled"}
           type="button"
           title="立即同步"

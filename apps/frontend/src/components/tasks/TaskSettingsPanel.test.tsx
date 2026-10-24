@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { TaskSettingsPanel } from "./TaskSettingsPanel";
 import type { SyncTask } from "../../types";
+import { describeSyncRuntime } from "../../lib/syncRuntime";
+import { TASK_PAGE_SHOWCASE_STATUS } from "../../lib/taskPageShowcase";
 
 const task: SyncTask = {
   id: "task-1",
@@ -23,12 +25,23 @@ const task: SyncTask = {
 };
 
 describe("TaskSettingsPanel", () => {
+  it("keeps unknown scan totals and live elapsed time in settings", () => {
+    const source = TASK_PAGE_SHOWCASE_STATUS.task_001;
+    const runtimeView = describeSyncRuntime({ ...source, runtime: {
+      ...source.runtime!, phase: "scanning_local", total: null, discovered: 42,
+    } }, Date.now(), Date.now());
+    const html = renderToStaticMarkup(<TaskSettingsPanel task={task} runtimeView={runtimeView}
+      onClose={vi.fn()} onDelete={vi.fn()} onSave={vi.fn().mockResolvedValue(undefined)} />);
+    expect(html).toContain("扫描本地");
+    expect(html).toContain("已发现 42 项");
+    expect(html).toContain("已用时间 1 分 34 秒");
+    expect(html).not.toContain('role="progressbar"');
+    expect(html).not.toContain("最近处理");
+  });
   it("renders one coherent settings workflow with a single save action", () => {
     const html = renderToStaticMarkup(
       <TaskSettingsPanel
         task={task}
-        processed={0}
-        total={0}
         onClose={vi.fn()}
         onDelete={vi.fn()}
         onSave={vi.fn().mockResolvedValue(undefined)}
@@ -51,5 +64,6 @@ describe("TaskSettingsPanel", () => {
     expect((html.match(/disabled=""/g) || []).length).toBeGreaterThanOrEqual(1);
     expect((html.match(/保存更改/g) || [])).toHaveLength(1);
     expect(html).not.toContain(">应用<");
+    expect(html).not.toContain("最近处理：0/0");
   });
 });

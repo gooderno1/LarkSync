@@ -109,10 +109,10 @@ export function formatDuration(
   finishedAt?: number | null,
   fallbackAt?: number | null,
 ): string {
-  if (!startedAt) return "暂无";
+  if (startedAt == null) return "暂无";
   const end = finishedAt ?? fallbackAt;
-  if (!end || end <= startedAt) return "进行中";
-  const totalSeconds = Math.max(1, Math.round(end - startedAt));
+  if (end == null) return "暂无";
+  const totalSeconds = Math.max(0, Math.round(end - startedAt));
   if (totalSeconds < 60) return `${totalSeconds} 秒`;
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;

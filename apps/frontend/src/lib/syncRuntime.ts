@@ -20,6 +20,12 @@ export function isTaskExecuting(status?: SyncTaskStatus | null): boolean {
   return status?.runtime?.active ?? status?.state === "running";
 }
 
+export function isRecordedRunExecuting(status: SyncTaskStatus | null | undefined, runId: string): boolean {
+  // Preflight retains the previous run ID until actual work creates a new run.
+  return isTaskExecuting(status) && status?.current_run_id === runId
+    && (status.state === "running" || status.runtime?.phase === "finalizing");
+}
+
 export function formatElapsed(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds)) return "—";
   const whole = Math.max(0, Math.floor(seconds));

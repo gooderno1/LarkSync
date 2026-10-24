@@ -1,3 +1,4 @@
+import type { RuntimeView } from "../../lib/syncRuntime";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -7,8 +8,7 @@ import { TaskSettingsPanel } from "./TaskSettingsPanel";
 
 type TaskSettingsModalProps = {
   task: SyncTask;
-  processed: number;
-  total: number;
+  runtimeView?: RuntimeView;
   onClose: () => void;
   onDelete: () => void | Promise<void>;
   onSave: (patch: Record<string, unknown>) => Promise<void>;
@@ -16,8 +16,7 @@ type TaskSettingsModalProps = {
 
 export function TaskSettingsDialog({
   task,
-  processed,
-  total,
+  runtimeView,
   onClose,
   onDelete,
   onSave,
@@ -102,8 +101,7 @@ export function TaskSettingsDialog({
       >
         <TaskSettingsPanel
           task={task}
-          processed={processed}
-          total={total}
+          runtimeView={runtimeView}
           onClose={() => void requestClose()}
           onDelete={onDelete}
           onDirtyChange={setDirty}

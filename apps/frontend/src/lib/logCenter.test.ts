@@ -60,6 +60,9 @@ describe("log center helpers", () => {
     expect(formatDuration(100, 145)).toBe("45 秒");
     expect(formatDuration(100, 225)).toBe("2 分 5 秒");
     expect(formatDuration(100, 3700)).toBe("1 小时 0 分");
+    expect(formatDuration(100, 100)).toBe("0 秒");
+    expect(formatDuration(0, 2)).toBe("2 秒");
+    expect(formatDuration(100, null)).toBe("暂无");
     expect(shortPath("D:/Knowledge/Projects/LarkSync/docs/specs/long/path/file.md", 24)).toContain("...");
     expect(compactRunId("12345678-abcdef-987654")).toBe("12345678...987654");
   });

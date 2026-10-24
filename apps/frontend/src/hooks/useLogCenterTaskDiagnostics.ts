@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { computeTaskProgress } from "../lib/progress";
+import { isTaskExecuting } from "../lib/syncRuntime";
 import { apiFetchForAccount } from "../lib/api";
 import {
   buildTaskDiagnosticsQueryPath,
@@ -36,7 +36,7 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
     queryFn: ({ signal }) => apiFetchForAccount<SyncTaskOverview[]>("/sync/tasks/overview", accountId, { signal }),
     enabled: enabled && Boolean(accountId),
     staleTime: 5_000,
-    refetchInterval: enabled ? 10_000 : false,
+    refetchInterval: enabled ? 5_000 : false,
   });
 
   const overviewItems = overviewQuery.data ?? EMPTY_OVERVIEWS;
@@ -82,11 +82,14 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
     refetchInterval: shouldPollTaskDiagnostics({
       enabled,
       selectedTaskId,
-      selectedTaskState: selectedOverview?.status.state ?? null,
+      selectedTaskState: isTaskExecuting(selectedOverview?.status) ? "running" : selectedOverview?.status.state ?? null,
     }),
   });
 
-  const activeOverview = diagnosticsQuery.data?.overview ?? selectedOverview;
+  const useDiagnosticsOverview = Boolean(diagnosticsQuery.data?.overview)
+    && diagnosticsQuery.dataUpdatedAt >= overviewQuery.dataUpdatedAt;
+  const activeOverview = useDiagnosticsOverview ? diagnosticsQuery.data!.overview : selectedOverview;
+  const statusUpdatedAt = useDiagnosticsOverview ? diagnosticsQuery.dataUpdatedAt : overviewQuery.dataUpdatedAt;
   const selectedTask = activeOverview?.task ?? null;
   const selectedStatus = activeOverview?.status ?? null;
   const recentRuns = diagnosticsQuery.data?.recent_runs || [];
@@ -122,7 +125,6 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
   const selectedRun = diagnosticsQuery.data?.selected_run ?? activeRunSummary;
   const selectedProblems = diagnosticsQuery.data?.problems || [];
 
-  const progress = computeTaskProgress(selectedStatus);
   const {
     currentFile,
     diagnosticCounts,
@@ -187,7 +189,7 @@ export function useLogCenterTaskDiagnostics(enabled: boolean) {
     selectedTimelineEntries,
     selectedTimelineTotal,
     selectedProblems,
-    progress,
+    statusUpdatedAt,
     currentFile,
     diagnosticCounts,
     lastActivityAt,

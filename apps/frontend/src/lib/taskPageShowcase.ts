@@ -62,6 +62,14 @@ const status = (
   last_error: state === "failed" ? "目标文件被占用，写入重试已达到上限。" : null,
   current_run_id: state === "running" ? `run_${taskId}` : null,
   last_files: [],
+  runtime: state === "running" ? {
+    schema_version: 1, execution_id: `demo_${taskId}`, active: true,
+    phase: "downloading", direction: "download", pass_kind: "regular", segment_id: 1,
+    processed: completedFiles, total: totalFiles, discovered: 0, processed_total: completedFiles,
+    current_item: null, operation: null, started_at: Date.now() / 1000 - 94,
+    sampled_at: Date.now() / 1000, elapsed_seconds: 94,
+    activity_at: Date.now() / 1000, progress_at: Date.now() / 1000, wait: null,
+  } : null,
 });
 
 export const TASK_PAGE_SHOWCASE_TASKS: SyncTask[] = [

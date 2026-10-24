@@ -4,7 +4,7 @@
 
 更新时间：2026-10-20
 
-当前正式版为 [V1.0（v1.0.0）](https://github.com/gooderno1/LarkSync/releases/tag/v1.0.0)。希望直接与 Codex / WorkBuddy 对话完成配置？先读 [AI 使用指南](AI_GUIDE.md)，安装 v1.0.0+ 配套应用与通用技能。
+当前正式版为 [V1.1（v1.1.0）](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.0)。希望直接与 Codex / WorkBuddy 对话完成配置？先读 [AI 使用指南](AI_GUIDE.md)，安装配套应用与通用技能。
 
 本文面向第一次试用 LarkSync 的用户。推荐先用小型测试目录和 `download_only` 模式完成一次闭环，再决定是否启用双向同步。
 

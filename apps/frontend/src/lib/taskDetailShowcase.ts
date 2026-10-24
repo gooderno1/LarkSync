@@ -10,9 +10,6 @@ import type {
 export type TaskDetailShowcaseStats = {
   localFiles: string;
   cloudFiles: string;
-  elapsed: string;
-  remaining: string;
-  speed: string;
   runSizes: Record<string, string>;
 };
 
@@ -79,9 +76,6 @@ const primaryRuns: SyncTaskRunSummary[] = [
 export const TASK_DETAIL_SHOWCASE_STATS: TaskDetailShowcaseStats = {
   localFiles: "12,458（256.3 MB）",
   cloudFiles: "12,102（238.7 MB）",
-  elapsed: "00:01:34",
-  remaining: "00:00:47",
-  speed: "12.4 MB/s",
   runSizes: {
     run_20250512_102214_fa3c: "164.0 MB",
     run_20250512_094510_d2b1: "312.5 MB",
@@ -195,9 +189,6 @@ export function buildTaskDetailShowcase(
       : {
           localFiles: `${status.total_files.toLocaleString("zh-CN")} 个文件`,
           cloudFiles: `${status.total_files.toLocaleString("zh-CN")} 个文件`,
-          elapsed: "--",
-          remaining: "--",
-          speed: "--",
           runSizes: {},
         },
   };

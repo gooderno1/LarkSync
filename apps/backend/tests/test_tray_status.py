@@ -22,6 +22,25 @@ from src.db.session import get_session_maker
 from src.services.sync_event_store import SyncEventRecord, SyncEventStore
 from src.services.sync_run_service import SyncRunService
 from src.services.sync_runner import SyncFileEvent, SyncTaskStatus
+from src.services.sync_runtime import SyncRuntime
+
+
+def test_desktop_and_tray_include_preflight_and_finalizing(tray_client, monkeypatch):
+    import src.main as main
+
+    tasks = [SimpleNamespace(id=name, enabled=True, last_run_at=None) for name in ("scan", "finish", "done")]
+    scanning, finalizing, finished = SyncRuntime(), SyncRuntime(), SyncRuntime()
+    scanning.begin_phase("scanning_local")
+    finalizing.begin_phase("finalizing")
+    finished.finish()
+    monkeypatch.setattr(main.sync_task_service, "list_tasks", AsyncMock(return_value=tasks))
+    monkeypatch.setattr(main.sync_runner, "list_statuses", lambda: {
+        "scan": SyncTaskStatus(task_id="scan", state="success", runtime=scanning),
+        "finish": SyncTaskStatus(task_id="finish", state="success", runtime=finalizing),
+        "done": SyncTaskStatus(task_id="done", state="success", runtime=finished),
+    })
+    assert tray_client.get("/system/desktop/status").json()["tasks"]["running"] == 2
+    assert tray_client.get("/tray/status").json()["tasks_running"] == 2
 
 
 @pytest.fixture

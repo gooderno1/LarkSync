@@ -27,8 +27,6 @@ describe("TaskSettingsDialog", () => {
     const html = renderToStaticMarkup(
       <TaskSettingsDialog
         task={task}
-        processed={0}
-        total={0}
         onClose={vi.fn()}
         onDelete={vi.fn()}
         onSave={vi.fn().mockResolvedValue(undefined)}

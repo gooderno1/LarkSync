@@ -57,13 +57,15 @@ const runtimeProfileLabels: Record<string, string> = {
 };
 
 export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarProps) {
-  const { status } = useDesktopStatus();
+  const { status, stale } = useDesktopStatus();
   const { accounts, activeAccount, switchAccount, switchingAccountId } = useAccounts();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [accountSwitchError, setAccountSwitchError] = useState<string | null>(null);
   const [addAccountOpen, setAddAccountOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const runtimeProfileLabel = runtimeProfileLabels[status.runtime.profile];
+  const accountStateLabel = activeAccount?.state !== "connected" ? "待连接"
+    : activeAccount.paused ? "已暂停" : stale ? "状态待更新" : status.tasks.running > 0 ? "同步中" : "已连接";
   const handleAccountSwitch = async (accountId: string) => {
     setAccountSwitchError(null);
     try {
@@ -133,7 +135,7 @@ export function Sidebar({ activeTab, onNavigate, unresolvedConflicts }: SidebarP
           <div data-sidebar-current-organization="true" className="flex h-12 items-center rounded-lg bg-[#e8f1fb] shadow-[inset_3px_0_0_#3370ff]">
             <button type="button" aria-expanded={accountMenuOpen} aria-controls="sidebar-account-list" onClick={() => setAccountMenuOpen((value) => !value)} className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-lg px-3 text-left hover:bg-[#e1edfa]">
               <OrganizationAvatar account={activeAccount} className="h-8 w-8 flex-none rounded-lg border border-white/70 object-cover" fallbackClassName="grid h-8 w-8 flex-none place-items-center rounded-lg bg-white/75 text-xs font-bold text-[#3370ff]" />
-              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-[#2456d6]">{organizationDisplayName(activeAccount)}</span><span className="block truncate text-[10px] text-[#60758d]">{activeAccount?.account_name || "飞书成员"} · {activeAccount?.paused ? "已暂停" : "同步中"}</span></span>
+              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-[#2456d6]">{organizationDisplayName(activeAccount)}</span><span className="block truncate text-[10px] text-[#60758d]">{activeAccount?.account_name || "飞书成员"} · {accountStateLabel}</span></span>
               <span className={`text-[10px] text-[#60758d] transition-transform ${accountMenuOpen ? "rotate-180" : ""}`}>⌄</span>
             </button>
             <button type="button" aria-label="打开通知" onClick={() => setNotificationsOpen(true)} className="relative mr-2 grid h-8 w-8 flex-none place-items-center rounded-lg text-[#52657a] hover:bg-white/70 hover:text-[#3370ff]"><IconBell className="h-[17px] w-[17px]" />{activeAccount?.unread_total ? <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#e11d48] px-1 text-center text-[9px] font-bold leading-4 text-white">{activeAccount.unread_total > 99 ? "99+" : activeAccount.unread_total}</span> : null}</button>

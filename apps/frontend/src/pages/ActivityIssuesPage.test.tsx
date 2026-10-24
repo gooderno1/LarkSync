@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { ActivityEventDetail, ActivityIssuesPage } from "./ActivityIssuesPage";
+import type { SyncTaskStatus } from "../types";
+import { TASK_PAGE_SHOWCASE_STATUS } from "../lib/taskPageShowcase";
 
 const task = {
   id: "task-1",
@@ -18,7 +20,7 @@ const task = {
   last_run_at: 3,
 };
 
-const status = {
+const status: SyncTaskStatus = {
   task_id: "task-1",
   state: "failed",
   total_files: 10,
@@ -159,6 +161,25 @@ vi.mock("../components/ui/toast", () => ({
 }));
 
 describe("ActivityIssuesPage smoke", () => {
+  it("shows live preflight separately from the selected historical run", () => {
+    status.runtime = {
+      ...TASK_PAGE_SHOWCASE_STATUS.task_001.runtime!,
+      phase: "scanning_cloud", total: null,
+      discovered: 27, processed: 0, processed_total: 0, sampled_at: Date.now() / 1000,
+      wait: { reason: "remote_export", since: Date.now() / 1000, resume_at: null, attempt: null },
+    };
+    try {
+      const html = renderToStaticMarkup(<ActivityIssuesPage />);
+      expect(html).toContain('aria-label="当前任务执行"');
+      expect(html).toContain("扫描云端");
+      expect(html).toContain("已发现 27 项");
+      expect(html).toContain("等待飞书完成导出");
+      expect(html).toContain("所选运行");
+      expect(html).toContain("2 秒");
+    } finally {
+      delete status.runtime;
+    }
+  });
   it("renders the independent light troubleshooting workspace", () => {
     const html = renderToStaticMarkup(<ActivityIssuesPage />);
 

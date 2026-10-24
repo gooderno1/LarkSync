@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SyncTaskStatus, SyncRuntimeSnapshot } from "../types";
-import { describeSyncRuntime } from "./syncRuntime";
+import { describeSyncRuntime, isRecordedRunExecuting } from "./syncRuntime";
 
 const runtime: SyncRuntimeSnapshot = {
   schema_version: 1, execution_id: "execution-a", active: true,
@@ -12,6 +12,13 @@ const runtime: SyncRuntimeSnapshot = {
 const status = { state: "running", runtime } as SyncTaskStatus;
 
 describe("shared runtime presentation", () => {
+  it("keeps the previous run historical during preflight but includes finalizing", () => {
+    const checking = { ...status, state: "success" as const, current_run_id: "previous" };
+    expect(isRecordedRunExecuting(checking, "previous")).toBe(false);
+    expect(isRecordedRunExecuting({ ...checking, runtime: { ...runtime, phase: "finalizing" } }, "previous")).toBe(true);
+    expect(isRecordedRunExecuting({ ...checking, state: "running" }, "previous")).toBe(true);
+    expect(isRecordedRunExecuting({ ...checking, state: "running" }, "older")).toBe(false);
+  });
   it("shows discovered count rather than a false zero percent", () => {
     const view = describeSyncRuntime(status, 165000, 165000);
     expect(view.phaseLabel).toBe("扫描云端");
