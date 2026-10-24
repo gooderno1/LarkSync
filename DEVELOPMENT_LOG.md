@@ -1,5 +1,20 @@
 # DEVELOPMENT LOG
 
+## v1.1.0 正式发布（2026-10-24）
+
+- 开发原因：将统一运行指标及全应用口径修正交付为可直接安装测试的正式版。
+- 当前结果：
+  - [v1.1.0 正式发布页](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.0) 已发布，并确认为最新稳定版。
+  - 正式标签对应源码 `96c6729d7730e1b0a4d3d70d4c17a684e33ff38c`。
+  - Windows EXE、Apple Silicon / Intel DMG、通用技能 ZIP 及各自 SHA256，共 8 个发布资产齐全。
+  - 发布说明包含升级重点、两个开发版本的详细变更、验证范围及全部实际文件 SHA256。
+- 验证方式：
+  - [正式标签流水线 40091729668](https://github.com/gooderno1/LarkSync/actions/runs/40091729668) 成功；质量门禁、WebKit、三平台构建与两种 macOS 安装启动检查通过。
+  - 4 个发布文件均已实际下载；大小、文件 SHA256、随附校验文件与 GitHub 资产摘要一致。
+  - 正式 Windows 下载文件 SHA256：`4c13e6cde63a7a07b34fe201135e3c5bb9662269ea6a86b73da6306f58e26af1`。
+  - 本地完整回归、开发联调及隔离打包启动结果见下方 `v1.1.0-dev.2` 记录。
+  - 验证用页面与进程已清理；本地规格未纳入 Git。
+
 ## v1.1.0-dev.2（2026-10-24）
 
 - 开发原因：
