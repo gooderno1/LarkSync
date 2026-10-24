@@ -8,6 +8,7 @@ from src.core.config import DeletePolicy, SyncMode
 from src.services.sync_runner import SyncFileEvent, SyncTaskStatus
 from src.services.sync_task_service import SyncTaskItem
 from src.services.sync_path_mode import PathSyncRule
+from src.services.sync_runtime import SyncRuntimeSnapshot
 
 
 class SyncTaskCreateRequest(BaseModel):
@@ -128,6 +129,7 @@ class SyncTaskStatusResponse(BaseModel):
     last_error: str | None = None
     current_run_id: str | None = None
     last_files: list[SyncFileEventResponse] = Field(default_factory=list)
+    runtime: SyncRuntimeSnapshot | None = None
 
     @classmethod
     def from_status(cls, status: SyncTaskStatus) -> "SyncTaskStatusResponse":
@@ -149,6 +151,7 @@ class SyncTaskStatusResponse(BaseModel):
             last_error=status.last_error,
             current_run_id=status.current_run_id,
             last_files=[SyncFileEventResponse.from_event(evt) for evt in status.last_files],
+            runtime=status.runtime.snapshot() if status.runtime else None,
         )
 
 

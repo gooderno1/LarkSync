@@ -22,6 +22,7 @@ from src.services.sync_runner import (
 )
 from src.services.sync_event_store import SyncEventStore
 from src.services.sync_runner_state import SyncFileEvent
+from src.services.sync_runtime import SyncRuntime, runtime_scope
 from src.services.sync_task_service import SyncTaskItem
 from src.services.watcher import FileChangeEvent
 
@@ -2246,6 +2247,10 @@ async def test_scheduled_download_without_changes_does_not_persist_run_or_events
     assert run_service.started == []
     assert run_service.finished == []
     assert list(store.iter_records()) == []
+    snapshot = runner.get_status(task.id).runtime.snapshot()
+    assert snapshot.execution_id
+    assert not snapshot.active
+    assert snapshot.processed_total == 0
 
 
 @pytest.mark.asyncio

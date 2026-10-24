@@ -217,6 +217,33 @@ export type SyncFileEvent = {
   timestamp?: number | null;
 };
 
+export type SyncRuntimeSnapshot = {
+  schema_version: number;
+  execution_id: string;
+  active: boolean;
+  phase: "preparing" | "scanning_cloud" | "scanning_local" | "checking" | "downloading" | "uploading" | "deleting" | "processing" | "finalizing" | "finished";
+  direction: "upload" | "download" | null;
+  pass_kind: "regular" | "reconcile";
+  segment_id: number;
+  processed: number;
+  total: number | null;
+  discovered: number;
+  processed_total: number;
+  current_item: string | null;
+  operation: string | null;
+  started_at: number;
+  sampled_at: number;
+  elapsed_seconds: number;
+  activity_at: number;
+  progress_at: number;
+  wait: {
+    reason: "local_rate_limit" | "rate_limit" | "retry" | "remote_export" | "remote_import";
+    since: number;
+    resume_at: number | null;
+    attempt: number | null;
+  } | null;
+};
+
 export type SyncTaskStatus = {
   task_id: string;
   state: "idle" | "running" | "success" | "failed" | "cancelled";
@@ -235,6 +262,7 @@ export type SyncTaskStatus = {
   last_error?: string | null;
   current_run_id?: string | null;
   last_files: SyncFileEvent[];
+  runtime?: SyncRuntimeSnapshot | null;
 };
 
 export type SyncTaskDiagnosticCounts = {

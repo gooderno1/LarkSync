@@ -13,8 +13,10 @@ import { apiFetchForAccount } from "../lib/api";
 import { useAccounts } from "../hooks/useAccounts";
 import { formatShortTime, isSameDay } from "../lib/formatters";
 import { shortPath } from "../lib/logCenter";
-import { modeLabels, stateLabels, stateTones, statusLabelMap } from "../lib/constants";
-import { computeTaskProgress } from "../lib/progress";
+import { modeLabels, statusLabelMap } from "../lib/constants";
+import { describeSyncRuntime, isTaskExecuting, type RuntimeView } from "../lib/syncRuntime";
+import { useRuntimeClock } from "../hooks/useRuntimeClock";
+import { RuntimeProgress } from "../components/tasks/RuntimeProgress";
 import { StatCard } from "../components/StatCard";
 import {
   IconActivity,
@@ -27,7 +29,6 @@ import {
   IconClock,
   IconFolder,
   IconGlobe,
-  IconPlay,
   IconShieldCheck,
   IconTasks,
 } from "../components/Icons";
@@ -84,11 +85,7 @@ type DashboardRunningRow = {
   localPath: string;
   cloudPath: string;
   iconVariant?: "folder" | "globe";
-  progress: number;
-  speedLabel: string;
-  stateLabel: string;
-  stateTone: Tone;
-  etaLabel: string;
+  view: RuntimeView;
   task?: SyncTask;
 };
 
@@ -96,7 +93,7 @@ export function selectRunningTasks(
   tasks: SyncTask[],
   statusMap: Record<string, SyncTaskStatus>
 ): SyncTask[] {
-  return tasks.filter((task) => task.enabled && statusMap[task.id]?.state === "running");
+  return tasks.filter((task) => task.enabled && isTaskExecuting(statusMap[task.id]));
 }
 
 type DashboardRecentRow = {
@@ -128,11 +125,8 @@ const SHOWCASE_RUNNING_ROWS: DashboardRunningRow[] = [
     localPath: "D:/Knowledge/FeishuMirror/项目文档",
     cloudPath: "我的空间 / 项目文档",
     iconVariant: "folder",
-    progress: 68,
-    speedLabel: "12.4 MB/s",
-    stateLabel: "同步中",
-    stateTone: "success",
-    etaLabel: "00:01:12",
+    view: { running: true, stale: false, phaseLabel: "下行处理", countLabel: "本阶段已处理 68/100 项",
+      elapsedLabel: "2 分 10 秒", waitLabel: null, currentItem: null, operationLabel: null, progress: 68 },
   },
   {
     id: "showcase-running-2",
@@ -141,11 +135,8 @@ const SHOWCASE_RUNNING_ROWS: DashboardRunningRow[] = [
     localPath: "D:/Design/Resources",
     cloudPath: "我的空间 / 设计资源",
     iconVariant: "folder",
-    progress: 42,
-    speedLabel: "8.7 MB/s",
-    stateLabel: "同步中",
-    stateTone: "success",
-    etaLabel: "00:02:08",
+    view: { running: true, stale: false, phaseLabel: "上行处理", countLabel: "本阶段已处理 42/100 项",
+      elapsedLabel: "2 分 10 秒", waitLabel: null, currentItem: null, operationLabel: null, progress: 42 },
   },
   {
     id: "showcase-running-3",
@@ -154,11 +145,8 @@ const SHOWCASE_RUNNING_ROWS: DashboardRunningRow[] = [
     localPath: "D:/Company/PublicInfo",
     cloudPath: "共享空间 / 公开资料库",
     iconVariant: "globe",
-    progress: 91,
-    speedLabel: "5.2 MB/s",
-    stateLabel: "同步中",
-    stateTone: "success",
-    etaLabel: "00:00:18",
+    view: { running: true, stale: false, phaseLabel: "下行处理", countLabel: "本阶段已处理 91/100 项",
+      elapsedLabel: "2 分 10 秒", waitLabel: null, currentItem: null, operationLabel: null, progress: 91 },
   },
 ];
 
@@ -259,23 +247,7 @@ const SHOWCASE_ATTENTION_PREVIEW: DashboardAttentionPreview = {
   tone: "danger",
 };
 
-function getStatusActivityTime(status?: SyncTaskStatus | null): number | null {
-  return status?.finished_at ?? status?.started_at ?? null;
-}
 
-function getTaskActivityTime(
-  task: SyncTask,
-  status: SyncTaskStatus | undefined,
-  latestLogTime?: number
-): number {
-  return (
-    getStatusActivityTime(status) ??
-    task.last_run_at ??
-    latestLogTime ??
-    task.updated_at ??
-    task.created_at
-  );
-}
 
 function getDashboardEventTone(status: string): Tone {
   if (FAILURE_STATUSES.has(status)) return "danger";
@@ -294,30 +266,16 @@ function getDashboardDirectionSymbol(status: string): string {
 function buildRunningRow(
   task: SyncTask,
   status: SyncTaskStatus | undefined,
-  latestLogTimeByTask: Record<string, number>
+  now: number,
+  receivedAt?: number,
 ): DashboardRunningRow {
-  const stateKey = !task.enabled ? "paused" : status?.state || "idle";
-  const progressState = computeTaskProgress(status);
-  const progress = progressState.progress ?? (stateKey === "success" ? 100 : 0);
-  const throughputCount =
-    (status?.uploaded_files ?? 0) +
-    (status?.downloaded_files ?? 0) +
-    (status?.deleted_files ?? 0);
-
   return {
     id: task.id,
     name: task.name || task.local_path,
     subtitle: modeLabels[task.sync_mode] || task.sync_mode,
-    localPath: shortPath(task.local_path, 42),
-    cloudPath: shortPath(task.cloud_folder_name || task.cloud_folder_token, 38),
-    progress,
-    speedLabel: throughputCount > 0 ? `${throughputCount} 文件` : "--",
-    stateLabel: stateLabels[stateKey] || stateKey,
-    stateTone: stateTones[stateKey] || "neutral",
-    etaLabel:
-      status?.state === "running"
-        ? "计算中"
-        : formatShortTime(getTaskActivityTime(task, status, latestLogTimeByTask[task.id])),
+    localPath: task.local_path,
+    cloudPath: task.cloud_folder_name || task.cloud_folder_token,
+    view: describeSyncRuntime(status, now, receivedAt),
     task,
   };
 }
@@ -569,7 +527,8 @@ export function DashboardPage({ onNavigate }: Props) {
   const { activeAccountId } = useAccounts();
   const accountId = activeAccountId || "";
   const { connected } = useAuth();
-  const { tasks, taskLoading, statusMap, runTask } = useTasks();
+  const { tasks, taskLoading, statusMap, statusUpdatedAt } = useTasks();
+  const runtimeNow = useRuntimeClock(Object.values(statusMap).some(isTaskExecuting));
   const { problems, summary: problemSummary, error: problemError } = useProblems(ATTENTION_FILTERS, null);
   const { entries: wsEntries } = useWebSocketLog(accountId, connected);
 
@@ -612,13 +571,7 @@ export function DashboardPage({ onNavigate }: Props) {
 
   const baseEntries = historyEntries.length > 0 ? historyEntries : pollingEntries;
   const syncLogEntries = wsEntries.length > 0 ? wsEntries : baseEntries;
-  const latestLogTimeByTask = useMemo(() => {
-    const mapped: Record<string, number> = {};
-    for (const entry of syncLogEntries) {
-      mapped[entry.taskId] = Math.max(mapped[entry.taskId] ?? 0, entry.timestamp);
-    }
-    return mapped;
-  }, [syncLogEntries]);
+
 
   const today = new Date();
   const enabledTasks = tasks.filter((t) => t.enabled).length;
@@ -659,7 +612,7 @@ export function DashboardPage({ onNavigate }: Props) {
   const runningRows = showcaseMode
     ? SHOWCASE_RUNNING_ROWS
     : runningTaskList.map((task) =>
-      buildRunningRow(task, statusMap[task.id], latestLogTimeByTask)
+      buildRunningRow(task, statusMap[task.id], runtimeNow, statusUpdatedAt)
     );
   const recentRows = selectDashboardRecentRows(syncLogEntries, showcaseMode);
   const realtimeMetrics = useMemo(
@@ -751,17 +704,15 @@ export function DashboardPage({ onNavigate }: Props) {
                 </button>
               </div>
             ) : (
-              <div className="min-w-0 overflow-hidden">
+              <div className="min-h-0 min-w-0 overflow-auto">
                 <table className="w-full table-fixed text-left text-sm">
                   <thead className="border-b border-[#d7e4f5] text-[11px] text-[#52657a]">
                     <tr>
-                      <th className="w-[19%] py-2 pr-4 font-medium whitespace-nowrap">任务名称</th>
+                      <th className="w-[20%] py-2 pr-4 font-medium whitespace-nowrap">任务名称</th>
                       <th className="w-[20%] px-4 py-2 font-medium whitespace-nowrap">本地目录</th>
                       <th className="w-[16%] px-4 py-2 font-medium whitespace-nowrap">云端目录</th>
-                      <th className="w-[13%] px-4 py-2 font-medium whitespace-nowrap">进度</th>
-                      <th className="w-[9%] px-4 py-2 font-medium whitespace-nowrap">速度</th>
-                      <th className="w-[9%] px-4 py-2 font-medium whitespace-nowrap">状态</th>
-                      <th className="w-[8%] px-4 py-2 font-medium whitespace-nowrap">剩余时间</th>
+                      <th className="w-[28%] px-4 py-2 font-medium whitespace-nowrap">运行状态与处理数量</th>
+                      <th className="w-[10%] px-3 py-2 font-medium whitespace-nowrap">已用时间</th>
                       <th className="w-[6%] py-2 pl-4 font-medium text-right"></th>
                     </tr>
                   </thead>
@@ -782,33 +733,19 @@ export function DashboardPage({ onNavigate }: Props) {
                           <td className="truncate px-4 py-2.5 font-mono text-xs" title={row.localPath}>{row.localPath}</td>
                           <td className="truncate px-4 py-2.5 text-xs" title={row.cloudPath}>{row.cloudPath}</td>
                           <td className="px-4 py-2.5">
-                            <div className="flex min-w-0 flex-col gap-1.5">
-                              <span className="text-xs text-[#52657a]">{row.progress}%</span>
-                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#dce8f8]">
-                                <div className="h-full rounded-full bg-[#3370ff]" style={{ width: `${row.progress}%` }} />
-                              </div>
+                            <div className="space-y-1.5">
+                              <RunningInlineStatus label={row.view.phaseLabel} tone={row.view.stale || row.view.waitLabel ? "warning" : "info"} />
+                              {row.view.waitLabel && <p className="text-xs leading-5 text-[#b45309]">{row.view.waitLabel}</p>}
+                              {row.view.currentItem && <p className="truncate text-xs text-[#6b7f96]" title={row.view.currentItem}>{row.view.operationLabel ? `${row.view.operationLabel} · ` : ""}{shortPath(row.view.currentItem, 42)}</p>}
+                              <RuntimeProgress view={row.view} />
                             </div>
                           </td>
-                          <td className="px-4 py-2.5">
-                            <span className="whitespace-nowrap text-xs text-[#52657a]">{row.speedLabel}</span>
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <RunningInlineStatus label={row.stateLabel} tone={row.stateTone} />
-                          </td>
-                          <td className="px-4 py-2.5 text-xs text-[#52657a]">
-                            {row.etaLabel}
+                          <td className="px-3 py-2.5 text-xs text-[#52657a]">
+                            <span className="whitespace-nowrap">{row.view.elapsedLabel}</span>
+                            {row.view.stale && <p className="mt-1 text-[10px]">上次记录</p>}
                           </td>
                           <td className="py-2.5 pl-4">
                             <div className="flex items-center justify-end gap-2">
-                              <button
-                                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-[#d7e4f5] bg-white text-[#3370ff] transition hover:border-[#bfd8ff] hover:bg-[#eef5ff] disabled:cursor-default disabled:opacity-100"
-                                onClick={() => row.task ? runTask(row.task) : undefined}
-                                type="button"
-                                disabled={actionDisabled}
-                                title="立即同步"
-                              >
-                                <IconPlay className="h-3 w-3" />
-                              </button>
                               <button
                                 className="inline-flex h-6 w-6 items-center justify-center text-[#52657a] transition hover:text-[#3370ff] disabled:cursor-default disabled:opacity-100"
                                 onClick={() => row.task ? onNavigate("tasks") : undefined}

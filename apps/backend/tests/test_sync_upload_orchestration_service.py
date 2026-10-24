@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+import asyncio
 
 import pytest
 
 from src.services.sync_runner_state import SyncFileEvent, SyncTaskStatus
+from src.services.sync_runtime import SyncRuntime, runtime_scope
 from src.services.sync_task_service import SyncTaskItem
 from src.services.sync_upload_orchestration_service import (
     SyncUploadOrchestrationService,
@@ -108,3 +110,40 @@ async def test_empty_upload_exception_uses_exception_type_as_message(tmp_path: P
     assert status.failed_files == 1
     assert status.last_error == "RuntimeError()"
     assert events[0].message == "RuntimeError()"
+
+
+@pytest.mark.asyncio
+async def test_runtime_counts_each_handled_object_once_independently_of_legacy_counts(tmp_path):
+    snapshots = []
+    observation = SyncRuntime()
+    status = SyncTaskStatus(task_id="task-upload-race", completed_files=100, runtime=observation)
+
+    async def upload(*args, **kwargs):
+        snapshots.append(observation.snapshot())
+        raise RuntimeError("handled failure")
+
+    with runtime_scope(observation):
+        await _service(upload, []).run_upload_paths(
+            task=_task(tmp_path), status=status, paths=[tmp_path / "one.md", tmp_path / "two.md"],
+            runtime=_runtime(), allow_deletes=False,
+        )
+    assert [(item.processed, item.total) for item in snapshots] == [(0, 2), (1, 2)]
+    assert snapshots[0].current_item.endswith("one.md")
+    assert observation.snapshot().processed == 2
+    assert observation.snapshot().current_item is None
+    assert status.failed_files == 2
+
+
+@pytest.mark.asyncio
+async def test_cancelled_upload_does_not_advance_runtime(tmp_path):
+    observation = SyncRuntime()
+
+    async def upload(*args, **kwargs):
+        raise asyncio.CancelledError()
+
+    with runtime_scope(observation), pytest.raises(asyncio.CancelledError):
+        await _service(upload, []).run_upload_paths(
+            task=_task(tmp_path), status=SyncTaskStatus(task_id="task-upload-race"),
+            paths=[tmp_path / "one.md"], runtime=_runtime(), allow_deletes=False,
+        )
+    assert observation.snapshot().processed == 0

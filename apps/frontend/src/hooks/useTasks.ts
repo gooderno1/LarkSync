@@ -181,6 +181,7 @@ export function useTasks() {
     taskLoading: tasksQuery.isLoading,
     taskError: tasksQuery.error?.message ?? null,
     statusMap: statusQuery.data || {},
+    statusUpdatedAt: statusQuery.dataUpdatedAt,
     refreshTasks: () => qc.invalidateQueries({ queryKey: ["tasks", accountId] }),
     refreshStatus: () => qc.invalidateQueries({ queryKey: ["task-status", accountId] }),
     createTask: createMutation.mutateAsync,

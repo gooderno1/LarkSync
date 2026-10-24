@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.services.sync_runtime import runtime_operation, runtime_wait
+
 import asyncio
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -287,13 +289,15 @@ class SyncDownloadSupportService:
         base_dir: Path | None = None,
         link_map: dict[str, Path] | None = None,
     ) -> str:
-        blocks = await docx_service.list_blocks(document_id)
-        return await transcoder.to_markdown(
-            document_id,
-            blocks,
-            base_dir=base_dir,
-            link_map=link_map,
-        )
+        with runtime_operation("reading_document"):
+            blocks = await docx_service.list_blocks(document_id)
+        with runtime_operation("converting_document"):
+            return await transcoder.to_markdown(
+                document_id,
+                blocks,
+                base_dir=base_dir,
+                link_map=link_map,
+            )
 
     async def download_exported_file(
         self,
@@ -362,41 +366,43 @@ class SyncDownloadSupportService:
         poll_attempts: int,
         poll_interval: float,
     ) -> ExportTaskResult:
-        last_error: str | None = None
-        last_result: ExportTaskResult | None = None
-        for attempt in range(poll_attempts):
-            result = await export_task_service.get_export_task_result(
-                ticket,
-                file_token=file_token,
+        with runtime_wait("remote_export"):
+            last_error: str | None = None
+            last_result: ExportTaskResult | None = None
+            for attempt in range(poll_attempts):
+                result = await export_task_service.get_export_task_result(
+                    ticket,
+                    file_token=file_token,
+                )
+                last_result = result
+                job_status = result.job_status
+                if job_status == 0:
+                    if result.file_token:
+                        return result
+                    last_error = "导出任务未返回文件 token"
+                    break
+                if result.job_error_msg:
+                    last_error = f"导出任务失败: status={job_status} msg={result.job_error_msg}"
+                    break
+                if job_status not in (None, 1, 2):
+                    last_error = f"导出任务失败: status={job_status}"
+                    break
+                if attempt < poll_attempts - 1:
+                    with runtime_wait("remote_export", delay=poll_interval, attempt=attempt + 1):
+                        await asyncio.sleep(poll_interval)
+            if last_error:
+                raise RuntimeError(last_error)
+            if last_result and last_result.job_status not in (None, 1, 2):
+                detail = f"导出任务失败: status={last_result.job_status}"
+                if last_result.job_error_msg:
+                    detail = f"{detail} msg={last_result.job_error_msg}"
+                raise RuntimeError(detail)
+            status_hint = (
+                f" status={last_result.job_status}"
+                if last_result and last_result.job_status is not None
+                else ""
             )
-            last_result = result
-            job_status = result.job_status
-            if job_status == 0:
-                if result.file_token:
-                    return result
-                last_error = "导出任务未返回文件 token"
-                break
-            if result.job_error_msg:
-                last_error = f"导出任务失败: status={job_status} msg={result.job_error_msg}"
-                break
-            if job_status not in (None, 1, 2):
-                last_error = f"导出任务失败: status={job_status}"
-                break
-            if attempt < poll_attempts - 1:
-                await asyncio.sleep(poll_interval)
-        if last_error:
-            raise RuntimeError(last_error)
-        if last_result and last_result.job_status not in (None, 1, 2):
-            detail = f"导出任务失败: status={last_result.job_status}"
-            if last_result.job_error_msg:
-                detail = f"{detail} msg={last_result.job_error_msg}"
-            raise RuntimeError(detail)
-        status_hint = (
-            f" status={last_result.job_status}"
-            if last_result and last_result.job_status is not None
-            else ""
-        )
-        raise RuntimeError(f"导出任务超时{status_hint}")
+            raise RuntimeError(f"导出任务超时{status_hint}")
 
 
 __all__ = [

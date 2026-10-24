@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.services.sync_runtime import begin_phase, runtime_item
+
 import os
 import shutil
 import time
@@ -301,112 +303,167 @@ class SyncDeleteSyncService:
             return
         if not pending:
             return
+        begin_phase("deleting", total=len(pending))
         if policy == DeletePolicy.off:
             for tombstone in pending:
-                await self._tombstone_service.mark_status(
-                    tombstone.id,
-                    status="cancelled",
-                    reason="删除同步已关闭",
-                )
+                with runtime_item(tombstone.local_path):
+                    await self._tombstone_service.mark_status(
+                        tombstone.id,
+                        status="cancelled",
+                        reason="删除同步已关闭",
+                    )
             return
 
         delete_file = getattr(drive_service, "delete_file", None)
         for tombstone in pending:
-            local_path = Path(tombstone.local_path)
-            try:
-                if self._should_ignore_path(task, local_path):
-                    await self._tombstone_service.mark_status(
-                        tombstone.id,
-                        status="cancelled",
-                        reason="路径已加入忽略目录",
-                    )
-                    record_event(
-                        status,
-                        SyncFileEvent(
-                            path=tombstone.local_path,
-                            status="skipped",
-                            message="路径已加入忽略目录，取消删除联动",
-                        ),
-                        task,
-                    )
-                    continue
-                direction = "upload" if tombstone.source == "local" else "download"
-                if not can_delete_path(
-                    task, local_path, direction, is_directory=tombstone.cloud_type == "folder",
-                ):
-                    await self._tombstone_service.mark_status(
-                        tombstone.id, status="cancelled", reason="当前对象同步规则禁止该方向删除",
-                    )
-                    record_event(
-                        status,
-                        SyncFileEvent(path=str(local_path), status="skipped", message="对象规则已变更，取消删除联动"),
-                        task,
-                    )
-                    continue
-                if tombstone.source == "local":
-                    if local_path.exists():
+            with runtime_item(tombstone.local_path):
+                local_path = Path(tombstone.local_path)
+                try:
+                    if self._should_ignore_path(task, local_path):
                         await self._tombstone_service.mark_status(
                             tombstone.id,
                             status="cancelled",
-                            reason="本地文件已恢复",
+                            reason="路径已加入忽略目录",
+                        )
+                        record_event(
+                            status,
+                            SyncFileEvent(
+                                path=tombstone.local_path,
+                                status="skipped",
+                                message="路径已加入忽略目录，取消删除联动",
+                            ),
+                            task,
                         )
                         continue
-                    if tombstone.cloud_token:
-                        active_link = await self.find_active_link_for_cloud_token(
-                            task=task,
-                            cloud_token=tombstone.cloud_token,
-                            excluding_local_path=tombstone.local_path,
+                    direction = "upload" if tombstone.source == "local" else "download"
+                    if not can_delete_path(
+                        task, local_path, direction, is_directory=tombstone.cloud_type == "folder",
+                    ):
+                        await self._tombstone_service.mark_status(
+                            tombstone.id, status="cancelled", reason="当前对象同步规则禁止该方向删除",
                         )
-                        if active_link:
+                        record_event(
+                            status,
+                            SyncFileEvent(path=str(local_path), status="skipped", message="对象规则已变更，取消删除联动"),
+                            task,
+                        )
+                        continue
+                    if tombstone.source == "local":
+                        if local_path.exists():
                             await self._tombstone_service.mark_status(
                                 tombstone.id,
                                 status="cancelled",
-                                reason="云端文件仍绑定到其他本地路径",
-                            )
-                            record_event(
-                                status,
-                                SyncFileEvent(
-                                    path=tombstone.local_path,
-                                    status="skipped",
-                                    message=f"云端文件仍绑定到其他本地路径，取消删除: {active_link.local_path}",
-                                ),
-                                task,
+                                reason="本地文件已恢复",
                             )
                             continue
-                        if not callable(delete_file):
+                        if tombstone.cloud_token:
+                            active_link = await self.find_active_link_for_cloud_token(
+                                task=task,
+                                cloud_token=tombstone.cloud_token,
+                                excluding_local_path=tombstone.local_path,
+                            )
+                            if active_link:
+                                await self._tombstone_service.mark_status(
+                                    tombstone.id,
+                                    status="cancelled",
+                                    reason="云端文件仍绑定到其他本地路径",
+                                )
+                                record_event(
+                                    status,
+                                    SyncFileEvent(
+                                        path=tombstone.local_path,
+                                        status="skipped",
+                                        message=f"云端文件仍绑定到其他本地路径，取消删除: {active_link.local_path}",
+                                    ),
+                                    task,
+                                )
+                                continue
+                            if not callable(delete_file):
+                                await self._tombstone_service.mark_status(
+                                    tombstone.id,
+                                    status="failed",
+                                    reason="当前 DriveService 不支持云端删除",
+                                    expire_at=time.time() + retry_delay_seconds,
+                                )
+                                record_event(
+                                    status,
+                                    SyncFileEvent(
+                                        path=tombstone.local_path,
+                                        status="delete_failed",
+                                        message="云端删除失败：当前 DriveService 不支持删除接口",
+                                    ),
+                                    task,
+                                )
+                                continue
+                            try:
+                                await delete_file(tombstone.cloud_token, tombstone.cloud_type)
+                            except Exception as exc:
+                                if self.is_cloud_already_deleted_error(exc):
+                                    logger.info(
+                                        "云端文件已不存在，按幂等成功处理: token={} type={} path={}",
+                                        tombstone.cloud_token,
+                                        tombstone.cloud_type,
+                                        tombstone.local_path,
+                                    )
+                                else:
+                                    raise
+                        await cleanup_md_mirror_copy(
+                            task=task,
+                            local_path=local_path,
+                            drive_service=drive_service,
+                        )
+                        await self.cleanup_deleted_state(
+                            task_id=task.id,
+                            local_path=tombstone.local_path,
+                            cloud_token=tombstone.cloud_token,
+                            recursive=tombstone.cloud_type == "folder",
+                        )
+                        await self._tombstone_service.mark_status(
+                            tombstone.id,
+                            status="executed",
+                        )
+                        record_event(
+                            status,
+                            SyncFileEvent(
+                                path=tombstone.local_path,
+                                status="deleted",
+                                message="已删除云端文件并清理映射",
+                            ),
+                            task,
+                        )
+                        continue
+
+                    if known_cloud_tokens and tombstone.cloud_token:
+                        if tombstone.cloud_token in known_cloud_tokens:
                             await self._tombstone_service.mark_status(
                                 tombstone.id,
-                                status="failed",
-                                reason="当前 DriveService 不支持云端删除",
-                                expire_at=time.time() + retry_delay_seconds,
-                            )
-                            record_event(
-                                status,
-                                SyncFileEvent(
-                                    path=tombstone.local_path,
-                                    status="delete_failed",
-                                    message="云端删除失败：当前 DriveService 不支持删除接口",
-                                ),
-                                task,
+                                status="cancelled",
+                                reason="云端文件已恢复",
                             )
                             continue
-                        try:
-                            await delete_file(tombstone.cloud_token, tombstone.cloud_type)
-                        except Exception as exc:
-                            if self.is_cloud_already_deleted_error(exc):
-                                logger.info(
-                                    "云端文件已不存在，按幂等成功处理: token={} type={} path={}",
-                                    tombstone.cloud_token,
-                                    tombstone.cloud_type,
-                                    tombstone.local_path,
-                                )
+
+                    if path_supports_direction(task, local_path, "upload"):
+                        await cleanup_md_mirror_copy(
+                            task=task, local_path=local_path, drive_service=drive_service,
+                        )
+
+                    if local_path.exists():
+                        if policy == DeletePolicy.strict:
+                            if local_path.is_dir():
+                                shutil.rmtree(local_path, ignore_errors=True)
                             else:
-                                raise
-                    await cleanup_md_mirror_copy(
-                        task=task,
-                        local_path=local_path,
-                        drive_service=drive_service,
-                    )
+                                local_path.unlink(missing_ok=True)
+                            local_message = "本地文件已删除"
+                        else:
+                            moved_to = self.move_to_local_trash(
+                                task,
+                                local_path,
+                                silence_path=silence_path,
+                            )
+                            local_message = f"本地文件已移入回收目录: {moved_to}"
+                    else:
+                        local_message = "本地文件已不存在"
+
                     await self.cleanup_deleted_state(
                         task_id=task.id,
                         local_path=tombstone.local_path,
@@ -422,85 +479,33 @@ class SyncDeleteSyncService:
                         SyncFileEvent(
                             path=tombstone.local_path,
                             status="deleted",
-                            message="已删除云端文件并清理映射",
+                            message=local_message,
                         ),
                         task,
                     )
-                    continue
-
-                if known_cloud_tokens and tombstone.cloud_token:
-                    if tombstone.cloud_token in known_cloud_tokens:
-                        await self._tombstone_service.mark_status(
-                            tombstone.id,
-                            status="cancelled",
-                            reason="云端文件已恢复",
-                        )
-                        continue
-
-                if path_supports_direction(task, local_path, "upload"):
-                    await cleanup_md_mirror_copy(
-                        task=task, local_path=local_path, drive_service=drive_service,
+                except Exception as exc:
+                    await self._tombstone_service.mark_status(
+                        tombstone.id,
+                        status="failed",
+                        reason=str(exc),
+                        expire_at=time.time() + retry_delay_seconds,
                     )
-
-                if local_path.exists():
-                    if policy == DeletePolicy.strict:
-                        if local_path.is_dir():
-                            shutil.rmtree(local_path, ignore_errors=True)
-                        else:
-                            local_path.unlink(missing_ok=True)
-                        local_message = "本地文件已删除"
-                    else:
-                        moved_to = self.move_to_local_trash(
-                            task,
-                            local_path,
-                            silence_path=silence_path,
-                        )
-                        local_message = f"本地文件已移入回收目录: {moved_to}"
-                else:
-                    local_message = "本地文件已不存在"
-
-                await self.cleanup_deleted_state(
-                    task_id=task.id,
-                    local_path=tombstone.local_path,
-                    cloud_token=tombstone.cloud_token,
-                    recursive=tombstone.cloud_type == "folder",
-                )
-                await self._tombstone_service.mark_status(
-                    tombstone.id,
-                    status="executed",
-                )
-                record_event(
-                    status,
-                    SyncFileEvent(
-                        path=tombstone.local_path,
-                        status="deleted",
-                        message=local_message,
-                    ),
-                    task,
-                )
-            except Exception as exc:
-                await self._tombstone_service.mark_status(
-                    tombstone.id,
-                    status="failed",
-                    reason=str(exc),
-                    expire_at=time.time() + retry_delay_seconds,
-                )
-                record_event(
-                    status,
-                    SyncFileEvent(
-                        path=tombstone.local_path,
-                        status="delete_failed",
-                        message=str(exc),
-                    ),
-                    task,
-                )
-                logger.warning(
-                    "处理删除墓碑失败: task_id={} source={} path={} error={}",
-                    task.id,
-                    tombstone.source,
-                    tombstone.local_path,
-                    exc,
-                )
+                    record_event(
+                        status,
+                        SyncFileEvent(
+                            path=tombstone.local_path,
+                            status="delete_failed",
+                            message=str(exc),
+                        ),
+                        task,
+                    )
+                    logger.warning(
+                        "处理删除墓碑失败: task_id={} source={} path={} error={}",
+                        task.id,
+                        tombstone.source,
+                        tombstone.local_path,
+                        exc,
+                    )
 
     async def cleanup_deleted_state(
         self,

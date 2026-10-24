@@ -4,6 +4,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Literal
 
+from src.services.sync_runtime import SyncRuntime
+
 SyncState = Literal["idle", "running", "success", "failed", "cancelled"]
 SYNC_LOG_LIMIT = 200
 
@@ -36,6 +38,7 @@ class SyncTaskStatus:
     last_error: str | None = None
     current_run_id: str | None = None
     last_files: list[SyncFileEvent] = field(default_factory=list)
+    runtime: SyncRuntime | None = None
 
     def record_event(self, event: SyncFileEvent, limit: int = SYNC_LOG_LIMIT) -> None:
         self.last_files.append(event)

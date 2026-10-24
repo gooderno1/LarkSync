@@ -51,4 +51,9 @@ describe("taskManagement", () => {
     expect(parseDeleteGraceMinutes("strict", "45")).toBe(0);
     expect(parseDeleteGraceMinutes("off", "", 30)).toBe(30);
   });
+
+  it("treats live preflight and finalizing phases as running", () => {
+    expect(deriveTaskHealth({ enabled: true, state: "success", running: true, conflictCount: 0 }))
+      .toMatchObject({ isRunning: true, label: "同步中" });
+  });
 });

@@ -32,6 +32,9 @@ import {
 import { formatTimestamp } from "../lib/formatters";
 import { shortPath } from "../lib/logCenter";
 import { computeTaskProgress } from "../lib/progress";
+import { describeSyncRuntime, isTaskExecuting } from "../lib/syncRuntime";
+import { useRuntimeClock } from "../hooks/useRuntimeClock";
+import { RuntimeProgress } from "../components/tasks/RuntimeProgress";
 import { buildTaskDiagnosticsQueryPath } from "../lib/taskDiagnosticsQuery";
 import { buildTaskDetailShowcase, type TaskDetailShowcaseStats } from "../lib/taskDetailShowcase";
 import {
@@ -199,20 +202,22 @@ function CurrentRunPanel({
   task,
   status,
   diagnostics,
-  stats,
+  now,
+  receivedAt,
 }: {
   task: SyncTask;
   status?: SyncTaskStatus;
   diagnostics?: SyncTaskDiagnostics;
-  stats: TaskDetailShowcaseStats;
+  now: number;
+  receivedAt?: number;
 }) {
-  const progressState = computeTaskProgress(status);
-  const progress = progressState.progress ?? (status?.state === "success" ? 100 : 0);
+  const view = describeSyncRuntime(status, now, receivedAt);
   const activeRun = diagnostics?.selected_run ?? diagnostics?.recent_runs?.[0] ?? null;
-  const hasRun = Boolean(activeRun || status?.current_run_id || task.last_run_at);
-  const runId = status?.current_run_id || activeRun?.run_id || "暂无运行 ID";
-  const stateKey = status?.state || activeRun?.state || "idle";
-  const startedAt = status?.started_at ?? activeRun?.started_at ?? task.last_run_at ?? null;
+  const hasRun = Boolean(view.running || status?.runtime || activeRun || status?.current_run_id || task.last_run_at);
+  const preflight = view.running && status?.state !== "running" && status?.runtime?.phase !== "finalizing";
+  const runId = preflight || (view.running && !status?.current_run_id) ? "正在检查，尚无活动记录" : status?.current_run_id || activeRun?.run_id || "暂无运行 ID";
+  const stateKey = view.running ? "running" : status?.state || activeRun?.state || "idle";
+  const startedAt = status?.runtime?.started_at ?? status?.started_at ?? activeRun?.started_at ?? task.last_run_at ?? null;
   const metrics = [
     { label: "上传文件", value: status?.uploaded_files ?? activeRun?.counts.uploaded ?? 0, hint: "本地到云端", color: "text-[#047857]" },
     { label: "下载文件", value: status?.downloaded_files ?? activeRun?.counts.downloaded ?? 0, hint: "云端到本地", color: "text-[#1d4ed8]" },
@@ -227,36 +232,28 @@ function CurrentRunPanel({
         <StatusPill label={stateLabels[stateKey] || stateKey} tone={stateTones[stateKey] || runTone(stateKey)} dot={stateKey === "running"} />
       </div>
       {hasRun ? (
-        <div className="mt-2 grid grid-cols-[126px_254px_minmax(0,1fr)] items-center gap-4">
-          <div
-            className="grid h-[100px] w-[100px] place-items-center rounded-full"
-            style={{ background: `conic-gradient(#3370ff ${progress * 3.6}deg, #e6eef9 0deg)` }}
-          >
-            <div className="grid h-[82px] w-[82px] place-items-center rounded-full bg-white text-center">
-              <div>
-                <p className="text-2xl font-semibold text-[#102033]">{progress}%</p>
-                <p className="text-xs text-[#52657a]">{stateLabels[stateKey] || stateKey}</p>
-              </div>
+        <div className="mt-3 grid grid-cols-[minmax(280px,1fr)_minmax(0,1.1fr)] items-start gap-5">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-sm font-semibold text-[#334762]">{view.phaseLabel}</p>
+              <p className="text-xs text-[#52657a]">已用时间 {view.elapsedLabel}{view.stale ? "（上次记录）" : ""}</p>
             </div>
+            {view.waitLabel && <p role="status" className="text-xs text-[#b45309]">{view.waitLabel}</p>}
+            {view.currentItem && <p className="truncate text-xs text-[#52657a]" title={view.currentItem}>{view.operationLabel || "当前处理"} · {view.currentItem}</p>}
+            <RuntimeProgress view={view} />
+            <dl className="grid grid-cols-[64px_minmax(0,1fr)] gap-y-1 text-[11px]">
+              <dt className="text-[#6b7f96]">运行 ID</dt><dd className="flex min-w-0 items-center gap-1.5 truncate font-mono text-[#334762]" title={runId}>{runId}<IconCopy className="h-3 w-3 shrink-0" /></dd>
+              <dt className="text-[#6b7f96]">开始时间</dt><dd className="text-[#334762]">{formatTimestamp(startedAt)}</dd>
+            </dl>
           </div>
-          <dl className="grid grid-cols-[80px_minmax(0,1fr)] gap-y-1.5 text-xs">
-            <dt className="text-[#6b7f96]">运行 ID</dt><dd className="flex min-w-0 items-center gap-1.5 truncate font-mono text-[#334762]" title={runId}>{runId}<IconCopy className="h-3 w-3 shrink-0" /></dd>
-            <dt className="text-[#6b7f96]">开始时间</dt><dd className="text-[#334762]">{formatTimestamp(startedAt)}</dd>
-            <dt className="text-[#6b7f96]">已用时间</dt><dd className="text-[#334762]">{stats.elapsed}</dd>
-            <dt className="text-[#6b7f96]">预计剩余</dt><dd className="text-[#334762]">{stats.remaining}</dd>
-            <dt className="text-[#6b7f96]">当前速度</dt><dd className="text-[#334762]">{stats.speed}</dd>
-          </dl>
           <div data-run-metrics="true" className="grid grid-cols-4">
             {metrics.map((metric) => (
               <div className="min-w-0 border-l border-[#d7e4f5] px-3 text-center first:border-l-0" key={metric.label}>
                 <p className="text-xs text-[#52657a]">{metric.label}</p>
-                <p className={`mt-2 text-xl font-semibold ${metric.color}`}>{metric.value}</p>
+                <p className={`mt-2 text-xl font-semibold ${metric.color}`}>{preflight ? "—" : metric.value}</p>
                 <p className="mt-1 text-[10px] text-[#7e91a8]">{metric.hint}</p>
               </div>
             ))}
-            <div className="col-span-4 mt-4 h-1.5 overflow-hidden rounded-full bg-[#e5eef9]">
-              <div className="h-full rounded-full bg-[#3370ff]" style={{ width: `${progress}%` }} />
-            </div>
           </div>
         </div>
       ) : (
@@ -274,6 +271,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
   const {
     tasks,
     statusMap,
+    statusUpdatedAt,
     taskLoading,
     runTask,
     toggleTask,
@@ -300,6 +298,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
     [showcaseMode, sourceStatus, task],
   );
   const status = showcaseData?.status ?? sourceStatus;
+  const runtimeNow = useRuntimeClock(isTaskExecuting(status));
 
   const diagnosticsQuery = useQuery<SyncTaskDiagnostics>({
     queryKey: ["task-detail-diagnostics", accountId, taskId],
@@ -310,7 +309,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
       limit: 120,
     }), accountId, { signal }),
     enabled: Boolean(accountId) && Boolean(taskId) && !showcaseMode,
-    refetchInterval: status?.state === "running" ? 5_000 : 10_000,
+    refetchInterval: isTaskExecuting(status) ? 5_000 : 10_000,
   });
 
   const taskConflicts = useMemo(
@@ -340,6 +339,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
   const health = deriveTaskHealth({
     enabled: task.enabled,
     state: status?.state,
+    running: isTaskExecuting(status),
     lastFiles: status?.last_files,
     conflictCount,
     lastError: status?.last_error,
@@ -446,7 +446,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_300px] items-stretch gap-4">
-        <div className="grid min-h-0 min-w-0 grid-rows-[258px_202px_minmax(0,1fr)] gap-3">
+        <div className="grid min-h-0 min-w-0 grid-rows-[258px_auto_minmax(0,1fr)] gap-3">
           <section data-task-detail-identity="true" className="min-h-0 overflow-hidden rounded-lg border border-[#d7e4f5] bg-white shadow-[0_8px_24px_rgba(51,112,255,0.04)]">
             <div className="flex h-[86px] items-center justify-between gap-4 px-5">
               <div className="flex min-w-0 items-center gap-3">
@@ -492,7 +492,7 @@ export function TaskDetailPage({ taskId, onBack, showcase }: TaskDetailPageProps
             </div>
           </section>
 
-          <CurrentRunPanel task={task} status={status} diagnostics={diagnostics} stats={stats} />
+          <CurrentRunPanel task={task} status={status} diagnostics={diagnostics} now={runtimeNow} receivedAt={statusUpdatedAt} />
 
           <section data-task-detail-history="true" className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#d7e4f5] bg-white px-4 py-3 shadow-[0_8px_24px_rgba(51,112,255,0.04)]">
             <div className="mb-0.5 flex shrink-0 items-center justify-between">

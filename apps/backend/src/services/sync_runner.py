@@ -57,6 +57,9 @@ from src.services.sync_run_event_service import SyncRunEventService
 from src.services.sync_run_service import SyncRunService
 from src.services.sync_task_check_state_service import SyncTaskCheckStateService
 from src.services.sync_runner_state import SYNC_LOG_LIMIT, SyncFileEvent, SyncState, SyncTaskStatus
+from src.services.sync_runtime import (
+    SyncRuntime, runtime_scope, runtime_operation, runtime_item, begin_phase, discover_items,
+)
 from src.services.sync_task_service import SyncTaskItem
 from src.services.sync_path_mode import (
     effective_sync_mode, path_supports_direction, task_supports_direction, task_for_path,
@@ -533,7 +536,9 @@ class SyncTaskRunner:
         await self._persist_run_started(task, status)
         cloud_scope = activate_cloud_root_scope(task.cloud_folder_token)
         try:
-            await executor(status)
+            with runtime_scope(status.runtime):
+                begin_phase("processing")
+                await executor(status)
             status.state = "failed" if status.failed_files > 0 else "success"
             status.finished_at = time.time()
             return status
@@ -566,6 +571,27 @@ class SyncTaskRunner:
             reset_cloud_root_scope(cloud_scope)
 
     async def run_scheduled_upload(self, task: SyncTaskItem) -> None:
+        if task.id in self._running_tasks:
+            return
+        had_status = task.id in self._statuses
+        status = self._statuses.setdefault(task.id, SyncTaskStatus(task_id=task.id))
+        previous_runtime = status.runtime
+        previous_events = status.last_files
+        observation = SyncRuntime()
+        status.runtime = observation
+        try:
+            with runtime_scope(observation):
+                begin_phase("scanning_local", direction="upload")
+                await self._run_scheduled_upload_observed(task, observation)
+        finally:
+            observation.finish()
+            # Keep the last real run snapshot when this check found no changes.
+            if status.runtime is observation and status.last_files is previous_events:
+                status.runtime = previous_runtime
+                if not had_status and status.state == "idle" and not status.last_files:
+                    self._statuses.pop(task.id, None)
+
+    async def _run_scheduled_upload_observed(self, task: SyncTaskItem, observation: SyncRuntime) -> None:
         # 双向任务启动时通常会先执行下行；此时不要再并发扫描同一目录。
         if task.id in self._running_tasks:
             return
@@ -592,6 +618,12 @@ class SyncTaskRunner:
                 pending.pop(path, None)
         if ready_paths:
             ready_paths = await self._filter_unchanged_ready_paths(task, ready_paths)
+        # A manual/download run may have claimed this task while signatures were read.
+        if task.id in self._running_tasks:
+            pending = self._pending_uploads.setdefault(task.id, {})
+            for path in ready_paths:
+                pending.setdefault(str(path), time.time() - self._upload_quiet_window_seconds)
+            return
         if not ready_paths and not has_pending_tombstone:
             if self._check_state_service is not None:
                 now = time.time()
@@ -611,6 +643,7 @@ class SyncTaskRunner:
             status,
             message="周期上传触发",
             trigger_source="scheduled_upload",
+            runtime=observation,
         )
         await self._persist_run_started(task, status)
         if self._check_state_service is not None and status.started_at is not None:
@@ -625,6 +658,10 @@ class SyncTaskRunner:
             await self._run_upload_paths(task, status, ready_paths)
             status.state = "failed" if status.failed_files > 0 else "success"
             status.finished_at = time.time()
+        except asyncio.CancelledError:
+            status.state = "cancelled"
+            status.finished_at = time.time()
+            raise
         except Exception as exc:
             status.state = "failed"
             status.last_error = describe_exception(exc)
@@ -674,6 +711,10 @@ class SyncTaskRunner:
             await self._run_download(task, status)
             status.state = "failed" if status.failed_files > 0 else "success"
             status.finished_at = time.time()
+        except asyncio.CancelledError:
+            status.state = "cancelled"
+            status.finished_at = time.time()
+            raise
         except Exception as exc:
             status.state = "failed"
             status.last_error = describe_exception(exc)
@@ -706,7 +747,11 @@ class SyncTaskRunner:
         *,
         trigger_source: str,
         defer_run_until_activity: bool = False,
+        runtime: SyncRuntime | None = None,
     ) -> None:
+        if status.runtime and status.runtime is not runtime:
+            status.runtime.finish()
+        status.runtime = runtime or SyncRuntime()
         status.state = "running"
         status.trigger_source = trigger_source
         status.started_at = time.time()
@@ -810,48 +855,62 @@ class SyncTaskRunner:
             return
         if not self._needs_additive_reconciliation(task):
             return
-        last_run = task.last_run_at
-        reason = "新建任务" if last_run is None else "距离上次运行超过 48 小时"
-        self._record_event(
-            status,
-            SyncFileEvent(
-                path=task.local_path,
-                status="reconcile_started",
-                message=f"{reason}，先执行无删除补齐",
-            ),
-            task,
-        )
-        logger.info(
-            "启动无删除补齐: task_id={} mode={} last_run_at={}",
-            task.id,
-            task.sync_mode,
-            last_run,
-        )
-        preexisting_local_files: list[Path] = []
-        upload_enabled = task_supports_direction(task, "upload")
-        download_enabled = task_supports_direction(task, "download")
-        if upload_enabled and download_enabled:
-            preexisting_local_files = list(self._iter_local_files(task))
-        if download_enabled:
-            await self._run_download(task, status, allow_deletes=False)
-        if upload_enabled and download_enabled:
-            await self._run_upload_paths(
-                task,
+        if status.runtime:
+            status.runtime.pass_kind = "reconcile"
+        try:
+            last_run = task.last_run_at
+            reason = "新建任务" if last_run is None else "距离上次运行超过 48 小时"
+            self._record_event(
                 status,
-                preexisting_local_files,
-                allow_deletes=False,
+                SyncFileEvent(
+                    path=task.local_path,
+                    status="reconcile_started",
+                    message=f"{reason}，先执行无删除补齐",
+                ),
+                task,
             )
-        elif upload_enabled:
-            await self._run_upload(task, status, allow_deletes=False)
-        self._record_event(
-            status,
-            SyncFileEvent(
-                path=task.local_path,
-                status="reconcile_finished",
-                message="无删除补齐完成，继续执行本次常规同步",
-            ),
-            task,
-        )
+            logger.info(
+                "启动无删除补齐: task_id={} mode={} last_run_at={}",
+                task.id,
+                task.sync_mode,
+                last_run,
+            )
+            preexisting_local_files: list[Path] = []
+            upload_enabled = task_supports_direction(task, "upload")
+            download_enabled = task_supports_direction(task, "download")
+            if upload_enabled and download_enabled:
+                def collect_preexisting() -> list[Path]:
+                    files = []
+                    for path in self._iter_local_files(task):
+                        discover_items(phase="scanning_local")
+                        files.append(path)
+                    return files
+                with runtime_scope(status.runtime):
+                    begin_phase("scanning_local", direction="upload")
+                    preexisting_local_files = await asyncio.to_thread(collect_preexisting)
+            if download_enabled:
+                await self._run_download(task, status, allow_deletes=False)
+            if upload_enabled and download_enabled:
+                await self._run_upload_paths(
+                    task,
+                    status,
+                    preexisting_local_files,
+                    allow_deletes=False,
+                )
+            elif upload_enabled:
+                await self._run_upload(task, status, allow_deletes=False)
+            self._record_event(
+                status,
+                SyncFileEvent(
+                    path=task.local_path,
+                    status="reconcile_finished",
+                    message="无删除补齐完成，继续执行本次常规同步",
+                ),
+                task,
+            )
+        finally:
+            if status.runtime:
+                status.runtime.pass_kind = "regular"
 
     @staticmethod
     def _needs_additive_reconciliation(task: SyncTaskItem) -> bool:
@@ -930,33 +989,39 @@ class SyncTaskRunner:
     async def _finalize_run_status(
         self, task: SyncTaskItem, status: SyncTaskStatus
     ) -> None:
-        await self._flush_pending_events_now()
-        await self._persist_run_finished(task, status)
-        if (
-            self._check_state_service is not None
-            and (status.trigger_source or "").startswith("scheduled_")
-            and status.finished_at is not None
-        ):
-            change_count = (
-                status.uploaded_files
-                + status.downloaded_files
-                + status.deleted_files
-                + status.conflict_files
-                + status.delete_pending_files
-                + status.delete_failed_files
-                + status.failed_files
-            )
-            await self._check_state_service.mark_finished(
-                task_id=task.id,
-                trigger_source=status.trigger_source or "scheduled_download",
-                started_at=status.started_at,
-                finished_at=status.finished_at,
-                change_count=change_count,
-                last_error=status.last_error,
-            )
-        if status.state != "cancelled":
-            await self._mark_task_run(task)
-        status.current_run_id = None
+        if status.runtime:
+            status.runtime.begin_phase("finalizing")
+        try:
+            await self._flush_pending_events_now()
+            await self._persist_run_finished(task, status)
+            if (
+                self._check_state_service is not None
+                and (status.trigger_source or "").startswith("scheduled_")
+                and status.finished_at is not None
+            ):
+                change_count = (
+                    status.uploaded_files
+                    + status.downloaded_files
+                    + status.deleted_files
+                    + status.conflict_files
+                    + status.delete_pending_files
+                    + status.delete_failed_files
+                    + status.failed_files
+                )
+                await self._check_state_service.mark_finished(
+                    task_id=task.id,
+                    trigger_source=status.trigger_source or "scheduled_download",
+                    started_at=status.started_at,
+                    finished_at=status.finished_at,
+                    change_count=change_count,
+                    last_error=status.last_error,
+                )
+            if status.state != "cancelled":
+                await self._mark_task_run(task)
+            status.current_run_id = None
+        finally:
+            if status.runtime:
+                status.runtime.finish()
 
     async def _mark_task_run(self, task: SyncTaskItem) -> None:
         service = self._task_service
@@ -982,15 +1047,16 @@ class SyncTaskRunner:
     ) -> None:
         self._task_meta[task.id] = task
         runtime = self._resolve_download_runtime_services()
-        await self._download_orchestration_service.run_download(
-            task=task,
-            status=status,
-            runtime=runtime,
-            allow_deletes=allow_deletes,
-            selected_paths=selected_paths,
-            selected_cloud_tokens=selected_cloud_tokens,
-            force_paths=force_paths,
-        )
+        with runtime_scope(status.runtime):
+            await self._download_orchestration_service.run_download(
+                task=task,
+                status=status,
+                runtime=runtime,
+                allow_deletes=allow_deletes,
+                selected_paths=selected_paths,
+                selected_cloud_tokens=selected_cloud_tokens,
+                force_paths=force_paths,
+            )
 
     def _resolve_download_runtime_services(self) -> DownloadRuntimeServices:
         drive_service = self._drive_service or DriveService()
@@ -1207,12 +1273,13 @@ class SyncTaskRunner:
     ) -> None:
         self._task_meta[task.id] = task
         runtime = self._resolve_upload_runtime_services()
-        await self._upload_orchestration_service.run_upload(
-            task=task,
-            status=status,
-            runtime=runtime,
-            allow_deletes=allow_deletes,
-        )
+        with runtime_scope(status.runtime):
+            await self._upload_orchestration_service.run_upload(
+                task=task,
+                status=status,
+                runtime=runtime,
+                allow_deletes=allow_deletes,
+            )
 
     async def _run_upload_paths(
         self,
@@ -1224,14 +1291,15 @@ class SyncTaskRunner:
         force_paths: set[str] | None = None,
     ) -> None:
         runtime = self._resolve_upload_runtime_services()
-        await self._upload_orchestration_service.run_upload_paths(
-            task=task,
-            status=status,
-            paths=paths,
-            runtime=runtime,
-            allow_deletes=allow_deletes,
-            force_paths=force_paths,
-        )
+        with runtime_scope(status.runtime):
+            await self._upload_orchestration_service.run_upload_paths(
+                task=task,
+                status=status,
+                paths=paths,
+                runtime=runtime,
+                allow_deletes=allow_deletes,
+                force_paths=force_paths,
+            )
 
     def _resolve_upload_runtime_services(self) -> UploadRuntimeServices:
         docx_service = self._docx_service or DocxService()
@@ -1290,16 +1358,17 @@ class SyncTaskRunner:
         *,
         force: bool = False,
     ) -> None:
-        await self._markdown_upload_service.upload_markdown(
-            task,
-            status,
-            path,
-            docx_service,
-            file_uploader,
-            drive_service,
-            import_task_service,
-            force=force,
-        )
+        with runtime_operation("updating_document"):
+            await self._markdown_upload_service.upload_markdown(
+                task,
+                status,
+                path,
+                docx_service,
+                file_uploader,
+                drive_service,
+                import_task_service,
+                force=force,
+            )
 
     async def _block_markdown_upload_when_cloud_changed(
         self,
@@ -1617,26 +1686,28 @@ class SyncTaskRunner:
         }
         changed: list[Path] = []
         filtered_count = 0
-        for path in paths:
-            if self._should_ignore_path(task, path) or not path_supports_direction(task, path, "upload"):
-                continue
-            link = link_by_path.get(self._normalize_local_path_key(path))
-            if link is None or link.local_size is None or link.local_mtime is None:
+        eligible = [path for path in paths if not self._should_ignore_path(task, path)
+                    and path_supports_direction(task, path, "upload")]
+        begin_phase("checking", direction="upload", total=len(eligible))
+        for path in eligible:
+            with runtime_item(str(path)):
+                link = link_by_path.get(self._normalize_local_path_key(path))
+                if link is None or link.local_size is None or link.local_mtime is None:
+                    changed.append(path)
+                    continue
+                try:
+                    stat = path.stat()
+                except OSError:
+                    changed.append(path)
+                    continue
+                if (
+                    path.is_file()
+                    and stat.st_size == link.local_size
+                    and abs(stat.st_mtime - link.local_mtime) <= 0.001
+                ):
+                    filtered_count += 1
+                    continue
                 changed.append(path)
-                continue
-            try:
-                stat = path.stat()
-            except OSError:
-                changed.append(path)
-                continue
-            if (
-                path.is_file()
-                and stat.st_size == link.local_size
-                and abs(stat.st_mtime - link.local_mtime) <= 0.001
-            ):
-                filtered_count += 1
-                continue
-            changed.append(path)
         if filtered_count:
             logger.info(
                 "本地签名未变化，跳过周期上传: task_id={} skipped={}",
@@ -1858,14 +1929,15 @@ class SyncTaskRunner:
         *,
         force: bool = False,
     ) -> None:
-        await self._path_upload_service.upload_file(
-            task,
-            status,
-            path,
-            file_uploader,
-            drive_service,
-            force=force,
-        )
+        with runtime_operation("transferring_file"):
+            await self._path_upload_service.upload_file(
+                task,
+                status,
+                path,
+                file_uploader,
+                drive_service,
+                force=force,
+            )
 
     async def _cleanup_replaced_cloud_files(
         self,
@@ -2054,6 +2126,7 @@ class SyncTaskRunner:
         def _collect_candidates() -> list[Path]:
             candidates: list[Path] = []
             for path in self._iter_local_files(task):
+                discover_items(phase="scanning_local")
                 if path.suffix.lower() == ".md" and not self._should_upload_markdown_doc(task_for_path(task, path)):
                     continue
                 try:

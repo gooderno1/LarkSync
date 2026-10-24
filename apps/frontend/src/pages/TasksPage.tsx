@@ -17,6 +17,8 @@ import {
 } from "../components/Icons";
 import { modeLabels, stateLabels } from "../lib/constants";
 import { computeTaskProgress } from "../lib/progress";
+import { describeSyncRuntime, isTaskExecuting } from "../lib/syncRuntime";
+import { useRuntimeClock } from "../hooks/useRuntimeClock";
 import { deriveTaskHealth, summarizePath } from "../lib/taskManagement";
 import { formatTimestamp } from "../lib/formatters";
 import { confirm } from "../components/ui/confirm-dialog";
@@ -117,6 +119,7 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
     taskLoading: liveTaskLoading,
     taskError: liveTaskError,
     statusMap: liveStatusMap,
+    statusUpdatedAt,
     refreshTasks,
     toggleTask,
     updateTaskSettings,
@@ -133,6 +136,7 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
   const taskLoading = showcaseMode ? false : liveTaskLoading;
   const taskError = showcaseMode ? null : liveTaskError;
   const statusMap = showcaseMode ? showcaseStatusMap : liveStatusMap;
+  const runtimeNow = useRuntimeClock(Object.values(statusMap).some(isTaskExecuting));
   const conflicts = useMemo(() => (showcaseMode ? [] : liveConflicts), [liveConflicts, showcaseMode]);
   const [showModal, setShowModal] = useState(false);
   const [hideTestTasks, setHideTestTasks] = useState(true);
@@ -173,6 +177,7 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
       const health = deriveTaskHealth({
         enabled: task.enabled,
         state: st?.state,
+        running: isTaskExecuting(st),
         lastFiles: st?.last_files,
         conflictCount,
         lastError: st?.last_error,
@@ -357,6 +362,7 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
                     const health = deriveTaskHealth({
                       enabled: task.enabled,
                       state: st?.state,
+                      running: isTaskExecuting(st),
                       lastFiles: st?.last_files,
                       conflictCount,
                       lastError: st?.last_error,
@@ -367,8 +373,7 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
                       ? TASK_PAGE_SHOWCASE_COUNTS[task.id] || taskPendingCounts(st, conflictCount)
                       : taskPendingCounts(st, conflictCount);
                     const cloudPath = task.cloud_folder_name || task.cloud_folder_token || "-";
-                    const progressState = computeTaskProgress(st);
-                    const progress = progressState.progress;
+                    const runtimeView = describeSyncRuntime(st, runtimeNow, statusUpdatedAt);
                     const lastSyncTime = st?.finished_at ?? st?.started_at ?? task.last_run_at ?? null;
                     const duration = formatDuration(st?.started_at, st?.finished_at);
                     const healthLabel = health.tone === "danger" ? "失败" : health.tone === "warning" ? health.label : "健康";
@@ -426,20 +431,23 @@ export function TasksPage({ onOpenTaskDetail, showcase }: TasksPageProps) {
                           </td>
                           <td className="px-3.5 py-2">
                             <div className="space-y-1">
-                              <p className={`text-xs font-semibold ${stateTextClass(stateKey)}`}>{displayStateLabel}</p>
+                              <p className={`text-xs font-semibold ${stateTextClass(stateKey)}`}>{runtimeView.running ? runtimeView.phaseLabel : displayStateLabel}</p>
                               <span className="flex items-center gap-1.5 text-[11px] text-[#6b7f96]">
                                 <span className={`h-1.5 w-1.5 rounded-full ${healthDotClass(health.tone)}`} />
-                                {healthLabel}
+                                {runtimeView.running ? runtimeView.waitLabel || "正在处理" : healthLabel}
                               </span>
                             </div>
                           </td>
                           <td className="px-3.5 py-2">
                             <div className="min-w-0 text-xs">
                               <p className="truncate text-[#334762]">{lastSyncTime ? formatTimestamp(lastSyncTime) : "尚未运行"}</p>
-                              {showcaseMode ? (
+                              {runtimeView.running ? (
+                                <>
+                                  <p className="mt-1 text-[11px] leading-4 text-[#52657a]">{runtimeView.countLabel}</p>
+                                  <p className="mt-1 text-[11px] text-[#6b7f96]">已用 {runtimeView.elapsedLabel}{runtimeView.stale ? "（上次记录）" : ""}</p>
+                                </>
+                              ) : showcaseMode ? (
                                 <p className="mt-1 truncate text-[11px] text-[#6b7f96]">{TASK_PAGE_SHOWCASE_DURATIONS[task.id] || "--"}</p>
-                              ) : progress !== null ? (
-                                <p className="mt-1 truncate text-[11px] text-[#6b7f96]">{progress}% · {duration || "进行中"}</p>
                               ) : duration ? <p className="mt-1 text-[11px] text-[#6b7f96]">用时 {duration}</p> : null}
                             </div>
                           </td>

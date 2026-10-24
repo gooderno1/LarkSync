@@ -182,6 +182,34 @@ async def test_request_acquires_rate_limit_token_before_http_call() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status,payload,expected", [
+    (429, {}, "rate_limit"), (200, {"code": 99991400}, "rate_limit"),
+    (503, {}, "retry"),
+])
+async def test_retry_exposes_actual_reason_and_deadline_without_changing_retry(status, payload, expected, monkeypatch):
+    from src.services.sync_runtime import SyncRuntime, runtime_scope
+
+    observation = SyncRuntime()
+    waits = []
+    async def sleep(delay):
+        waits.append((delay, observation.snapshot().wait))
+
+    monkeypatch.setattr("src.services.feishu_client.asyncio.sleep", sleep)
+    client = FeishuClient(auth_service=FakeAuthService(), backoff_base=2)
+    response = _response(status, payload)
+    response.headers["Retry-After"] = "8"
+    try:
+        with runtime_scope(observation):
+            await client._sleep_backoff(1, response)
+    finally:
+        await client.close()
+    assert waits[0][0] == 8
+    assert waits[0][1].reason == expected
+    assert waits[0][1].resume_at == pytest.approx(waits[0][1].since + 8)
+    assert observation.snapshot().wait is None
+
+
+@pytest.mark.asyncio
 async def test_stream_read_authenticates_rate_limits_retries_and_closes():
     limiter = FakeRateLimiter()
     requests = []

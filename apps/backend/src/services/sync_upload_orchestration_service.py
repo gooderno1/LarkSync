@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable
@@ -12,6 +13,7 @@ from src.services.drive_service import DriveService
 from src.services.file_uploader import FileUploader
 from src.services.import_task_service import ImportTaskService
 from src.services.sync_runner_state import SyncFileEvent, SyncTaskStatus
+from src.services.sync_runtime import begin_phase, observe_item, advance_item, discover_items
 from src.services.sync_task_service import SyncTaskItem
 
 PrefillLinksFn = Callable[[SyncTaskItem, DriveService], Awaitable[None]]
@@ -58,14 +60,25 @@ class SyncUploadOrchestrationService:
         allow_deletes: bool = True,
     ) -> None:
         try:
+            begin_phase("scanning_cloud", direction="upload")
             if task.sync_mode == "upload_only" or any(rule.sync_mode == "upload_only" for rule in task.path_sync_rules):
                 await self._prefill_links_from_cloud(task, runtime.drive_service)
             if allow_deletes:
                 await self._enqueue_missing_local_deletes(task=task, status=status)
-            files = list(self._iter_local_files(task))
+            begin_phase("scanning_local", direction="upload")
+            def collect_files() -> list[Path]:
+                files = []
+                for path in self._iter_local_files(task):
+                    files.append(path)
+                    discover_items(phase="scanning_local")
+                return files
+
+            files = await asyncio.to_thread(collect_files)
             logger.info("上传阶段: task_id={} files={}", task.id, len(files))
             status.total_files += len(files)
+            begin_phase("uploading", direction="upload", total=len(files))
             for path in files:
+                observe_item(str(path))
                 await self._upload_with_guard(
                     task=task,
                     status=status,
@@ -73,7 +86,9 @@ class SyncUploadOrchestrationService:
                     runtime=runtime,
                     force=False,
                 )
+                advance_item()
             if allow_deletes:
+                begin_phase("deleting", direction="upload")
                 await self._process_pending_deletes(
                     task=task,
                     status=status,
@@ -93,13 +108,16 @@ class SyncUploadOrchestrationService:
         force_paths: set[str] | None = None,
     ) -> None:
         try:
+            begin_phase("scanning_cloud", direction="upload")
             if task.sync_mode == "upload_only" or any(rule.sync_mode == "upload_only" for rule in task.path_sync_rules):
                 await self._prefill_links_from_cloud(task, runtime.drive_service)
             if allow_deletes:
                 await self._enqueue_missing_local_deletes(task=task, status=status)
             path_list = list(paths)
             status.total_files += len(path_list)
+            begin_phase("uploading", direction="upload", total=len(path_list))
             for path in path_list:
+                observe_item(str(path))
                 await self._upload_with_guard(
                     task=task,
                     status=status,
@@ -107,7 +125,9 @@ class SyncUploadOrchestrationService:
                     runtime=runtime,
                     force=bool(force_paths and str(path) in force_paths),
                 )
+                advance_item()
             if allow_deletes:
+                begin_phase("deleting", direction="upload")
                 await self._process_pending_deletes(
                     task=task,
                     status=status,

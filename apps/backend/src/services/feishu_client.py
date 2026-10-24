@@ -14,6 +14,7 @@ import httpx
 from src.core.config import AppConfig, CloudWritePolicy, ConfigManager
 from src.services.auth_service import AuthService
 from src.services.rate_limiter import AsyncTokenBucket, get_global_rate_limiter
+from src.services.sync_runtime import observe_activity, runtime_wait
 
 RETRYABLE_API_CODES = {1061045, 99991400}
 RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
@@ -78,6 +79,7 @@ class FeishuClient:
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {token}"
         response = await self._client.request(method, url, headers=headers, **kwargs)
+        observe_activity()
         self._write_audit_record(method, url, response)
         return response
 
@@ -97,6 +99,7 @@ class FeishuClient:
                 method, url, headers={"Authorization": f"Bearer {token}"},
             )
             response = await self._client.send(request, stream=True)
+            observe_activity()
             try:
                 self._write_audit_record(method, url, response)
                 if (
@@ -186,14 +189,29 @@ class FeishuClient:
         await self._client.aclose()
 
     async def _sleep_backoff(self, attempt: int, response: httpx.Response) -> None:
+        reason = "retry"
+        if response.status_code == 429:
+            reason = "rate_limit"
+        else:
+            try:
+                payload = response.json()
+                if isinstance(payload, dict) and (
+                    payload.get("code") in RETRYABLE_API_CODES
+                    or "frequency limit" in str(payload.get("msg", "")).lower()
+                ):
+                    reason = "rate_limit"
+            except (ValueError, httpx.ResponseNotRead):
+                pass
         retry_after = response.headers.get("Retry-After")
         if retry_after:
             try:
                 delay = float(retry_after)
                 if delay > 0:
-                    await asyncio.sleep(delay)
+                    with runtime_wait(reason, delay=delay, attempt=attempt + 1):
+                        await asyncio.sleep(delay)
                     return
             except ValueError:
                 pass
         delay = self._backoff_base * (self._backoff_factor**attempt)
-        await asyncio.sleep(delay)
+        with runtime_wait(reason, delay=delay, attempt=attempt + 1):
+            await asyncio.sleep(delay)

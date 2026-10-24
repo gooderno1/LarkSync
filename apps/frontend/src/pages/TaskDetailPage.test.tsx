@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { getRunPanelHeading, TaskDetailPage } from "./TaskDetailPage";
+import type { SyncTaskStatus } from "../types";
 
 const task = {
   id: "task-1",
@@ -19,7 +20,7 @@ const task = {
   last_run_at: 3,
 };
 
-const status = {
+const status: SyncTaskStatus = {
   task_id: "task-1",
   state: "running",
   total_files: 100,
@@ -198,7 +199,10 @@ describe("TaskDetailPage smoke", () => {
     const html = renderToStaticMarkup(<TaskDetailPage taskId="task_001" onBack={vi.fn()} showcase />);
 
     expect(html).toContain("项目文档同步");
-    expect(html).toContain("68%");
+    expect(html).toContain("本阶段已处理 174/256 项");
+    expect(html).toContain("下行处理");
+    expect(html).not.toContain("预计剩余");
+    expect(html).not.toContain("当前速度");
     expect(html).toContain("12,458");
     expect(html).toContain("run_20250512_102214_fa3c");
     expect((html.match(/data-run-history-row=/g) || [])).toHaveLength(5);
@@ -209,5 +213,29 @@ describe("TaskDetailPage smoke", () => {
     expect(getRunPanelHeading("running", true)).toBe("当前运行");
     expect(getRunPanelHeading("success", true)).toBe("最近一次运行");
     expect(getRunPanelHeading("idle", false)).toBe("运行状态");
+  });
+
+  it("does not show the previous run's counters or ID during preflight", () => {
+    const previous = { ...status };
+    status.state = "success";
+    status.runtime = {
+      schema_version: 1, execution_id: "preflight", active: true, phase: "scanning_local",
+      direction: "upload", pass_kind: "regular", segment_id: 1, processed: 0, total: null,
+      discovered: 23, processed_total: 0, current_item: null, operation: null,
+      started_at: Date.now() / 1000, sampled_at: Date.now() / 1000, elapsed_seconds: 2,
+      activity_at: Date.now() / 1000, progress_at: Date.now() / 1000, wait: null,
+    };
+    try {
+      const html = renderToStaticMarkup(<TaskDetailPage taskId="task-1" onBack={vi.fn()} showcase={false} />);
+      const panel = html.split('data-task-detail-current-run="true"')[1].split("</section>")[0];
+      expect(panel).toContain("扫描本地");
+      expect(panel).toContain("已发现 23 项");
+      expect(panel).toContain("正在检查，尚无活动记录");
+      expect(panel).not.toContain("run-1");
+      expect(panel).not.toContain(">12</p>");
+    } finally {
+      Object.assign(status, previous);
+      delete status.runtime;
+    }
   });
 });

@@ -4,6 +4,8 @@ import asyncio
 import time
 import weakref
 
+from src.services.sync_runtime import runtime_wait
+
 
 class AsyncTokenBucket:
     """面向单个事件循环的异步令牌桶。"""
@@ -28,7 +30,8 @@ class AsyncTokenBucket:
                     self._tokens -= 1.0
                     return
                 delay = (1.0 - self._tokens) / self._rate
-            await asyncio.sleep(delay)
+            with runtime_wait("local_rate_limit", delay=delay):
+                await asyncio.sleep(delay)
 
 
 _GLOBAL_LIMITERS: weakref.WeakKeyDictionary[

@@ -125,6 +125,14 @@ export function buildTaskDetailShowcase(
         downloaded_files: 86,
         conflict_files: 1,
         current_run_id: primaryRuns[0].run_id,
+        runtime: {
+          schema_version: 1, execution_id: "showcase-execution", active: true,
+          phase: "downloading", direction: "download", pass_kind: "regular", segment_id: 2,
+          processed: 174, total: 256, discovered: 0, processed_total: 174,
+          current_item: `${task.local_path}/项目说明.md`, operation: "converting_document",
+          started_at: Date.now() / 1000 - 94, sampled_at: Date.now() / 1000,
+          elapsed_seconds: 94, activity_at: Date.now() / 1000, progress_at: Date.now() / 1000, wait: null,
+        },
       }
     : baseStatus;
   const recentRuns = isPrimary

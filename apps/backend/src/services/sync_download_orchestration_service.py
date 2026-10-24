@@ -21,6 +21,7 @@ from src.services.sync_download_support_service import (
 )
 from src.services.sync_link_service import SyncLinkItem, SyncLinkService
 from src.services.sync_runner_state import SyncFileEvent, SyncTaskStatus
+from src.services.sync_runtime import begin_phase, observe_item, advance_item
 from src.services.sync_task_service import SyncTaskItem
 from src.services.sync_path_mode import path_supports_direction, task_for_path
 from src.services.transcoder import DocxTranscoder
@@ -142,12 +143,14 @@ class SyncDownloadOrchestrationService:
         force_paths: set[str] | None = None,
     ) -> None:
         try:
+            begin_phase("scanning_cloud", direction="download")
             tree = await runtime.drive_service.scan_folder(
                 task.cloud_folder_token, name=task.name or "同步根目录",
                 skip_folder=lambda parts: self._should_ignore_path(
                     task, Path(task.local_path).joinpath(*(sanitize_path_segment(part) for part in parts)),
                 ),
             )
+            begin_phase("checking", direction="download")
             folders = list(self._flatten_folders(tree))
             await self._sync_cloud_folder_links(task, folders)
             files = list(self._flatten_files(tree))
@@ -212,8 +215,10 @@ class SyncDownloadOrchestrationService:
                     known_cloud_tokens=known_cloud_tokens,
                 )
             status.total_files = len(selected_candidates) + len(duplicated_candidates)
+            begin_phase("downloading", direction="download", total=status.total_files)
 
             for duplicated in duplicated_candidates:
+                observe_item(str(duplicated.target_path))
                 status.skipped_files += 1
                 self._record_event(
                     status,
@@ -234,8 +239,10 @@ class SyncDownloadOrchestrationService:
                     duplicated.effective_type,
                     duplicated.effective_token,
                 )
+                advance_item()
 
             for candidate in selected_candidates:
+                observe_item(str(candidate.target_path))
                 await self._download_candidate(
                     task=task,
                     status=status,
@@ -246,8 +253,10 @@ class SyncDownloadOrchestrationService:
                     force_paths=force_paths,
                     allow_cloud_writes=allow_deletes,
                 )
+                advance_item()
 
             if allow_deletes:
+                begin_phase("deleting", direction="download")
                 await self._process_pending_deletes(
                     task=task,
                     status=status,

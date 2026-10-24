@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.services.sync_runtime import runtime_wait
+
 import asyncio
 import time
 from pathlib import Path
@@ -338,18 +340,20 @@ class SyncCloudFolderService:
         poll_attempts: int,
         poll_interval: float,
     ) -> DriveFile | None:
-        for attempt in range(poll_attempts):
-            items = await self.list_files_all(drive_service, folder_token)
-            for item in items:
-                if (
-                    item.name == expected_name
-                    and item.type in {"docx", "doc"}
-                    and item.token not in existing_tokens
-                ):
-                    return item
-            if attempt < poll_attempts - 1:
-                await asyncio.sleep(poll_interval)
-        return None
+        with runtime_wait("remote_import"):
+            for attempt in range(poll_attempts):
+                items = await self.list_files_all(drive_service, folder_token)
+                for item in items:
+                    if (
+                        item.name == expected_name
+                        and item.type in {"docx", "doc"}
+                        and item.token not in existing_tokens
+                    ):
+                        return item
+                if attempt < poll_attempts - 1:
+                    with runtime_wait("remote_import", delay=poll_interval, attempt=attempt + 1):
+                        await asyncio.sleep(poll_interval)
+            return None
 
 
 __all__ = ["SyncCloudFolderService"]

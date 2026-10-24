@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.services.feishu_client import FeishuClient
 from src.services.account_runtime import current_open_base_url
+from src.services.sync_runtime import discover_items
 
 
 class ShortcutInfo(BaseModel):
@@ -229,6 +230,7 @@ class DriveService:
         page_token: str | None = None
         while True:
             file_list = await self.list_files(folder_token, page_token=page_token)
+            discover_items(len(file_list.files), phase="scanning_cloud")
             for item in file_list.files:
                 child = await self._build_node(
                     item, visited, skip_folder=skip_folder,

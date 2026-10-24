@@ -32,6 +32,7 @@ export function deletePolicyLabel(value?: string | null): string {
 type DeriveTaskHealthInput = {
   enabled: boolean;
   state?: string | null;
+  running?: boolean;
   lastFiles?: SyncFileEvent[] | null;
   conflictCount: number;
   lastError?: string | null;
@@ -50,13 +51,14 @@ export type TaskHealthMeta = {
 export function deriveTaskHealth({
   enabled,
   state,
+  running,
   lastFiles,
   conflictCount,
   lastError,
   failedFiles,
   deleteFailedFiles,
 }: DeriveTaskHealthInput): TaskHealthMeta {
-  const isRunning = state === "running";
+  const isRunning = running ?? state === "running";
   const pendingRealtimeCount = (lastFiles || []).filter((item) =>
     pendingRealtimeStatuses.has(item.status)
   ).length;
