@@ -34,6 +34,7 @@ from src.services.sync_path_policy import should_ignore_sync_path
 
 
 CLASSIFIER_VERSION = "problem-classifier-v3"
+DIRECTIONAL_FAILURE_CATEGORIES = {"network_remote", "conversion", "local_io"}
 PROBLEM_STATUSES = {
     "failed",
     "delete_failed",
@@ -489,7 +490,7 @@ class ProblemService:
             task_rows = await session.execute(select(SyncTask.id, SyncTask.local_path))
             task_roots = {str(task_id): str(root) for task_id, root in task_rows.all()}
             await self._migrate_active_event_problems(session, task_roots=task_roots)
-            await self._repair_network_problem_operations(session)
+            await self._repair_directional_problem_operations(session)
             await self._recount_legacy_occurrences(session)
             cursor_timestamp, cursor_event_id = await self._load_event_cursor(session)
             event_stmt = (
@@ -649,19 +650,19 @@ class ProblemService:
             )
         )
 
-    async def _repair_network_problem_operations(
+    async def _repair_directional_problem_operations(
         self, session: AsyncSession, *, limit: int = 500,
     ) -> None:
-        """修正旧网络问题的方向，并使用已消费的成功事实结案。"""
+        """修正旧网络、转换及本地 I/O 问题方向，匹配已消费的成功事实。"""
         rows = await session.execute(
             select(ProblemRecord, SyncRun.trigger_source)
             .select_from(ProblemRecord)
             .join(SyncRunEvent, SyncRunEvent.id == ProblemRecord.latest_event_id)
             .join(SyncRun, SyncRun.run_id == SyncRunEvent.run_id)
-            .where(ProblemRecord.category == "network_remote")
+            .where(ProblemRecord.category.in_(DIRECTIONAL_FAILURE_CATEGORIES))
             .where(ProblemRecord.state.in_(["open", "in_progress", "waiting", "ignored"]))
             .where(or_(
-                ProblemRecord.operation_family == "diagnostic",
+                ProblemRecord.operation_family.in_(["diagnostic", "conversion"]),
                 ProblemRecord.operation_family.is_(None),
             ))
             .where(SyncRunEvent.status == "failed")
@@ -817,6 +818,7 @@ class ProblemService:
             operation_family = self.operation_family_for_problem(
                 classification.category,
                 event.status,
+                operation_hint=operation_hint,
             )
             fingerprint = self.build_fingerprint(
                 source_kind="sync_event",
@@ -1516,7 +1518,7 @@ class ProblemService:
     def operation_family_for_problem(
         category: str, stage: str, *, operation_hint: str | None = None,
     ) -> str:
-        if category == "network_remote" and operation_hint in {"upload", "download"}:
+        if category in DIRECTIONAL_FAILURE_CATEGORIES and operation_hint in {"upload", "download"}:
             return operation_hint
         if category == "upload":
             return "upload"

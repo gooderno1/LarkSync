@@ -1524,7 +1524,7 @@ async def test_initialize_live_cursor_fast_forwards_without_losing_history_check
     assert items[0].object_path == "new.md"
 
 
-async def _seed_network_failure(session_maker, event_service, service, *, direction="upload", message="ReadTimeout('')"):
+async def _seed_directional_failure(session_maker, event_service, service, *, direction="upload", message="ReadTimeout('')"):
     await _insert_task(session_maker)
     async with session_maker() as session:
         session.add(SyncRun(
@@ -1545,11 +1545,18 @@ async def _seed_network_failure(session_maker, event_service, service, *, direct
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("direction,success,opposite", [("upload", "uploaded", "downloaded"), ("download", "downloaded", "uploaded")])
-@pytest.mark.parametrize("message", ["ReadTimeout('')", "HTTP 429", "HTTP 503"])
-async def test_network_failure_recovers_only_in_its_run_direction(tmp_path, direction, success, opposite, message) -> None:
+@pytest.mark.parametrize("category,message", [
+    ("network_remote", "ReadTimeout('')"),
+    ("network_remote", "HTTP 429"),
+    ("network_remote", "HTTP 503"),
+    ("conversion", "导入任务完成但未找到新文档"),
+    ("conversion", "转码失败"),
+    ("local_io", "文件被占用 WinError 32"),
+])
+async def test_directional_failure_recovers_only_in_its_run_direction(tmp_path, direction, success, opposite, category, message) -> None:
     session_maker, events, service = await _build_services(tmp_path)
-    problem = await _seed_network_failure(session_maker, events, service, direction=direction, message=message)
-    assert problem.category == "network_remote"
+    problem = await _seed_directional_failure(session_maker, events, service, direction=direction, message=message)
+    assert problem.category == category
     assert problem.operation_family == direction
     await events.append_batch([SyncEventRecord(
         timestamp=20.0, task_id="task-1", task_name="市场资料备份", status=opposite,
@@ -1580,20 +1587,25 @@ async def test_network_failure_recovers_only_in_its_run_direction(tmp_path, dire
 @pytest.mark.asyncio
 @pytest.mark.parametrize("direction", ["upload", "download"])
 @pytest.mark.parametrize("state", ["open", "waiting", "ignored"])
-async def test_network_legacy_direction_repair_uses_consumed_recovery_fact(tmp_path, direction, state) -> None:
+@pytest.mark.parametrize("category,message,legacy_family", [
+    ("network_remote", "ReadTimeout('')", "diagnostic"),
+    ("conversion", "导入任务完成但未找到新文档", "conversion"),
+    ("local_io", "文件被占用 WinError 32", "diagnostic"),
+])
+async def test_legacy_direction_repair_uses_consumed_recovery_fact(tmp_path, direction, state, category, message, legacy_family) -> None:
     session_maker, events, service = await _build_services(tmp_path)
-    problem = await _seed_network_failure(session_maker, events, service, direction=direction)
+    problem = await _seed_directional_failure(session_maker, events, service, direction=direction, message=message)
     await events.append_batch([SyncEventRecord(
         timestamp=20.0, task_id="task-1", task_name="市场资料备份",
         status="uploaded" if direction == "upload" else "downloaded",
         path="D:/Work/Marketing/demo.md", message=None, run_id="recovered-run",
     )])
     await service.refresh_sources()
-    # Reproduce v0.9.15 persisted state after the success cursor has advanced.
+    # Reproduce persisted state after the success cursor has advanced.
     async with session_maker() as session:
         record = await session.get(ProblemRecord, problem.id)
-        record.operation_family = "diagnostic"
-        record.resolution_key = service.build_resolution_key(task_id="task-1", object_key="demo.md", operation_family="diagnostic")
+        record.operation_family = legacy_family
+        record.resolution_key = service.build_resolution_key(task_id="task-1", object_key="demo.md", operation_family=legacy_family)
         record.state = state
         record.resolved_at = record.last_good_at = None
         record.resolved_by_event_id = record.resolved_by_run_id = None
@@ -1608,7 +1620,7 @@ async def test_network_legacy_direction_repair_uses_consumed_recovery_fact(tmp_p
     assert result.events_seen == 0
     assert repaired.state == "resolved"
     assert repaired.operation_family == direction
-    assert repaired.category == "network_remote"
+    assert repaired.category == category
     assert repaired.fingerprint == problem.fingerprint
     assert repaired.occurrence_count == 1
     assert repaired.resolved_by_run_id == "recovered-run"
@@ -1624,13 +1636,18 @@ async def test_network_legacy_direction_repair_uses_consumed_recovery_fact(tmp_p
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mismatch", ["direction", "path", "task", "account", "earlier", "same_time", "unknown_direction", "source_account", "source_task"])
-async def test_network_legacy_repair_rejects_unrelated_recovery(tmp_path, mismatch) -> None:
+@pytest.mark.parametrize("message,legacy_family", [
+    ("ReadTimeout('')", "diagnostic"),
+    ("导入任务完成但未找到新文档", "conversion"),
+    ("文件被占用 WinError 32", "diagnostic"),
+])
+async def test_legacy_direction_repair_rejects_unrelated_recovery(tmp_path, mismatch, message, legacy_family) -> None:
     session_maker, events, service = await _build_services(tmp_path)
-    problem = await _seed_network_failure(session_maker, events, service, direction=None if mismatch == "unknown_direction" else "upload")
+    problem = await _seed_directional_failure(session_maker, events, service, direction=None if mismatch == "unknown_direction" else "upload", message=message)
     async with session_maker() as session:
         record = await session.get(ProblemRecord, problem.id)
-        record.operation_family = "diagnostic"
-        record.resolution_key = service.build_resolution_key(task_id="task-1", object_key="demo.md", operation_family="diagnostic")
+        record.operation_family = legacy_family
+        record.resolution_key = service.build_resolution_key(task_id="task-1", object_key="demo.md", operation_family=legacy_family)
         if mismatch in {"source_account", "source_task"}:
             run = await session.get(SyncRun, "network-failed-run")
             if mismatch == "source_account":
@@ -1652,16 +1669,17 @@ async def test_network_legacy_repair_rejects_unrelated_recovery(tmp_path, mismat
     repaired = await service.get_problem(problem.id)
     assert repaired.state == "open"
     assert repaired.resolved_by_event_id is None
-    expected = "diagnostic" if mismatch in {"unknown_direction", "source_account", "source_task"} else "upload"
+    expected = legacy_family if mismatch in {"unknown_direction", "source_account", "source_task"} else "upload"
     assert repaired.operation_family == expected
     verified = await service.verify_problem(problem.id)
     assert verified.state == "open"
 
 
 @pytest.mark.asyncio
-async def test_network_direction_migration_repairs_missing_family(tmp_path) -> None:
+@pytest.mark.parametrize("message", ["ReadTimeout('')", "导入任务完成但未找到新文档", "文件被占用 WinError 32"])
+async def test_direction_migration_repairs_missing_family(tmp_path, message) -> None:
     session_maker, events, service = await _build_services(tmp_path)
-    problem = await _seed_network_failure(session_maker, events, service)
+    problem = await _seed_directional_failure(session_maker, events, service, message=message)
     async with session_maker() as session:
         record = await session.get(ProblemRecord, problem.id)
         record.operation_family = None
@@ -1671,9 +1689,32 @@ async def test_network_direction_migration_repairs_missing_family(tmp_path) -> N
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("direction", ["upload", "download"])
+@pytest.mark.parametrize("message", ["ReadTimeout('')", "转码失败", "文件被占用 WinError 32"])
+async def test_legacy_classifier_migration_preserves_run_direction(tmp_path, direction, message) -> None:
+    session_maker, events, service = await _build_services(tmp_path)
+    problem = await _seed_directional_failure(session_maker, events, service, direction=direction, message=message)
+    async with session_maker() as session:
+        record = await session.get(ProblemRecord, problem.id)
+        record.classifier_version = "problem-classifier-v2"
+        record.object_kind = "sync_event"
+        record.operation_family = "diagnostic"
+        await session.commit()
+    async with session_maker() as session:
+        await service._migrate_active_event_problems(session, task_roots={"task-1": "D:/Work/Marketing"})
+        await session.commit()
+    migrated = await service.get_problem(problem.id)
+    assert migrated.operation_family == direction
+    assert migrated.resolution_key == service.build_resolution_key(
+        task_id="task-1", object_key="demo.md", operation_family=direction,
+    )
+    assert migrated.state == "open"
+
+
+@pytest.mark.asyncio
 async def test_network_direction_migration_drains_batches_without_unknown_blocking(tmp_path) -> None:
     session_maker, events, service = await _build_services(tmp_path)
-    first = await _seed_network_failure(session_maker, events, service)
+    first = await _seed_directional_failure(session_maker, events, service)
     await events.append_batch([
         SyncEventRecord(timestamp=11.0, task_id="task-1", task_name="市场资料备份",
             status="failed", path="D:/Work/Marketing/unknown.md", message="ReadTimeout('')", run_id=None),
@@ -1688,7 +1729,7 @@ async def test_network_direction_migration_drains_batches_without_unknown_blocki
         await session.commit()
     for expected in [1, 2, 2]:
         async with session_maker() as session:
-            await service._repair_network_problem_operations(session, limit=1)
+            await service._repair_directional_problem_operations(session, limit=1)
             await session.commit()
         _, items = await service.list_problems(state="open", limit=20, offset=0)
         assert sum(item.operation_family == "upload" for item in items) == expected
