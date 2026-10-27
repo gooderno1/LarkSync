@@ -2,9 +2,9 @@
 
 > v0.9 起，首次安装默认直接使用 Device Flow 扫码登录，无需先配置 OAuth 回调地址，也不要求安装`lark-cli`。本文后面的手动 OAuth 步骤仅作为组织禁止自动创建个人应用时的高级备用路径。
 
-更新时间：2026-10-20
+更新时间：2026-10-27
 
-当前正式版为 [V1.1（v1.1.0）](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.0)。希望直接与 Codex / WorkBuddy 对话完成配置？先读 [AI 使用指南](AI_GUIDE.md)，安装配套应用与通用技能。
+当前正式版为 [V1.1.1](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.1)。希望直接与 Codex / WorkBuddy 对话完成配置？先读 [AI 使用指南](AI_GUIDE.md)，安装配套应用与通用技能。
 
 本文面向第一次试用 LarkSync 的用户。推荐先用小型测试目录和 `download_only` 模式完成一次闭环，再决定是否启用双向同步。
 

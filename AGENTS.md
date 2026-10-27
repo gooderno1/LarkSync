@@ -44,11 +44,16 @@
 - 任何新增文件必须放在合理目录内。
 
 ## 2. 工作流与交付标准（DoD）
+- 发布与安装约定（用户于 2026-10-27 明确）：
+  - 完成验证后直接发布正式版本 `vX.Y.Z`，提供正式发布页、安装包和校验信息。
+  - 不向用户现用环境安装 `dev` 版本，也不以本机覆盖安装开发包作为交付。
+  - 正式新版由用户自行安装；AI 不代为安装、重启或切换现用应用版本。
+  - 开发与打包体验验证使用 CI 或隔离环境，保留用户现用应用与运行数据。
 - TDD 优先：先写测试，再写实现。
 - 后端：新增逻辑必须有 pytest；前端：无 TS 类型报错、无 ESLint 警告。
 - 测试分层（必须）：
   - 本地开发测试：`npm run dev`（托盘 + 前后端热重载）为默认本地联调入口。
-  - 打包体验测试：执行 `python scripts/build_installer.py`（按平台可加 `--nsis` / `--dmg`）并进行用户级安装/启动体验验证。
+  - 打包体验测试：执行 `python scripts/build_installer.py`（按平台可加 `--nsis` / `--dmg`），在 CI 或隔离环境进行安装/启动体验验证；不得覆盖用户现用安装。
 - 文档同步：功能变更必须更新 `README.md` 功能列表。
 - 变更记录：必须在 `CHANGELOG.md` 追加 `[YYYY-MM-DD] vX.Y.Z-dev.N feat/fix: description`。
 - 版本更新：按语义化版本更新 `apps/backend/pyproject.toml` 或 `apps/frontend/package.json`。

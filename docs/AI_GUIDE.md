@@ -1,6 +1,6 @@
 # 通过 Codex / WorkBuddy 使用 LarkSync
 
-适用版本：v1.0.0 及后续版本。正式安装包包含 AI 任务管理接口和原生 CLI，通用技能包随版本一同发布。当前版本：v1.1.0。更新时间：2026-10-24。
+适用版本：v1.0.0 及后续版本。正式安装包包含 AI 任务管理接口和原生 CLI，通用技能包随版本一同发布。当前版本：v1.1.1。更新时间：2026-10-27。
 
 ## 从一个 Git 链接开始
 
@@ -14,7 +14,7 @@ AI 需要能访问仓库、执行本地命令，且应用在同一台机器运�
 
 ## 1. 安装应用
 
-- [V1.1 发布页](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.0)：Windows 选择 EXE；macOS 根据 Apple Silicon（arm64）/ Intel（x86_64）选择 DMG；技能使用 `LarkSync-Agent-Skill-1.1.0.zip`。
+- [V1.1.1 发布页](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.1)：Windows 选择 EXE；macOS 根据 Apple Silicon（arm64）/ Intel（x86_64）选择 DMG；技能使用 `LarkSync-Agent-Skill-1.1.1.zip`。
 - 读取具体 Release 的说明与 SHA256，不能只根据文件名假设兼容性。使用本指南命令需要 v1.0.0 或更新版本；从 v0.10.x 升级的用户先安装新版应用，再配置技能。
 - 启动应用后，默认 API 地址为 `http://localhost:18765`。CLI 不会自动启动另一个后端。
 - 只有源码开发才需要 Python / Node.js 依赖，步骤见 [使用教程](USAGE.md)。安装版附带 `LarkSyncCLI`，无需另装 Python。

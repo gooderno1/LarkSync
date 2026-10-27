@@ -10,7 +10,7 @@ LarkSync 是 Windows / macOS 常驻桌面应用。它将云文档转成 Markdown
 
 [下载安装包](https://github.com/gooderno1/LarkSync/releases) · [快速开始](docs/QUICK_START.md) · [通过 AI 使用](docs/AI_GUIDE.md) · [反馈问题](https://github.com/gooderno1/LarkSync/issues)
 
-> **V1.1 正式版**（v1.1.0，2026-10-24）：全应用统一运行阶段、处理数量、已用时间和等待原因，补齐历史记录与桌面状态口径。提供 Windows、Apple Silicon 和 Intel 安装包，详见 [V1.1 发布说明与下载](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.0)。
+> **V1.1.1 正式版**（2026-10-27）：修复导入转换及本地读写异常在后续同步成功后仍残留告警的问题，兼容历史记录并保留失败与恢复证据。提供 Windows、Apple Silicon 和 Intel 安装包，详见 [V1.1.1 发布说明与下载](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.1)。
 
 ## 它能帮你做什么
 
@@ -30,7 +30,7 @@ LarkSync 是 Windows / macOS 常驻桌面应用。它将云文档转成 Markdown
 
 ## 开始使用
 
-1. 在 [V1.1 发布页](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.0) 选择 Windows `LarkSync-Setup-v1.1.0.exe`，或匹配 Apple Silicon（`arm64`）/ Intel（`x86_64`）的 macOS DMG；可使用同名 `.sha256` 校验下载文件。macOS 首次打开的系统放行步骤见 [快速开始](docs/QUICK_START.md)。
+1. 在 [V1.1.1 发布页](https://github.com/gooderno1/LarkSync/releases/tag/v1.1.1) 选择 Windows `LarkSync-Setup-v1.1.1.exe`，或匹配 Apple Silicon（`arm64`）/ Intel（`x86_64`）的 macOS DMG；可使用同名 `.sha256` 校验下载文件。macOS 首次打开的系统放行步骤见 [快速开始](docs/QUICK_START.md)。
 2. 启动应用，点击“开始扫码连接”。首次通常需要先扫码创建个人应用，再扫码授权账号；无需安装 `lark-cli`。组织限制自动注册时，使用手动添加应用入口。
 3. 选择飞书文件夹和本地目录，创建一个**仅下载**任务。第一次建议从少量文档开始。
 4. 确认运行成功，并在本地看到 Markdown 和资源文件，再交给 AI 阅读或配置更多任务。
@@ -50,7 +50,7 @@ LarkSync 是 Windows / macOS 常驻桌面应用。它将云文档转成 Markdown
 - “把这个任务的 `参考资料` 子文件夹设为仅下载。”
 - “检查刚才同步失败的文件，告诉我需要处理什么。”
 
-**Codex**：安装 `integrations/skills/larksync` 到用户技能目录 `~/.agents/skills/larksync`，重新加载技能。**WorkBuddy**：将完整技能目录放入项目的 `.codebuddy/skills/larksync`，或在技能界面导入 [V1.1 通用技能包](https://github.com/gooderno1/LarkSync/releases/download/v1.1.0/LarkSync-Agent-Skill-1.1.0.zip)。客户端识别和调用步骤见 [AI 使用指南](docs/AI_GUIDE.md)。
+**Codex**：安装 `integrations/skills/larksync` 到用户技能目录 `~/.agents/skills/larksync`，重新加载技能。**WorkBuddy**：将完整技能目录放入项目的 `.codebuddy/skills/larksync`，或在技能界面导入 [V1.1.1 通用技能包](https://github.com/gooderno1/LarkSync/releases/download/v1.1.1/LarkSync-Agent-Skill-1.1.1.zip)。客户端识别和调用步骤见 [AI 使用指南](docs/AI_GUIDE.md)。
 
 应用负责保存凭据和执行同步；AI 使用附带的控制台 CLI 或技能中的纯 Python CLI。多账号必须明确选择账号；配置预览不写入；返回 `sync_complete: true` 才表示本次同步完成。
 
